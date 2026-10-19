@@ -19957,7 +19957,7 @@ function Nomina() {
     asignacionesJornada = [],
     portalBoletaAcuses = [],
     solicitudesRRHH = [],
-    personalDocumentos = [], tiposDocumento = [], perfilSociedad, sociedadesIdsAlcance,
+    personalDocumentos = [], contratosArchivados = [], tiposDocumento = [], perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles = [], seleccionarSociedad,
   } = useApp();
   const modoVistaSociedadNomina = resolverFiltroSociedadesVista({
@@ -20287,11 +20287,11 @@ function Nomina() {
   ], [personalOperativo, personalAdmin]);
 
   const contratosNomina = useMemo(() => resolverContratosNominaSociedad({
-    documentos: personalDocumentos,
+    documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
     tiposDocumento,
     sociedadId: periodo?.sociedad_id,
     periodo,
-  }), [personalDocumentos, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
+  }), [personalDocumentos, contratosArchivados, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
 
   const contratosNominaAmbiguosConNombre = useMemo(() => {
     const personasPorId = new Map(personasCompartidas.map(persona => [persona.id, persona]));
@@ -22564,7 +22564,8 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, authUser, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, authUser, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], contratosArchivados = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const documentosContratoFecha = [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()];
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonal = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -22595,7 +22596,7 @@ function RRHH_Operativo() {
     }
     const resolucionVista = resolverPersonalConContratosVigentes({
       personal: personalOperativo,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: sociedadesContratosPersonalIds,
       fecha: fechaVigenciaPersonal,
@@ -22612,10 +22613,10 @@ function RRHH_Operativo() {
       };
     }
 
-    const todasLasSociedadesIds = [...new Set(personalDocumentos.map(doc => doc.sociedad_id).filter(Boolean))];
+    const todasLasSociedadesIds = [...new Set(documentosContratoFecha.map(doc => doc.sociedad_id).filter(Boolean))];
     const resolucionGlobal = resolverPersonalConContratosVigentes({
       personal: personalOperativo,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: todasLasSociedadesIds,
       fecha: fechaVigenciaPersonal,
@@ -22634,7 +22635,7 @@ function RRHH_Operativo() {
       )),
       personalSinContratoVigenteIds,
     };
-  }, [empresa?.multisociedad_habilitado, personalOperativo, personalDocumentos, tiposDocumento, sociedadesContratosPersonalKey, fechaVigenciaPersonal, vistaSociedadConcretaPersonal, mostrarBadgeSociedadPersonal]);
+  }, [empresa?.multisociedad_habilitado, personalOperativo, personalDocumentos, contratosArchivados, tiposDocumento, sociedadesContratosPersonalKey, fechaVigenciaPersonal, vistaSociedadConcretaPersonal, mostrarBadgeSociedadPersonal]);
   
   const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
   const [showRequisitosRRHH, setShowRequisitosRRHH] = useState(false);
@@ -23467,7 +23468,7 @@ function RRHH_Operativo() {
       for (const d of h.docs) {
         const tipoContrato = /contrato/i.test(String(d.tipo?.nombre || '')) && !/adenda/i.test(String(d.tipo?.nombre || ''));
         if (tipoContrato) {
-          const docsTipo = personalDocumentos.filter(doc => doc.personal_id === h.personal_id
+          const docsTipo = documentosContratoFecha.filter(doc => doc.personal_id === h.personal_id
             && (doc.tipo_documento_id || doc.tipo_doc) === d.tipo_documento_id && !doc.contrato_referencia_id);
           const hoy = new Date();
           const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
@@ -23485,7 +23486,7 @@ function RRHH_Operativo() {
       if (!mapa[p.id]) mapa[p.id] = { personal_id: p.id, tiene_cargo: !!p.cargo_id, cargo_id: p.cargo_id, estado_global: 'sin_configurar', docs: [] };
     }
     return Object.values(mapa);
-  }, [tiposDocumento, personalDocumentos, personal]);
+  }, [tiposDocumento, personalDocumentos, contratosArchivados, personal]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !isSupabaseConfigured()) {
@@ -25132,7 +25133,7 @@ function RRHH_Operativo() {
                                       const hoy = new Date();
                                       const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
                                       const esContratoReq = rrhhEsTipoContrato(req.tipo);
-                                      const versionesFuturasContrato = esContratoReq ? personalDocumentos.filter(d => d.personal_id === p.id
+                                      const versionesFuturasContrato = esContratoReq ? documentosContratoFecha.filter(d => d.personal_id === p.id
                                         && (d.tipo_documento_id || d.tipo_doc) === req.tipo_documento_id && !d.contrato_referencia_id
                                         && d.estado_validacion !== 'rechazado') : [];
                                       const proximoContrato = seleccionarProximoContrato(versionesFuturasContrato, hoyStr);

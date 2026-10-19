@@ -89,6 +89,21 @@ test('Mariano: periodo archivado y sucesor por febrero cubren fechas y nóminas 
   }
 });
 
+test('un contrato aprobado archivado debe combinarse para resolver la vigencia de hoy', () => {
+  const contratoArchivado = contrato('P', '2026-08-01', '2027-01-31', {
+    activo: false,
+    periodo_estado: 'archivado',
+    contrato_periodo_id: 'periodo-p',
+    contrato_referencia_id: null,
+  });
+  const activosYPendientes = [contrato('S', '2027-02-01', '2027-02-28', {
+    contrato_periodo_id: 'periodo-s',
+    contrato_periodo_predecesor_id: 'periodo-p',
+  })];
+  assert.equal(seleccionarContratoPorFecha(activosYPendientes, '2026-10-19'), null);
+  assert.equal(seleccionarContratoPorFecha([...activosYPendientes, contratoArchivado], '2026-10-19').id, 'P');
+});
+
 test('un sucesor rechazado no suprime al periodo anterior', () => {
   const docs = [
     contrato('P', '2026-08-01', '2027-01-31', { contrato_periodo_id: 'P' }),

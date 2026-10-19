@@ -11559,7 +11559,8 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], authUser, comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], authUser, comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], contratosArchivados = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const documentosContratoFecha = [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()];
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   useEffect(() => {
@@ -11622,7 +11623,7 @@ function RRHHAdmin() {
     }
     const resolucionVista = resolverPersonalConContratosVigentes({
       personal: personalAdmin,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: sociedadesContratosPersonalAdminIds,
       fecha: fechaVigenciaPersonalAdmin,
@@ -11639,10 +11640,10 @@ function RRHHAdmin() {
       };
     }
 
-    const todasLasSociedadesIds = [...new Set(personalDocumentos.map(doc => doc.sociedad_id).filter(Boolean))];
+    const todasLasSociedadesIds = [...new Set(documentosContratoFecha.map(doc => doc.sociedad_id).filter(Boolean))];
     const resolucionGlobal = resolverPersonalConContratosVigentes({
       personal: personalAdmin,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: todasLasSociedadesIds,
       fecha: fechaVigenciaPersonalAdmin,
@@ -11661,7 +11662,7 @@ function RRHHAdmin() {
       )),
       personalSinContratoVigenteIds,
     };
-  }, [empresa?.multisociedad_habilitado, personalAdmin, personalDocumentos, tiposDocumento, sociedadesContratosPersonalAdminKey, fechaVigenciaPersonalAdmin, vistaSociedadConcretaPersonalAdmin, mostrarBadgeSociedadPersonalAdmin]);
+  }, [empresa?.multisociedad_habilitado, personalAdmin, personalDocumentos, contratosArchivados, tiposDocumento, sociedadesContratosPersonalAdminKey, fechaVigenciaPersonalAdmin, vistaSociedadConcretaPersonalAdmin, mostrarBadgeSociedadPersonalAdmin]);
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
@@ -11992,7 +11993,7 @@ function RRHHAdmin() {
       for (const d of h.docs) {
         const tipoContrato = /contrato/i.test(String(d.tipo?.nombre || '')) && !/adenda/i.test(String(d.tipo?.nombre || ''));
         if (tipoContrato) {
-          const docsTipo = personalDocumentos.filter(doc => doc.personal_id === pid
+          const docsTipo = documentosContratoFecha.filter(doc => doc.personal_id === pid
             && (doc.tipo_documento_id || doc.tipo_doc) === d.tipo_documento_id && !doc.contrato_referencia_id);
           const hoy = new Date();
           const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
@@ -12009,7 +12010,7 @@ function RRHHAdmin() {
       if (!mapa[p.id]) mapa[p.id] = { estado_global: p.cargo_id ? 'sin_requisitos' : 'sin_cargo', tiene_cargo: !!p.cargo_id, cargo_id: p.cargo_id, docs: [] };
     }
     return mapa;
-  }, [tiposDocumento, personalDocumentos, personalAdmin]);
+  }, [tiposDocumento, personalDocumentos, contratosArchivados, personalAdmin]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -13883,7 +13884,7 @@ function RRHHAdmin() {
                         const hoy = new Date();
                         const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
                         const esContratoReq = rrhhAdminEsTipoContrato(req.tipo);
-                        const versionesFuturasContrato = esContratoReq ? personalDocumentos.filter(d => d.personal_id === persona.id
+                        const versionesFuturasContrato = esContratoReq ? documentosContratoFecha.filter(d => d.personal_id === persona.id
                           && (d.tipo_documento_id || d.tipo_doc) === req.tipo_documento_id && !d.contrato_referencia_id
                           && d.estado_validacion !== 'rechazado') : [];
                         const proximoContrato = seleccionarProximoContrato(versionesFuturasContrato, hoyStr);

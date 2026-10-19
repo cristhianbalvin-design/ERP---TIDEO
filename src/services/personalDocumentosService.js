@@ -92,6 +92,32 @@ export async function getDocumentosActivos(empresaId) {
   return (data || []).map(normalizar);
 }
 
+// Contratos aprobados archivados que pueden ser relevantes para nominas retroactivas.
+export async function getContratosArchivadosRelevantes(empresaId, personalId = null) {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  const hoy = new Date();
+  hoy.setDate(hoy.getDate() - 400);
+  const fechaLimite = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  let query = supabase
+    .from('personal_documentos')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('estado_validacion', 'aprobado')
+    .eq('activo', false)
+    .not('contrato_periodo_id', 'is', null)
+    .is('contrato_referencia_id', null);
+  if (personalId) query = query.eq('personal_id', personalId);
+  const { data, error } = await query.order('fecha_vencimiento', { ascending: true });
+  if (error) { console.error('Error getContratosArchivadosRelevantes:', error); return []; }
+  return (data || [])
+    .filter(doc => {
+      const fin = doc.periodo_fecha_fin || doc.fecha_vencimiento;
+      return !fin || fin >= fechaLimite;
+    })
+    .map(normalizar);
+}
+
 // Documentos pendientes de validación
 export async function getDocumentosPendientes(empresaId) {
   if (!empresaId) return [];
