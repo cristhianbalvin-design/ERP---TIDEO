@@ -893,8 +893,8 @@ function CotizacionesInner() {
                     {mostrarBadgeSociedadCotizaciones && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
                     <td><strong>{cliente}</strong></td>
                     <td className="text-muted">{opp?.nombre || '—'}</td>
-                    <td className="num"><strong>{esEspecial ? '—' : money(impl, currencySymbol(r.moneda))}</strong></td>
-                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? money(rec, currencySymbol(r.moneda)) : '—')}</td>
+                    <td className="num"><strong>{esEspecial ? '—' : moneyD(impl, currencySymbol(r.moneda))}</strong></td>
+                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? moneyD(rec, currencySymbol(r.moneda)) : '—')}</td>
                     <td className="text-muted">{r.fecha}</td>
                     <td><span className={'badge ' + badgeEstado}>{r.estado?.replace('_', ' ')}</span></td>
                   </tr>
@@ -2180,7 +2180,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
           <div className="modal-body col" style={{gap:14}}>
             <div style={infoBox}>
           <div className="eyebrow">{esCotizacionEspecial ? 'Cotización especial aceptada' : 'Cotización aprobada'}</div>
-              <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
+              <strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
             </div>
             <div style={{fontWeight:500, fontSize:14}}>Se detectaron OS activas para este cliente. ¿Esta cotización corresponde a una OS existente o es una OS nueva?</div>
             <div className="col" style={{gap:8}}>
@@ -2216,7 +2216,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
             <button className="icon-btn" onClick={onClose}>{I.x}</button>
           </div>
           <div className="modal-body col" style={{gap:16}}>
-            <div style={infoBox}><strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
+            <div style={infoBox}><strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
             <div style={{fontWeight:500}}>¿El cliente proporcionó un número de OS?</div>
             <div className="col" style={{gap:8}}>
               <label style={{...optStyle, background: tieneNumero === true ? 'var(--cyan-lt)' : 'transparent'}}>
@@ -2260,7 +2260,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
         </div>
         <form className="modal-body col" style={{gap:14}} onSubmit={e => { e.preventDefault(); onCrearNueva(form); }}>
           <div style={infoBox}>
-            <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
+            <strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
             {tieneNumero && form.numero_doc_cliente && <> · OS cliente: <strong>{form.numero_doc_cliente}</strong></>}
           </div>
           <div className="input-group">
