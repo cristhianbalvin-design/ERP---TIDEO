@@ -100,6 +100,27 @@ const fechaLegalRenovacion = value => {
   const diasMes = numeroMes >= 1 && numeroMes <= 12 ? new Date(Date.UTC(Number(anio), numeroMes, 0)).getUTCDate() : 0;
   return numeroDia >= 1 && numeroDia <= diasMes ? `${numeroDia} de ${MESES_FECHA_LEGAL[numeroMes - 1]} de ${anio}` : value;
 };
+export { fechaLegalRenovacion };
+const fechaAsuntoRenovacion = value => {
+  const match = String(value ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+};
+export function construirAsuntoPeriodoContrato({ inicio, fin, indefinido = false } = {}) {
+  const inicioAsunto = fechaAsuntoRenovacion(inicio);
+  const finAsunto = indefinido ? '' : fechaAsuntoRenovacion(fin);
+  const inicioLegal = fechaLegalRenovacion(inicio);
+  const finLegal = indefinido ? '' : fechaLegalRenovacion(fin);
+  const base = 'Firma de renovaci\u00f3n de contrato';
+  if (!inicioAsunto) return { asunto: base, periodo: '' };
+  if (finAsunto) return {
+    asunto: `${base} \u00b7 ${inicioAsunto} al ${finAsunto}`,
+    periodo: `Periodo del contrato: del ${inicioLegal} al ${finLegal}`,
+  };
+  return {
+    asunto: `${base} \u00b7 desde ${inicioAsunto}`,
+    periodo: `Periodo del contrato: desde ${inicioLegal}`,
+  };
+}
 const normalizarCausaObjetiva = value => String(value ?? '').trim().replace(/[.]+$/g, '').trim();
 
 export function construirContextoRenovacion({ empresa = {}, sociedad = null, persona = {}, documento = {}, snapshot = {}, fechaInicio, fechaFin } = {}) {

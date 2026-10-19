@@ -1,11 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crearOtpFirma, crearTokenFirma, distribuirTextoPdf, extraerIpCliente, mensajeMotivoFirma, sha256Hex } from '../supabase/functions/_shared/contratoFirma.js';
+import { construirAsuntoPeriodoContrato, crearOtpFirma, crearTokenFirma, distribuirTextoPdf, extraerIpCliente, mensajeMotivoFirma, sha256Hex } from '../supabase/functions/_shared/contratoFirma.js';
 import { mensajeErrorFuncion } from './contratoFirmaService.js';
 
 test('genera token aleatorio base64url y OTP de seis dígitos', () => {
   assert.match(crearTokenFirma(), /^[A-Za-z0-9_-]{43}$/);
   assert.match(crearOtpFirma(), /^\d{6}$/);
+});
+
+test('construye asunto y periodo legal del contrato sin desfase de día', () => {
+  assert.deepEqual(construirAsuntoPeriodoContrato({ inicio: '2027-02-01', fin: '2027-02-28' }), {
+    asunto: 'Firma de renovaci\u00f3n de contrato \u00b7 01/02/2027 al 28/02/2027',
+    periodo: 'Periodo del contrato: del 1 de febrero de 2027 al 28 de febrero de 2027',
+  });
+  assert.deepEqual(construirAsuntoPeriodoContrato({ inicio: '2027-01-01', fin: '2027-12-31' }), {
+    asunto: 'Firma de renovaci\u00f3n de contrato \u00b7 01/01/2027 al 31/12/2027',
+    periodo: 'Periodo del contrato: del 1 de enero de 2027 al 31 de diciembre de 2027',
+  });
+  assert.deepEqual(construirAsuntoPeriodoContrato({ inicio: '2027-01-01', indefinido: true }), {
+    asunto: 'Firma de renovaci\u00f3n de contrato \u00b7 desde 01/01/2027',
+    periodo: 'Periodo del contrato: desde 1 de enero de 2027',
+  });
+  assert.deepEqual(construirAsuntoPeriodoContrato({ inicio: '2027-12-31' }), {
+    asunto: 'Firma de renovaci\u00f3n de contrato \u00b7 desde 31/12/2027',
+    periodo: 'Periodo del contrato: desde 31 de diciembre de 2027',
+  });
+  assert.deepEqual(construirAsuntoPeriodoContrato({}), { asunto: 'Firma de renovaci\u00f3n de contrato', periodo: '' });
 });
 
 test('calcula SHA-256 y prioriza la IP de Cloudflare sobre X-Forwarded-For', async () => {

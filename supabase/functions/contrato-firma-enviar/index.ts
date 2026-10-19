@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSupabaseAnonKey, getSupabaseServiceRoleKey } from "../_shared/supabaseKeys.ts";
-import { enmascararEmail, enmascararTelefono, sha256Hex, crearTokenFirma } from "../_shared/contratoFirma.js";
+import { construirAsuntoPeriodoContrato, enmascararEmail, enmascararTelefono, sha256Hex, crearTokenFirma } from "../_shared/contratoFirma.js";
 
 const APP_URL = (Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("VITE_APP_URL") || "").replace(/\/$/, "");
 const json = (body: unknown, status = 200, origin = "") => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": origin || APP_URL, "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Vary": "Origin" } });
@@ -107,7 +107,7 @@ serve(async (req) => {
     if (!email) canales.email = { enviado: false, motivo: "sin_correo" };
     else if (!resend) canales.email = { enviado: false, motivo: "proveedor_no_configurado" };
     else {
-      try { const nombreSeguro = String(persona.nombre || "").replace(/[&<>"']/g, ""); const result = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${resend}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: Deno.env.get("RESEND_FROM") || "TIDEO <notificaciones@tideo.tech>", to: [email], subject: "Firma de renovación de contrato", html: `<p>Hola ${nombreSeguro},</p><p>Revisa y firma tu renovación de contrato en el enlace personal:</p><p><a href="${link}">Revisar contrato y firmar</a></p><p>El enlace vence el ${new Date(expiresAt).toLocaleDateString("es-PE")}.</p>` }) }); canales.email = { enviado: result.ok, motivo: result.ok ? null : "error_proveedor" }; }
+      try { const nombreSeguro = String(persona.nombre || "").replace(/[&<>"']/g, ""); const escaparHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[character]!)); const periodoContrato = construirAsuntoPeriodoContrato({ inicio: doc.periodo_fecha_inicio || doc.fecha_emision, fin: doc.periodo_fecha_fin || doc.fecha_vencimiento, indefinido: Boolean(doc.es_indefinido) }); const result = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${resend}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: Deno.env.get("RESEND_FROM") || "TIDEO <notificaciones@tideo.tech>", to: [email], subject: periodoContrato.asunto, html: `<p>Hola ${nombreSeguro},</p>${periodoContrato.periodo ? `<p>${escaparHtml(periodoContrato.periodo)}</p>` : ""}<p>Revisa y firma tu renovaci\u00f3n de contrato en el enlace personal:</p><p><a href="${link}">Revisar contrato y firmar</a></p><p>El enlace vence el ${new Date(expiresAt).toLocaleDateString("es-PE")}.</p>` }) }); canales.email = { enviado: result.ok, motivo: result.ok ? null : "error_proveedor" }; }
       catch { canales.email = { enviado: false, motivo: "error_proveedor" }; }
     }
   }
