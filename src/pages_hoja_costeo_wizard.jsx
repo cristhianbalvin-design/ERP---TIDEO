@@ -68,7 +68,7 @@ function SelectorUnidadMedida({ value, onChange, disabled }) {
 const numero = value => Number(value || 0);
 
 export default function HojaCosteoWizard() {
-  const { activeParams, hojasCosteo, setHojasCosteo, empresa, navigate, addToast, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo } = useApp();
+  const { activeParams, hojasCosteo, setHojasCosteo, empresa, navigate, addToast, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo, cuentas } = useApp();
   const hojaId = activeParams?.hojaId || activeParams?.id;
   const hoja = (hojasCosteo || []).find(item => item.id === hojaId);
   const monedaHoja = hoja?.moneda === 'USD' ? 'USD' : 'PEN';
@@ -1509,11 +1509,11 @@ export default function HojaCosteoWizard() {
   const pasoAnterior = () => setPaso(STEPS[Math.max(0, pasoActual - 1)].id);
   const siguientePaso = () => setPaso(STEPS[Math.min(STEPS.length - 1, pasoActual + 1)].id);
   const montoPaso = step => step === 'mano_obra' ? subtotalManoObra + subtotalActivos : step === 'materiales' ? subtotalMateriales : step === 'terceros' ? subtotalServiciosTerceros + subtotalLogistica : precioSugeridoTotal;
-  const estadoPie = bloqueada ? { clase: 'approved', texto: 'Hoja aprobada, sin cambios' } : { clase: hoja.estado === 'en_revision' ? 'review' : 'draft', texto: hoja.estado === 'en_revision' ? 'Pendiente de aprobación' : 'Cambios sin guardar' };
+  const estadoPie = bloqueada ? { clase: 'approved', texto: 'Hoja aprobada, sin cambios' } : { clase: hoja.estado === 'en_revision' ? 'review' : 'draft', texto: hoja.estado === 'en_revision' ? 'Pendiente de aprobación' : 'Borrador · las tareas se guardan al editarlas' };
   return (
     <div className="hcx-wizard">
       <div className="hcx-shell">
-        <header className="hcx-head"><div><button className="hcx-back" type="button" onClick={() => navigate('hoja_costeo', { detail: hoja.id })}>← Volver a la hoja</button><h1>Costeo · {hoja.numero}</h1><div className="hcx-sub">Hoja de costeo · {monedaHoja} · {hoja.cuenta_id || 'Sin cuenta'}</div></div><div className="hcx-badges"><span className={`hcx-status ${estadoPie.clase}`}><i />{hoja.estado || 'borrador'}</span><span className="hcx-pill">Cotización especial</span></div></header>
+        <header className="hcx-head"><div><button className="hcx-back" type="button" onClick={() => navigate('hoja_costeo', { detail: hoja.id })}>← Volver a la hoja</button><h1>Costeo · {hoja.numero}</h1><div className="hcx-sub">Hoja de costeo · {monedaHoja} · {(cuentas || []).find(item => item.id === hoja.cuenta_id)?.nombre_comercial || (cuentas || []).find(item => item.id === hoja.cuenta_id)?.razon_social || (hoja.cuenta_id ? 'Cuenta sin nombre' : 'Sin cuenta')}</div></div><div className="hcx-badges"><span className={`hcx-status ${estadoPie.clase}`}><i />{hoja.estado || 'borrador'}</span><span className="hcx-pill">Cotización especial</span></div></header>
         <div className="hcx-summary"><div className="hcx-chip"><b>{gruposPorTarea.length}</b><span>trabajos</span></div><div className="hcx-chip"><b>{lineas.length}</b><span>tareas</span></div><div className="hcx-chip"><b>{lineas.reduce((sum, item) => sum + numero(item.horas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-hombre</span></div><div className="hcx-chip"><b>{lineasActivos.reduce((sum, item) => sum + numero(item.horas_uso_estimadas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-máquina</span></div><span className="hcx-spacer" />{paso === 'mano_obra' && <button className="hcx-btn primary" type="button" disabled={bloqueada} onClick={() => setPanelTrabajo(true)}>{I.plus} Agregar trabajo</button>}</div>
         <nav className="hcx-stepnav" aria-label="Pasos del wizard">{STEPS.map((item, index) => <button key={item.id} className={`hcx-step ${paso === item.id ? 'is-current' : index < pasoActual ? 'is-done' : ''}`} type="button" onClick={() => setPaso(item.id)}><span>{index < pasoActual ? '✓' : index + 1}</span><small>{item.label}</small><em>{montoPaso(item.id) == null ? '—' : money(montoPaso(item.id))}</em></button>)}</nav>
         <div className="hcx-body">{renderPasoNueva()}</div>

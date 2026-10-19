@@ -408,6 +408,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
           <View style={S.tHead}>
             <Text style={[S.tHeadCell, { width: 22 }]}>N°</Text>
             <Text style={[S.tHeadCell, { flex: 1 }]}>Descripción</Text>
+            <Text style={[S.tHeadCell, { width: 40, textAlign: 'right' }]}>Cant.</Text>
             <Text style={[S.tHeadCell, { width: 70, textAlign: 'right' }]}>Precio unit.</Text>
             <Text style={[S.tHeadCell, { width: 75, textAlign: 'right' }]}>Total</Text>
           </View>
@@ -439,6 +440,9 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                       </Text>
                     ))}
                   </View>
+                  <Text style={[S.tCell, { width: 40, textAlign: 'right' }]}>
+                    {Number(p.cantidad || 1).toLocaleString('es-PE', { maximumFractionDigits: 2 })}
+                  </Text>
                   <Text style={[S.tCell, { width: 70, textAlign: 'right' }]}>
                     {p.incluido ? 'Incluido' : fmt(p.precio_unitario || 0, s)}
                   </Text>

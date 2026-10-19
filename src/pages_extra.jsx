@@ -1093,6 +1093,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   const toggleSeccion = k => setSeccionesOpen(p => ({ ...p, [k]: !p[k] }));
   const [confirmEnviar, setConfirmEnviar] = useState(false);
   const [showAprobModal, setShowAprobModal] = useState(false);
+  const [confirmarAprobInterna, setConfirmarAprobInterna] = useState(false);
   const sym = currencySymbol(cot.moneda);
   const calcDetalleTotal = p => toCotNumber(p.total) || (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario));
   const subtotalDetalleImpl = partidas
@@ -1188,10 +1189,20 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
               ✕ Cancelar solicitud
             </button>
           )}
-          {mostrarAprobarBtn && (
-            <button className="btn btn-secondary" onClick={onAprobarInterna} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
+          {mostrarAprobarBtn && !confirmarAprobInterna && (
+            <button className="btn btn-secondary" onClick={() => setConfirmarAprobInterna(true)} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
               ✓ Aprobar para envío
             </button>
+          )}
+          {mostrarAprobarBtn && confirmarAprobInterna && (
+            <>
+              <button className="btn btn-primary" onClick={() => { setConfirmarAprobInterna(false); onAprobarInterna(); }}>
+                ✓ Confirmar aprobación
+              </button>
+              <button className="btn btn-ghost" onClick={() => setConfirmarAprobInterna(false)}>
+                Cancelar
+              </button>
+            </>
           )}
           {esBorrador && (
             <button
@@ -1494,7 +1505,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
               <div key={i} className="row" style={{justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border-subtle)', fontSize:13}}>
                 <span className="badge badge-gray">v{h.version}</span>
                 <span className="text-muted">{h.fecha}</span>
-                <span className="num">{money(h.total, sym)}</span>
+                <span className="num">{moneyD(h.total, sym)}</span>
                 <span className="text-muted mono" style={{fontSize:11}}>{h.cotizacion_id}</span>
               </div>
             ))}

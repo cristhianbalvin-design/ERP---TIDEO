@@ -3121,7 +3121,8 @@ export function AppProvider({ children }) {
     const extras = {
       activo_id: cotFinal.activo_id,
       recepcion_id: cotFinal.recepcion_id,
-      ...(hc.oportunidad_id ? {} : { linea_negocio: lineaResuelta }),
+      // La línea viene de la oportunidad; si la oportunidad no tiene, se usa la elegida al generar.
+      ...(cotFinal.linea_negocio || !lineaResuelta ? {} : { linea_negocio: lineaResuelta }),
     };
     const extrasResult = await crmPersist(sb2 => svcActualizarCotizacion(sb2, cotFinal.id, extras));
     if (extrasResult?.error) throw extrasResult.error;
