@@ -11997,7 +11997,7 @@ function RRHHAdmin() {
             && (doc.tipo_documento_id || doc.tipo_doc) === d.tipo_documento_id && !doc.contrato_referencia_id);
           const hoy = new Date();
           const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-          d.doc = seleccionarContratoPorFecha(docsTipo, hoyStr);
+          d.doc = seleccionarContratoPorFecha(docsTipo, hoyStr) || docIdx[`${pid}|${d.tipo_documento_id}`] || null;
         } else d.doc = docIdx[`${pid}|${d.tipo_documento_id}`] || null;
       }
       if (h.estado_global === 'sin_cargo') continue;
