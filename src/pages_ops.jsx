@@ -22759,6 +22759,21 @@ function RRHH_Operativo() {
     } catch { setSolicitudesFirmaDigitalOps({}); setFirmasEmpresaOps({}); }
   }, [personalDocumentos, tiposDocumento]);
   useEffect(() => { cargarSolicitudesFirmaDigitalOps(); }, [cargarSolicitudesFirmaDigitalOps]);
+  const enviarSolicitudFirmaTrabajadorOps = async (documentoId, canales) => {
+    if (accionFirmaDigitalDocOps === documentoId) return;
+    setAccionFirmaDigitalDocOps(documentoId);
+    try {
+      const resultado = await contratoFirmaService.crearSolicitud({ documentoId, empresaId: empresa.id, canales });
+      if (recargarPersonalDocumentosPersonaCtx && selTecnico?.id) await recargarPersonalDocumentosPersonaCtx(selTecnico.id);
+      await cargarSolicitudesFirmaDigitalOps();
+      addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : 'No se pudo enviar el enlace de firma.');
+    } catch (e) {
+      const detalle = e?.canales ? ` Detalle por canal: ${Object.entries(e.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+      addNotificacion((e.message || 'No se pudo enviar a firma del trabajador.') + detalle);
+    } finally {
+      setAccionFirmaDigitalDocOps(null);
+    }
+  };
   const [enviarFirmaMensajeOps, setEnviarFirmaMensajeOps] = useState('');
   const [enviandoFirmaOps, setEnviandoFirmaOps] = useState(false);
   const [documentoAEliminar, setDocumentoAEliminar] = useState(null);
@@ -24042,10 +24057,12 @@ function RRHH_Operativo() {
                   setEnviandoFirmaOps(true);
                   try {
                     await enviarDocumentoAFirmaCtx({ documentoId: modalEnviarFirmaDocOps.doc.id, workerAuthUserId: selTecnico?.auth_user_id, mensaje: enviarFirmaMensajeOps });
+                    if (recargarPersonalDocumentosPersonaCtx && selTecnico?.id) await recargarPersonalDocumentosPersonaCtx(selTecnico.id);
                     setModalEnviarFirmaDocOps(null);
-                    addNotificacion('Documento enviado a firma del trabajador.');
+                    addNotificacion('Enlace de firma enviado');
                   } catch (err) {
-                    addNotificacion(err?.message || 'Error al enviar a firma.');
+                    const detalle = err?.canales ? ` Detalle por canal: ${Object.entries(err.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+                    addNotificacion((err?.message || 'Error al enviar a firma.') + detalle);
                   } finally {
                     setEnviandoFirmaOps(false);
                   }
@@ -25213,7 +25230,7 @@ function RRHH_Operativo() {
                                               const activa = Boolean(solicitudActiva);
                                               const renovacionFirmable = !req.doc.contrato_referencia_id && Boolean(req.doc.contrato_periodo_predecesor_id) && Boolean(req.doc.contrato_periodo_id) && req.doc.estado_firma !== 'firmado_trabajador';
                                               return (activa || firmado || firmaEmpresa) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                                                {firmaEmpresa && <span className={`badge ${firmaEmpresa.estado === "firmado" ? "badge-green" : "badge-orange"}`}>{firmaEmpresa.estado === "firmado" ? `Firmado por la empresa · ${new Date(firmaEmpresa.firmado_en).toLocaleDateString("es-PE")}` : `Pendiente firma de la empresa · ${firmaEmpresa.firmante_nombre}`}</span>} {firmaEmpresa?.estado !== "firmado" && firmaEmpresa?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaOps(firmaEmpresa.id)}>Firmar como empresa</button>} {firmaEmpresa && (firmaEmpresa.estado !== "firmado" || (!activa && !firmado)) && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firmaEmpresa.id); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>} {firmaEmpresa?.estado === "firmado" && !activa && !firmado && <button className="btn btn-primary btn-sm" onClick={async () => { try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: firmaEmpresa.canales_trabajador || [] }); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message || "No se pudo enviar a firma del trabajador."); } }}>Enviar a firma del trabajador</button>}
+                                                {firmaEmpresa && <span className={`badge ${firmaEmpresa.estado === "firmado" ? "badge-green" : "badge-orange"}`}>{firmaEmpresa.estado === "firmado" ? `Firmado por la empresa · ${new Date(firmaEmpresa.firmado_en).toLocaleDateString("es-PE")}` : `Pendiente firma de la empresa · ${firmaEmpresa.firmante_nombre}`}</span>} {firmaEmpresa?.estado !== "firmado" && firmaEmpresa?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaOps(firmaEmpresa.id)}>Firmar como empresa</button>} {firmaEmpresa && (firmaEmpresa.estado !== "firmado" || (!activa && !firmado)) && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firmaEmpresa.id); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>} {firmaEmpresa?.estado === "firmado" && !activa && !firmado && <button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocOps === req.doc.id} onClick={() => enviarSolicitudFirmaTrabajadorOps(req.doc.id, firmaEmpresa.canales_trabajador || [])}>Enviar a firma del trabajador</button>}
                                                 {firmaEmpresa?.estado === "firmado" && firmado ? <span className="badge badge-green">{'Firmado por empresa y trabajador ' + '\u00b7 ' + (solicitud?.firmado_en ? new Date(solicitud.firmado_en).toLocaleDateString('es-PE') : '')}</span> : solicitud && <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
                                                   {firmado ? `Firmado electr\u00f3nicamente${solicitud.firmado_en ? ` \u00b7 ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma \u00b7 vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
                                                 </span>}
@@ -25828,7 +25845,7 @@ function RRHH_Operativo() {
     <>
       {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => { setShowRequisitosRRHH(false); setShowTiposDocumentoRRHH(true); }} />}
       {mostrarFirmantesOps && <FirmantesContratoModal onClose={() => setMostrarFirmantesOps(false)} />}
-      {firmaEmpresaActivaOps && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaOps} onClose={() => { setFirmaEmpresaActivaOps(null); cargarSolicitudesFirmaDigitalOps(); }} onComplete={async resultado => { if (resultado?.aviso) addNotificacion(resultado.aviso); await cargarSolicitudesFirmaDigitalOps(); }} />}
+      {firmaEmpresaActivaOps && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaOps} onClose={() => { setFirmaEmpresaActivaOps(null); cargarSolicitudesFirmaDigitalOps(); }} onComplete={async resultado => { const detalle = resultado?.canales ? ` Detalle por canal: ${Object.entries(resultado.canales).map(([canal, detalleCanal]) => `${canal}: ${detalleCanal.motivo || (detalleCanal.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : ''; addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : (resultado?.aviso || 'La empresa firmó, pero no se pudo enviar al trabajador.') + detalle); if (recargarPersonalDocumentosPersonaCtx && selTecnico?.id) await recargarPersonalDocumentosPersonaCtx(selTecnico.id); await cargarSolicitudesFirmaDigitalOps(); }} />}
       {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
       {showCargaMasivaOp && <CargaMasivaOpPanel onClose={() => setShowCargaMasivaOp(false)} turnosOptions={turnosOptions} cargosOperativosOptions={cargosOperativosOptions} especialidadesOptions={especialidadesOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearTecnicoCtx={crearTecnicoCtx} addNotificacion={addNotificacion} personalOperativo={personalOperativo} />}
 

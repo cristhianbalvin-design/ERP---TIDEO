@@ -90,10 +90,29 @@ export function ajustarRunsPdf(runs, maxWidth, measure) {
   return lines;
 }
 
+const MESES_FECHA_LEGAL = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const fechaLegalRenovacion = value => {
+  const match = String(value ?? '').match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (!match) return value ?? '';
+  const [, anio, mes, dia] = match;
+  const numeroMes = Number(mes);
+  const numeroDia = Number(dia);
+  const diasMes = numeroMes >= 1 && numeroMes <= 12 ? new Date(Date.UTC(Number(anio), numeroMes, 0)).getUTCDate() : 0;
+  return numeroDia >= 1 && numeroDia <= diasMes ? `${numeroDia} de ${MESES_FECHA_LEGAL[numeroMes - 1]} de ${anio}` : value;
+};
+const normalizarCausaObjetiva = value => String(value ?? '').trim().replace(/[.]+$/g, '').trim();
+
 export function construirContextoRenovacion({ empresa = {}, sociedad = null, persona = {}, documento = {}, snapshot = {}, fechaInicio, fechaFin } = {}) {
   const condiciones = { ...(documento.condiciones_laborales || {}), ...snapshot };
+  if ('causa_objetiva' in condiciones) condiciones.causa_objetiva = normalizarCausaObjetiva(condiciones.causa_objetiva);
+  if (condiciones.contrato_anterior) condiciones.contrato_anterior = {
+    ...condiciones.contrato_anterior,
+    ...(condiciones.contrato_anterior.fecha_inicio ? { fecha_inicio: fechaLegalRenovacion(condiciones.contrato_anterior.fecha_inicio) } : {}),
+    ...(condiciones.contrato_anterior.fecha_fin ? { fecha_fin: fechaLegalRenovacion(condiciones.contrato_anterior.fecha_fin) } : {}),
+  };
   const empleado = {
     ...persona,
+    ...(persona.fecha_ingreso ? { fecha_ingreso: fechaLegalRenovacion(persona.fecha_ingreso) } : {}),
     documento: persona.documento || persona.dni || persona.numero_documento || '',
     direccion: persona.direccion || persona.direccion_domicilio || '',
     cargo: persona.cargo || condiciones.cargo_nombre || condiciones.cargo || '',
@@ -110,8 +129,8 @@ export function construirContextoRenovacion({ empresa = {}, sociedad = null, per
   const contrato = {
     ...documento,
     condiciones_laborales: condiciones,
-    fecha_inicio: fechaInicio,
-    fecha_fin: fechaFin,
+    fecha_inicio: fechaLegalRenovacion(fechaInicio),
+    fecha_fin: fechaLegalRenovacion(fechaFin),
     tipo_contrato: condiciones.tipo_contrato || persona.tipo_contrato || persona.modalidad_contrato || '',
     modalidad: condiciones.modalidad || persona.modalidad_contrato || persona.tipo_contrato || '',
     ...(Object.keys(condiciones).some(key => ['modalidad_legal', 'causa_objetiva', 'forma_trabajo', 'representante', 'contrato_anterior', 'horas_diarias', 'jornada_horas_diarias', 'regimen_jornada', 'regimen'].includes(key)) ? {
@@ -129,7 +148,7 @@ export function construirContextoRenovacion({ empresa = {}, sociedad = null, per
       : minero ? `jornada atípica acumulativa de ${minero[1]} días de trabajo por ${minero[2]} días de descanso, cuyo promedio no excede el máximo legal` : '';
   }
   return { empresa: empresaContext, empleado, contrato, condiciones_laborales: condiciones,
-    vigencia_efectiva: { fecha_desde: fechaInicio, fecha_hasta: fechaFin },
+    vigencia_efectiva: { fecha_desde: fechaLegalRenovacion(fechaInicio), fecha_hasta: fechaLegalRenovacion(fechaFin) },
     cargo: { nombre: empleado.cargo, area: empleado.area } };
 }
 

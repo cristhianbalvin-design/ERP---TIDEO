@@ -11747,6 +11747,21 @@ function RRHHAdmin() {
     } catch { setSolicitudesFirmaDigitalAdmin({}); setFirmasEmpresaAdmin({}); }
   }, [personalDocumentos]);
   useEffect(() => { cargarSolicitudesFirmaDigitalAdmin(); }, [cargarSolicitudesFirmaDigitalAdmin]);
+  const enviarSolicitudFirmaTrabajadorAdmin = async (documentoId, canales) => {
+    if (accionFirmaDigitalDocAdmin === documentoId) return;
+    setAccionFirmaDigitalDocAdmin(documentoId);
+    try {
+      const resultado = await contratoFirmaService.crearSolicitud({ documentoId, empresaId: empresa.id, canales });
+      if (recargarPersonalDocumentosPersonaCtx && persona?.id) await recargarPersonalDocumentosPersonaCtx(persona.id);
+      await cargarSolicitudesFirmaDigitalAdmin();
+      addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : 'No se pudo enviar el enlace de firma.');
+    } catch (e) {
+      const detalle = e?.canales ? ` Detalle por canal: ${Object.entries(e.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+      addNotificacion((e.message || 'No se pudo enviar a firma del trabajador.') + detalle);
+    } finally {
+      setAccionFirmaDigitalDocAdmin(null);
+    }
+  };
   const [enviarFirmaMensajeAdmin, setEnviarFirmaMensajeAdmin] = useState('');
   const [enviandoFirmaAdmin, setEnviandoFirmaAdmin] = useState(false);
   const [documentoAEliminarAdmin, setDocumentoAEliminarAdmin] = useState(null);
@@ -13673,7 +13688,7 @@ function RRHHAdmin() {
             return (
               <>
               {mostrarFirmantesAdmin && <FirmantesContratoModal onClose={() => setMostrarFirmantesAdmin(false)} />}
-              {firmaEmpresaActivaAdmin && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaAdmin} onClose={() => { setFirmaEmpresaActivaAdmin(null); cargarSolicitudesFirmaDigitalAdmin(); }} onComplete={async resultado => { if (resultado?.aviso) addNotificacion(resultado.aviso); await cargarSolicitudesFirmaDigitalAdmin(); }} />}
+              {firmaEmpresaActivaAdmin && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaAdmin} onClose={() => { setFirmaEmpresaActivaAdmin(null); cargarSolicitudesFirmaDigitalAdmin(); }} onComplete={async resultado => { const detalle = resultado?.canales ? ` Detalle por canal: ${Object.entries(resultado.canales).map(([canal, detalleCanal]) => `${canal}: ${detalleCanal.motivo || (detalleCanal.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : ''; addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : (resultado?.aviso || 'La empresa firmó, pero no se pudo enviar al trabajador.') + detalle); if (recargarPersonalDocumentosPersonaCtx && persona?.id) await recargarPersonalDocumentosPersonaCtx(persona.id); await cargarSolicitudesFirmaDigitalAdmin(); }} />}
               {previewNodeAdmin}
               {renovacionFirmaDigitalAdmin && <RenovacionFirmaDigitalModal
                 empresa={empresa}
@@ -13709,10 +13724,12 @@ function RRHHAdmin() {
                         setEnviandoFirmaAdmin(true);
                         try {
                           await enviarDocumentoAFirmaCtx({ documentoId: modalEnviarFirmaDocAdmin.doc.id, workerAuthUserId: persona?.auth_user_id, mensaje: enviarFirmaMensajeAdmin });
+                          if (recargarPersonalDocumentosPersonaCtx && persona?.id) await recargarPersonalDocumentosPersonaCtx(persona.id);
                           setModalEnviarFirmaDocAdmin(null);
-                          addNotificacion('Documento enviado a firma del trabajador.');
+                          addNotificacion('Enlace de firma enviado');
                         } catch (err) {
-                          addNotificacion(err?.message || 'Error al enviar a firma.');
+                          const detalle = err?.canales ? ` Detalle por canal: ${Object.entries(err.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+                          addNotificacion((err?.message || 'Error al enviar a firma.') + detalle);
                         } finally {
                           setEnviandoFirmaAdmin(false);
                         }
@@ -13962,7 +13979,7 @@ function RRHHAdmin() {
                               const activa = Boolean(solicitudActiva);
                               const renovacionFirmable = !req.doc.contrato_referencia_id && Boolean(req.doc.contrato_periodo_predecesor_id) && Boolean(req.doc.contrato_periodo_id) && req.doc.estado_firma !== 'firmado_trabajador';
                               return (activa || firmado || firmaEmpresa) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                                                {firmaEmpresa && <span className={`badge ${firmaEmpresa.estado === "firmado" ? "badge-green" : "badge-orange"}`}>{firmaEmpresa.estado === "firmado" ? `Firmado por la empresa · ${new Date(firmaEmpresa.firmado_en).toLocaleDateString("es-PE")}` : `Pendiente firma de la empresa · ${firmaEmpresa.firmante_nombre}`}</span>} {firmaEmpresa?.estado !== "firmado" && firmaEmpresa?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaAdmin(firmaEmpresa.id)}>Firmar como empresa</button>} {firmaEmpresa && (firmaEmpresa.estado !== "firmado" || (!activa && !firmado)) && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firmaEmpresa.id); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>} {firmaEmpresa?.estado === "firmado" && !activa && !firmado && <button className="btn btn-primary btn-sm" onClick={async () => { try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: firmaEmpresa.canales_trabajador || [] }); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message || "No se pudo enviar a firma del trabajador."); } }}>Enviar a firma del trabajador</button>}
+                                                {firmaEmpresa && <span className={`badge ${firmaEmpresa.estado === "firmado" ? "badge-green" : "badge-orange"}`}>{firmaEmpresa.estado === "firmado" ? `Firmado por la empresa · ${new Date(firmaEmpresa.firmado_en).toLocaleDateString("es-PE")}` : `Pendiente firma de la empresa · ${firmaEmpresa.firmante_nombre}`}</span>} {firmaEmpresa?.estado !== "firmado" && firmaEmpresa?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaAdmin(firmaEmpresa.id)}>Firmar como empresa</button>} {firmaEmpresa && (firmaEmpresa.estado !== "firmado" || (!activa && !firmado)) && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firmaEmpresa.id); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>} {firmaEmpresa?.estado === "firmado" && !activa && !firmado && <button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={() => enviarSolicitudFirmaTrabajadorAdmin(req.doc.id, firmaEmpresa.canales_trabajador || [])}>Enviar a firma del trabajador</button>}
                                 {firmaEmpresa?.estado === "firmado" && firmado ? <span className="badge badge-green">{'Firmado por empresa y trabajador ' + '\u00b7 ' + (solicitud?.firmado_en ? new Date(solicitud.firmado_en).toLocaleDateString('es-PE') : '')}</span> : solicitud && <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
                                                   {firmado ? `Firmado electr\u00f3nicamente${solicitud.firmado_en ? ` \u00b7 ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma \u00b7 vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
                                                 </span>}

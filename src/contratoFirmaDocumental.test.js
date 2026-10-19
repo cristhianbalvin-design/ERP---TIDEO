@@ -28,7 +28,7 @@ test('las nueve cláusulas base resuelven sus variables con el contexto del moda
   const text = rendered.join('\n');
   assert.equal(rendered.length, 9);
   assert.doesNotMatch(text, /\{\{/);
-  for (const value of ['Tideo Servicios S.A.C.', '20123456789', 'Ana Pérez', '45678912', 'Analista', '2021-03-15', '2026-01-01', '2026-12-31', '4,200', 'PEN', 'Presencial']) {
+  for (const value of ['Tideo Servicios S.A.C.', '20123456789', 'Ana Pérez', '45678912', 'Analista', '15 de marzo de 2021', '1 de enero de 2026', '31 de diciembre de 2026', '4,200', 'PEN', 'Presencial']) {
     assert.ok(text.includes(value), `falta valor resuelto: ${value}`);
   }
 });
@@ -40,9 +40,9 @@ test('contexto renovacion prioriza la sociedad y conserva el resultado previo si
   assert.deepEqual(contextoAnterior, {
     empresa: { ...empresa, razon_social: 'Grupo', ruc: '20111111111', direccion: 'Direccion grupo' },
     empleado: { documento: '', direccion: '', cargo: '', area: '', moneda: 'PEN', modalidad_contrato: '' },
-    contrato: { condiciones_laborales: {}, fecha_inicio: '2026-01-01', fecha_fin: '2026-12-31', tipo_contrato: '', modalidad: '' },
+    contrato: { condiciones_laborales: {}, fecha_inicio: '1 de enero de 2026', fecha_fin: '31 de diciembre de 2026', tipo_contrato: '', modalidad: '' },
     condiciones_laborales: {},
-    vigencia_efectiva: { fecha_desde: '2026-01-01', fecha_hasta: '2026-12-31' },
+    vigencia_efectiva: { fecha_desde: '1 de enero de 2026', fecha_hasta: '31 de diciembre de 2026' },
     cargo: { nombre: '', area: '' },
   });
   const contextoSociedad = construirContextoRenovacion({
@@ -77,9 +77,29 @@ test('resuelve las variables legales, de jornada, representante y contrato anter
   assert.equal(renderTextoDocumental('{{jornada.regimen}}', 'contrato_laboral', ctx), 'jornada ordinaria de ocho horas diarias o cuarenta y ocho horas semanales');
   assert.equal(renderTextoDocumental('{{jornada.horas_diarias}}', 'contrato_laboral', ctx), '8');
   assert.equal(renderTextoDocumental('{{empresa.representante_nombre}} / {{empresa.representante_documento}} / {{empresa.representante_cargo}}', 'contrato_laboral', ctx), 'Ana / 12345678 / Gerente');
-  assert.equal(renderTextoDocumental('{{contrato.anterior_inicio}} / {{contrato.anterior_fin}}', 'contrato_laboral', ctx), '2025-01-01 / 2025-12-31');
+  assert.equal(renderTextoDocumental('{{contrato.anterior_inicio}} / {{contrato.anterior_fin}}', 'contrato_laboral', ctx), '1 de enero de 2025 / 31 de diciembre de 2025');
   const minero = construirContextoRenovacion({ ...base, snapshot: { ...base.snapshot, regimen_jornada: 'minero_20x10' } });
   assert.equal(renderTextoDocumental('{{jornada.regimen}}', 'contrato_laboral', minero), 'jornada atípica acumulativa de 20 días de trabajo por 10 días de descanso, cuyo promedio no excede el máximo legal');
+});
+
+test('fechas de renovacion se expresan legalmente sin desplazar el dia', () => {
+  const ctx = construirContextoRenovacion({
+    persona: { fecha_ingreso: '2026-01-01' },
+    snapshot: { contrato_anterior: { fecha_inicio: '2025-12-31', fecha_fin: '2026-01-01' } },
+    fechaInicio: '2026-01-01',
+    fechaFin: '2026-12-31',
+  });
+  assert.equal(renderTextoDocumental('{{empleado.fecha_ingreso}}', 'contrato_laboral', ctx), '1 de enero de 2026');
+  assert.equal(renderTextoDocumental('{{contrato.fecha_inicio}} / {{contrato.fecha_fin}}', 'contrato_laboral', ctx), '1 de enero de 2026 / 31 de diciembre de 2026');
+  assert.equal(renderTextoDocumental('{{contrato.anterior_inicio}} / {{contrato.anterior_fin}}', 'contrato_laboral', ctx), '31 de diciembre de 2025 / 1 de enero de 2026');
+  assert.equal(renderTextoDocumental('{{contrato.fecha_inicio}}', 'contrato_laboral', construirContextoRenovacion({ fechaInicio: '2026-01-01T00:00:00.000Z' })), '1 de enero de 2026');
+});
+
+test('normaliza la causa objetiva al construir el contexto y al resolverla', () => {
+  const ctx = construirContextoRenovacion({ snapshot: { causa_objetiva: '  Demanda temporal verificable...  ' } });
+  assert.equal(ctx.contrato.causa_objetiva, 'Demanda temporal verificable');
+  assert.equal(renderTextoDocumental('{{contrato.causa_objetiva}}.', 'contrato_laboral', ctx), 'Demanda temporal verificable.');
+  assert.equal(valorVariableContratoLaboral('contrato.causa_objetiva', { condiciones_laborales: { causa_objetiva: ' Demanda temporal verificable. ' } }), 'Demanda temporal verificable');
 });
 
 test('sin snapshot las variables nuevas se resuelven vacías y el contexto conserva su forma previa', () => {

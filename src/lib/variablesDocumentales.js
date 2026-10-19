@@ -229,7 +229,7 @@ export function valorVariableContratoLaboral(key, ctx = {}) {
     'contrato.moneda': moneda,
     'contrato.modalidad': firstValue(empleado.modalidad_contrato, empleado.tipo_contrato, condiciones.modalidad, contrato.modalidad, ''),
     'contrato.modalidad_legal': condiciones.modalidad_legal || '',
-    'contrato.causa_objetiva': condiciones.causa_objetiva || '',
+    'contrato.causa_objetiva': String(condiciones.causa_objetiva ?? '').trim().replace(/[.]+$/g, '').trim(),
     'contrato.forma_trabajo': String(condiciones.forma_trabajo || '').toLowerCase(),
     'jornada.regimen': contrato.regimen_jornada_texto || '',
     'jornada.horas_diarias': contrato.horas_diarias || '',
