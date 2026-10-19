@@ -57,11 +57,12 @@ serve(async (req) => {
   const { data: doc, error: docError } = await user.from("personal_documentos").select("*").eq("id", docId).eq("empresa_id", empresaId).maybeSingle();
   if (docError || !doc) return json({ ok: false, error: "No se encontró el contrato." }, 404, origin);
   if (doc.contrato_referencia_id) return json({ ok: false, error: "Las adendas no pueden enviarse a firma como renovaciones." }, 400, origin);
-  if (!doc.contrato_periodo_predecesor_id) return json({ ok: false, error: "El contrato de ingreso o primigenio no es una renovación firmable." }, 400, origin);
-  if (!doc.contrato_periodo_id || doc.estado_firma === "firmado_trabajador") return json({ ok: false, error: "El documento no cumple las condiciones para una renovación firmable." }, 400, origin);
   const bucket = doc.bucket || "documentos-privados"; const path = storagePath(String(doc.archivo_url || ""), bucket);
   const { data: firmaEmpresa } = await admin.from("contrato_firma_empleador").select("id,estado,pdf_firmado_path").eq("documento_id", docId).eq("estado", "firmado").maybeSingle();
-  if (!firmaEmpresa || !path || firmaEmpresa.pdf_firmado_path !== path) return json({ ok: false, error: "El contrato debe estar firmado primero por la empresa." }, 409, origin);
+  const firmaEmpresaVigente = !!firmaEmpresa && !!path && firmaEmpresa.pdf_firmado_path === path;
+  if (!doc.contrato_periodo_predecesor_id && !firmaEmpresaVigente) return json({ ok: false, error: "El contrato de ingreso o primigenio no es una renovación firmable." }, 400, origin);
+  if (!doc.contrato_periodo_id || doc.estado_firma === "firmado_trabajador") return json({ ok: false, error: "El documento no cumple las condiciones para una renovación firmable." }, 400, origin);
+  if (!firmaEmpresaVigente) return json({ ok: false, error: "El contrato debe estar firmado primero por la empresa." }, 409, origin);
   const { data: viva } = await admin.from("contrato_firma_solicitudes").select("id,estado").eq("documento_id", docId).in("estado", ["pendiente", "otp_enviado"]).maybeSingle();
   if (action === "crear" && viva) return json({ ok: false, error: "Este contrato ya tiene una solicitud de firma activa." }, 409, origin);
   if (action === "reenviar" && !viva) return json({ ok: false, error: "No hay una solicitud activa para reenviar." }, 409, origin);
