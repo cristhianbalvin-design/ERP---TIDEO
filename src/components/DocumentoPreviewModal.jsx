@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { I } from '../icons.jsx';
+import { FichaModalHead, FichaPill, fichaTonoDeBadge } from './FichaPersonalKit.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, labelOr } from '../utils/rrhhLabels.js';
 
 const HAB_DOC_LABEL = {
@@ -214,7 +215,10 @@ export function DocumentoPreviewModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal"
+        className="modal dx-ficha-modal dx-docprev"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Documento: ${req.tipo?.nombre || req.tipo_documento_id}`}
         onClick={e => e.stopPropagation()}
         style={{
           width: 'min(1140px, 96vw)',
@@ -225,22 +229,21 @@ export function DocumentoPreviewModal({
         }}
       >
         {/* ── Cabecera ── */}
-        <div className="modal-head" style={{flexShrink:0}}>
-          <div style={{minWidth:0}}>
-            <h3 style={{marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-              {req.tipo?.nombre || req.tipo_documento_id}
-              {viewingHistoryDoc && <span className="badge badge-orange" style={{marginLeft: 8, verticalAlign: 'middle'}}>Viendo versión anterior (v{viewingHistoryDoc.version})</span>}
-            </h3>
-            <div className="text-muted" style={{fontSize:12, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-              {persona?.nombre} · {activeDoc.nombre_archivo || 'Documento'}
-            </div>
-          </div>
-          <button className="icon-btn" style={{flexShrink:0}} onClick={onClose}>{I.x}</button>
-        </div>
+        <FichaModalHead
+          icon={I.file}
+          tone={fichaTonoDeBadge(HAB_DOC_BADGE[estado], 'cyan')}
+          eyebrow={persona?.nombre ? `Documento · ${persona.nombre}` : 'Documento'}
+          title={<>
+            {req.tipo?.nombre || req.tipo_documento_id}
+            {viewingHistoryDoc && <span className="dx-docprev-hist"><FichaPill tone="amber">Viendo versión anterior (v{viewingHistoryDoc.version})</FichaPill></span>}
+          </>}
+          sub={activeDoc.nombre_archivo || 'Documento'}
+          onClose={onClose}
+        />
 
         {/* ── Cuerpo ── */}
         <div
-          className="modal-body"
+          className="modal-body dx-docprev-body"
           style={{
             display: 'grid',
             gridTemplateColumns: 'minmax(0,1fr) 300px',
@@ -267,7 +270,7 @@ export function DocumentoPreviewModal({
             ) : !activeUrl ? (
               <div style={{textAlign:'center', padding:24}}>
                 <div style={{fontWeight:600, marginBottom:8}}>No se pudo generar el visor</div>
-                <button className="btn btn-secondary btn-sm" onClick={handleDownload}>{I.download} Descargar</button>
+                <button className="dx-ficha-btn is-sm" onClick={handleDownload}>{I.download} Descargar</button>
               </div>
             ) : kind === 'pdf' ? (
               <iframe
@@ -278,8 +281,8 @@ export function DocumentoPreviewModal({
             ) : kind === 'image' ? (
               <div style={{width:'100%', height:'100%', display:'flex', flexDirection:'column', minHeight:400}}>
                 <div style={{padding:8, borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:6, flexShrink:0}}>
-                  <button className={'btn btn-sm ' + (imgFit === 'fit' ? 'btn-primary' : 'btn-ghost')} onClick={() => setImgFit('fit')}>Ajustar</button>
-                  <button className={'btn btn-sm ' + (imgFit === 'real' ? 'btn-primary' : 'btn-ghost')} onClick={() => setImgFit('real')}>100%</button>
+                  <button className={'dx-ficha-btn is-sm' + (imgFit === 'fit' ? ' is-primary' : ' is-ghost')} aria-pressed={imgFit === 'fit'} onClick={() => setImgFit('fit')}>Ajustar</button>
+                  <button className={'dx-ficha-btn is-sm' + (imgFit === 'real' ? ' is-primary' : ' is-ghost')} aria-pressed={imgFit === 'real'} onClick={() => setImgFit('real')}>100%</button>
                 </div>
                 <div style={{flex:1, overflow:'auto', display:'flex', alignItems:imgFit==='fit'?'center':'flex-start', justifyContent:imgFit==='fit'?'center':'flex-start', padding:16}}>
                   <img src={activeUrl} alt={activeDoc.nombre_archivo || 'Documento'} style={imgFit==='fit'?{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}:{maxWidth:'none'}} />
@@ -289,7 +292,7 @@ export function DocumentoPreviewModal({
               <div style={{textAlign:'center', padding:24}}>
                 <div style={{fontWeight:600, marginBottom:8}}>Formato no reconocido</div>
                 <div className="text-muted" style={{fontSize:12, marginBottom:14}}>Usa la descarga como respaldo.</div>
-                <button className="btn btn-secondary btn-sm" onClick={handleDownload}>{I.download} Descargar</button>
+                <button className="dx-ficha-btn is-sm" onClick={handleDownload}>{I.download} Descargar</button>
               </div>
             )}
           </div>
@@ -298,15 +301,9 @@ export function DocumentoPreviewModal({
           <aside style={{display:'flex', flexDirection:'column', minHeight:0, overflow:'hidden'}}>
 
             {/* Tabs */}
-            <div style={{display:'flex', gap:2, borderBottom:'1px solid var(--border)', marginBottom:14, flexShrink:0}}>
+            <div className="dx-docprev-tabs" role="tablist" aria-label="Detalle del documento">
               {[['info','Información'],['versiones',`Versiones (${todasVersiones.length})`]].map(([k,l]) => (
-                <button key={k} onClick={() => setSideTab(k)} style={{
-                  padding:'6px 12px', fontSize:12, fontWeight: sideTab===k ? 700 : 400,
-                  border:'none', background:'transparent', cursor:'pointer',
-                  color: sideTab===k ? 'var(--primary)' : 'var(--fg-muted)',
-                  borderBottom: sideTab===k ? '2px solid var(--primary)' : '2px solid transparent',
-                  marginBottom:-1,
-                }}>{l}</button>
+                <button key={k} type="button" role="tab" aria-selected={sideTab===k} className={sideTab===k ? 'is-on' : undefined} onClick={() => setSideTab(k)}>{l}</button>
               ))}
             </div>
 
@@ -314,8 +311,8 @@ export function DocumentoPreviewModal({
             {sideTab === 'info' && (
               <div style={{flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:0, paddingBottom:8, paddingRight:2}}>
                 {/* Estado */}
-                <span className={'badge ' + (HAB_DOC_BADGE[estado] || 'badge-gray')} style={{alignSelf:'flex-start', fontSize:12, marginBottom:12}}>
-                  {HAB_DOC_LABEL[estado] || estado}
+                <span style={{alignSelf:'flex-start', marginBottom:12}}>
+                  <FichaPill tone={fichaTonoDeBadge(HAB_DOC_BADGE[estado])}>{HAB_DOC_LABEL[estado] || estado}</FichaPill>
                 </span>
 
                 {/* Datos del documento */}
@@ -411,20 +408,20 @@ export function DocumentoPreviewModal({
                                 <div style={{display:'grid', gap:6, marginTop:6}}>
                                   <input className="input" style={{fontSize:11, padding:'4px 8px'}} placeholder="Motivo obligatorio" value={anularMotivo} onChange={e => setAnularMotivo(e.target.value)} />
                                   <div className="row" style={{gap:6}}>
-                                    <button className="btn btn-danger btn-sm" disabled={!anularMotivo.trim()} onClick={() => confirmarAnular(h.id)}>Confirmar</button>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => { setAnulandoId(null); setAnularMotivo(''); }}>Cancelar</button>
+                                    <button className="dx-ficha-btn is-sm is-danger-fill" disabled={!anularMotivo.trim()} onClick={() => confirmarAnular(h.id)}>Confirmar</button>
+                                    <button className="dx-ficha-btn is-sm is-ghost" onClick={() => { setAnulandoId(null); setAnularMotivo(''); }}>Cancelar</button>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="row" style={{gap:6, marginTop:6}}>
                                   {doc.id !== h.id && viewingHistoryDoc?.id !== h.id && (
-                                    <button className="btn btn-secondary btn-sm" onClick={() => handleVerHistorico(h)}>Ver</button>
+                                    <button className="dx-ficha-btn is-sm" onClick={() => handleVerHistorico(h)}>Ver</button>
                                   )}
                                   {viewingHistoryDoc?.id === h.id && (
-                                    <button className="btn btn-primary btn-sm" onClick={() => setViewingHistoryDoc(null)}>Volver a actual</button>
+                                    <button className="dx-ficha-btn is-sm is-primary" onClick={() => setViewingHistoryDoc(null)}>Volver a actual</button>
                                   )}
                                   {h.estado_validacion !== 'anulado' && !h.activo && (
-                                    <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setAnulandoId(h.id)}>Anular</button>
+                                    <button className="dx-ficha-btn is-sm is-danger-text" onClick={() => setAnulandoId(h.id)}>Anular</button>
                                   )}
                                 </div>
                               )}
@@ -439,30 +436,30 @@ export function DocumentoPreviewModal({
             )}
 
             {/* Acciones — siempre visibles al fondo */}
-            <div style={{flexShrink:0, borderTop:'1px solid var(--border)', paddingTop:12, display:'grid', gap:8}}>
+            <div className="dx-docprev-acts">
               {viewingHistoryDoc ? (
                 <>
-                  <button className="btn btn-secondary" onClick={handleDownload}>{I.download} Descargar esta versión</button>
-                  <button className="btn btn-ghost" onClick={() => setViewingHistoryDoc(null)}>Volver a la versión activa</button>
+                  <button className="dx-ficha-btn" onClick={handleDownload}>{I.download} Descargar esta versión</button>
+                  <button className="dx-ficha-btn" onClick={() => setViewingHistoryDoc(null)}>Volver a la versión activa</button>
                 </>
               ) : (
                 <>
-                  <button className="btn btn-secondary" onClick={handleDownload}>{I.download} Descargar</button>
+                  <button className="dx-ficha-btn" onClick={handleDownload}>{I.download} Descargar</button>
                   {puedeValidar && (
                     <>
-                      <button className="btn btn-primary" disabled={validatingId === doc.id} onClick={() => onValidate(doc.id, 'aprobado')}>
+                      <button className="dx-ficha-btn is-primary" disabled={validatingId === doc.id} onClick={() => onValidate(doc.id, 'aprobado')}>
                         {validatingId === doc.id ? 'Procesando...' : 'Validar'}
                       </button>
                       {rejecting ? (
                         <div style={{display:'grid', gap:6}}>
                           <input className="input" style={{fontSize:12}} placeholder="Motivo de rechazo" value={motivo} onChange={e => setMotivo(e.target.value)} />
                           <div className="row" style={{gap:6}}>
-                            <button className="btn btn-danger btn-sm" disabled={!motivo.trim() || validatingId === doc.id} onClick={confirmarRechazo}>Confirmar</button>
-                            <button className="btn btn-ghost btn-sm" onClick={() => { setRejecting(false); setMotivo(''); }}>Cancelar</button>
+                            <button className="dx-ficha-btn is-sm is-danger-fill" disabled={!motivo.trim() || validatingId === doc.id} onClick={confirmarRechazo}>Confirmar</button>
+                            <button className="dx-ficha-btn is-sm is-ghost" onClick={() => { setRejecting(false); setMotivo(''); }}>Cancelar</button>
                           </div>
                         </div>
                       ) : (
-                        <button className="btn btn-ghost" style={{color:'var(--danger)'}} disabled={validatingId === doc.id} onClick={() => setRejecting(true)}>
+                        <button className="dx-ficha-btn is-danger-text" disabled={validatingId === doc.id} onClick={() => setRejecting(true)}>
                           Rechazar con motivo
                         </button>
                       )}
@@ -471,21 +468,21 @@ export function DocumentoPreviewModal({
                   {esContratoDoc || esRenovable ? (
                     <>
                       {onCorregir && (doc.estado_validacion === 'pendiente' || doc.estado_validacion === 'rechazado' || !onNuevaVersion) && (
-                        <button className="btn btn-ghost" onClick={onCorregir}>
+                        <button className="dx-ficha-btn" onClick={onCorregir}>
                           {I.edit || I.upload} Corregir este documento
                         </button>
                       )}
                       {onNuevaVersion && doc.estado_validacion === 'aprobado' && !esRenovable && (
-                        <button className="btn btn-ghost" onClick={onNuevaVersion}>
+                        <button className="dx-ficha-btn" onClick={onNuevaVersion}>
                           {I.upload} Subir nueva versión
                         </button>
                       )}
                       {onNuevoContrato && doc.estado_validacion === 'aprobado' && esRenovable && (
                         <div style={{display:'grid', gap:4}}>
-                          <button className="btn btn-ghost" style={{color:'var(--orange)'}} onClick={onNuevoContrato}>
+                          <button className="dx-ficha-btn is-amber" onClick={onNuevoContrato}>
                             + {btnNuevoPeriodoTexto}
                           </button>
-                          <div style={{fontSize:10, color:'var(--fg-muted)', lineHeight:1.4}}>
+                          <div className="dx-ficha-help">
                             El período anterior quedará archivado. Úsalo para crear una nueva renovación independiente.
                           </div>
                         </div>
@@ -493,12 +490,12 @@ export function DocumentoPreviewModal({
                     </>
                   ) : (
                     onReplace && (
-                      <button className="btn btn-ghost" onClick={onReplace}>{I.upload} Reemplazar</button>
+                      <button className="dx-ficha-btn" onClick={onReplace}>{I.upload} Reemplazar</button>
                     )
                   )}
                 </>
               )}
-              <button className="btn btn-ghost" style={{color:'var(--fg-muted)'}} onClick={onClose}>Cerrar</button>
+              <button className="dx-ficha-btn is-ghost" onClick={onClose}>Cerrar</button>
             </div>
           </aside>
         </div>
