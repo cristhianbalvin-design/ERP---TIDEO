@@ -42,7 +42,7 @@ import * as personalDocumentosService from './services/personalDocumentosService
 import { contratoFirmaService } from './contratoFirmaService.js';
 import { CATEGORIA_FIRMA_RUBRICA, obtenerFirmaParaDocumento } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
-import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { getEquiposClientesConHistorial } from './services/activosService.js';
@@ -23464,7 +23464,16 @@ function RRHH_Operativo() {
       if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
     }
     for (const h of Object.values(mapa)) {
-      for (const d of h.docs) d.doc = docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
+      for (const d of h.docs) {
+        const tipoContrato = /contrato/i.test(String(d.tipo?.nombre || '')) && !/adenda/i.test(String(d.tipo?.nombre || ''));
+        if (tipoContrato) {
+          const docsTipo = personalDocumentos.filter(doc => doc.personal_id === h.personal_id
+            && (doc.tipo_documento_id || doc.tipo_doc) === d.tipo_documento_id && !doc.contrato_referencia_id);
+          const hoy = new Date();
+          const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+          d.doc = seleccionarContratoPorFecha(docsTipo, hoyStr);
+        } else d.doc = docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
+      }
     }
     // Calcular estado_global desde los docs habilitantes (es_habilitante=true) — fuente única para el badge
     for (const h of Object.values(mapa)) {
@@ -25120,7 +25129,14 @@ function RRHH_Operativo() {
                                       const tiposHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === req.tipo_documento_id && t.estado === 'activo');
                                       const docPadreValidado = req.doc?.estado_validacion === 'aprobado';
                                       const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
-                                                                            const hoy = new Date().toISOString().slice(0, 10);
+                                      const hoy = new Date();
+                                      const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+                                      const esContratoReq = rrhhEsTipoContrato(req.tipo);
+                                      const versionesFuturasContrato = esContratoReq ? personalDocumentos.filter(d => d.personal_id === p.id
+                                        && (d.tipo_documento_id || d.tipo_doc) === req.tipo_documento_id && !d.contrato_referencia_id
+                                        && d.estado_validacion !== 'rechazado') : [];
+                                      const proximoContrato = seleccionarProximoContrato(versionesFuturasContrato, hoyStr);
+                                      const fechaProximo = proximoContrato?.periodo_fecha_inicio || proximoContrato?.fecha_emision;
                                       const _borderColor = {vigente:'#22c55e',por_vencer:'#f97316',vencido:'#ef4444',en_revision:'#06b6d4',rechazado:'#ef4444',falta:'#d1d5db',incompleto:'#f97316'}[req.estado] || '#d1d5db';
                                       const isHistorico = req.estado === 'historico';
                                       const opacityStyle = isHistorico ? 0.65 : 1;
@@ -25147,6 +25163,30 @@ function RRHH_Operativo() {
                                                   {req.doc?.dias_restantes != null && <span style={{color: req.doc.dias_restantes <= 0 ? 'var(--red)' : req.doc.dias_restantes <= 30 ? 'var(--orange)' : 'inherit'}}>{req.doc.dias_restantes <= 0 ? 'Vencido' : `Faltan ${req.doc.dias_restantes} días`}</span>}
                                                 </div>
                                                 {req.doc && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:6}}>{req.doc.nombre_archivo}</div>}
+                                                {proximoContrato && <div style={{display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:6}}>
+                                                  <span className="badge badge-cyan" style={{fontSize:10}}>{'Pr\u00f3ximo \u00b7 desde ' + fechaProximo.split('-').reverse().join('/')}</span>
+                                                  {proximoContrato.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...req, doc: proximoContrato }, p)}>Ver</button>}
+                                                  {(() => {
+                                                    const rows = solicitudesFirmaDigitalOps[proximoContrato.id] || [];
+                                                    const activa = rows.find(s => ['pendiente','otp_enviado'].includes(s.estado));
+                                                    const sol = activa || rows[0];
+                                                    const firma = (firmasEmpresaOps[proximoContrato.id] || []).find(f => f.estado !== 'anulado');
+                                                    const firmado = sol?.estado === 'firmado';
+                                                    return <>
+                                                      {firma && <span className={`badge ${firma.estado === 'firmado' ? 'badge-green' : 'badge-orange'}`} style={{fontSize:10}}>{firma.estado === 'firmado' ? 'Empresa firm\u00f3' : 'Firma de empresa pendiente'}</span>}
+                                                      {sol && <span className={`badge ${firmado ? 'badge-green' : 'badge-orange'}`} style={{fontSize:10}}>{firmado ? 'Trabajador firm\u00f3' : 'Firma del trabajador pendiente'}</span>}
+                                                      {firma?.estado !== 'firmado' && firma?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaOps(firma.id)}>Firmar como empresa</button>}
+                                                      {firma && firma.estado !== 'firmado' && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firma.id); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message); } }}>Anular firma empresa</button>}
+                                                      {firma?.estado === 'firmado' && !activa && !firmado && <button className="btn btn-primary btn-sm" onClick={() => enviarSolicitudFirmaTrabajadorOps(proximoContrato.id, firma.canales_trabajador || [])}>Enviar a firma del trabajador</button>}
+                                                      {activa && <>
+                                                        <button className="btn btn-ghost btn-sm" disabled={accionFirmaDigitalDocOps === proximoContrato.id} onClick={async () => { setAccionFirmaDigitalDocOps(proximoContrato.id); try { await contratoFirmaService.crearSolicitud({ documentoId: proximoContrato.id, empresaId: empresa.id, canales: sol.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Reenviar enlace</button>
+                                                        <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} disabled={accionFirmaDigitalDocOps === proximoContrato.id} onClick={async () => { setAccionFirmaDigitalDocOps(proximoContrato.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: sol.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Anular solicitud</button>
+                                                      </>}
+                                                      {firmado && sol?.pdf_firmado_path && <button className="btn btn-ghost btn-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(sol.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
+                                                      {!firma && !sol && rrhhEsTipoContrato(req.tipo) && (docElegirFirmanteOps === proximoContrato.id ? <><select className="select" value={firmanteElegidoOps} onChange={e => setFirmanteElegidoOps(e.target.value)}><option value="">Selecciona firmante</option>{firmantesParaSeleccionOps.map(f => <option key={f.id} value={f.id}>{f.nombre} - {f.cargo}</option>)}</select><button className="btn btn-primary btn-sm" disabled={!firmanteElegidoOps} onClick={async () => { try { const result = await contratoFirmaService.crearFirmaEmpresa({ documentoId: proximoContrato.id, firmanteId: firmanteElegidoOps, canales: ['whatsapp', 'email'] }); setDocElegirFirmanteOps(null); await cargarSolicitudesFirmaDigitalOps(); if (result.es_firmante) setFirmaEmpresaActivaOps(result.id); else addNotificacion('Pendiente de firma de ' + result.firmante + '.'); } catch (e) { addNotificacion(e.message || 'No se pudo preparar la firma de la empresa.'); } }}>Crear firma empresa</button></> : <button className="btn btn-sm btn-ghost" onClick={async () => { try { const rowsFirmantes = await contratoFirmaService.listarFirmantesActivos(empresa.id); const disponibles = rowsFirmantes.filter(f => !f.sociedad_id || f.sociedad_id === (proximoContrato.sociedad_id || null)); if (!disponibles.length) { addNotificacion('No hay firmantes activos para esta sociedad.'); return; } setFirmantesParaSeleccionOps(disponibles); setFirmanteElegidoOps(disponibles[0].id); setDocElegirFirmanteOps(proximoContrato.id); } catch (e) { addNotificacion(e.message || 'No se pudieron cargar los firmantes.'); } }}>Enviar a firma digital</button>)}
+                                                    </>;
+                                                  })()}
+                                                </div>}
                                               </div>
                                               
                                               {req.doc ? (

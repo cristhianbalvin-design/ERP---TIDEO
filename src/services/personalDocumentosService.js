@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { obtenerEstadoMultisociedad, validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
+import { seleccionarContratoPorFecha, seleccionarProximoContrato } from './nominaSociedadService.js';
 
 const BUCKET = 'documentos-privados';
 // Signed URLs para documentos privados: 10 minutos (600s).
@@ -128,21 +129,32 @@ export async function getTiposDocumentoConfig(empresaId) {
 
 export function getDocumentoActivoPorTipo(documentos, tipoDoc) {
   if (!documentos) return null;
-  const docsTipo = documentos.filter(d => d.tipo_doc === tipoDoc && d.activo === true);
-  if (docsTipo.length === 0) return null;
-  if (docsTipo.length === 1) return docsTipo[0];
+  const docsTipo = documentos.filter(d => d.tipo_doc === tipoDoc);
+  const esContrato = (/contrato/i.test(String(tipoDoc || '')) || docsTipo.some(d => d.contrato_periodo_id))
+    && !/adenda/i.test(String(tipoDoc || ''));
+  if (esContrato) {
+    const hoy = new Date();
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    return seleccionarContratoPorFecha(
+      documentos.filter(d => d.tipo_doc === tipoDoc && !d.contrato_referencia_id),
+      hoyStr,
+    );
+  }
+  const docsTipoActivos = documentos.filter(d => d.tipo_doc === tipoDoc && d.activo === true);
+  if (docsTipoActivos.length === 0) return null;
+  if (docsTipoActivos.length === 1) return docsTipoActivos[0];
 
   // Si hay más de uno activo (ej. error/BUG 2) o activos en distintos periodos:
   // Retornar solo el más reciente (mayor fecha_vencimiento o creado_en)
-  docsTipo.sort((a, b) => {
+  docsTipoActivos.sort((a, b) => {
     const timeA = a.fecha_vencimiento ? new Date(a.fecha_vencimiento).getTime() : 0;
     const timeB = b.fecha_vencimiento ? new Date(b.fecha_vencimiento).getTime() : 0;
     if (timeA !== timeB) return timeB - timeA;
     return new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime();
   });
   
-  console.warn(`[Documentos] Múltiples documentos activos encontrados para ${tipoDoc}. Retornando el más reciente.`, docsTipo);
-  return docsTipo[0];
+  console.warn(`[Documentos] Múltiples documentos activos encontrados para ${tipoDoc}. Retornando el más reciente.`, docsTipoActivos);
+  return docsTipoActivos[0];
 }
 
 export async function getHistorialPorGrupo(empresaId, personalId, tipoDoc) {
@@ -194,14 +206,33 @@ export async function getHistorialPorGrupo(empresaId, personalId, tipoDoc) {
      return new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime();
   });
   
-  const hoyStr = new Date().toISOString().slice(0, 10);
+  const hoy = new Date();
+  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  const documentosContrato = (data || []).map(normalizar).filter(doc => !doc.contrato_referencia_id);
+  const contratoActual = seleccionarContratoPorFecha(documentosContrato, hoyStr);
+  const contratoProximo = seleccionarProximoContrato(documentosContrato, hoyStr);
   
   grupos.forEach(g => {
-    const tieneActivoAprobado = g.versiones.some(v => v.activo && v.estado_validacion === 'aprobado');
-    const fVenc = g.fechaVencimiento ? g.fechaVencimiento.slice(0, 10) : null;
-    const fIni = g.fechaEmision ? g.fechaEmision.slice(0, 10) : null;
+    const esContrato = (/contrato/i.test(String(tipoDoc || '')) || g.versiones.some(v => v.contrato_periodo_id))
+      && !/adenda/i.test(String(tipoDoc || ''));
+    const versionesValidas = g.versiones.filter(v => v.estado_validacion !== 'rechazado');
+    const ultimaVersion = versionesValidas.sort((a, b) => Number(b.version || 0) - Number(a.version || 0)
+      || String(b.creado_en || '').localeCompare(String(a.creado_en || '')))[0];
+    const inicioDoc = esContrato
+      ? ultimaVersion?.periodo_fecha_inicio || ultimaVersion?.fecha_emision || g.fechaEmision
+      : g.fechaEmision;
+    const fIni = inicioDoc ? String(inicioDoc).slice(0, 10) : null;
+    const fVenc = esContrato
+      ? (ultimaVersion?.es_indefinido ? null : String(ultimaVersion?.periodo_fecha_fin || ultimaVersion?.fecha_vencimiento || g.fechaVencimiento || '').slice(0, 10) || null)
+      : (g.fechaVencimiento ? g.fechaVencimiento.slice(0, 10) : null);
+    const tieneActivoAprobado = esContrato
+      ? ultimaVersion?.estado_validacion === 'aprobado'
+      : g.versiones.some(v => v.activo && v.estado_validacion === 'aprobado');
 
-    if (fIni && fIni > hoyStr) {
+    const esContratoActual = esContrato && contratoActual?.id === ultimaVersion?.id;
+    const esContratoProximo = esContrato && contratoProximo?.id === ultimaVersion?.id;
+
+    if (esContratoProximo || (!esContrato && fIni && fIni > hoyStr)) {
       g.estado_periodo = 'futuro';
       g.badge_texto = `Futuro · inicia ${fIni}`;
       g.badge_color = 'badge-cyan';
@@ -209,7 +240,7 @@ export async function getHistorialPorGrupo(empresaId, personalId, tipoDoc) {
       g.estado_periodo = 'archivado';
       g.badge_texto = 'Archivado';
       g.badge_color = 'badge-gray';
-    } else if ((!fVenc || fVenc >= hoyStr) && tieneActivoAprobado) {
+    } else if (esContrato ? esContratoActual : ((!fVenc || fVenc >= hoyStr) && tieneActivoAprobado)) {
       g.estado_periodo = 'activo';
       g.badge_texto = 'Período activo';
       g.badge_color = 'badge-green';
