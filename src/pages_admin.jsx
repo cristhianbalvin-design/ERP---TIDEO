@@ -12724,7 +12724,7 @@ function RRHHAdmin() {
                     <FichaKV items={[
                       { label: 'Habilitación', value: <FichaPill tone={tonoHabFichaAdmin}>{textoHabFichaAdmin}</FichaPill> },
                       { label: 'Contrato vigente', value: contratoDoc ? ((tiposDocumento || []).find(t => t.id === contratoDoc.tipo_documento_id)?.nombre || contratoDoc.tipo_doc_nombre || 'Contrato') : 'Sin contrato digital', nil: !contratoDoc },
-                      contratoDoc ? { label: 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias != null ? ` · ${contratoInfo.dias} días` : ''}` : 'Indefinido' } : null,
+                      contratoDoc ? { label: contratoInfo.dias != null && contratoInfo.dias < 0 ? 'Venció' : 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias == null ? '' : contratoInfo.dias < 0 ? ` · hace ${Math.abs(contratoInfo.dias)} ${Math.abs(contratoInfo.dias) === 1 ? 'día' : 'días'}` : contratoInfo.dias === 0 ? ' · hoy' : ` · en ${contratoInfo.dias} ${contratoInfo.dias === 1 ? 'día' : 'días'}`}` : 'Indefinido' } : null,
                       { label: 'Jornada', value: jornadaFichaTexto || 'Sin asignar', nil: !jornadaFichaTexto },
                     ]} />
                     <div className="dx-ficha-aside-acts">

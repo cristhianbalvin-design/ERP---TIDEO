@@ -24165,7 +24165,7 @@ function RRHH_Operativo() {
                     <FichaKV items={[
                       { label: 'Habilitación', value: <FichaPill tone={{ no_habilitado:'red', alerta:'amber', habilitado:'green' }[habFicha.estado_global] || 'gray'}>{HAB_GLOBAL_LABEL[habFicha.estado_global] || 'Sin configurar'}</FichaPill> },
                       { label: 'Contrato vigente', value: contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || 'Contrato') : 'Sin contrato digital', nil: !contratoDoc },
-                      contratoDoc ? { label: 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias != null ? ` · ${contratoInfo.dias} días` : ''}` : 'Indefinido' } : null,
+                      contratoDoc ? { label: contratoInfo.dias != null && contratoInfo.dias < 0 ? 'Venció' : 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias == null ? '' : contratoInfo.dias < 0 ? ` · hace ${Math.abs(contratoInfo.dias)} ${Math.abs(contratoInfo.dias) === 1 ? 'día' : 'días'}` : contratoInfo.dias === 0 ? ' · hoy' : ` · en ${contratoInfo.dias} ${contratoInfo.dias === 1 ? 'día' : 'días'}`}` : 'Indefinido' } : null,
                       { label: 'Jornada', value: jornadaFichaTexto || 'Sin asignar', nil: !jornadaFichaTexto },
                     ]} />
                     <div className="dx-ficha-aside-acts">
