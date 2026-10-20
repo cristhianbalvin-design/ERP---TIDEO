@@ -16,3 +16,17 @@ export function validarIdioma(value: unknown) {
 export function validarDiagnosticoId(value: unknown) {
   return typeof value === 'string' && /^dt_[0-9a-f]{32}$/i.test(value);
 }
+
+const normalizar = (texto: string) => texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Sin voz en el audio, el modelo puede devolver el propio prompt (o parte de él) como "transcripción".
+export function esEcoDelPrompt(texto: string, prompt: string) {
+  const t = normalizar(texto);
+  if (!t) return true;
+  if (/transcribe fielmente|vocabulario del dominio|conserva codigos|contexto ###/.test(t)) return true;
+  const palabrasPrompt = new Set(normalizar(prompt).split(' ').filter(p => p.length > 3));
+  const palabras = t.split(' ').filter(p => p.length > 3);
+  if (palabras.length < 8) return false;
+  const delPrompt = palabras.filter(p => palabrasPrompt.has(p)).length;
+  return delPrompt / palabras.length >= 0.8;
+}
