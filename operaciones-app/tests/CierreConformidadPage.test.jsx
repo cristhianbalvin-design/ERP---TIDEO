@@ -58,12 +58,14 @@ describe('CierreConformidadPage · acta de conformidad', () => {
     mocks.sesion = { empresaId: 'e1', sociedadId: null, estado: 'listo', permiteEscritura: true };
     mocks.tablas = {
       ordenes_trabajo: [
-        { id: 'ot1', numero: 'OT-26-0001', estado: 'ejecucion', servicio: 'Reparación de luminarias', descripcion: 'Cambio de luminarias', cuenta_id: 'c1', os_cliente_id: null, tipo_cobro: null },
-        { id: 'ot2', numero: 'OT-26-0002', estado: 'ejecucion', servicio: 'Limpieza mensual', cuenta_id: 'c1', tipo_cobro: 'recurrente_mensual' },
+        { id: 'ot1', numero: 'OT-26-0001', estado: 'ejecucion', servicio: 'Reparación de luminarias', descripcion: 'Cambio de luminarias', cuenta_id: 'c1', os_cliente_id: null, tipo_cobro: null, tecnico_responsable_id: 'pop1' },
+        { id: 'ot2', numero: 'OT-26-0002', estado: 'ejecucion', servicio: 'Limpieza mensual', cuenta_id: 'c1', tipo_cobro: 'recurrente_mensual', tecnico_responsable_id: 'pop1' },
+        { id: 'ot3', numero: 'OT-26-0003', estado: 'ejecucion', servicio: 'Sin técnico', cuenta_id: 'c1', tecnico_responsable_id: null },
       ],
       partes_diarios: [
         { id: 'p1', orden_trabajo_id: 'ot1', fecha: '2026-10-19', horas_normales: 8, estado: 'aprobado' },
         { id: 'p2', orden_trabajo_id: 'ot2', fecha: '2026-10-19', horas_normales: 8, estado: 'en_revision' },
+        { id: 'p3', orden_trabajo_id: 'ot3', fecha: '2026-10-19', horas_normales: 4, estado: 'aprobado' },
       ],
       ot_tareas: [{ id: 't1', ot_id: 'ot1', titulo: 'Cambiar luminarias', estado: 'pendiente', completada: false }],
       cuentas: [{ id: 'c1', razon_social: 'Cliente Demo SAC' }],
@@ -80,12 +82,21 @@ describe('CierreConformidadPage · acta de conformidad', () => {
   it('lista las OTs en filas accesibles con su estado y tipo de cobro', async () => {
     const root = await renderPage();
     const filas = root.root.findAll(n => n.props?.role === 'button' && String(n.props?.className || '').includes('dx-acta-row'));
-    expect(filas.map(f => f.props['aria-label'])).toEqual(['Abrir acta de OT-26-0001', 'Abrir acta de OT-26-0002']);
+    expect(filas.map(f => f.props['aria-label'])).toEqual(['Abrir acta de OT-26-0001', 'Abrir acta de OT-26-0002', 'Abrir acta de OT-26-0003']);
     const contenido = texto(root.toJSON());
     expect(contenido).toContain('Lista para acta');
     expect(contenido).toContain('1 parte por aprobar');
     expect(contenido).toContain('Recurrente mensual');
     expect(contenido).toContain('Cliente Demo SAC');
+    expect(contenido).toContain('Sin técnico responsable');
+  });
+
+  it('no abre el acta de una OT sin técnico responsable', async () => {
+    const root = await renderPage();
+    const filas = root.root.findAll(n => n.props?.role === 'button' && String(n.props?.className || '').includes('dx-acta-row'));
+    await act(async () => { filas[2].props.onClick(); await flush(); });
+    expect(texto(root.toJSON())).toContain('Asigna un técnico responsable');
+    expect(root.root.findAll(n => n.type === 'h1').map(texto)).toEqual(['Cierre y conformidad']);
   });
 
   it('no abre el acta si hay partes por aprobar y abre con Enter la OT lista', async () => {

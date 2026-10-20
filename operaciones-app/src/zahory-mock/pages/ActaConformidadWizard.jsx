@@ -51,7 +51,7 @@ export function ActaConformidadWizard({ ot, partes = [], tareas = [], sesion, on
   const [correo, setCorreo] = useState({ estado: 'pendiente', error: '' });
   const headingRef = useRef(null);
 
-  const regla = useMemo(() => reglaCierreOT(partes), [partes]);
+  const regla = useMemo(() => reglaCierreOT(partes, ot), [partes, ot]);
   const resumen = useMemo(() => resumenPartes(partes), [partes]);
   const tareasCompletas = tareas.filter(tareaCompleta).length;
   const tipoCobro = tipoCobroOT(ot, contexto?.os);
@@ -267,7 +267,7 @@ export function ActaConformidadWizard({ ot, partes = [], tareas = [], sesion, on
             </div>
             <div className="dx-acta-heading"><h2 ref={headingRef} tabIndex={-1}>Resumen del trabajo</h2><p>Se arma con los partes diarios aprobados y las tareas de la OT.</p></div>
             <div className="dx-acta-body">
-              {regla.bloqueada && <div className="dx-acta-note is-amber" role="status">{regla.mensaje}: aprueba los partes diarios antes de emitir el acta.</div>}
+              {regla.bloqueada && <div className="dx-acta-note is-amber" role="status">{regla.mensaje}. {regla.accion}</div>}
               <div className="dx-acta-kpis">
                 <div className="dx-acta-kpi"><b>{resumen.aprobados.length}</b><span>partes aprobados</span></div>
                 <div className="dx-acta-kpi"><b>{resumen.horas.toLocaleString('es-PE')}</b><span>horas hombre</span></div>

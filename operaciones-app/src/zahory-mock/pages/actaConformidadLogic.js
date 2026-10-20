@@ -23,11 +23,13 @@ export function resumenPartes(partes = []) {
   return { aprobados, pendientes, horas: Math.round(horas * 100) / 100, fechaInicio: fechas[0] || null, fechaFin: fechas[fechas.length - 1] || null };
 }
 
-export function reglaCierreOT(partes = []) {
+// Misma regla que cerrar_ot_con_acta: técnico responsable, al menos un parte aprobado y ninguno pendiente.
+export function reglaCierreOT(partes = [], ot = null) {
   const { aprobados, pendientes } = resumenPartes(partes);
-  if (pendientes.length) return { bloqueada: true, tono: 'amber', mensaje: `${pendientes.length} parte${pendientes.length === 1 ? '' : 's'} por aprobar` };
-  if (!aprobados.length) return { bloqueada: true, tono: 'gray', mensaje: 'Sin partes aprobados' };
-  return { bloqueada: false, tono: 'green', mensaje: 'Lista para acta' };
+  if (ot && !ot.tecnico_responsable_id) return { bloqueada: true, tono: 'gray', mensaje: 'Sin técnico responsable', accion: 'Asigna un técnico responsable a la OT antes de emitir el acta.' };
+  if (pendientes.length) return { bloqueada: true, tono: 'amber', mensaje: `${pendientes.length} parte${pendientes.length === 1 ? '' : 's'} por aprobar`, accion: 'Aprueba sus partes diarios antes de emitir el acta.' };
+  if (!aprobados.length) return { bloqueada: true, tono: 'gray', mensaje: 'Sin partes aprobados', accion: 'Aprueba sus partes diarios antes de emitir el acta.' };
+  return { bloqueada: false, tono: 'green', mensaje: 'Lista para acta', accion: '' };
 }
 
 export const tareaCompleta = tarea => Boolean(tarea?.completada) || String(tarea?.estado || '').toLowerCase() === 'completada';
@@ -52,7 +54,7 @@ export function faltantePaso(paso, estado) {
   const resultado = estado?.resultado || 'conforme';
   const cliente = estado?.cliente || {};
   if (paso === 0) {
-    if (estado?.reglaCierre?.bloqueada) return 'La OT necesita partes aprobados y ninguno pendiente.';
+    if (estado?.reglaCierre?.bloqueada) return estado.reglaCierre.accion || 'La OT necesita partes aprobados y ninguno pendiente.';
     if (!texto(estado?.descripcion)) return 'Describe el trabajo realizado.';
   }
   if (paso === 1) {

@@ -22,6 +22,8 @@ describe('actaConformidadLogic', () => {
     expect(reglaCierreOT([])).toMatchObject({ bloqueada: true, mensaje: 'Sin partes aprobados' });
     expect(reglaCierreOT([{ estado: 'aprobado' }, { estado: 'en_revision' }])).toMatchObject({ bloqueada: true, mensaje: '1 parte por aprobar' });
     expect(reglaCierreOT([{ estado: 'aprobado' }, { estado: 'rechazado' }])).toMatchObject({ bloqueada: false });
+    expect(reglaCierreOT([{ estado: 'aprobado' }], { tecnico_responsable_id: null })).toMatchObject({ bloqueada: true, mensaje: 'Sin técnico responsable' });
+    expect(reglaCierreOT([{ estado: 'aprobado' }], { tecnico_responsable_id: 'pop1' })).toMatchObject({ bloqueada: false });
     const r = resumenPartes([{ estado: 'aprobado', horas_normales: 8, horas_extra: 1.5, fecha: '2026-10-02' }, { estado: 'aprobado', horas_normales: 4, fecha: '2026-10-01' }, { estado: 'rechazado', horas_normales: 9 }]);
     expect(r).toMatchObject({ horas: 13.5, fechaInicio: '2026-10-01', fechaFin: '2026-10-02' });
   });

@@ -119,7 +119,7 @@ export const CierreConformidadPage = () => {
 
   const filas = useMemo(() => ots.map(ot => {
     const partes = partesPorOT[ot.id] || [];
-    return { ot, partes, regla: reglaCierreOT(partes), resumen: resumenPartes(partes), cliente: cuentas[ot.cuenta_id] || '', tipoCobro: tipoCobroOT(ot, osPorId[ot.os_cliente_id]) };
+    return { ot, partes, regla: reglaCierreOT(partes, ot), resumen: resumenPartes(partes), cliente: cuentas[ot.cuenta_id] || '', tipoCobro: tipoCobroOT(ot, osPorId[ot.os_cliente_id]) };
   }), [ots, partesPorOT, cuentas, osPorId]);
 
   const filtradas = useMemo(() => {
@@ -133,7 +133,7 @@ export const CierreConformidadPage = () => {
 
   const abrir = useCallback(fila => {
     if (fila.regla.bloqueada) {
-      setMensaje(`OT ${fila.ot.numero || fila.ot.id}: ${fila.regla.mensaje.toLowerCase()}. Aprueba sus partes diarios antes de emitir el acta.`);
+      setMensaje(`OT ${fila.ot.numero || fila.ot.id}: ${fila.regla.mensaje.toLowerCase()}. ${fila.regla.accion}`);
       return;
     }
     setMensaje('');
