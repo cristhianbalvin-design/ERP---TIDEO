@@ -4840,11 +4840,14 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 /* Cierre y conformidad: acta de conformidad móvil (dx-acta). Solo usa variables --dx-ui-*. */
 .dx-ui.dx-acta { --dx-acta-pad:clamp(14px,3vw,28px); box-sizing:border-box; padding:24px var(--dx-acta-pad) 0; }
 .dx-ui.dx-acta.dx-acta-listado { padding-bottom:60px; }
+/* El asistente ocupa al menos el alto visible bajo el encabezado de la app: el pie queda siempre abajo. */
+.dx-ui.dx-acta:not(.dx-acta-listado) { display:flex; flex-direction:column; min-height:calc(100dvh - 84px); margin-bottom:0; }
 .dx-acta *,.dx-acta *::before,.dx-acta *::after { box-sizing:border-box; }
 .dx-acta .dx-acta-back { display:inline-flex; align-items:center; gap:6px; margin:0 0 10px; padding:0; border:0; background:none; color:var(--dx-ui-cyan-fg); font:600 14px 'DM Sans',sans-serif; cursor:pointer; }
 .dx-acta .dx-acta-back:focus-visible,.dx-acta .dx-acta-link:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
 .dx-acta .dx-acta-tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-.dx-acta .dx-acta-wrap { container-type:inline-size; max-width:960px; }
+.dx-acta .dx-acta-wrap { container-type:inline-size; display:flex; flex:1; flex-direction:column; max-width:960px; }
+.dx-acta .dx-acta-wrap > .dx-acta-panel { margin-bottom:16px; }
 .dx-acta .dx-acta-steps { display:flex; gap:6px; margin:0 0 14px; padding:6px; border:1px solid var(--dx-ui-line); border-radius:12px; background:var(--dx-ui-card); }
 .dx-acta .dx-acta-step { display:flex; flex:1; align-items:center; justify-content:center; gap:8px; min-width:0; min-height:44px; padding:6px 8px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--dx-ui-gray); font:600 13px/1.2 'DM Sans',sans-serif; cursor:pointer; }
 .dx-acta .dx-acta-step > span:last-child { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
@@ -4929,7 +4932,7 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-acta .dx-acta-device dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 12px; margin:8px 0 0; }
 .dx-acta .dx-acta-device dt { font-weight:700; }
 .dx-acta .dx-acta-device dd { margin:0; overflow-wrap:anywhere; color:var(--dx-ui-ink); }
-.dx-acta .dx-acta-foot { position:sticky; z-index:50; bottom:0; display:flex; align-items:center; gap:10px; min-height:64px; margin:16px calc(-1 * var(--dx-acta-pad)) 0; padding:10px var(--dx-acta-pad); border-top:1px solid var(--dx-ui-line); background:var(--dx-ui-card); box-shadow:0 -8px 20px rgba(15,27,48,.12); }
+.dx-acta .dx-acta-foot { position:sticky; z-index:50; bottom:0; display:flex; align-items:center; gap:10px; min-height:64px; margin:auto calc(-1 * var(--dx-acta-pad)) 0; padding:10px var(--dx-acta-pad); border-top:1px solid var(--dx-ui-line); background:var(--dx-ui-card); box-shadow:0 -8px 20px rgba(15,27,48,.12); }
 .dx-acta .dx-acta-foot-msg { margin-right:auto; min-width:0; color:var(--dx-ui-gray); font-size:13px; }
 .dx-acta .dx-acta-foot-msg.is-pending { color:var(--dx-ui-amber-fg); }
 .dx-acta .dx-acta-done { padding:32px 20px; text-align:center; }
