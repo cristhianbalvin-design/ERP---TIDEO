@@ -23,7 +23,7 @@ import {
   listarSociedadesAdministracion,
   resolverFiltroSociedadesVista,
 } from './services/sociedadesService.js';
-import { resolverContratoConAdendasEnFecha, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato } from './services/nominaSociedadService.js';
+import { resolverContratoConAdendasEnFecha, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato, tieneRenovacionAprobadaContigua } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
@@ -14746,15 +14746,17 @@ function RRHHAdmin() {
   // Vista Reportes — datos calculados
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
+  const hoyContratosFechaStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
   const porArea = todosPersonal.reduce((acc, p) => { acc[p.area] = (acc[p.area] || 0) + 1; return acc; }, {});
   const maxArea = Math.max(...Object.values(porArea), 1);
   const contratosVencer = todosPersonal
     .map(p => {
       const contratoDoc = rrhhAdminContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
       const contratoInfo = rrhhAdminContratoVencimientoInfo(contratoDoc);
-      return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias };
+      return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias,
+        renovacionContigua: tieneRenovacionAprobadaContigua(documentosContratoFecha, contratoDoc, hoyContratosFechaStr) };
     })
-    .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30)
+    .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30 && !p.renovacionContigua)
     .sort((a, b) => a.dias_restantes - b.dias_restantes);
   const vacRanking = [...todosPersonal]
     .map(p => ({ ...p, _vacDisp: rrhhAdminCalcVacProp(p, solicitudesRRHH) }))
