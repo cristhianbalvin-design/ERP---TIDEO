@@ -187,7 +187,7 @@ export default function HojaCosteoWizard() {
     if (monedaHoja === 'USD') return montoUsd;
     return numero(tipoCambioPenUsd) > 0 ? montoUsd / numero(tipoCambioPenUsd) : null;
   };
-  // La tarifa de planilla (tarifa_hora del personal) está en soles; el costo manual por cargo y el de activos, en US$.
+  // La tarifa de planilla (tarifa_hora del personal) y el costo manual por cargo están en soles; el costo de activos, en US$.
   const convertirPenAMonedaHoja = value => {
     if (value == null) return null;
     const montoPen = numero(value);
@@ -196,7 +196,7 @@ export default function HojaCosteoWizard() {
   };
   const costoHoraCargo = cargoId => {
     const manual = configuracionPorCargo.get(cargoId)?.costo_hora_manual;
-    if (manual != null && numero(manual) > 0) return convertirUsdAMonedaHoja(manual);
+    if (manual != null && numero(manual) > 0) return convertirPenAMonedaHoja(manual);
     const planilla = tarifaPorCargo.get(cargoId);
     return planilla != null ? convertirPenAMonedaHoja(planilla) : null;
   };
