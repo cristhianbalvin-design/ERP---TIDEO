@@ -49,3 +49,9 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/asistente-erp/index.ts"
 import_map = "./functions/asistente-erp/deno.json"
+
+[functions.notificaciones-dispatch]
+enabled = true
+# La función valida su clave secreta exacta; esta clave no es un JWT.
+verify_jwt = false
+entrypoint = "./functions/notificaciones-dispatch/index.ts"

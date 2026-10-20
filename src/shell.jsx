@@ -114,6 +114,7 @@ const SIDEBAR = [
     { key: 'roles', label: 'Roles y Permisos', icon: I.shield },
     { key: 'maestros', label: 'Maestros Base', icon: I.settings, accessAnyOf: ['maestros', 'servicios'] },
     { key: 'parametros', label: 'Parametros Generales', icon: I.settings },
+    { key: 'notificaciones_config', label: 'Notificaciones', icon: I.bell, adminOnly: true },
     { key: 'salud_implementacion_tenant', label: 'Salud Implementacion', icon: I.trend, adminOnly: true },
   ]},
 ];
@@ -389,6 +390,8 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     const visibleItems = group.items
       .filter(it => it.action === 'openAria'
         ? Boolean(app.authUser && app.empresa?.id)
+        : it.adminOnly
+        ? Boolean(role?.permisos?.todo)
         : it.requiereVerCostos
         ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
         : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
