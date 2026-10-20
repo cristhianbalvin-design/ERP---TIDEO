@@ -11779,6 +11779,15 @@ function RRHHAdmin() {
     String(formAlta.cargo_id || '') !== String(adminOriginalEdicion.cargo_id || '') ||
     Number(formAlta.remuneracion || formAlta.monto_mensual || 0) !== Number(adminOriginalEdicion.sueldo_base || adminOriginalEdicion.remuneracion || adminOriginalEdicion.monto_mensual || 0)
   );
+  // El contrato vigente aprobado es la fuente de verdad del sueldo y el tipo de contrato:
+  // con contrato, esos campos no se editan en la ficha (se cambian por adenda o nuevo contrato).
+  const contratoVigenteEdicion = editandoId ? (personalDocumentos || []).find(d => (
+    d.personal_id === editandoId && d.activo && d.estado_validacion === 'aprobado' && !d.contrato_referencia_id
+    && !['archivado', 'anulado', 'rechazado'].includes(d.periodo_estado || 'vigente')
+    && Number(d.condiciones_laborales?.remuneracion_base) > 0
+  )) : null;
+  const bloqueoContratoFicha = Boolean(contratoVigenteEdicion);
+  const tituloBloqueoContrato = bloqueoContratoFicha ? 'Definido por el contrato vigente. Cámbialo con una adenda o un nuevo contrato.' : undefined;
   const cargosAdminOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo' && c.nombre)
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -14760,7 +14769,8 @@ function RRHHAdmin() {
           </div>
           <form className="side-panel-body" onSubmit={guardarColaborador}>
             {altaError && <div className="alert alert-danger" style={{marginBottom:16}}>{altaError}</div>}
-            {advAdendaManualAdmin && <div className="alert alert-warning" style={{marginBottom:16}}>Estás modificando el sueldo/cargo directamente en la ficha. Recuerda que este cambio requiere una adenda al contrato para tener respaldo legal ante SUNAFIL. Puedes subir la adenda en la pestaña Documentos.</div>}
+            {bloqueoContratoFicha && <div className="alert alert-info" style={{marginBottom:16}}>El sueldo y el tipo de contrato los define el contrato vigente aprobado. Para cambiarlos, registra una adenda o un nuevo contrato en la pestaña Documentos; al aprobarse, la ficha se actualiza sola.</div>}
+            {advAdendaManualAdmin && !bloqueoContratoFicha && <div className="alert alert-warning" style={{marginBottom:16}}>Estás modificando el sueldo/cargo directamente en la ficha. Recuerda que este cambio requiere una adenda al contrato para tener respaldo legal ante SUNAFIL. Puedes subir la adenda en la pestaña Documentos.</div>}
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
@@ -14786,8 +14796,8 @@ function RRHHAdmin() {
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008" style={{fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Puedes editarlo si lo necesitas.</div></div>
-              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta || bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
               {usaOrganigramaV2 ? <>
                 <div style={{gridColumn:'1/-1'}}>
                   <PosicionSelector
@@ -14849,7 +14859,7 @@ function RRHHAdmin() {
               </div>
               {!esHonorariosAlta && <div className="input-group">
                 <label>{`Sueldo base (${tarifaSym})`}</label>
-                <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/>
+                <input className="input" type="number" min="0" value={formAlta.remuneracion} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/>
               </div>}
               <div className="input-group"><label>Estado</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="suspendido">Suspendido</option></select></div>
               {esHonorariosAlta && <>
@@ -14884,7 +14894,7 @@ function RRHHAdmin() {
               {esHonorariosAlta ? <>
                 <div className="input-group">
                   <label>Honorario pactado ({tarifaSym})</label>
-                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,remuneracion:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,remuneracion:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Tarifa hora referencial ({tarifaSym})</label>
@@ -14894,7 +14904,7 @@ function RRHHAdmin() {
               </> : <>
                 <div className="input-group">
                   <label>Monto mensual ({tarifaSym})</label>
-                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,remuneracion:e.target.value}))} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,remuneracion:e.target.value}))} placeholder="0"/>
                 </div>
                 <div className="input-group">
                   <label>Horas base del mes</label>
