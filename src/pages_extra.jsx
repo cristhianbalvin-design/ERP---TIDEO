@@ -3374,7 +3374,7 @@ function Valorizacion({ role }) {
                     <tbody>
                       {partidas.map(p => (
                         <tr key={p.id}>
-                          <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
+                          <td><input type="text" className="input" style={{minWidth:240}} value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
                           <td className="num">{moneyCurrency(p._tarifa_mensual || 0, monedaOs)}</td>
                           <td className="num">{p._dias ?? '—'} / {p._dias_mes ?? '—'}</td>
                           <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', Number(e.target.value))} /></td>
