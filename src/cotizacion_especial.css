@@ -229,3 +229,6 @@
   .dx-cotesp-savebar { padding: 10px; }
   .dx-cotesp-savebar .dx-cotesp-btn { flex: 1; }
 }
+
+/* Celdas de solo lectura (documento emitido o aceptado) */
+.dx-cotesp .tbl td.dx-cotesp-celltxt { white-space: normal; word-break: break-word; min-width: 180px; line-height: 1.4; }

@@ -154,7 +154,14 @@ function ItemsEditor({ items, moneda, disabled, onChange, unidades = [], mostrar
   }));
   return <>
     <div className="table-wrap"><table className="tbl"><thead><tr><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Precio unit.</th><th>Subtotal</th>{!disabled && <th />}</tr></thead><tbody>
-      {items.map((item, index) => <tr key={item.client_key || item.id || index}>
+      {disabled && items.map((item, index) => <tr key={item.client_key || item.id || index}>
+        <td className="dx-cotesp-celltxt">{item.descripcion || '—'}</td>
+        <td className="num">{numero(item.cantidad).toLocaleString('es-PE', { maximumFractionDigits:2 })}</td>
+        <td>{item.unidad || '—'}</td>
+        <td className="num">{formatMoney(numero(item.precio_unitario), moneda)}</td>
+        <td className="num">{formatMoney(subtotalItem(item), moneda)}</td>
+      </tr>)}
+      {!disabled && items.map((item, index) => <tr key={item.client_key || item.id || index}>
         <td><input className="input" value={item.descripcion || ''} disabled={disabled} onChange={event => patch(item.client_key, 'descripcion', event.target.value)} /></td>
         <td><input className="input" type="number" min="0" step="0.01" value={item.cantidad ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'cantidad', event.target.value)} /></td>
         <td><select className="input" value={item.unidad || ''} disabled={disabled} onChange={event => patch(item.client_key, 'unidad', event.target.value)}><option value="">Seleccione…</option>{unidadesVisibles.map(unidad => <option key={unidad.id || unidad.codigo} value={unidad.codigo}>{unidad.codigo} — {unidad.nombre}</option>)}</select></td>
@@ -174,7 +181,12 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   return <div>
     <label className="row" style={{gap:8, marginBottom:12}}><input type="checkbox" checked={activos} disabled={disabled} onChange={event => onActivosChange(event.target.checked)} /> Usar hitos de pago</label>
     {activos && <>
-      <div className="table-wrap"><table className="tbl"><thead><tr><th>Concepto</th><th>%</th><th>Condición</th><th>Monto estimado</th>{!disabled && <th />}</tr></thead><tbody>{hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
+      <div className="table-wrap"><table className="tbl"><thead><tr><th>Concepto</th><th>%</th><th>Condición</th><th>Monto estimado</th>{!disabled && <th />}</tr></thead><tbody>{disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
+        <td className="dx-cotesp-celltxt">{hito.concepto || '—'}</td>
+        <td className="num">{numero(hito.porcentaje)}%</td>
+        <td className="dx-cotesp-celltxt">{hito.condicion || '—'}</td>
+        <td className="num">{formatMoney(numero(total) * numero(hito.porcentaje) / 100, moneda)}</td>
+      </tr>)}{!disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
         <td><input className="input" value={hito.concepto || ''} disabled={disabled} onChange={event => patch(hito.client_key, 'concepto', event.target.value)} /></td>
         <td><input className="input" type="number" min="0" max="100" step="0.01" value={hito.porcentaje ?? ''} disabled={disabled} onChange={event => patch(hito.client_key, 'porcentaje', event.target.value)} /></td>
         <td><input className="input" value={hito.condicion || ''} disabled={disabled} onChange={event => patch(hito.client_key, 'condicion', event.target.value)} /></td>
@@ -186,6 +198,15 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
     </>}
   </div>;
 }
+
+const CANALES_ACEPTACION = {
+  link_publico:'Enlace público (QR)',
+  correo:'Correo',
+  whatsapp:'WhatsApp',
+  reunion:'Reunión',
+  telefono:'Teléfono',
+  otro:'Otro',
+};
 
 function AceptacionEspecialQR({ token }) {
   const [dataUrl, setDataUrl] = useState('');
@@ -909,7 +930,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
                 <div className="dx-cotesp-card-b">
                   <div className="dx-cotesp-kv"><span>Aceptado por</span><b>{cotizacion.aceptacion_nombre || '—'}</b></div>
                   <div className="dx-cotesp-kv"><span>Fecha</span><b>{fechaEsp(cotizacion.aceptacion_fecha) || '—'}</b></div>
-                  {cotizacion.aceptacion_canal && <div className="dx-cotesp-kv"><span>Canal</span><b>{cotizacion.aceptacion_canal}</b></div>}
+                  {cotizacion.aceptacion_canal && <div className="dx-cotesp-kv"><span>Canal</span><b>{CANALES_ACEPTACION[cotizacion.aceptacion_canal] || cotizacion.aceptacion_canal}</b></div>}
                 </div>
               </section>
             )}
