@@ -2080,7 +2080,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
                             placeholder="1 proyecto, 2 meses…"
                           />
                         </div>
-                        <div className="dx-cote-part-tot"><small>Total</small><b>{p.incluido ? 'Incluido' : moneyCurrency(calcPartidaTotal(p), monedaActual)}</b></div>
+                        <div className="dx-cote-part-tot"><small>Total</small><b>{p.incluido ? 'Incluido' : moneyD(calcPartidaTotal(p), simboloEditor)}</b></div>
                       </div>
                       <button type="button" className={`dx-cote-more${subitemsAbiertos ? ' is-on' : ''}`} aria-expanded={subitemsAbiertos} onClick={() => setSubitemsVisibles(actual => ({ ...actual, [p.id]: !subitemsAbiertos }))}>
                         {I.chev}{cantidadSubitems ? `Sub-ítems (${cantidadSubitems})` : 'Agregar sub-ítems'}
@@ -2125,7 +2125,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
                       <div className="dx-cote-hito-cond">
                         <SmartTextField value={h.condicion} onChange={value => updateHito(h.id, 'condicion', value)} diccionario={diccionarioComercial} multiline={false} placeholder="Condición / vencimiento" />
                       </div>
-                      <span className="dx-cote-hito-m">{moneyCurrency(montoHito(h), monedaActual)}</span>
+                      <span className="dx-cote-hito-m">{moneyD(montoHito(h), simboloEditor)}</span>
                       <button type="button" className="dx-cote-icon is-del" onClick={() => removeHito(h.id)} aria-label={`Eliminar hito ${i + 1}`}>{I.x}</button>
                     </div>
                   ))}
@@ -2237,7 +2237,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
         <div className="dx-cote-savebar-acts">
           {errorGuardar && <span className="dx-cote-savebar-err" role="alert">{errorGuardar}</span>}
           <button type="button" className="dx-cote-btn" onClick={cancelarEditor} disabled={guardando}>Cancelar</button>
-          <button type="button" className="dx-cote-btn is-primary" onClick={handleSave} disabled={guardando}>{I.save}{guardando ? 'Guardando…' : 'Guardar cotización'}</button>
+          <button type="button" className="dx-cote-btn is-primary" onClick={handleSave} disabled={guardando}>{I.save}{guardando ? 'Guardando…' : <>Guardar<span className="dx-cote-hide-xs"> cotización</span></>}</button>
         </div>
       </div>
 

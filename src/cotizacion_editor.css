@@ -110,6 +110,12 @@
 .dx-cote-inp.is-sm { width: auto; max-width: 100%; height: 34px; font-size: 13px; }
 .dx-cote-inp:disabled { opacity: .6; }
 .dark .dx-cote-inp { color-scheme: dark; }
+/* Campos de componentes compartidos (SmartTextField, SociedadFormField, RichTextEditor) con el mismo aspecto dx */
+.dx-cote .smart-text input, .dx-cote .smart-text textarea, .dx-cote-soc .select { width: 100%; border: 1px solid var(--dx-cote-border); border-radius: 8px; background: var(--dx-cote-card); color: var(--dx-cote-ink); }
+.dx-cote .smart-text input { min-height: 40px; }
+.dx-cote .smart-text input:focus, .dx-cote .smart-text textarea:focus, .dx-cote-soc .select:focus { border-color: var(--dx-cote-cyan); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--dx-cote-cyan) 15%, transparent); }
+.dark .dx-cote .smart-text input, .dark .dx-cote .smart-text textarea, .dark .dx-cote-soc .select { color-scheme: dark; }
+.dark .dx-cote-acc-b [contenteditable], .dark .dx-cote-acc-b .rte, .dark .dx-cote-acc-b .rich-text-editor { background: var(--dx-cote-card); color: var(--dx-cote-ink); }
 .dx-cote-validez { display: flex; align-items: center; gap: 8px; }
 .dx-cote-validez .dx-cote-inp { flex: 1; min-width: 0; }
 .dx-cote-seg { display: inline-flex; flex: none; padding: 3px; border: 1px solid var(--dx-cote-border); border-radius: 9px; background: var(--dx-cote-head); }
@@ -227,8 +233,12 @@
 }
 @container (max-width: 420px) {
   .dx-cote-in { padding: 16px 10px 24px; }
-  .dx-cote-savebar { padding: 10px; }
+  .dx-cote-savebar { gap: 8px; padding: 10px; }
+  .dx-cote-savebar-st { width: 100%; min-width: 0; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
+  .dx-cote-savebar-st > span:nth-child(2) { display: none; }
   .dx-cote-savebar-acts { width: 100%; }
-  .dx-cote-savebar-acts .dx-cote-btn { flex: 1; }
+  .dx-cote-savebar-err { flex-basis: 100%; max-width: none; font-size: 12px; text-align: left; }
+  .dx-cote-savebar-acts .dx-cote-btn { flex: 1; padding: 0 10px; }
+  .dx-cote-hide-xs { display: none; }
   .dx-cote-part-b { grid-template-columns: minmax(0, 1fr); }
 }
