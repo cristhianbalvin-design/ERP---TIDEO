@@ -22794,9 +22794,6 @@ function RRHH_Operativo() {
   const [firmasEmpresaOps, setFirmasEmpresaOps] = useState({});
   const [firmaEmpresaActivaOps, setFirmaEmpresaActivaOps] = useState(null);
   const [mostrarFirmantesOps, setMostrarFirmantesOps] = useState(false);
-  const [docElegirFirmanteOps, setDocElegirFirmanteOps] = useState(null);
-  const [firmantesParaSeleccionOps, setFirmantesParaSeleccionOps] = useState([]);
-  const [firmanteElegidoOps, setFirmanteElegidoOps] = useState('');
   const [accionFirmaDigitalDocOps, setAccionFirmaDigitalDocOps] = useState(null);
   const cargarSolicitudesFirmaDigitalOps = useCallback(async () => {
     const todosLosDocumentos = [...new Map([...(personalDocumentos || []), ...(contratosArchivados || [])].map(doc => [doc.id, doc])).values()];
@@ -24997,12 +24994,17 @@ function RRHH_Operativo() {
               const firmaEmpresaDoc = req.doc ? (firmasEmpresaOps[req.doc.id] || []).find(f => f.estado !== 'anulado') : null;
               const firmaEnCurso = Boolean(solicitudActivaDoc || (firmaEmpresaDoc && ['pendiente', 'otp_enviado'].includes(firmaEmpresaDoc.estado)));
               const docFirmado = req.doc?.estado_firma === 'firmado_trabajador' || firmaEmpresaDoc?.estado === 'firmado' || solicitudesDoc.some(s => s.estado === 'firmado');
+              const tipoSucesor = req.tipo?.tipo_sucesor_id ? tiposDocumento.find(t => t.id === req.tipo.tipo_sucesor_id) : null;
+              const sucesorAprobado = tipoSucesor && docsPersona.some(d => (d.tipo_documento_id === tipoSucesor.id || d.tipo_doc === tipoSucesor.id || d.tipo_doc === tipoSucesor.codigo || d.tipo_doc === tipoSucesor.nombre) && d.estado_validacion === 'aprobado');
+              const puedeRenovarFirmaDigital = esContratoReq && !firmaEnCurso && !isHistorico && !sucesorAprobado && !req.tipo?.documento_padre_tipo_id;
+              const hayDatosFirmaContrato = (doc) => (firmasEmpresaOps[doc.id] || []).some(f => f.estado !== 'anulado') || (solicitudesFirmaDigitalOps[doc.id] || []).length > 0;
               const panelFirmaContrato = (doc) => {
                 const solicitudes = solicitudesFirmaDigitalOps[doc.id] || [];
                 const solActiva = solicitudes.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
                 const sol = solActiva || solicitudes[0];
                 const firma = (firmasEmpresaOps[doc.id] || []).find(f => f.estado !== 'anulado');
                 const trabajadorFirmo = sol?.estado === 'firmado' || doc.estado_firma === 'firmado_trabajador';
+                if (!firma && !sol) return null;
                 return <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
                   {firma && <FichaPill tone={firma.estado === 'firmado' ? 'green' : 'amber'}>{firma.estado === 'firmado' ? `Firmado por la empresa · ${new Date(firma.firmado_en).toLocaleDateString('es-PE')}` : `Pendiente firma de la empresa · ${firma.firmante_nombre || ''}`}</FichaPill>}
                   {firma?.estado !== 'firmado' && firma?.firmante_usuario_id === authUser?.id && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setFirmaEmpresaActivaOps(firma.id)}>Firmar como empresa</button>}
@@ -25012,7 +25014,6 @@ function RRHH_Operativo() {
                   {solActiva && <><button type="button" className="dx-ficha-btn is-sm" disabled={accionFirmaDigitalDocOps === doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: doc.id, empresaId: empresa.id, canales: sol.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalOps(); addNotificacion('Enlace de firma enviado'); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Reenviar enlace</button><button type="button" className="dx-ficha-btn is-sm is-danger-text" disabled={accionFirmaDigitalDocOps === doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(doc.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: sol.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Anular solicitud</button></>}
                   {trabajadorFirmo && firma?.estado === 'firmado' && <FichaPill tone="green">Firmado por empresa y trabajador{sol?.firmado_en ? ` · ${new Date(sol.firmado_en).toLocaleDateString('es-PE')}` : ''}</FichaPill>}
                   {trabajadorFirmo && sol?.pdf_firmado_path && <button type="button" className="dx-ficha-btn is-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(sol.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
-                  {!firma && !sol && (docElegirFirmanteOps === doc.id ? <><select className="select" value={firmanteElegidoOps} onChange={e => setFirmanteElegidoOps(e.target.value)}><option value="">Selecciona firmante</option>{firmantesParaSeleccionOps.map(f => <option key={f.id} value={f.id}>{f.nombre} - {f.cargo}</option>)}</select><button type="button" className="dx-ficha-btn is-sm is-primary" disabled={!firmanteElegidoOps} onClick={async () => { try { const result = await contratoFirmaService.crearFirmaEmpresa({ documentoId: doc.id, firmanteId: firmanteElegidoOps, canales: ['whatsapp', 'email'] }); setDocElegirFirmanteOps(null); await cargarSolicitudesFirmaDigitalOps(); if (result.es_firmante) setFirmaEmpresaActivaOps(result.id); } catch (e) { addNotificacion(e.message || 'No se pudo preparar la firma de la empresa.'); } }}>Continuar firma de empresa</button></> : <button type="button" className="dx-ficha-btn is-sm" onClick={async () => { try { const rows = await contratoFirmaService.listarFirmantesActivos(empresa.id); const disponibles = rows.filter(f => !f.sociedad_id || f.sociedad_id === (doc.sociedad_id || null)); if (!disponibles.length) { addNotificacion('No hay firmantes activos para esta sociedad.'); return; } setFirmantesParaSeleccionOps(disponibles); setFirmanteElegidoOps(disponibles[0].id); setDocElegirFirmanteOps(doc.id); } catch (e) { addNotificacion(e.message || 'No se pudieron cargar los firmantes.'); } }}>Enviar a firma de empresa</button>)}
                 </div>;
               };
               const meta = [
@@ -25058,7 +25059,7 @@ function RRHH_Operativo() {
                   {!docFirmado && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
                     <button type="button" className="dx-ficha-btn is-sm is-amber" onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>{I.refresh} Renovar</button>
                   )}
-                  {esContratoReq && !firmaEnCurso && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setRenovacionFirmaDigitalOps({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'operativo' })}>Renovar con firma digital</button>}
+                  {puedeRenovarFirmaDigital && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setRenovacionFirmaDigitalOps({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'operativo' })}>Renovar con firma digital</button>}
                   {botonFirma}
                   {!docFirmado && <FichaMenu label={`M\u00e1s acciones de ${nombreTipo}`} items={accionesEliminarArchivar(req.doc)} />}
                 </>
@@ -25084,12 +25085,12 @@ function RRHH_Operativo() {
                       hint={!req.doc ? (tooltipPredecesor || (tPredecesor ? `Requiere el ${tPredecesor.nombre} aprobado · cumplido` : null)) : null}
                       hintTone={tooltipPredecesor ? 'warn' : 'ok'}
                       actions={acciones}
-                      footers={[...pies, ...(req.doc && esContratoReq ? [{ tone: 'sig', content: panelFirmaContrato(req.doc) }] : [])]}
+                      footers={[...pies, ...(req.doc && esContratoReq && hayDatosFirmaContrato(req.doc) ? [{ tone: 'sig', content: panelFirmaContrato(req.doc) }] : [])]}
                       missing={!req.doc}
                       highlight={destacado}
                       historico={isHistorico}
                     />
-                    {proximoContrato && <FichaDocRow linked icon={I.clock} tone="cyan" titulo={'Pr\u00f3ximo contrato'} estado={<FichaPill tone="cyan">{'Pr\u00f3ximo \u00b7 desde ' + (proximoContrato.periodo_fecha_inicio || proximoContrato.fecha_emision || '').split('-').reverse().join('/')}</FichaPill>} meta={[proximoContrato.nombre_archivo || 'Contrato programado']} actions={proximoContrato.archivo_url ? <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ ...req, doc: proximoContrato }, p)}>{I.eye} Ver</button> : null} footers={[{ tone: 'sig', content: panelFirmaContrato(proximoContrato) }]} />}
+                    {proximoContrato && <FichaDocRow linked icon={I.clock} tone="cyan" titulo={'Pr\u00f3ximo contrato'} estado={<FichaPill tone="cyan">{'Pr\u00f3ximo \u00b7 desde ' + (proximoContrato.periodo_fecha_inicio || proximoContrato.fecha_emision || '').split('-').reverse().join('/')}</FichaPill>} meta={[proximoContrato.nombre_archivo || 'Contrato programado']} actions={proximoContrato.archivo_url ? <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ ...req, doc: proximoContrato }, p)}>{I.eye} Ver</button> : null} footers={hayDatosFirmaContrato(proximoContrato) ? [{ tone: 'sig', content: panelFirmaContrato(proximoContrato) }] : []} />}
                     {docsVinculados.map(dv => {
                       const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
                       const dvCambios = [
