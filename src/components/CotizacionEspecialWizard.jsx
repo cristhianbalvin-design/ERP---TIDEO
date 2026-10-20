@@ -5,6 +5,11 @@ import { NuevaCuentaModal } from './NuevaCuentaModal.jsx';
 import { marcarRecepcionActivoClienteCotizada } from '../services/recepcionesActivosClienteService.js';
 import { maestrosService } from '../services/maestrosService.js';
 import { calcularTerminosEquipo, subtotalItem } from '../lib/terminosEquipo.js';
+import { I } from '../icons.jsx';
+import { useApp } from '../context.jsx';
+import '../cotizacion_especial.css';
+
+const LINEAS_NEGOCIO_ESP = { flota_alquileres:'Flota & Alquileres', maestranza_fab:'Maestranza / Fabricación', transporte_comercial:'Transporte Comercial', venta_repuestos:'Venta de Repuestos' };
 
 const nuevoItem = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random()}`, descripcion:'', cantidad:1, unidad:'UND', precio_unitario:0 });
 const nuevoHito = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `hito-${Date.now()}-${Math.random()}`, concepto:'', porcentaje:0, condicion:'' });
@@ -49,7 +54,8 @@ const mismaPartidaOrigen = (items = []) => items.map(({ client_key, ...item }) =
 const mismosItemsOrigen = (a = [], b = []) => JSON.stringify(mismaPartidaOrigen(a)) === JSON.stringify(mismaPartidaOrigen(b));
 const previewTotals = items => {
   const subtotal = serializarItems(items).reduce((sum, item) => sum + item.subtotal, 0);
-  const igv = Math.round(subtotal * 0.18);
+  // IGV con céntimos, igual que el servidor (migración 20261020160000).
+  const igv = Math.round(subtotal * 18) / 100;
   return { subtotal:Math.round(subtotal * 100) / 100, igv, total:Math.round((subtotal + igv) * 100) / 100 };
 };
 const normalizarHitosPreview = (hitos, total) => hitos.map((hito, index) => ({
@@ -129,7 +135,7 @@ function ReferenciaHojaCosteo({ hoja, moneda }) {
   </div>;
 }
 
-function ItemsEditor({ items, moneda, disabled, onChange, unidades = [] }) {
+function ItemsEditor({ items, moneda, disabled, onChange, unidades = [], mostrarTotales = true }) {
   const totals = previewTotals(items);
   const codigosCatalogo = new Set(unidades.map(unidad => String(unidad.codigo || '').toUpperCase()));
   const unidadesVisibles = [
@@ -148,17 +154,24 @@ function ItemsEditor({ items, moneda, disabled, onChange, unidades = [] }) {
   }));
   return <>
     <div className="table-wrap"><table className="tbl"><thead><tr><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Precio unit.</th><th>Subtotal</th>{!disabled && <th />}</tr></thead><tbody>
-      {items.map((item, index) => <tr key={item.client_key || item.id || index}>
+      {disabled && items.map((item, index) => <tr key={item.client_key || item.id || index}>
+        <td className="dx-cotesp-celltxt">{item.descripcion || '—'}</td>
+        <td className="num">{numero(item.cantidad).toLocaleString('es-PE', { maximumFractionDigits:2 })}</td>
+        <td>{item.unidad || '—'}</td>
+        <td className="num">{formatMoney(numero(item.precio_unitario), moneda)}</td>
+        <td className="num">{formatMoney(subtotalItem(item), moneda)}</td>
+      </tr>)}
+      {!disabled && items.map((item, index) => <tr key={item.client_key || item.id || index}>
         <td><input className="input" value={item.descripcion || ''} disabled={disabled} onChange={event => patch(item.client_key, 'descripcion', event.target.value)} /></td>
         <td><input className="input" type="number" min="0" step="0.01" value={item.cantidad ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'cantidad', event.target.value)} /></td>
         <td><select className="input" value={item.unidad || ''} disabled={disabled} onChange={event => patch(item.client_key, 'unidad', event.target.value)}><option value="">Seleccione…</option>{unidadesVisibles.map(unidad => <option key={unidad.id || unidad.codigo} value={unidad.codigo}>{unidad.codigo} — {unidad.nombre}</option>)}</select></td>
         <td><input className="input" type="number" min="0" step="0.01" value={item.precio_unitario ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'precio_unitario', event.target.value)} /></td>
         <td className="num">{formatMoney(subtotalItem(item), moneda)}</td>
-        {!disabled && <td><button type="button" className="btn btn-ghost" onClick={() => onChange(items.filter(row => row.client_key !== item.client_key))} disabled={items.length <= 1}>×</button></td>}
+        {!disabled && <td><button type="button" className="btn btn-ghost" aria-label="Eliminar ítem" onClick={() => onChange(items.filter(row => row.client_key !== item.client_key))} disabled={items.length <= 1}>×</button></td>}
       </tr>)}
     </tbody></table></div>
     {!disabled && <button type="button" className="btn btn-secondary" style={{marginTop:10}} onClick={() => onChange([...items, nuevoItem()])}>+ Agregar ítem</button>}
-    <ResumenTotales totals={totals} moneda={moneda} />
+    {mostrarTotales && <ResumenTotales totals={totals} moneda={moneda} />}
   </>;
 }
 
@@ -168,18 +181,32 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   return <div>
     <label className="row" style={{gap:8, marginBottom:12}}><input type="checkbox" checked={activos} disabled={disabled} onChange={event => onActivosChange(event.target.checked)} /> Usar hitos de pago</label>
     {activos && <>
-      <div className="table-wrap"><table className="tbl"><thead><tr><th>Concepto</th><th>%</th><th>Condición</th><th>Monto estimado</th>{!disabled && <th />}</tr></thead><tbody>{hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
+      <div className="table-wrap"><table className="tbl"><thead><tr><th>Concepto</th><th>%</th><th>Condición</th><th>Monto estimado</th>{!disabled && <th />}</tr></thead><tbody>{disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
+        <td className="dx-cotesp-celltxt">{hito.concepto || '—'}</td>
+        <td className="num">{numero(hito.porcentaje)}%</td>
+        <td className="dx-cotesp-celltxt">{hito.condicion || '—'}</td>
+        <td className="num">{formatMoney(numero(total) * numero(hito.porcentaje) / 100, moneda)}</td>
+      </tr>)}{!disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
         <td><input className="input" value={hito.concepto || ''} disabled={disabled} onChange={event => patch(hito.client_key, 'concepto', event.target.value)} /></td>
         <td><input className="input" type="number" min="0" max="100" step="0.01" value={hito.porcentaje ?? ''} disabled={disabled} onChange={event => patch(hito.client_key, 'porcentaje', event.target.value)} /></td>
         <td><input className="input" value={hito.condicion || ''} disabled={disabled} onChange={event => patch(hito.client_key, 'condicion', event.target.value)} /></td>
         <td className="num">{formatMoney(numero(total) * numero(hito.porcentaje) / 100, moneda)}</td>
-        {!disabled && <td><button type="button" className="btn btn-ghost" onClick={() => onChange(hitos.filter(row => row.client_key !== hito.client_key))}>×</button></td>}
+        {!disabled && <td><button type="button" className="btn btn-ghost" aria-label="Eliminar hito" onClick={() => onChange(hitos.filter(row => row.client_key !== hito.client_key))}>×</button></td>}
       </tr>)}</tbody></table></div>
       <div className={Math.abs(suma - 100) <= 0.01 ? 'alert alert-info' : 'alert alert-warning'} style={{marginTop:10}}>Porcentaje acumulado: <strong>{suma}%</strong>. Debe sumar exactamente 100%.</div>
       {!disabled && <button type="button" className="btn btn-secondary" onClick={() => onChange([...hitos, nuevoHito()])}>+ Agregar hito</button>}
     </>}
   </div>;
 }
+
+const CANALES_ACEPTACION = {
+  link_publico:'Enlace público (QR)',
+  correo:'Correo',
+  whatsapp:'WhatsApp',
+  reunion:'Reunión',
+  telefono:'Teléfono',
+  otro:'Otro',
+};
 
 function AceptacionEspecialQR({ token }) {
   const [dataUrl, setDataUrl] = useState('');
@@ -196,17 +223,19 @@ function AceptacionEspecialQR({ token }) {
     try { await navigator.clipboard.writeText(url); setCopiado(true); }
     catch { setCopiado(false); }
   };
-  return <div className="card" style={{padding:14, marginTop:16}}>
-    <div className="card-head" style={{padding:0, marginBottom:10}}><h3>Enviar para aceptacion</h3><span className="badge badge-orange">Pendiente</span></div>
-    <div className="row" style={{gap:16, alignItems:'center', flexWrap:'wrap'}}>
-      {dataUrl ? <img src={dataUrl} alt="QR de aceptacion" width="140" height="140" /> : <div className="text-muted" style={{width:140}}>Generando QR...</div>}
-      <div style={{flex:1, minWidth:220}}>
-        <div className="text-muted" style={{fontSize:12, marginBottom:6}}>Comparte este enlace con el cliente. El documento ya esta congelado y solo podra registrar su aceptacion.</div>
-        <div className="mono text-muted" style={{fontSize:11, overflowWrap:'anywhere', padding:8, background:'var(--bg-subtle)', borderRadius:6}}>{url}</div>
-        <button type="button" className="btn btn-secondary btn-sm" style={{marginTop:8}} onClick={copiar}>{copiado ? 'Enlace copiado' : 'Copiar enlace'}</button>
+  return <section className="dx-cotesp-card">
+    <div className="dx-cotesp-card-h"><h2>Enviar para aceptación</h2><span className="dx-cotesp-pill is-amber"><i />Pendiente</span></div>
+    <div className="dx-cotesp-card-b">
+      <div className="dx-cotesp-qr">
+        {dataUrl ? <img src={dataUrl} alt="QR de aceptación" width="140" height="140" /> : <div className="dx-cotesp-muted" style={{width:140}}>Generando QR…</div>}
+        <div>
+          <p className="dx-cotesp-muted">Comparte este enlace con el cliente. El documento ya está congelado y solo podrá registrar su aceptación.</p>
+          <div className="dx-cotesp-link">{url}</div>
+          <button type="button" className="dx-cotesp-btn is-sm" onClick={copiar}>{I.copy}{copiado ? 'Enlace copiado' : 'Copiar enlace'}</button>
+        </div>
       </div>
     </div>
-  </div>;
+  </section>;
 }
 
 function AceptacionManualEspecialModal({ onClose, onConfirmar }) {
@@ -224,15 +253,15 @@ function AceptacionManualEspecialModal({ onClose, onConfirmar }) {
     catch (err) { setError(mensajeError(err)); setSaving(false); }
   };
   return <div className="modal-backdrop" onClick={onClose}><div className="modal" style={{maxWidth:520}} onClick={event => event.stopPropagation()}>
-    <div className="modal-head"><h3>Registrar aceptacion manual</h3><button type="button" className="btn btn-ghost" onClick={onClose}>x</button></div>
+    <div className="modal-head"><h3>Registrar aceptación manual</h3><button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar">{I.x}</button></div>
     <div className="modal-body" style={{display:'grid', gap:12}}>
       <div className="input-group"><label>Nombre de quien acepta *</label><input className="input" value={nombre} onChange={event => setNombre(event.target.value)} /></div>
-      <div className="grid-2"><div className="input-group"><label>DNI / documento</label><input className="input" value={dni} onChange={event => setDni(event.target.value)} /></div><div className="input-group"><label>Fecha de aceptacion *</label><input className="input" type="date" value={fecha} onChange={event => setFecha(event.target.value)} /></div></div>
-      <div className="input-group"><label>Canal *</label><select className="input" value={canal} onChange={event => setCanal(event.target.value)}><option value="correo">Correo</option><option value="whatsapp">WhatsApp</option><option value="reunion">Reunion</option><option value="telefono">Telefono</option><option value="otro">Otro</option></select></div>
+      <div className="grid-2"><div className="input-group"><label>DNI / documento</label><input className="input" value={dni} onChange={event => setDni(event.target.value)} /></div><div className="input-group"><label>Fecha de aceptación *</label><input className="input" type="date" value={fecha} onChange={event => setFecha(event.target.value)} /></div></div>
+      <div className="input-group"><label>Canal *</label><select className="input" value={canal} onChange={event => setCanal(event.target.value)}><option value="correo">Correo</option><option value="whatsapp">WhatsApp</option><option value="reunion">Reunión</option><option value="telefono">Teléfono</option><option value="otro">Otro</option></select></div>
       <div className="input-group"><label>Notas</label><textarea className="input" rows="3" value={notas} onChange={event => setNotas(event.target.value)} /></div>
       {error && <div className="alert alert-danger">{error}</div>}
     </div>
-    <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="btn btn-primary" onClick={confirmar} disabled={saving}>{saving ? 'Registrando...' : 'Confirmar aceptacion'}</button></div>
+    <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="btn btn-primary" onClick={confirmar} disabled={saving}>{saving ? 'Registrando…' : 'Confirmar aceptación'}</button></div>
   </div></div>;
 }
 
@@ -260,6 +289,8 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [error, setError] = useState('');
   const [plantillaLoading, setPlantillaLoading] = useState(Boolean(especialId));
   const [plantillaError, setPlantillaError] = useState('');
+  const [cambiandoPlantilla, setCambiandoPlantilla] = useState(false);
+  const { monedasActivas } = useApp();
   const vistaPreviaRef = useRef(null);
   const resumenCotizacionRef = useRef(null);
   const [alturaResumenCotizacion, setAlturaResumenCotizacion] = useState(null);
@@ -295,6 +326,14 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     return () => observer.disconnect();
   }, [cotizacion?.id]);
 
+  const opcionesMonedaEsp = useMemo(() => {
+    const activas = (monedasActivas || [])
+      .map(moneda => ({ codigo:String(moneda.codigo || '').trim().toUpperCase(), nombre:moneda.nombre || '' }))
+      .filter((moneda, index, lista) => moneda.codigo && lista.findIndex(item => item.codigo === moneda.codigo) === index);
+    const base = activas.length ? activas : [{ codigo:'PEN', nombre:'Sol Peruano' }, { codigo:'USD', nombre:'Dólar' }];
+    const actual = String(form.moneda || '').toUpperCase();
+    return actual && !base.some(moneda => moneda.codigo === actual) ? [...base, { codigo:actual, nombre:'' }] : base;
+  }, [monedasActivas, form.moneda]);
   const tipo = tipos.find(row => row.id === form.tipo_documento_id) || null;
   const tiposVisibles = useMemo(() => empresa?.multisociedad_habilitado
     ? tipos.filter(row => row.sociedad_id === sociedadIdEscritura)
@@ -785,28 +824,256 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     <div className="input-group" style={{marginTop:10}}>{form.validez_tipo === 'dias' ? <><label>Días de validez</label><input className="input" type="number" min="1" value={form.validez_dias ?? ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_dias:event.target.value }))} /></> : <><label>Válida hasta</label><input className="input" type="date" value={form.validez_fecha || ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_fecha:event.target.value }))} /></>}</div>
   </>;
 
-  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div><div className="row" style={{gap:8, flexWrap:'wrap'}}>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-primary" disabled={sending} onClick={enviar}>{sending ? 'Enviando…' : 'Enviar a cliente'}</button>}{cotizacion.estado === 'enviada' && <button type="button" className="btn btn-primary" onClick={() => setAceptacionManualAbierta(true)}>Registrar aceptación manual</button>}{cotizacion.estado === 'aceptada' && osVinculadaCargando && <button type="button" className="btn btn-secondary" disabled>Verificando OS…</button>}{cotizacion.estado === 'aceptada' && !osVinculadaCargando && !osVinculada && <button type="button" className="btn btn-primary" onClick={() => onGenerarOS?.(cotizacion)}>Generar OS</button>}{cotizacion.estado === 'aceptada' && osVinculada && <button type="button" className="btn btn-secondary" onClick={() => onVerOS?.(osVinculada.id)}>OS generada: {osVinculada.numero || osVinculada.id}</button>}{['emitido', 'enviada', 'aceptada'].includes(cotizacion.estado) && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div></div>
-    {origenBloqueado}
-    {error && <div className="alert alert-danger">{error}</div>}
-    {osVinculadaError && <div className="alert alert-warning">No se pudo verificar la OS vinculada: {osVinculadaError}</div>}
-    {cotizacion.estado === 'enviada' && cotizacion.token_aceptacion && <AceptacionEspecialQR token={cotizacion.token_aceptacion} />}
-    {cotizacion.estado === 'aceptada' && <div className="alert alert-success">Aceptada {cotizacion.aceptacion_tipo === 'digital' ? 'digitalmente' : 'manualmente'}{cotizacion.aceptacion_nombre ? ` por ${cotizacion.aceptacion_nombre}` : ''}{cotizacion.aceptacion_fecha ? ` el ${new Date(cotizacion.aceptacion_fecha).toLocaleDateString('es-PE')}` : ''}.</div>}
-    {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
-    {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
-    <div className="grid-2 cotizacion-especial-preview-layout" style={{alignItems:'start', '--cotizacion-preview-height': alturaResumenCotizacion ? `${alturaResumenCotizacion}px` : undefined}}><div ref={resumenCotizacionRef} style={{display:'grid', gap:16}}>
-      <ReferenciaHojaCosteo hoja={hojaCosteoReferencia} moneda={form.moneda} />
-      <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} unidades={unidades} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
-      <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
-    </div><section className="card cotizacion-especial-preview-card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body cotizacion-especial-preview-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef} className="cotizacion-especial-preview-content"><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section>{aceptacionManualAbierta && <AceptacionManualEspecialModal onClose={() => setAceptacionManualAbierta(false)} onConfirmar={registrarAceptacionManual} />}</div></div>;
+  const PASOS_WIZARD = ['Plantilla', 'Ítems y cliente', 'Contacto y validez', 'Hitos de pago', 'Revisión'];
+  const MESES_ESP = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const fechaEsp = valor => {
+    const fecha = valor ? new Date(valor) : null;
+    if (!fecha || Number.isNaN(fecha.getTime())) return null;
+    return `${String(fecha.getDate()).padStart(2, '0')} ${MESES_ESP[fecha.getMonth()]} ${fecha.getFullYear()}`;
+  };
+  const fechaHoraEsp = valor => {
+    const fecha = valor ? new Date(valor) : null;
+    if (!fecha || Number.isNaN(fecha.getTime())) return null;
+    return `${fechaEsp(valor)} · ${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`;
+  };
+  const cuentaNombre = cuenta?.razon_social || cuenta?.nombre_comercial || '';
+  const plantillaEtiqueta = plantilla ? `${plantilla.nombre_interno || 'Plantilla'} · v${plantilla.version}` : '';
+  const panelTotales = (estimado = true) => (
+    <section className="dx-cotesp-card">
+      <div className="dx-cotesp-card-h"><h2>Totales</h2><span>{form.moneda} · {estimado ? 'estimado' : 'emitidos'}</span></div>
+      <div className="dx-cotesp-card-b">
+        <div className="dx-cotesp-tot"><span>Subtotal sin IGV</span><b>{formatMoney(totals.subtotal, form.moneda)}</b></div>
+        <div className="dx-cotesp-tot"><span>IGV (18%)</span><b>{formatMoney(totals.igv, form.moneda)}</b></div>
+        <div className="dx-cotesp-tot is-big"><span>Total</span><b>{formatMoney(totals.total, form.moneda)}</b></div>
+        <p className="dx-cotesp-muted">{estimado ? 'Previsualización estimada. El servidor calcula y valida el importe definitivo al guardar.' : 'Valores guardados al emitir; no se recalculan.'}</p>
+      </div>
+    </section>
+  );
+  const notaOrigen = origenBloqueado ? <div className="dx-cotesp-note is-info">{origenBloqueado.props.children}</div> : null;
 
-  return <div className="page-content"><NuevaCuentaModal open={nuevaCuentaAbierta} empresa={empresa} crearCuenta={crearCuenta} comercialesAsignables={comercialesAsignables} zIndex={1200} onClose={() => setNuevaCuentaAbierta(false)} onCreated={cuenta => { setCuentasLocales(actuales => [cuenta, ...actuales.filter(item => item.id !== cuenta.id)]); setForm(current => ({ ...current, cuenta_id:cuenta.id, contacto_id:'' })); }} /><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}{origenBloqueado}
-    <div className="card"><div className="card-body">
-      {paso === 1 && <><h3>1. Tipo y plantilla</h3><div className="grid-2"><div className="input-group"><label>Tipo de documento</label><select className="input" value={form.tipo_documento_id} onChange={event => cambiarTipo(event.target.value)}><option value="">Seleccione…</option>{tiposVisibles.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div><div className="input-group"><label>Plantilla publicada</label><select className="input" value={form.plantilla_documento_id} disabled={!form.tipo_documento_id} onChange={event => setForm(current => ({ ...current, plantilla_documento_id:event.target.value }))}><option value="">Seleccione…</option>{plantillas.map(row => <option key={row.id} value={row.id}>v{row.version} — {row.nombre_interno}</option>)}</select></div></div></>}
-      {paso === 2 && <><h3>2. Origen de ítems</h3><div className="row" style={{gap:12, marginBottom:14}}><label><input type="radio" checked={form.origen_items === 'manual'} onChange={() => setForm(current => ({ ...current, origen_items:'manual', hoja_costeo_id:'' }))} /> Manual</label><label><input type="radio" checked={form.origen_items === 'hoja_costeo'} onChange={() => setForm(current => ({ ...current, origen_items:'hoja_costeo', items:[] }))} /> Hoja de Costeo</label></div>{form.origen_items === 'hoja_costeo' ? <div className="input-group"><label>Hoja de Costeo aprobada</label><select className="input" value={form.hoja_costeo_id} onChange={event => seleccionarHC(event.target.value)}><option value="">Seleccione…</option>{hojasDisponibles.map(row => <option key={row.id} value={row.id}>{row.numero || row.id}</option>)}</select></div> : null}<div className="grid-2" style={{marginTop:14}}><div className="input-group"><label>Cuenta</label><select className="input" value={form.cuenta_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => { if (event.target.value === '__crear_nueva__') { setNuevaCuentaAbierta(true); return; } setForm(current => ({ ...current, cuenta_id:event.target.value, contacto_id:'' })); }}><option value="">Seleccione…</option>{cuentasLocales.filter(row => row.empresa_id === empresa?.id).map(row => <option key={row.id} value={row.id}>{row.razon_social || row.nombre_comercial}</option>)}<option value="__crear_nueva__">+ Crear nueva cuenta</option></select></div><div className="input-group"><label>Oportunidad (opcional)</label><select className="input" value={form.oportunidad_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, oportunidad_id:event.target.value }))}><option value="">Sin oportunidad</option>{oportunidades.filter(row => row.empresa_id === empresa?.id && (!form.cuenta_id || row.cuenta_id === form.cuenta_id)).map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div></div><div className="input-group" style={{marginTop:14}}><label>Moneda</label><select className="input" value={form.moneda} onChange={event => setForm(current => ({ ...current, moneda:event.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div><div style={{marginTop:16}}><ItemsEditor items={form.items} unidades={unidades} moneda={form.moneda} disabled={form.origen_items === 'hoja_costeo'} onChange={items => setForm(current => ({ ...current, items }))} /></div></>}
-      {paso === 3 && <><h3>3. Contacto y validez</h3>{selectorDatos}</>}
-      {paso === 4 && <><h3>4. Hitos de pago</h3><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></>}
-      {paso === 5 && <><h3>5. Revisión y creación</h3><div className="alert alert-info">La vista previa usa los valores actuales. El servidor seguirá siendo la fuente de verdad al crear el borrador.</div><ResumenTotales totals={totals} moneda={form.moneda} /><div style={{marginTop:16}}>{plantilla ? <DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /> : <div className="text-muted">Seleccione una plantilla publicada para ver la composición.</div>}</div></>}
-      <div className="row" style={{justifyContent:'space-between', marginTop:22}}><button type="button" className="btn btn-secondary" onClick={paso === 1 ? onBack : volver}>← {paso === 1 ? 'Cancelar' : 'Volver'}</button>{paso < 5 ? <button type="button" className="btn btn-primary" onClick={avanzar}>Continuar →</button> : <button type="button" className="btn btn-primary" disabled={saving} onClick={crear}>{saving ? 'Creando…' : 'Crear borrador'}</button>}</div>
-    </div></div>
+  if (cotizacion) {
+    const ESTADOS_ESP = { borrador:['Borrador', 'is-amber'], emitido:['Emitida', 'is-blue'], enviada:['Enviada', 'is-blue'], aceptada:['Aceptada', 'is-green'], anulado:['Anulada', 'is-red'] };
+    const [estadoLabel, estadoClase] = ESTADOS_ESP[cotizacion.estado] || [cotizacion.estado, 'is-gray'];
+    const emitida = ['emitido', 'enviada', 'aceptada'].includes(cotizacion.estado);
+    const enviadaEsp = ['enviada', 'aceptada'].includes(cotizacion.estado);
+    const aceptadaEsp = cotizacion.estado === 'aceptada';
+    const pasosCicloEsp = [
+      { titulo:'Borrador', hecho:true, detalle:fechaEsp(cotizacion.created_at) },
+      { titulo: emitida ? 'Emitida' : 'Emitir', hecho:emitida, detalle: emitida ? fechaHoraEsp(cotizacion.emitida_at) : 'Congela el documento' },
+      { titulo: enviadaEsp ? 'Enviada' : 'Enviar al cliente', hecho:enviadaEsp, detalle: enviadaEsp ? fechaHoraEsp(cotizacion.enviada_at) : 'QR o enlace de aceptación' },
+      { titulo:'Aceptación del cliente', hecho:aceptadaEsp, detalle: aceptadaEsp ? [fechaEsp(cotizacion.aceptacion_fecha), cotizacion.aceptacion_nombre, cotizacion.aceptacion_tipo === 'digital' ? 'digital' : 'manual'].filter(Boolean).join(' · ') : 'QR o registro manual' },
+      { titulo:'Orden de servicio', hecho:Boolean(osVinculada), detalle: osVinculada ? (osVinculada.numero || osVinculada.id) : 'Al aceptar' },
+    ];
+    const pasoActualEsp = pasosCicloEsp.findIndex(paso => !paso.hecho);
+    let accionPrincipal = null;
+    if (editable) accionPrincipal = <button type="button" className="dx-cotesp-btn is-primary" disabled={emitting} onClick={emitir}>{I.check}{emitting ? 'Emitiendo…' : 'Emitir'}</button>;
+    else if (cotizacion.estado === 'emitido') accionPrincipal = <button type="button" className="dx-cotesp-btn is-primary" disabled={sending} onClick={enviar}>{I.send}{sending ? 'Enviando…' : 'Enviar a cliente'}</button>;
+    else if (cotizacion.estado === 'enviada') accionPrincipal = <button type="button" className="dx-cotesp-btn is-primary" onClick={() => setAceptacionManualAbierta(true)}>{I.check}Registrar aceptación manual</button>;
+    else if (aceptadaEsp && osVinculadaCargando) accionPrincipal = <button type="button" className="dx-cotesp-btn" disabled>Verificando OS…</button>;
+    else if (aceptadaEsp && !osVinculada) accionPrincipal = <button type="button" className="dx-cotesp-btn is-primary" onClick={() => onGenerarOS?.(cotizacion)}>{I.clipboard}Generar OS</button>;
+    else if (aceptadaEsp && osVinculada) accionPrincipal = <button type="button" className="dx-cotesp-btn is-primary" onClick={() => onVerOS?.(osVinculada.id)}>{I.clipboard}Ver {osVinculada.numero || 'OS'}</button>;
+
+    return <div className="dx-cotesp">
+      <div className="dx-cotesp-in">
+        <button type="button" className="dx-cotesp-back" onClick={onBack}>{I.chevLeft}Cotizaciones</button>
+        <header className="dx-cotesp-top">
+          <div className="dx-cotesp-head">
+            <div className="dx-cotesp-eyebrow">Comercial · Cotización especial</div>
+            <h1 className="dx-cotesp-title">{cotizacion.numero}<span className="dx-cotesp-pill is-violet">Especial</span><span className={`dx-cotesp-pill ${estadoClase}`}><i />{estadoLabel}</span></h1>
+            <p className="dx-cotesp-sub">{cuentaNombre && <strong>{cuentaNombre}</strong>}{cuenta?.ruc && <> · RUC {cuenta.ruc}</>}{oportunidad?.nombre && <> · {oportunidad.nombre}</>}{plantillaVistaPrevia && <> · Plantilla {plantillaVistaPrevia.nombre_interno || ''}{plantillaVistaPrevia.version ? ` v${plantillaVistaPrevia.version}` : ''}</>}</p>
+          </div>
+          <div className="dx-cotesp-acts">
+            {accionPrincipal}
+            {emitida && <button type="button" className="dx-cotesp-btn" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{I.download}{generandoPDF ? 'Generando PDF…' : 'PDF'}</button>}
+          </div>
+        </header>
+
+        <section className="dx-cotesp-card dx-cotesp-flow" aria-label="Ciclo de la cotización">
+          {pasosCicloEsp.map((paso, index) => (
+            <div key={paso.titulo} className={`dx-cotesp-step ${paso.hecho ? 'is-done' : index === pasoActualEsp ? 'is-now' : 'is-todo'}`}>
+              <span className="dx-cotesp-dot">{paso.hecho ? I.check : index + 1}</span>
+              <b>{paso.titulo}</b>
+              <span className="dx-cotesp-cap">{paso.detalle || '—'}</span>
+            </div>
+          ))}
+        </section>
+
+        {notaOrigen}
+        {error && <div className="dx-cotesp-note is-error" role="alert">{error}</div>}
+        {osVinculadaError && <div className="dx-cotesp-note is-warn">No se pudo verificar la OS vinculada: {osVinculadaError}</div>}
+        {plantillaNuevaDisponible && <div className="dx-cotesp-note is-warn dx-cotesp-note-row"><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="dx-cotesp-btn is-sm" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
+        {readonly && <div className="dx-cotesp-note is-info">Documento emitido: los datos y el documento mostrado son el snapshot guardado al emitir.</div>}
+
+        <div className="dx-cotesp-doc cotizacion-especial-preview-layout" style={{'--cotizacion-preview-height': alturaResumenCotizacion ? `${alturaResumenCotizacion}px` : undefined}}>
+          <div ref={resumenCotizacionRef} className="dx-cotesp-col">
+            <ReferenciaHojaCosteo hoja={hojaCosteoReferencia} moneda={form.moneda} />
+            <section className="dx-cotesp-card">
+              <div className="dx-cotesp-card-h"><h2>Ítems</h2>{editable && form.origen_items === 'manual' ? <button type="button" className="dx-cotesp-btn is-sm" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button> : <span>{form.items.length} {form.items.length === 1 ? 'ítem' : 'ítems'}</span>}</div>
+              <div className="dx-cotesp-card-b">
+                {form.origen_items === 'hoja_costeo' && <div className="dx-cotesp-note is-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}
+                <ItemsEditor items={form.items} unidades={unidades} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} mostrarTotales={false} onChange={items => setForm(current => ({ ...current, items }))} />
+              </div>
+            </section>
+            {panelTotales(!readonly)}
+            <section className="dx-cotesp-card">
+              <div className="dx-cotesp-card-h"><h2>Contacto, validez y hitos</h2>{editable && <button type="button" className="dx-cotesp-btn is-sm" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div>
+              <div className="dx-cotesp-card-b">
+                {selectorDatos}
+                <div className="dx-cotesp-sep" />
+                <HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} />
+              </div>
+            </section>
+            {cotizacion.estado === 'enviada' && cotizacion.token_aceptacion && <AceptacionEspecialQR token={cotizacion.token_aceptacion} />}
+            {aceptadaEsp && (
+              <section className="dx-cotesp-card">
+                <div className="dx-cotesp-card-h"><h2>Aceptación registrada</h2><span className="dx-cotesp-pill is-green"><i />{cotizacion.aceptacion_tipo === 'digital' ? 'Digital' : 'Manual'}</span></div>
+                <div className="dx-cotesp-card-b">
+                  <div className="dx-cotesp-kv"><span>Aceptado por</span><b>{cotizacion.aceptacion_nombre || '—'}</b></div>
+                  <div className="dx-cotesp-kv"><span>Fecha</span><b>{fechaEsp(cotizacion.aceptacion_fecha) || '—'}</b></div>
+                  {cotizacion.aceptacion_canal && <div className="dx-cotesp-kv"><span>Canal</span><b>{CANALES_ACEPTACION[cotizacion.aceptacion_canal] || cotizacion.aceptacion_canal}</b></div>}
+                </div>
+              </section>
+            )}
+          </div>
+          <section className="dx-cotesp-card cotizacion-especial-preview-card">
+            <div className="dx-cotesp-card-h"><h2>Vista previa del documento</h2><span>Valores {readonly ? 'emitidos' : 'actuales'}</span></div>
+            <div className="dx-cotesp-card-b cotizacion-especial-preview-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef} className="cotizacion-especial-preview-content"><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="dx-cotesp-note is-error">{plantillaError}</div> : plantillaLoading ? <div className="dx-cotesp-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="dx-cotesp-note is-error">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div>
+          </section>
+        </div>
+      </div>
+      {aceptacionManualAbierta && <AceptacionManualEspecialModal onClose={() => setAceptacionManualAbierta(false)} onConfirmar={registrarAceptacionManual} />}
+    </div>;
+  }
+
+  const irAPaso = destino => { if (destino < paso) { setError(''); setPaso(destino); } };
+  const plantillaResuelta = Boolean(plantilla && form.tipo_documento_id && !cambiandoPlantilla);
+
+  return <div className="dx-cotesp">
+    <NuevaCuentaModal open={nuevaCuentaAbierta} empresa={empresa} crearCuenta={crearCuenta} comercialesAsignables={comercialesAsignables} zIndex={1200} onClose={() => setNuevaCuentaAbierta(false)} onCreated={cuenta => { setCuentasLocales(actuales => [cuenta, ...actuales.filter(item => item.id !== cuenta.id)]); setForm(current => ({ ...current, cuenta_id:cuenta.id, contacto_id:'' })); }} />
+    <div className="dx-cotesp-in">
+      <button type="button" className="dx-cotesp-back" onClick={onBack}>{I.chevLeft}Cotizaciones</button>
+      <div className="dx-cotesp-eyebrow">Comercial · Nueva cotización especial</div>
+      <h1 className="dx-cotesp-title">Nueva Cotización Especial</h1>
+      <p className="dx-cotesp-sub dx-cotesp-sub-paso">Paso {paso} de 5 · {PASOS_WIZARD[paso - 1]}</p>
+
+      <nav className="dx-cotesp-card dx-cotesp-stepper" aria-label="Pasos de la cotización">
+        {PASOS_WIZARD.map((titulo, index) => {
+          const numeroPaso = index + 1;
+          const estado = numeroPaso < paso ? 'is-done' : numeroPaso === paso ? 'is-now' : 'is-todo';
+          return (
+            <button type="button" key={titulo} className={`dx-cotesp-st ${estado}`} onClick={() => irAPaso(numeroPaso)} disabled={numeroPaso >= paso} aria-current={numeroPaso === paso ? 'step' : undefined} aria-label={`Paso ${numeroPaso}: ${titulo}`}>
+              <span className="dx-cotesp-st-d">{numeroPaso < paso ? I.check : numeroPaso}</span>
+              <span className="dx-cotesp-st-t"><b>{titulo}</b><small>{numeroPaso < paso ? 'Completo' : numeroPaso === paso ? 'En curso' : 'Pendiente'}</small></span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {error && <div className="dx-cotesp-note is-error" role="alert">{error}</div>}
+      {notaOrigen}
+
+      <div className="dx-cotesp-grid">
+        <div className="dx-cotesp-col">
+          {paso === 1 && (
+            <section className="dx-cotesp-card">
+              <div className="dx-cotesp-card-h"><h2>Plantilla del documento</h2></div>
+              <div className="dx-cotesp-card-b">
+                {plantillaResuelta
+                  ? <div className="dx-cotesp-resolved">
+                      <span className="dx-cotesp-resolved-ic">{I.file}</span>
+                      <span className="dx-cotesp-resolved-t"><b>{plantillaEtiqueta}</b><small>Tipo: {tipo?.nombre || '—'}{plantillaInicialId && form.plantilla_documento_id === plantillaInicialId ? ' · elegida en "Nueva cotización"' : ''}</small></span>
+                      <button type="button" className="dx-cotesp-btn is-sm" onClick={() => setCambiandoPlantilla(true)}>Cambiar</button>
+                    </div>
+                  : <div className="grid-2">
+                      <div className="input-group"><label>Tipo de documento</label><select className="input" value={form.tipo_documento_id} onChange={event => cambiarTipo(event.target.value)}><option value="">Seleccione…</option>{tiposVisibles.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div>
+                      <div className="input-group"><label>Plantilla publicada</label><select className="input" value={form.plantilla_documento_id} disabled={!form.tipo_documento_id} onChange={event => { setForm(current => ({ ...current, plantilla_documento_id:event.target.value })); setCambiandoPlantilla(false); }}><option value="">Seleccione…</option>{plantillas.map(row => <option key={row.id} value={row.id}>v{row.version} — {row.nombre_interno}</option>)}</select></div>
+                    </div>}
+                <p className="dx-cotesp-muted">La plantilla define los bloques y el formato del documento que recibirá el cliente.</p>
+              </div>
+            </section>
+          )}
+
+          {paso === 2 && (
+            <>
+              <section className="dx-cotesp-card">
+                <div className="dx-cotesp-card-h"><h2>Cliente</h2></div>
+                <div className="dx-cotesp-card-b">
+                  <div className="grid-2">
+                    <div className="input-group"><label>Cuenta</label><select className="input" value={form.cuenta_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => { if (event.target.value === '__crear_nueva__') { setNuevaCuentaAbierta(true); return; } setForm(current => ({ ...current, cuenta_id:event.target.value, contacto_id:'' })); }}><option value="">Seleccione…</option>{cuentasLocales.filter(row => row.empresa_id === empresa?.id).map(row => <option key={row.id} value={row.id}>{row.razon_social || row.nombre_comercial}</option>)}<option value="__crear_nueva__">+ Crear nueva cuenta</option></select></div>
+                    <div className="input-group"><label>Oportunidad (opcional)</label><select className="input" value={form.oportunidad_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, oportunidad_id:event.target.value }))}><option value="">Sin oportunidad</option>{oportunidades.filter(row => row.empresa_id === empresa?.id && (!form.cuenta_id || row.cuenta_id === form.cuenta_id)).map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div>
+                    <div className="input-group"><label>Moneda</label><select className="input" value={form.moneda} onChange={event => setForm(current => ({ ...current, moneda:event.target.value }))}>{opcionesMonedaEsp.map(opcion => <option key={opcion.codigo} value={opcion.codigo}>{opcion.codigo}{opcion.nombre ? ` — ${opcion.nombre}` : ''}</option>)}</select></div>
+                  </div>
+                </div>
+              </section>
+              <section className="dx-cotesp-card">
+                <div className="dx-cotesp-card-h"><h2>Ítems</h2><span>{form.items.length} {form.items.length === 1 ? 'ítem' : 'ítems'}</span></div>
+                <div className="dx-cotesp-card-b">
+                  <div className="dx-cotesp-seg" role="group" aria-label="Origen de los ítems">
+                    <button type="button" className={form.origen_items === 'manual' ? 'is-on' : ''} aria-pressed={form.origen_items === 'manual'} onClick={() => setForm(current => ({ ...current, origen_items:'manual', hoja_costeo_id:'' }))}>Manual</button>
+                    <button type="button" className={form.origen_items === 'hoja_costeo' ? 'is-on' : ''} aria-pressed={form.origen_items === 'hoja_costeo'} onClick={() => setForm(current => ({ ...current, origen_items:'hoja_costeo', items:[] }))}>Desde Hoja de Costeo</button>
+                  </div>
+                  {form.origen_items === 'hoja_costeo' && <div className="input-group"><label>Hoja de Costeo aprobada</label><select className="input" value={form.hoja_costeo_id} onChange={event => seleccionarHC(event.target.value)}><option value="">Seleccione…</option>{hojasDisponibles.map(row => <option key={row.id} value={row.id}>{row.numero || row.id}</option>)}</select></div>}
+                  <ItemsEditor items={form.items} unidades={unidades} moneda={form.moneda} disabled={form.origen_items === 'hoja_costeo'} mostrarTotales={false} onChange={items => setForm(current => ({ ...current, items }))} />
+                </div>
+              </section>
+            </>
+          )}
+
+          {paso === 3 && (
+            <section className="dx-cotesp-card">
+              <div className="dx-cotesp-card-h"><h2>Contacto y validez</h2></div>
+              <div className="dx-cotesp-card-b">{selectorDatos}</div>
+            </section>
+          )}
+
+          {paso === 4 && (
+            <section className="dx-cotesp-card">
+              <div className="dx-cotesp-card-h"><h2>Hitos de pago</h2></div>
+              <div className="dx-cotesp-card-b">
+                <HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} />
+              </div>
+            </section>
+          )}
+
+          {paso === 5 && (
+            <>
+              <section className="dx-cotesp-card">
+                <div className="dx-cotesp-card-h"><h2>Revisión</h2></div>
+                <div className="dx-cotesp-card-b">
+                  <div className="dx-cotesp-kv"><span>Plantilla</span><b>{plantillaEtiqueta || '—'}</b></div>
+                  <div className="dx-cotesp-kv"><span>Cliente</span><b>{cuentaNombre || '—'}</b></div>
+                  <div className="dx-cotesp-kv"><span>Ítems</span><b>{form.items.length} · {formatMoney(totals.subtotal, form.moneda)} sin IGV</b></div>
+                  <div className="dx-cotesp-kv"><span>Validez</span><b>{form.validez_tipo === 'dias' ? `${form.validez_dias || '—'} días` : (form.validez_fecha || '—')}</b></div>
+                  <div className="dx-cotesp-kv"><span>Hitos</span><b>{form.hitos_activos ? `${form.hitos_pago.length} hitos` : 'Sin hitos'}</b></div>
+                </div>
+              </section>
+              <section className="dx-cotesp-card">
+                <div className="dx-cotesp-card-h"><h2>Vista previa del documento</h2><span>Valores actuales</span></div>
+                <div className="dx-cotesp-card-b">{plantilla ? <DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /> : <div className="dx-cotesp-muted">Seleccione una plantilla publicada para ver la composición.</div>}</div>
+              </section>
+            </>
+          )}
+        </div>
+
+        <aside className="dx-cotesp-aside">
+          {panelTotales(true)}
+          <section className="dx-cotesp-card">
+            <div className="dx-cotesp-card-h"><h2>Documento</h2></div>
+            <div className="dx-cotesp-card-b">
+              <div className="dx-cotesp-kv"><span>Plantilla</span><b>{plantillaEtiqueta || 'Sin elegir'}</b></div>
+              <div className="dx-cotesp-kv"><span>Cliente</span><b>{cuentaNombre || 'Sin elegir'}</b></div>
+              {form.linea_negocio && <div className="dx-cotesp-kv"><span>Línea</span><b>{LINEAS_NEGOCIO_ESP[form.linea_negocio] || String(form.linea_negocio).replace(/_/g, ' ')}</b></div>}
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+
+    <div className="dx-cotesp-savebar">
+      <button type="button" className="dx-cotesp-btn" onClick={paso === 1 ? onBack : volver}>{I.chevLeft}{paso === 1 ? 'Cancelar' : 'Volver'}</button>
+      {paso < 5
+        ? <button type="button" className="dx-cotesp-btn is-primary" onClick={avanzar}>Continuar</button>
+        : <button type="button" className="dx-cotesp-btn is-primary" disabled={saving} onClick={crear}>{saving ? 'Creando…' : 'Crear borrador'}</button>}
+    </div>
   </div>;
 }
