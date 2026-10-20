@@ -11735,7 +11735,8 @@ function RRHHAdmin() {
   const [firmanteElegidoAdmin, setFirmanteElegidoAdmin] = useState('');
   const [accionFirmaDigitalDocAdmin, setAccionFirmaDigitalDocAdmin] = useState(null);
   const cargarSolicitudesFirmaDigitalAdmin = useCallback(async () => {
-    const docs = (personalDocumentos || []).filter(d => rrhhAdminEsTipoContrato(d.tipo || d) || String(d.tipo_doc || '').toLowerCase().includes('contrato'));
+    const todosLosDocumentos = [...new Map([...(personalDocumentos || []), ...(contratosArchivados || [])].map(doc => [doc.id, doc])).values()];
+    const docs = todosLosDocumentos.filter(d => rrhhAdminEsTipoContrato(d.tipo || d) || String(d.tipo_doc || '').toLowerCase().includes('contrato'));
     try {
       const rows = await contratoFirmaService.listarSolicitudesDocumentos(docs.map(d => d.id));
       const empresaRows = await contratoFirmaService.listarFirmasEmpleador(docs.map(d => d.id));
@@ -11746,7 +11747,7 @@ function RRHHAdmin() {
       for (const firma of empresaRows) (agrupadasEmpresa[firma.documento_id] ||= []).push(firma);
       setFirmasEmpresaAdmin(agrupadasEmpresa);
     } catch { setSolicitudesFirmaDigitalAdmin({}); setFirmasEmpresaAdmin({}); }
-  }, [personalDocumentos]);
+  }, [personalDocumentos, contratosArchivados]);
   useEffect(() => { cargarSolicitudesFirmaDigitalAdmin(); }, [cargarSolicitudesFirmaDigitalAdmin]);
   const enviarSolicitudFirmaTrabajadorAdmin = async (documentoId, canales) => {
     if (accionFirmaDigitalDocAdmin === documentoId) return;
@@ -14019,7 +14020,7 @@ function RRHHAdmin() {
                               const firmado = solicitud?.estado === 'firmado' || req.doc.estado_firma === 'firmado_trabajador';
                               const activa = Boolean(solicitudActiva);
                               const renovacionFirmable = !req.doc.contrato_referencia_id && Boolean(req.doc.contrato_periodo_predecesor_id) && Boolean(req.doc.contrato_periodo_id) && req.doc.estado_firma !== 'firmado_trabajador';
-                              return (activa || firmado || firmaEmpresa) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                              return (solicitud || firmaEmpresa) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                                                 {firmaEmpresa && <span className={`badge ${firmaEmpresa.estado === "firmado" ? "badge-green" : "badge-orange"}`}>{firmaEmpresa.estado === "firmado" ? `Firmado por la empresa · ${new Date(firmaEmpresa.firmado_en).toLocaleDateString("es-PE")}` : `Pendiente firma de la empresa · ${firmaEmpresa.firmante_nombre}`}</span>} {firmaEmpresa?.estado !== "firmado" && firmaEmpresa?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaAdmin(firmaEmpresa.id)}>Firmar como empresa</button>} {firmaEmpresa && (firmaEmpresa.estado !== "firmado" || (!activa && !firmado)) && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firmaEmpresa.id); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>} {firmaEmpresa?.estado === "firmado" && !activa && !firmado && <button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={() => enviarSolicitudFirmaTrabajadorAdmin(req.doc.id, firmaEmpresa.canales_trabajador || [])}>Enviar a firma del trabajador</button>}
                                 {firmaEmpresa?.estado === "firmado" && firmado ? <span className="badge badge-green">{'Firmado por empresa y trabajador ' + '\u00b7 ' + (solicitud?.firmado_en ? new Date(solicitud.firmado_en).toLocaleDateString('es-PE') : '')}</span> : solicitud && <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
                                                   {firmado ? `Firmado electr\u00f3nicamente${solicitud.firmado_en ? ` \u00b7 ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma \u00b7 vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
