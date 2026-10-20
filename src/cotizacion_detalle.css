@@ -119,6 +119,7 @@
 .dx-cotd-cap { overflow: hidden; color: var(--dx-cotd-gray); font-size: 12px; text-overflow: ellipsis; }
 
 .dx-cotd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.dx-cotd-aside .dx-cotd-card-b { padding: 14px 16px; }
 .dx-cotd-main { min-width: 0; }
 .dx-cotd-aside { position: sticky; top: 16px; min-width: 0; }
 .dx-cotd-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 16px; }
@@ -185,7 +186,11 @@
 .dx-cotd-os > span { display: inline-flex; align-items: center; gap: 8px; }
 .dx-cotd-os:not(.is-static):hover { filter: brightness(.97); }
 
-@container (max-width: 1040px) {
+@container (max-width: 1100px) {
+  .dx-cotd-grid { grid-template-columns: minmax(0, 1fr) 300px; }
+  .dx-cotd-qr { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
+}
+@container (max-width: 880px) {
   .dx-cotd-grid { grid-template-columns: minmax(0, 1fr); }
   .dx-cotd-aside { position: static; order: -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
   .dx-cotd-aside .dx-cotd-card + .dx-cotd-card { margin-top: 0; }

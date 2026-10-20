@@ -1296,8 +1296,12 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
 
   const historial = cot.historial_versiones || [];
 
-  const fechaHoraDx = valor => (valor ? new Date(valor).toLocaleString('es-PE', { dateStyle:'short', timeStyle:'short' }) : null);
-  const fechaCortaDx = valor => (valor ? new Date(valor).toLocaleDateString('es-PE', { day:'2-digit', month:'short' }) : null);
+  const fechaLocalDx = valor => {
+    const fecha = valor ? new Date(valor) : null;
+    return fecha && !Number.isNaN(fecha.getTime()) ? fecha : null;
+  };
+  const fechaCortaDx = valor => { const f = fechaLocalDx(valor); return f ? `${String(f.getDate()).padStart(2, '0')} ${COT_MESES_DX[f.getMonth()]}` : null; };
+  const fechaHoraDx = valor => { const f = fechaLocalDx(valor); return f ? `${fechaCortaDx(valor)} ${f.getFullYear()} · ${String(f.getHours()).padStart(2, '0')}:${String(f.getMinutes()).padStart(2, '0')}` : null; };
   const estadoDx = COT_ESTADOS_DX[cot.estado] || { label: String(cot.estado || '—').replace('_', ' '), clase: 'is-gray' };
   const clienteNombre = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
   const tieneOS = Boolean(osVinculada || cot.os_cliente_id);
@@ -1312,7 +1316,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
     { titulo:'Borrador', hecho:true, detalle:cotFechaDx(cot.fecha) },
     { titulo: esPendiente ? 'Pendiente de revisión' : 'Aprobada internamente', hecho:aprobadaInterna || enviadaCliente, detalle: aprobadaInterna ? [fechaCortaDx(cot.aprobada_interna_at), cot.aprobada_interna_por].filter(Boolean).join(' · ') : (esPendiente ? 'Jefatura comercial' : 'Revisión de jefatura') },
     { titulo: enviadaCliente ? 'Enviada' : 'Enviar al cliente', hecho:enviadaCliente, detalle: cot.fecha_envio ? fechaHoraDx(cot.fecha_envio) : 'Bloquea la edición' },
-    { titulo:'Aceptada por el cliente', hecho:aceptadaCliente, detalle: cot.aceptacion_fecha ? `${fechaCortaDx(cot.aceptacion_fecha)} · ${cot.aceptacion_nombre || 'Cliente'} (QR)` : (cot.aprobacion_tipo === 'manual' ? [cot.aprobacion_fecha_cliente, cot.aprobacion_canal].filter(Boolean).join(' · ') : 'QR o registro manual') },
+    { titulo:'Aceptada por el cliente', hecho:aceptadaCliente, detalle: cot.aceptacion_fecha ? `${fechaCortaDx(cot.aceptacion_fecha)} · ${cot.aceptacion_nombre || 'Cliente'} (QR)` : (cot.aprobacion_tipo === 'manual' ? [cot.aprobacion_fecha_cliente ? cotFechaDx(cot.aprobacion_fecha_cliente) : null, cot.aprobacion_canal].filter(Boolean).join(' · ') : 'QR o registro manual') },
     { titulo:'Orden de servicio', hecho:tieneOS || cot.estado === 'convertida', detalle: tieneOS ? osEtiqueta : 'Al aceptar' },
   ];
   const pasoActual = pasosCiclo.findIndex(paso => !paso.hecho);
@@ -1539,7 +1543,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                 <div className="dx-cotd-card-h"><h2>Aprobación registrada</h2><span className="dx-cotd-pill is-cyan"><i />Manual</span></div>
                 <div className="dx-cotd-card-b">
                   <div className="dx-cotd-kv"><span>Canal</span><b>{cot.aprobacion_canal || '—'}</b></div>
-                  <div className="dx-cotd-kv"><span>Fecha del cliente</span><b>{cot.aprobacion_fecha_cliente || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Fecha del cliente</span><b>{cot.aprobacion_fecha_cliente ? cotFechaDx(cot.aprobacion_fecha_cliente) : '—'}</b></div>
                   <div className="dx-cotd-kv"><span>Registrado por</span><b>{cot.aprobacion_registrada_por || '—'}</b></div>
                   <div className="dx-cotd-kv"><span>Registrado el</span><b>{fechaHoraDx(cot.aprobacion_registrada_at) || '—'}</b></div>
                   {cot.aprobacion_notas && <div className="dx-cotd-desc">{cot.aprobacion_notas}</div>}
