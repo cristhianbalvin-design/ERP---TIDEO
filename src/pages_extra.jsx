@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import './hoja_costeo_listado.css';
+import './cotizaciones_listado.css';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
@@ -334,6 +335,51 @@ const cargarLineasRelacionalesDetalleHC = async (hc) => {
 
 // ============ COTIZACIONES ============
 
+// ── Listado de Cotizaciones (dx-cot) ──────────────────────────────────
+const FILTROS_COT_VACIOS = { q:'', tipo:'', moneda:'', periodo:'', desde:'', hasta:'', estado:'todas', soloConvertir:false };
+const COT_ESTADOS_DX = {
+  borrador:{ label:'Borrador', clase:'is-amber' },
+  enviada:{ label:'Enviada', clase:'is-blue' },
+  pendiente_aprobacion:{ label:'Pend. aprobación', clase:'is-violet' },
+  en_negociacion:{ label:'En negociación', clase:'is-violet' },
+  emitido:{ label:'Emitida', clase:'is-blue' },
+  aprobada:{ label:'Aprobada', clase:'is-cyan' },
+  ganada:{ label:'Ganada', clase:'is-green' },
+  aceptada:{ label:'Aceptada', clase:'is-green' },
+  convertida:{ label:'Convertida', clase:'is-gray' },
+  perdida:{ label:'Perdida', clase:'is-red' },
+  anulado:{ label:'Anulada', clase:'is-red' },
+};
+const COT_CHIPS_DX = [
+  ['todas', 'Todas', 'var(--dx-cot-navy)'],
+  ['borrador', 'Borrador', 'var(--dx-cot-amber-dot)'],
+  ['enviadas', 'Enviada / emitida', 'var(--dx-cot-blue-dot)'],
+  ['aprobada', 'Aprobada', 'var(--dx-cot-cyan)'],
+  ['aceptada', 'Aceptada', 'var(--dx-cot-green-dot)'],
+  ['convertida', 'Convertida', '#9CA3AF'],
+  ['cerradas', 'Perdida / anulada', 'var(--dx-cot-red-fg)'],
+];
+const COT_ESTADOS_ABIERTOS_DX = ['borrador', 'enviada', 'emitido', 'pendiente_aprobacion', 'en_negociacion'];
+const cotEnGrupoDx = (estado, grupo) => {
+  if (grupo === 'todas') return true;
+  if (grupo === 'enviadas') return ['enviada', 'emitido', 'pendiente_aprobacion', 'en_negociacion'].includes(estado);
+  if (grupo === 'aceptada') return estado === 'aceptada' || estado === 'ganada';
+  if (grupo === 'cerradas') return estado === 'perdida' || estado === 'anulado';
+  return estado === grupo;
+};
+const cotNormDx = valor => String(valor || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const COT_MESES_DX = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const cotFechaDx = fecha => {
+  const [y, m, d] = String(fecha || '').slice(0, 10).split('-');
+  return y && m && d ? `${d} ${COT_MESES_DX[Number(m) - 1] || m} ${y}` : '—';
+};
+const cotDiasDesdeDx = (fecha, hoy) => {
+  if (!fecha) return null;
+  const dias = Math.round((new Date(`${hoy}T00:00:00`) - new Date(`${String(fecha).slice(0, 10)}T00:00:00`)) / 86400000);
+  return Number.isFinite(dias) ? dias : null;
+};
+const cotInicialesDx = nombre => String(nombre || '').split(' ').filter(Boolean).slice(0, 2).map(parte => parte[0]).join('').toUpperCase();
+
 const COT_BADGE = e =>
   e === 'aprobada' || e === 'ganada' ? 'badge-green' :
   e === 'enviada' ? 'badge-cyan' :
@@ -359,7 +405,7 @@ function CotizacionesInner() {
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
-  const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
+  const [filtros, setFiltros] = useState(FILTROS_COT_VACIOS);
   const [cotizacionesEspeciales, setCotizacionesEspeciales] = useState([]);
   const [cotizacionesEspecialesError, setCotizacionesEspecialesError] = useState('');
   const [partidasHCPorId, setPartidasHCPorId] = useState({});
@@ -431,7 +477,7 @@ function CotizacionesInner() {
         const sb = await getSupabaseClient();
         let request = sb
           .from('cotizaciones_especiales')
-          .select('id,empresa_id,sociedad_id,tipo_documento_id,plantilla_documento_id,cuenta_id,oportunidad_id,hoja_costeo_id,numero,moneda,items,subtotal,igv,total,estado,emitida_at,created_at')
+          .select('id,empresa_id,sociedad_id,tipo_documento_id,plantilla_documento_id,cuenta_id,oportunidad_id,hoja_costeo_id,numero,moneda,items,subtotal,igv,total,estado,emitida_at,created_at,created_by')
           .eq('empresa_id', empresa.id);
         if (!modoVistaSociedadCotizaciones.sinFiltro) {
           const sociedades = modoVistaSociedadCotizaciones.sociedadesIds.filter(Boolean);
@@ -802,31 +848,74 @@ function CotizacionesInner() {
     })),
   ].sort((a, b) => (b.fecha_orden || '').localeCompare(a.fecha_orden || ''));
 
-  const filtered = cotizacionesBandeja.filter(c => {
+  const hoyCot = new Date().toLocaleDateString('en-CA');
+  const osClientesLista = osClientes || [];
+  const nombreUsuarioCot = id => (id ? usuarios?.find(u => u.id === id)?.nombre : null) || null;
+  const filasCot = cotizacionesBandeja.filter(c => {
     const opp = getOpp(c.oportunidad_id);
     const ownerUserId = c.responsable_id || opp?.responsable_id || null;
     const ownerName = opp?.responsable || null;
-    if (!canUserSeeOwner({ viewer: authUser, ownerUserId, ownerName, users: usuarios, roles })) return false;
-    const cliente = getCuentaNombre(c.cuenta_id || opp?.cuenta_id);
-    if (query && !c.numero.toLowerCase().includes(query) && !cliente.toLowerCase().includes(query) && !(opp?.nombre || '').toLowerCase().includes(query)) return false;
-    if (filtros.cliente && !cliente.toLowerCase().includes(filtros.cliente.toLowerCase())) return false;
-    if (filtros.oportunidad && !(opp?.nombre || '').toLowerCase().includes(filtros.oportunidad.toLowerCase())) return false;
-    if (filtros.estado && c.estado !== filtros.estado) return false;
-    if (filtros.fechaDesde && (c.fecha || '') < filtros.fechaDesde) return false;
-    if (filtros.fechaHasta && (c.fecha || '') > filtros.fechaHasta) return false;
+    return canUserSeeOwner({ viewer: authUser, ownerUserId, ownerName, users: usuarios, roles });
+  }).map(c => {
+    const opp = getOpp(c.oportunidad_id);
+    const esEspecial = c.origen === 'especial';
+    const moneda = normalizeCurrencyCode(c.moneda);
+    const conOS = Boolean(c.os_cliente_id) || osClientesLista.some(os => (esEspecial ? os.cotizacion_especial_id : os.cotizacion_id) === c.id);
+    return {
+      cot: c,
+      opp,
+      esEspecial,
+      moneda,
+      conOS,
+      cliente: getCuentaNombre(c.cuenta_id || opp?.cuenta_id),
+      oportunidad: opp?.nombre || '',
+      responsable: esEspecial ? nombreUsuarioCot(c.created_by) : (nombreUsuarioCot(c.responsable_id || opp?.responsable_id) || opp?.responsable || null),
+      total: Number(esEspecial ? c.total : (c.total_impl || c.total)) || 0,
+      recurrente: esEspecial ? 0 : Number(c.total_rec) || 0,
+      porConvertir: ['aprobada', 'aceptada', 'ganada'].includes(c.estado) && !conOS,
+      dias: cotDiasDesdeDx(c.fecha, hoyCot),
+    };
+  });
+  const qCot = cotNormDx(filtros.q.trim());
+  const qGlobalCot = cotNormDx(query);
+  const filasFiltradasCot = filasCot.filter(f => {
+    const texto = cotNormDx([f.cot.numero, f.cliente, f.oportunidad, f.responsable, COT_ESTADOS_DX[f.cot.estado]?.label, f.esEspecial ? 'especial' : 'estandar'].join(' '));
+    if (qGlobalCot && !texto.includes(qGlobalCot)) return false;
+    if (qCot && !texto.includes(qCot)) return false;
+    if (filtros.tipo === 'estandar' && f.esEspecial) return false;
+    if (filtros.tipo === 'especial' && !f.esEspecial) return false;
+    if (filtros.moneda && f.moneda !== filtros.moneda) return false;
+    const fecha = String(f.cot.fecha || '').slice(0, 10);
+    if (filtros.periodo === 'mes' && fecha.slice(0, 7) !== hoyCot.slice(0, 7)) return false;
+    if ((filtros.periodo === '30' || filtros.periodo === '90') && (f.dias === null || f.dias > Number(filtros.periodo))) return false;
+    if (filtros.periodo === 'exacta' && filtros.desde && fecha !== filtros.desde) return false;
+    if (filtros.periodo === 'rango' && ((filtros.desde && fecha < filtros.desde) || (filtros.hasta && fecha > filtros.hasta))) return false;
+    if (filtros.soloConvertir && !f.porConvertir) return false;
     return true;
   });
-  const filtrosActivos = Object.values(filtros).some(v => v !== '');
+  const listaCot = filasFiltradasCot.filter(f => cotEnGrupoDx(f.cot.estado, filtros.estado));
+  const contarGrupoCot = grupo => filasCot.filter(f => cotEnGrupoDx(f.cot.estado, grupo)).length;
+  const especialesCot = filasCot.filter(f => f.esEspecial).length;
+  const abiertasCot = filasCot.filter(f => COT_ESTADOS_ABIERTOS_DX.includes(f.cot.estado));
+  const sumaMonedaCot = moneda => abiertasCot.filter(f => f.moneda === moneda).reduce((acc, f) => acc + f.total, 0);
+  const pipelinePenCot = sumaMonedaCot('PEN');
+  const pipelineUsdCot = sumaMonedaCot('USD');
+  const porConvertirCot = filasCot.filter(f => f.porConvertir).length;
+  const filtrosActivos = Boolean(filtros.q || filtros.tipo || filtros.moneda || filtros.periodo || filtros.estado !== 'todas' || filtros.soloConvertir);
+  const setFiltroCot = (campo, valor) => setFiltros(actual => ({ ...actual, [campo]: valor }));
+  const abrirCot = c => (c.origen === 'especial' ? navigate('cotizaciones', { especial:'detalle', especial_id:c.id }) : navigate('cotizaciones', { detail:c.id }));
 
   return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Cotizaciones</h1>
-          <div className="page-sub">{cotizacionesBandeja.length} cotizaciones registradas</div>
-        </div>
-        <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización.' : undefined} onClick={() => setSelectorNuevaCotizacion(true)}>+ Nueva Cotización</button>
-      </div>
+    <div className="dx-cot">
+      <div className="dx-cot-in">
+        <header className="dx-cot-top">
+          <div>
+            <div className="dx-cot-eyebrow">Comercial</div>
+            <h1 className="dx-cot-title">Cotizaciones</h1>
+            <p className="dx-cot-sub">{filasCot.length} cotizaciones · {filasCot.length - especialesCot} estándar y {especialesCot} especiales</p>
+          </div>
+          <button type="button" className="dx-cot-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización.' : undefined} onClick={() => setSelectorNuevaCotizacion(true)}>{I.plus}Nueva cotización</button>
+        </header>
 
       {selectorNuevaCotizacion && <SelectorTipoCotizacion empresaId={empresa?.id} crearCuenta={crearCuenta} comercialesAsignables={comercialesAsignables} onHojaCosteo={lineaNegocio => abrirEntradaDirecta('hoja_costeo', lineaNegocio)} onEstandar={(lineaNegocio, tarifarioContexto) => abrirEntradaDirecta('estandar', lineaNegocio, tarifarioContexto)} onEspecial={(_plantilla, lineaNegocio, tarifarioContexto) => { setSelectorNuevaCotizacion(false); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:_plantilla.id, tipo_documento_id:_plantilla.tipo_documento_id, cuenta_id:tarifarioContexto?.cuenta_id || null, proyecto_id:tarifarioContexto?.proyecto_id || null, contrato_alquiler_id:tarifarioContexto?.contrato_alquiler_id || null, tarifario_contexto:tarifarioContexto || null, linea_negocio: tarifarioContexto ? 'flota_alquileres' : (lineaNegocio || null) }); }} onCancel={() => setSelectorNuevaCotizacion(false)} onError={mensaje => addNotificacion(mensaje)} />}
       {entradaDirecta && <div className="modal-backdrop"><form className="modal" style={{ maxWidth:520 }} onSubmit={confirmarEntradaDirecta}><div className="modal-head"><div><h2>{entradaDirecta.tipo === 'hoja_costeo' ? 'Nueva Hoja de Costeo' : 'Nueva Cotización Estándar'}</h2><div className="text-muted" style={{ fontSize:12 }}>Selecciona el cliente para continuar.</div></div><button type="button" className="icon-btn" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>{I.x}</button></div><div className="modal-body"><div className="input-group"><label>Cuenta *</label><select className="select" required value={entradaDirecta.cuenta_id} disabled={entradaDirecta.saving} onChange={event => setEntradaDirecta(actual => ({ ...actual, cuenta_id:event.target.value, error:'' }))}><option value="">Selecciona una cuenta…</option>{cuentas.filter(cuenta => cuenta.empresa_id === empresa?.id).map(cuenta => <option key={cuenta.id} value={cuenta.id}>{cuenta.razon_social || cuenta.nombre_comercial}</option>)}</select></div>{entradaDirecta.error && <div className="alert alert-danger" style={{ marginTop:14 }}>{entradaDirecta.error}</div>}</div><div className="modal-foot"><button type="button" className="btn btn-secondary" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={entradaDirecta.saving}>{entradaDirecta.saving ? 'Creando…' : 'Continuar'}</button></div></form></div>}
@@ -845,71 +934,112 @@ function CotizacionesInner() {
         }}
       />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, marginBottom: 16 }}>
-        <input className="input" placeholder="Buscar por cliente…" value={filtros.cliente} onChange={e => setFiltros(f => ({...f, cliente: e.target.value}))} />
-        <input className="input" placeholder="Buscar por oportunidad…" value={filtros.oportunidad} onChange={e => setFiltros(f => ({...f, oportunidad: e.target.value}))} />
-        <select className="select" value={filtros.estado} onChange={e => setFiltros(f => ({...f, estado: e.target.value}))}>
-          <option value="">Todos los estados</option>
-          <option value="borrador">Borrador</option>
-          <option value="enviada">Enviada</option>
-          <option value="pendiente_aprobacion">Pendiente aprobación</option>
-          <option value="aprobada">Aprobada</option>
-          <option value="aceptada">Aceptada</option>
-          <option value="convertida">Convertida</option>
-          <option value="perdida">Perdida</option>
-          <option value="emitido">Emitido</option>
-          <option value="anulado">Anulado</option>
-        </select>
-        <input type="date" className="input" value={filtros.fechaDesde} onChange={e => setFiltros(f => ({...f, fechaDesde: e.target.value}))} />
-        <input type="date" className="input" value={filtros.fechaHasta} onChange={e => setFiltros(f => ({...f, fechaHasta: e.target.value}))} />
-        {filtrosActivos && (
-          <button className="btn btn-secondary" onClick={() => setFiltros({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' })}>Limpiar</button>
-        )}
-      </div>
+        <section className="dx-cot-kpis" aria-label="Resumen de cotizaciones">
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>Total</span><span className="dx-cot-ico is-cyan">{I.file}</span></div>
+            <strong className="dx-cot-kpi-val">{filasCot.length}</strong>
+            <span className="dx-cot-kpi-note">{contarGrupoCot('convertida')} convertidas en OS</span>
+          </div>
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>En borrador</span><span className="dx-cot-ico is-amber">{I.edit}</span></div>
+            <strong className="dx-cot-kpi-val">{contarGrupoCot('borrador')}</strong>
+            <span className="dx-cot-kpi-note">Por terminar y enviar</span>
+          </div>
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>Esperando cliente</span><span className="dx-cot-ico is-blue">{I.send}</span></div>
+            <strong className="dx-cot-kpi-val">{contarGrupoCot('enviadas')}</strong>
+            <span className="dx-cot-kpi-note">Enviadas o emitidas</span>
+          </div>
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>Pipeline abierto</span><span className="dx-cot-ico is-green">{I.trend}</span></div>
+            <strong className="dx-cot-kpi-val is-money">{moneyD(pipelinePenCot, 'S/')}</strong>
+            <span className="dx-cot-kpi-note">+ {moneyD(pipelineUsdCot, 'US$')}</span>
+          </div>
+          <button type="button" className={`dx-cot-kpi is-alert${filtros.soloConvertir ? ' is-on' : ''}`} aria-pressed={filtros.soloConvertir} aria-label="Filtrar cotizaciones por convertir" onClick={() => setFiltroCot('soloConvertir', !filtros.soloConvertir)}>
+            <div className="dx-cot-kpi-top"><span>Por convertir</span><span className="dx-cot-ico is-amber">{I.alert}</span></div>
+            <strong className="dx-cot-kpi-val">{porConvertirCot}</strong>
+            <span className="dx-cot-kpi-note">Aprobadas sin OS · pulsa para filtrar</span>
+          </button>
+        </section>
 
-      <div className="card">
-        {cotizacionesEspecialesError && <div className="alert alert-warning" style={{margin:12}}>No se pudieron cargar las Cotizaciones Especiales: {cotizacionesEspecialesError}</div>}
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr><th>Número</th>{mostrarBadgeSociedadCotizaciones && <th>Sociedad</th>}<th>Cliente</th><th>Oportunidad</th><th>Implementación</th><th>Recurrente/mes</th><th>Fecha</th><th>Estado</th></tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => {
-                const opp = getOpp(r.oportunidad_id);
-                const cliente = getCuentaNombre(r.cuenta_id || opp?.cuenta_id);
-                const esEspecial = r.origen === 'especial';
-                const impl = esEspecial ? null : (r.total_impl || r.total || 0);
-                const rec  = esEspecial ? null : (r.total_rec || 0);
-                const badgeEstado = esEspecial ? COT_ESPECIAL_BADGE(r.estado) : COT_BADGE(r.estado);
-                return (
-                  <tr key={`${r.origen}-${r.id}`} onClick={() => esEspecial ? navigate('cotizaciones', { especial:'detalle', especial_id:r.id }) : navigate('cotizaciones', { detail:r.id })} className="hover-row" style={{cursor:'pointer'}}>
-                    <td className="mono" style={{fontWeight:600}}>
-                      {r.numero}
-                      {esEspecial
-                        ? <span className="badge badge-purple" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>Especial</span>
-                        : r.version > 1 && <span className="badge badge-gray" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>v{r.version}</span>}
-                    </td>
-                    {mostrarBadgeSociedadCotizaciones && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
-                    <td><strong>{cliente}</strong></td>
-                    <td className="text-muted">{opp?.nombre || '—'}</td>
-                    <td className="num"><strong>{esEspecial ? '—' : moneyD(impl, currencySymbol(r.moneda))}</strong></td>
-                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? moneyD(rec, currencySymbol(r.moneda)) : '—')}</td>
-                    <td className="text-muted">{r.fecha}</td>
-                    <td><span className={'badge ' + badgeEstado}>{r.estado?.replace('_', ' ')}</span></td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={mostrarBadgeSociedadCotizaciones ? 8 : 7} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
-                  {query ? `No se encontraron resultados para "${query}"` : 'No hay cotizaciones registradas.'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <section className="dx-cot-card" aria-label="Listado de cotizaciones">
+          {cotizacionesEspecialesError && <div className="dx-cot-warn" role="alert">No se pudieron cargar las Cotizaciones Especiales: {cotizacionesEspecialesError}</div>}
+          <div className="dx-cot-bar">
+            <h2 className="dx-cot-bar-title">Cotizaciones<span className="dx-cot-count">{listaCot.length} de {filasCot.length}</span></h2>
+            <label className="dx-cot-search"><span className="dx-cot-search-ico">{I.search}</span><input type="search" value={filtros.q} onChange={event => setFiltroCot('q', event.target.value)} placeholder="Buscar número, cliente, oportunidad…" aria-label="Buscar cotizaciones" /></label>
+            <select className="dx-cot-select" value={filtros.tipo} onChange={event => setFiltroCot('tipo', event.target.value)} aria-label="Filtrar por tipo">
+              <option value="">Todos los tipos</option>
+              <option value="estandar">Estándar</option>
+              <option value="especial">Especial</option>
+            </select>
+            <select className="dx-cot-select" value={filtros.moneda} onChange={event => setFiltroCot('moneda', event.target.value)} aria-label="Filtrar por moneda">
+              <option value="">Toda moneda</option>
+              <option value="PEN">Soles (S/)</option>
+              <option value="USD">Dólares (US$)</option>
+            </select>
+            <select className="dx-cot-select dx-cot-periodo" value={filtros.periodo} onChange={event => setFiltros(actual => ({ ...actual, periodo: event.target.value, desde: '', hasta: '' }))} aria-label="Filtrar por fecha">
+              <option value="">Cualquier fecha</option>
+              <option value="mes">Este mes</option>
+              <option value="30">Últimos 30 días</option>
+              <option value="90">Últimos 90 días</option>
+              <option value="exacta">Fecha exacta…</option>
+              <option value="rango">Rango…</option>
+            </select>
+            {(filtros.periodo === 'exacta' || filtros.periodo === 'rango') && (
+              <div className="dx-cot-range">
+                <input type="date" className="dx-cot-date" value={filtros.desde} onChange={event => setFiltroCot('desde', event.target.value)} aria-label={filtros.periodo === 'exacta' ? 'Fecha exacta' : 'Desde'} />
+                {filtros.periodo === 'rango' && <><span>a</span><input type="date" className="dx-cot-date" value={filtros.hasta} onChange={event => setFiltroCot('hasta', event.target.value)} aria-label="Hasta" /></>}
+              </div>
+            )}
+            {filtrosActivos && <button type="button" className="dx-cot-clear" onClick={() => setFiltros(FILTROS_COT_VACIOS)}>Limpiar</button>}
+          </div>
+          <div className="dx-cot-chips" role="group" aria-label="Filtrar por estado">
+            {COT_CHIPS_DX.map(([grupo, etiqueta, punto]) => {
+              const cantidad = filasFiltradasCot.filter(f => cotEnGrupoDx(f.cot.estado, grupo)).length;
+              return <button type="button" key={grupo} className={`dx-cot-chip${filtros.estado === grupo ? ' is-on' : ''}${cantidad === 0 && grupo !== 'todas' ? ' is-zero' : ''}`} style={{'--dx-cot-dot': punto}} aria-pressed={filtros.estado === grupo} onClick={() => setFiltroCot('estado', grupo)}><i />{etiqueta}<b>{cantidad}</b></button>;
+            })}
+          </div>
+          <div className="dx-cot-cols dx-cot-head" role="row"><span>Cotización</span><span>Cliente y oportunidad</span><span>Estado</span><span>Total</span><span>Responsable</span><span>Fecha</span><span /></div>
+          {listaCot.map(f => {
+            const c = f.cot;
+            const estado = COT_ESTADOS_DX[c.estado] || { label: String(c.estado || '—').replace('_', ' '), clase: 'is-gray' };
+            const simbolo = currencySymbol(f.moneda);
+            const sinMonto = !f.total;
+            const nota = f.recurrente > 0 ? `+ ${moneyD(f.recurrente, simbolo)}/mes` : (f.esEspecial ? 'Total con IGV' : 'Implementación con IGV');
+            const fechaTexto = cotFechaDx(c.fecha);
+            const abrir = () => abrirCot(c);
+            return (
+              <div key={`${c.origen}-${c.id}`} className="dx-cot-cols dx-cot-row" role="button" tabIndex={0} aria-label={`Abrir cotización ${c.numero}, ${f.cliente}, ${estado.label}`} onClick={abrir} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrir(); } }}>
+                <div className="dx-cot-num">
+                  <span className="dx-cot-mono" data-fecha={fechaTexto}>{c.numero}</span>
+                  <div className="dx-cot-tags">
+                    <span className={`dx-cot-tag ${f.esEspecial ? 'is-esp' : 'is-std'}`}>{f.esEspecial ? 'Especial' : 'Estándar'}</span>
+                    {!f.esEspecial && c.version > 1 && <span className="dx-cot-tag is-ver">v{c.version}</span>}
+                    {mostrarBadgeSociedadCotizaciones && <SociedadBadge sociedadId={c.sociedad_id} />}
+                  </div>
+                </div>
+                <div className="dx-cot-client"><strong>{f.cliente}</strong><span>{f.oportunidad || 'Sin oportunidad'}</span></div>
+                <div className="dx-cot-states">
+                  <span className={`dx-cot-pill ${estado.clase}`}><i />{estado.label}</span>
+                  {f.conOS ? <span className="dx-cot-pill is-cyan">Con OS</span> : f.porConvertir ? <span className="dx-cot-pill is-amber">Por convertir</span> : (c.estado === 'borrador' && f.dias > 30 ? <span className="dx-cot-pill is-gray">{f.dias} días sin enviar</span> : null)}
+                </div>
+                <div className={`dx-cot-money${sinMonto ? ' is-empty' : ''}`}><strong>{sinMonto ? '—' : moneyD(f.total, simbolo)}</strong><span>{sinMonto ? 'Sin ítems' : nota}</span></div>
+                <div className={`dx-cot-resp${f.responsable ? '' : ' is-none'}`} data-fecha={fechaTexto}><span className={`dx-cot-avatar${f.responsable ? '' : ' is-none'}`}>{f.responsable ? cotInicialesDx(f.responsable) : '—'}</span><strong>{f.responsable || 'Sin responsable'}</strong></div>
+                <div className="dx-cot-date-cell">{fechaTexto}<span>{f.dias === null ? '' : f.dias <= 0 ? 'hoy' : `hace ${f.dias} d`}</span></div>
+                <span className="dx-cot-go" aria-hidden="true">{I.chevRight}</span>
+              </div>
+            );
+          })}
+          {listaCot.length === 0 && (
+            <div className="dx-cot-empty">
+              {filasCot.length === 0
+                ? <><strong>Aún no hay cotizaciones</strong><span>Créalas con “Nueva cotización” o desde el Pipeline.</span></>
+                : <><strong>Sin resultados</strong><span>Ninguna cotización coincide con los filtros.</span><button type="button" className="dx-cot-btn" onClick={() => setFiltros(FILTROS_COT_VACIOS)}>Limpiar filtros</button></>}
+            </div>
+          )}
+        </section>
       </div>
-    </>
+    </div>
   );
 }
 
