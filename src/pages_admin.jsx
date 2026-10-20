@@ -11077,7 +11077,8 @@ const rrhhAdminSnapshotLaboral = (p = {}, extra = {}) => {
     cargo: extra.cargo ?? p.cargo ?? '',
     cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
     cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
-    remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.remuneracion ?? p.monto_mensual ?? 0,
+    // 0 no es una remuneración válida: se toma el siguiente monto disponible de la ficha.
+    remuneracion_base: Number(extra.remuneracion_base) || Number(p.sueldo_base) || Number(p.remuneracion) || Number(p.monto_mensual) || 0,
     modalidad: extra.modalidad ?? p.modalidad ?? '',
     sede: extra.sede ?? p.sede ?? '',
     sede_id: extra.sede_id ?? p.sede_id ?? '',
