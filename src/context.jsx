@@ -3462,6 +3462,8 @@ export function AppProvider({ children }) {
       monto_facturado: datos.monto_facturado || 0,
       monto_cobrado: datos.monto_cobrado || 0,
       ots_asociadas: datos.ots_asociadas || [],
+      tipo_cobro: datos.tipo_cobro || null,
+      tarifa_mensual: datos.tarifa_mensual ?? null,
     };
 
     try {
