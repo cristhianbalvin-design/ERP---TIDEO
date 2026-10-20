@@ -1,16 +1,16 @@
 import { useEffect, useState as useS3 } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
-import { ZAHORY_SAC_DATA as MOCK } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import { eliminarAdjunto, subirAdjunto } from '../../../../src/services/storageService.js';
 import { pedirRepuestosParte } from '../../services/reservasRepuestosService.js';
 import { MaterialAutocomplete } from './MaterialAutocomplete.jsx';
 import { armarLineasPedido, describirResultadoLinea, validarPedidosParte } from './pedidoRepuestosParteLogic.js';
-import { armarMaterialesConsumidos, calcularTotalRepuestos, estadoInicialConsumos, resolverTecnicoAlCambiarOT } from './parteTallerLogic.js';
+import { armarMaterialesConsumidos, calcularTotalRepuestos, estadoInicialConsumos, resolverTecnicoAlCambiarOT, validarConsumosParte } from './parteTallerLogic.js';
 
 const generarIdParte = () => `pd_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 const generarIdActividad = () => `act_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+const generarIdRepuestoConsumido = () => `cons_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 const crearActividad = (valores = {}) => ({
   id: generarIdActividad(),
   descripcion: '',
@@ -93,555 +93,6 @@ const BacklogModal = ({ onClose }) => {
           </div>
         </div>
       </div>
-    </div>
-  );
-};
-
-// ---------- Reporte diario de mina ----------
-export const ReporteMinaPage = ({ onNav }) => {
-  const [turno, setTurno] = useS3("DIA");
-  const [equipo, setEquipo] = useS3("JB-DD311");
-  const [tipoMant, setTipoMant] = useS3({ prg: false, prv: true, ctvo: true, acc: false });
-  const [estado, setEstado] = useS3('operativo');
-  const [motivoRetorno, setMotivoRetorno] = useS3('');
-  const [repuestos, setRepuestos] = useS3([{ cod: "REP-4412-HYD", desc: "Filtro hidráulico EPIROC", sis: "Hidráulico", cant: 1 }]);
-  const [pedidos, setPedidos] = useS3([
-    { cant: 1, cod: "REP-KIT-DRV", desc: "Kit de drives", sis: "Mecánico", urg: true },
-    { cant: 1, cod: "INS-LCK-001", desc: "Lock tite", sis: "Consumibles", urg: true },
-  ]);
-
-  const [formReporte, setFormReporte] = useS3({
-    equipo_id: 'JB-DD311',
-    contrato_id: 'CT-2026-003',
-    centro_costo: 'FLO-ALQ',
-    cliente: 'Minsur S.A.',
-    fecha: '2026-04-20',
-    turno: 'DÍA',
-    tecnico: 'Miranda Barra, Sandro',
-    avance_ot_pct: 0
-  });
-
-  const getContratoActivoDeEquipo = (equipoId) => {
-    return MOCK.contratos?.find(
-      c => c.equiposScope?.includes(equipoId)
-        && ['Activo', 'vigente', 'por_vencer'].includes(c.estado)
-    ) || null;
-  };
-
-  const handleEquipoChange = (equipoId) => {
-    const contrato = getContratoActivoDeEquipo(equipoId);
-    setFormReporte(prev => ({
-      ...prev,
-      equipo_id:    equipoId,
-      contrato_id:  contrato?.id || null,
-      centro_costo: contrato?.centro_costo || 'OPS-INT',
-      cliente:      contrato?.cliente || null,
-    }));
-  };
-
-  const calcularCostoMO = (form) => {
-    // Cálculo simplificado de M.O. basado en mock de técnicos
-    return 53.65;
-  };
-
-  const [mostrarConfirmacion, setMostrarConfirmacion] = useS3(false);
-  const [reportesMinaList, setReportesMinaList] = useS3(MOCK.historialMina || []);
-
-  const handleEnviarClick = () => {
-    const errores = [];
-    if (!formReporte.equipo_id)    errores.push('Selecciona el equipo');
-    if (!formReporte.fecha)        errores.push('Ingresa la fecha');
-    if (!formReporte.tecnico)      errores.push('Ingresa el técnico');
-    if (!formReporte.avance_ot_pct && formReporte.avance_ot_pct !== 0)
-      errores.push('Registra el avance de la OT');
-
-    if (errores.length > 0) {
-      alert(errores.join('\n'));
-      return;
-    }
-    setMostrarConfirmacion(true);
-  };
-
-  const handleConfirmarEnvio = () => {
-    const nuevoReporte = {
-      ...formReporte,
-      id: `PM-2026-${String(Date.now()).slice(-3)}`,
-      estado: 'pendiente',
-      origen_registro: 'campo',
-      costo_mo: calcularCostoMO(formReporte),
-      costo_repuestos: 0,
-      costo_total: calcularCostoMO(formReporte),
-    };
-    setReportesMinaList(prev => [nuevoReporte, ...prev]);
-    // Simular guardado
-    onNav("partes-mina");
-  };
-
-  const [showBacklogModal, setShowBacklogModal] = useS3(false);
-
-  const toggleTipo = (k) => setTipoMant({ ...tipoMant, [k]: !tipoMant[k] });
-
-  // HT calc mock
-  const htTurno = 2.10;
-  const dmTurno = 98.5;
-
-  return (
-    <div className="page">
-      <div className="page-header">
-        <button className="btn btn-ghost" onClick={() => onNav("partes-mina")}><Icon name="back" size={14}/> Volver</button>
-        <div>
-          <h1>Nuevo reporte de mina</h1>
-          <div className="sub">Parte diario · uso en campo</div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 440px) 1fr", gap: 20, alignItems: "start" }}>
-        <div className="phone-wrap">
-          <div className="phone-header">
-            <Icon name="mine" size={16}/>
-            <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 13 }}>Reporte de mina</div>
-            <Icon name="x" size={16}/>
-          </div>
-          <div className="phone-body">
-
-            {/* Cabecera */}
-            <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-              <div className="field" style={{ marginBottom: 10 }}>
-                <label>Equipo *</label>
-                <select className="select input-lg" value={formReporte.equipo_id} onChange={e => handleEquipoChange(e.target.value)}>
-                  <option value="JB-DD311">JB-DD311</option>
-                  <option value="JB-24">JB-24</option>
-                  <option value="JB-26">JB-26</option>
-                  <option value="SC-701">SC-701</option>
-                </select>
-                {formReporte.equipo_id && (
-                  <div style={{
-                    marginTop:'8px', padding:'10px 12px',
-                    background:'rgba(245,158,11,0.06)',
-                    borderRadius:'8px',
-                    border:'1px solid rgba(245,158,11,0.15)'
-                  }}>
-                    {formReporte.contrato_id ? (
-                      <div style={{ display:'flex', flexWrap:'wrap', gap:'8px',
-                                    alignItems:'center' }}>
-                        <span style={{
-                          background:'rgba(245,158,11,0.12)', color:'#f59e0b',
-                          fontSize:'10px', fontFamily:'monospace',
-                          padding:'2px 8px', borderRadius:'6px', fontWeight:700
-                        }}>
-                          {formReporte.centro_costo}
-                        </span>
-                        <span style={{ fontSize:'11px', color:'#60a5fa',
-                                       fontFamily:'monospace' }}>
-                          {formReporte.contrato_id}
-                        </span>
-                        <span style={{ fontSize:'11px', color:'#94a3b8' }}>
-                          · {formReporte.cliente}
-                        </span>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize:'11px', color:'#f59e0b' }}>
-                        ⚠ Este equipo no tiene contrato activo —
-                        el parte se registrará como trabajo interno (OPS-INT)
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="field" style={{ marginBottom: 10 }}>
-                <label>Fecha *</label>
-                <input className="input input-lg" type="date" value={formReporte.fecha} onChange={e => setFormReporte({...formReporte, fecha: e.target.value})}/>
-              </div>
-              <div className="field" style={{ marginBottom: 10 }}>
-                <label>Turno *</label>
-                <div className="toggle-pills">
-                  <button className={"toggle-pill " + (formReporte.turno === "DÍA" ? "active" : "")} onClick={() => setFormReporte({...formReporte, turno: "DÍA"})}>☀️ DÍA</button>
-                  <button className={"toggle-pill " + (formReporte.turno === "NOCHE" ? "active" : "")} onClick={() => setFormReporte({...formReporte, turno: "NOCHE"})}>🌙 NOCHE</button>
-                </div>
-              </div>
-              <div className="field" style={{ marginBottom: 10 }}>
-                <label>Técnico</label>
-                <input className="input input-lg" defaultValue="Miranda Barra, Sandro" readOnly style={{ background: "#F5F7FB" }}/>
-              </div>
-              <div className="field">
-                <label>Supervisor del cliente</label>
-                <input className="input input-lg" placeholder="Nombre del supervisor"/>
-              </div>
-            </div>
-
-            <Accordion title="Horómetros" icon="rates" defaultOpen={true}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div className="field"><label>H.Motor Inicial</label><input className="input input-lg" defaultValue="3588.30"/></div>
-                <div className="field"><label>H.Motor Final</label><input className="input input-lg" defaultValue="3590.40"/></div>
-                <div className="field"><label>H.Percusión Ini</label><input className="input input-lg" defaultValue="2099.70"/></div>
-                <div className="field"><label>H.Percusión Fin</label><input className="input input-lg" defaultValue="2101.40"/></div>
-                <div className="field"><label>H.Eléctrico Ini</label><input className="input input-lg" defaultValue="3908.10"/></div>
-                <div className="field"><label>H.Eléctrico Fin</label><input className="input input-lg" defaultValue="3910.20"/></div>
-              </div>
-              <div style={{ marginTop: 12, padding: 12, background: dmTurno >= 97.92 ? "var(--green-soft)" : "var(--orange-soft)", border: "1px solid " + (dmTurno >= 97.92 ? "#CDE7CE" : "#FFD9A8"), borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
-                <Icon name="check" size={18} stroke={3}/>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>Resultado</div>
-                  <div><b>Horas trabajadas:</b> <span className="mono">{htTurno.toFixed(2)} hrs</span> · <b>D.M.:</b> <span className="mono">{dmTurno.toFixed(1)}%</span> ✓</div>
-                </div>
-              </div>
-            </Accordion>
-
-            <Accordion title="Horas del turno" icon="rates">
-              <div className="grid-2" style={{ gap: 10 }}>
-                <div className="field"><label>Horas trabajadas equipo</label><input className="input" defaultValue="2.10"/></div>
-                <div className="field"><label>Mantto. prev. programado</label><input className="input" defaultValue="0.00"/></div>
-                <div className="field"><label>Mantto. preventivo</label><input className="input" defaultValue="0.25"/></div>
-                <div className="field"><label>Reparación acc./otro</label><input className="input" defaultValue="0.00"/></div>
-                <div className="field"><label>Reparación correctiva</label><input className="input" defaultValue="0.00"/></div>
-                <div className="field"><label>Stand-by</label><input className="input" defaultValue="9.65"/></div>
-              </div>
-              <div style={{ marginTop: 12, padding: 10, background: "#F5F7FB", borderRadius: 6, fontSize: 13 }}>Total: <b className="mono">12.00 hrs</b></div>
-            </Accordion>
-
-            <Accordion title="Tipo de mantenimiento" icon="cog" defaultOpen={true}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {[
-                  { k: "prg", l: "Prev. programado" },
-                  { k: "prv", l: "Preventivo" },
-                  { k: "ctvo", l: "Correctivo" },
-                  { k: "acc", l: "Accidente" },
-                ].map(t => (
-                  <button key={t.k}
-                    onClick={() => toggleTipo(t.k)}
-                    style={{
-                      height: 48, border: "1.5px solid " + (tipoMant[t.k] ? "var(--navy)" : "var(--card-border)"),
-                      background: tipoMant[t.k] ? "#F5F7FB" : "white",
-                      borderRadius: 8, fontSize: 12, fontWeight: 600,
-                      color: tipoMant[t.k] ? "var(--navy)" : "var(--text-muted)",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    }}>
-                    <span style={{ width: 18, height: 18, border: "1.5px solid " + (tipoMant[t.k] ? "var(--navy)" : "var(--slate-2)"), borderRadius: 4, display: "grid", placeItems: "center", background: tipoMant[t.k] ? "var(--navy)" : "white", color: "white" }}>
-                      {tipoMant[t.k] && <Icon name="check" size={12} stroke={3}/>}
-                    </span>
-                    {t.l}
-                  </button>
-                ))}
-              </div>
-            </Accordion>
-
-            <Accordion title="Estado final del equipo" icon="equipment" defaultOpen={true}>
-              <div className="status-cards">
-                <button className={'status-card ' + (estado === 'operativo' ? 'active green' : '')} onClick={() => setEstado('operativo')}>
-                  <span className="big">🟢</span>Operativo
-                </button>
-                <button className={'status-card ' + (estado === 'espera' ? 'active orange' : '')} onClick={() => setEstado('espera')}>
-                  <span className="big">🟡</span>En espera
-                </button>
-                <button className={'status-card ' + (estado === 'inop' ? 'active red' : '')} onClick={() => setEstado('inop')}>
-                  <span className="big">🔴</span>Inoperativo
-                </button>
-                <button className={'status-card ' + (estado === 'retorno' ? 'active red' : '')} onClick={() => setEstado('retorno')}
-                  style={{ borderColor: estado === 'retorno' ? '#1565C0' : '', background: estado === 'retorno' ? '#E3F2FD' : '' }}>
-                  <span className="big">🔵</span>Retorno a taller
-                </button>
-              </div>
-              {estado === 'retorno' && (
-                <div style={{ marginTop: 10, padding: 12, background: '#E3F2FD', border: '1px solid #1565C0', borderRadius: 6 }}>
-                  <div style={{ fontWeight: 700, color: '#0D47A1', fontSize: 12, marginBottom: 6 }}>🔵 Retorno a taller requerido</div>
-                  <div style={{ fontSize: 11, color: '#1565C0', marginBottom: 8 }}>Se generará una alerta al Planner para coordinar logística Lima ↔ mina. Indica el motivo:</div>
-                  <textarea
-                    className="input"
-                    rows={2}
-                    style={{ fontSize: 12, resize: 'none' }}
-                    placeholder="Describe la causa del retorno (falla, programación, etc.)..."
-                    value={motivoRetorno}
-                    onChange={e => setMotivoRetorno(e.target.value)}/>
-                </div>
-              )}
-            </Accordion>
-
-            <Accordion title="Descripción de trabajos" icon="edit" defaultOpen={true}>
-              <MicField defaultValue="Se inspeccionó equipo al inicio de guardia. Se reguló cable de avance y retorno. Se aumentó aceite de lubricación. Se realizó engrase de partes móviles." placeholder="Describe los trabajos realizados..."/>
-              <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>Toca el 🎤 para dictar por voz.</div>
-            </Accordion>
-
-            <Accordion title="Repuestos utilizados" icon="box">
-              {repuestos.map((r, i) => (
-                <div key={i} style={{ border: "1px solid var(--card-border)", borderRadius: 6, padding: 10, marginBottom: 8, position: "relative" }}>
-                  <div style={{ position: "absolute", top: 6, right: 6 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setRepuestos(repuestos.filter((_, j) => j !== i))}><Icon name="x" size={12}/></button>
-                  </div>
-                  <div className="muted" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4 }}>ÍTEM #{i + 1}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{r.cod} — {r.desc}</div>
-                  <div className="muted" style={{ fontSize: 11 }}>{r.sis} · Cant: <b className="mono">{r.cant}</b></div>
-                </div>
-              ))}
-              <button className="btn btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setRepuestos([...repuestos, { cod: "—", desc: "Nuevo ítem", sis: "—", cant: 1 }])}>
-                <Icon name="plus" size={14}/> Agregar repuesto
-              </button>
-            </Accordion>
-
-            <Accordion title="Lubricantes utilizados" icon="parts">
-              <table className="tbl" style={{ fontSize: 12 }}>
-                <thead><tr><th>Tipo</th><th>UM</th><th className="num">Cant</th></tr></thead>
-                <tbody>
-                  <tr><td>15W-40</td><td>GAL</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="—"/></td></tr>
-                  <tr><td>HD-10W</td><td>GAL</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="—"/></td></tr>
-                  <tr><td>HD-30</td><td>GAL</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="—"/></td></tr>
-                  <tr><td>HD-50</td><td>GAL</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="—"/></td></tr>
-                  <tr><td>Refrigerante</td><td>GAL</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="—"/></td></tr>
-                  <tr><td>Grasa</td><td>LB</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="1/4"/></td></tr>
-                  <tr><td>Auto 527</td><td>GAL</td><td><input className="input" style={{ height: 32, width: 56 }} defaultValue="2"/></td></tr>
-                </tbody>
-              </table>
-            </Accordion>
-
-            <div style={{ marginTop:'20px', marginBottom: '20px' }}>
-              <label style={{ fontSize:'14px', fontWeight:600, color:'#f8fafc',
-                              display:'block', marginBottom:'8px' }}>
-                Avance de la OT al cierre del turno
-              </label>
-
-              {/* Slider táctil grande */}
-              <input
-                type="range"
-                min="0" max="100" step="5"
-                value={formReporte.avance_ot_pct || 0}
-                onChange={e => setFormReporte(prev=>({
-                  ...prev, avance_ot_pct: parseInt(e.target.value)
-                }))}
-                style={{ width:'100%', height:'32px', cursor:'pointer' }}
-              />
-
-              {/* Valor numérico grande — fácil de leer en campo */}
-              <div style={{
-                textAlign:'center', marginTop:'8px',
-                fontSize:'32px', fontWeight:700,
-                color: (formReporte.avance_ot_pct||0) >= 100
-                  ? '#22c55e'
-                  : (formReporte.avance_ot_pct||0) >= 80
-                    ? '#f59e0b' : '#06b6d4'
-              }}>
-                {formReporte.avance_ot_pct || 0}%
-              </div>
-
-              {/* Barra visual */}
-              <div style={{ height:'8px', background:'rgba(255,255,255,0.08)',
-                            borderRadius:'4px', overflow:'hidden', marginTop:'4px' }}>
-                <div style={{
-                  height:'100%', borderRadius:'4px',
-                  width:`${formReporte.avance_ot_pct || 0}%`,
-                  background: (formReporte.avance_ot_pct||0) >= 100
-                    ? '#22c55e'
-                    : (formReporte.avance_ot_pct||0) >= 80
-                      ? '#f59e0b' : '#06b6d4',
-                  transition:'width 0.2s ease'
-                }} />
-              </div>
-
-              {(formReporte.avance_ot_pct||0) === 100 && (
-                <div style={{
-                  marginTop:'8px', padding:'10px 14px',
-                  background:'rgba(34,197,94,0.1)',
-                  borderRadius:'8px', textAlign:'center',
-                  fontSize:'13px', color:'#22c55e', fontWeight:600
-                }}>
-                  ✓ OT completada — el supervisor cerrará formalmente la OT
-                </div>
-              )}
-            </div>
-
-            <Accordion title="Pedido de repuestos" icon="parts" badge={<span className="badge solid-red" style={{ marginLeft: 8 }}>{pedidos.filter(p => p.urg).length} urgentes</span>}>
-              {pedidos.map((p, i) => (
-                <div key={i} style={{ border: "1px solid var(--card-border)", borderRadius: 6, padding: 10, marginBottom: 8 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                    <span className="muted" style={{ fontSize: 10, fontWeight: 700 }}>#{i + 1}</span>
-                    <span className="bold" style={{ fontSize: 13, flex: 1 }}>{p.desc}</span>
-                    {p.urg ? <span className="badge solid-red">URGENTE</span> : <span className="badge orange"><span className="dot"/>Normal</span>}
-                  </div>
-                  <div className="muted" style={{ fontSize: 11 }}>{p.cod} · {p.sis} · Cant: <b className="mono">{p.cant}</b></div>
-                </div>
-              ))}
-              <button className="btn btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setPedidos([...pedidos, { cant: 1, cod: "—", desc: "Nuevo pedido", sis: "—", urg: false }])}>
-                <Icon name="plus" size={14}/> Agregar pedido
-              </button>
-            </Accordion>
-
-            <Accordion title="Fotos" icon="camera">
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div className="thumb-placeholder">FOTO<br/>equipo_01.jpg</div>
-                <div className="thumb-placeholder">FOTO<br/>repuesto_02.jpg</div>
-                <button className="btn btn-secondary" style={{ height: 88, width: 88, flexDirection: "column", gap: 4 }}>
-                  <Icon name="camera" size={22}/>
-                  <span style={{ fontSize: 10 }}>Tomar foto</span>
-                </button>
-              </div>
-            </Accordion>
-
-            <Accordion title="Backlog desde campo" icon="orders" badge={<span className="badge cyan" style={{ marginLeft: 8 }}>Nuevo</span>}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Registra cualquier hallazgo o trabajo pendiente para futuras OTs.</div>
-              <button className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", color: "var(--cyan)", borderColor: "var(--cyan)" }} onClick={() => setShowBacklogModal(true)}>
-                <Icon name="plus" size={14}/> Reportar hallazgo
-              </button>
-            </Accordion>
-
-            <Accordion title="Comentarios finales" icon="edit">
-              <MicField defaultValue="Equipo operativo desde inicio de guardia. Equipo trabajó con normalidad. No registra paradas." placeholder="Comentarios..."/>
-            </Accordion>
-
-          </div>
-          <div className="phone-footer">
-            <button className="btn btn-secondary" onClick={() => onNav("partes-mina")}>Guardar borrador</button>
-            <button className="btn btn-primary" onClick={handleEnviarClick}>Enviar</button>
-          </div>
-        </div>
-
-        {showBacklogModal && <BacklogModal onClose={() => setShowBacklogModal(false)}/>}
-
-        {mostrarConfirmacion && (
-          <div style={{
-            position:'fixed', inset:0,
-            background:'rgba(0,0,0,0.8)',
-            display:'flex', alignItems:'center', justifyContent:'center',
-            zIndex:1000, padding:'16px'
-          }}>
-            <div style={{
-              background:'#0d1422',
-              border:'1px solid #1e2d47',
-              borderRadius:'12px', padding:'24px',
-              maxWidth:'400px', width:'100%'
-            }}>
-              <div style={{ fontSize:'16px', fontWeight:700,
-                            color:'#f8fafc', marginBottom:'16px' }}>
-                ¿Confirmar envío del reporte?
-              </div>
-
-              {/* Resumen del reporte */}
-              <div style={{ background:'rgba(255,255,255,0.04)',
-                            borderRadius:'8px', padding:'14px',
-                            marginBottom:'16px' }}>
-                <div style={{ fontSize:'12px', color:'#64748b',
-                              marginBottom:'8px' }}>Resumen</div>
-                <div style={{ fontSize:'13px', color:'#f8fafc',
-                              lineHeight:'1.8' }}>
-                  <div>Equipo: <strong>{formReporte.equipo_id}</strong></div>
-                  <div>Turno: <strong>{formReporte.turno}</strong>
-                       · Fecha: <strong>{formReporte.fecha}</strong></div>
-                  <div>Técnico: <strong>{formReporte.tecnico}</strong></div>
-                  {formReporte.contrato_id && (
-                    <div>Contrato: <strong style={{ color:'#f59e0b',
-                                   fontFamily:'monospace' }}>
-                      {formReporte.contrato_id}
-                    </strong></div>
-                  )}
-                  <div>Avance OT: <strong style={{ color:'#06b6d4' }}>
-                    {formReporte.avance_ot_pct}%
-                  </strong></div>
-                </div>
-              </div>
-
-              <div style={{ fontSize:'12px', color:'#64748b',
-                            marginBottom:'20px' }}>
-                El supervisor recibirá este reporte para aprobación.
-                No podrás editarlo una vez enviado.
-              </div>
-
-              <div style={{ display:'flex', gap:'12px' }}>
-                <button
-                  onClick={() => setMostrarConfirmacion(false)}
-                  style={{
-                    flex:1, padding:'14px',
-                    background:'rgba(255,255,255,0.06)',
-                    border:'1px solid #1e2d47',
-                    borderRadius:'8px', color:'#94a3b8',
-                    fontSize:'14px', cursor:'pointer'
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => {
-                    setMostrarConfirmacion(false);
-                    handleConfirmarEnvio();
-                  }}
-                  style={{
-                    flex:2, padding:'14px',
-                    background:'#3b82f6',
-                    border:'none',
-                    borderRadius:'8px', color:'#fff',
-                    fontSize:'14px', fontWeight:600, cursor:'pointer'
-                  }}
-                >
-                  ✓ Confirmar envío
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div>
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div className="card-header"><h3>Preview en vivo</h3><span className="hint">Lo que verá el supervisor</span></div>
-            <div className="card-body">
-              <div style={{ marginBottom: 12 }}>
-                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>Equipo · Turno · Fecha</div>
-                <div className="bold" style={{ fontSize: 15, fontFamily: "ui-monospace, monospace" }}>{formReporte.equipo_id} · {formReporte.turno} · {formReporte.fecha}</div>
-                {formReporte.contrato_id && (
-                  <div style={{ fontSize:'11px', color:'#64748b', marginTop:'2px' }}>
-                    {formReporte.contrato_id} · {formReporte.centro_costo}
-                  </div>
-                )}
-              </div>
-              <div style={{ marginTop:'12px', marginBottom: 12 }}>
-                <div style={{ fontSize:'10px', color:'#64748b',
-                              textTransform:'uppercase', letterSpacing:'0.08em' }}>
-                  Avance OT
-                </div>
-                <div style={{ fontSize:'20px', fontWeight:700, color:'#06b6d4',
-                              marginTop:'2px' }}>
-                  {formReporte.avance_ot_pct || 0}%
-                </div>
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>Tipo de mantenimiento</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                  {tipoMant.prg && <span className="chip">Prev. programado</span>}
-                  {tipoMant.prv && <span className="chip">Preventivo</span>}
-                  {tipoMant.ctvo && <span className="chip">Correctivo</span>}
-                  {tipoMant.acc && <span className="chip">Accidente</span>}
-                  {!Object.values(tipoMant).some(Boolean) && <span className="muted" style={{ fontSize: 12 }}>Ninguno seleccionado</span>}
-                </div>
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>Estado final</div>
-                <div style={{ marginTop: 4 }}>
-                  {estado === "operativo" && <span className="badge green"><span className="dot"/>🟢 Operativo</span>}
-                  {estado === "espera" && <span className="badge orange"><span className="dot"/>🟡 En espera de repuesto</span>}
-                  {estado === "inop" && <span className="badge red"><span className="dot"/>🔴 Inoperativo</span>}
-                </div>
-              </div>
-              <div>
-                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>Pedidos urgentes</div>
-                <div style={{ marginTop: 4 }}>
-                  {pedidos.filter(p => p.urg).length > 0
-                    ? pedidos.filter(p => p.urg).map((p, i) => (
-                      <div key={i} style={{ fontSize: 13, padding: "4px 0" }}>
-                        <span className="badge solid-red" style={{ marginRight: 6 }}>URGENTE</span> {p.desc}
-                      </div>
-                    ))
-                    : <span className="muted" style={{ fontSize: 12 }}>Ninguno</span>}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-header"><h3>Tips</h3></div>
-            <div className="card-body muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-              <div>• Todos los campos grandes son tocables cómodamente con el pulgar (48px mínimo).</div>
-              <div>• Usa el micrófono 🎤 en cyan para dictar descripciones — el campo se pone en cyan con un punto rojo parpadeante mientras graba.</div>
-              <div>• Los pedidos "Urgentes" se envían al gerente en tiempo real.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <FooterBrand/>
     </div>
   );
 };
@@ -1036,8 +487,9 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const guardarParteReal = async () => {
     if (!sesionOperativa.permiteEscritura || guardandoParte) return;
     const errorPedidos = validarPedidosParte(formData.pedidos);
-    if (errorPedidos) {
-      setErrorGuardadoParte(errorPedidos);
+    const errorConsumos = validarConsumosParte(formData.repuestos_consumidos);
+    if (errorPedidos || errorConsumos) {
+      setErrorGuardadoParte(errorPedidos || errorConsumos);
       return;
     }
 
@@ -1427,12 +879,10 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
 
         {/* Repuestos */}
         <Accordion title="Repuestos, materiales e insumos" icon="box">
-          <input type="text" className="input" placeholder="Buscar repuesto por código o descripción..." style={{ marginBottom: 12, width: '100%' }} />
           <table className="tbl">
             <thead>
               <tr>
-                <th>Código</th>
-                <th>Descripción</th>
+                <th>Material</th>
                 <th>Und</th>
                 <th className="num">Cant</th>
                 <th className="num">Costo Unit.</th>
@@ -1442,31 +892,57 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
             </thead>
             <tbody>
               {formData.repuestos_consumidos.length === 0 && (
-                <tr><td colSpan={7} className="muted">Sin repuestos consumidos registrados</td></tr>
+                <tr><td colSpan={6} className="muted">Sin repuestos consumidos registrados</td></tr>
               )}
               {formData.repuestos_consumidos.map((rep, idx) => (
-                <tr key={idx}>
-                  <td style={{ fontFamily:'monospace', fontSize:'11px' }}>{rep.item_id}</td>
-                  <td>{rep.descripcion}</td>
+                <tr key={rep.uid}>
+                  <td>
+                    <MaterialAutocomplete
+                      key={`${rep.uid}-${rep.material_id || 'nuevo'}`}
+                      item={{ material_id: rep.material_id, material_codigo: rep.item_id, material_descripcion: rep.descripcion }}
+                      empresaId={sesionOperativa.empresaId}
+                      sociedadId={sesionOperativa.sociedadId}
+                      disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)}
+                      onSelect={material => setFormData(prev => ({ ...prev, repuestos_consumidos: prev.repuestos_consumidos.map((item, i) => i === idx ? {
+                        ...item,
+                        material_id: material.material_id,
+                        item_id: material.codigo,
+                        descripcion: material.descripcion,
+                        unidad: material.unidad,
+                        costo_unitario: Number.isFinite(Number(material.precio_unitario)) ? Number(material.precio_unitario) : 0,
+                        disponible: material.disponible,
+                      } : item) }))}
+                      onClear={() => setFormData(prev => ({ ...prev, repuestos_consumidos: prev.repuestos_consumidos.map((item, i) => i === idx ? {
+                        ...item, material_id: null, item_id: '', descripcion: '', unidad: '', costo_unitario: 0, disponible: 0,
+                      } : item) }))}
+                    />
+                    {rep.material_id && <div className="hint" style={{ fontSize: 10, marginTop: 3 }}>Disp. {Number(rep.disponible || 0).toLocaleString()} {rep.unidad || 'und'}</div>}
+                  </td>
                   <td>{rep.unidad}</td>
                   <td>
-                    <input type="number" className="input" value={rep.cantidad}
-                      onChange={e => actualizarRepuesto(idx,'cantidad', Number(e.target.value) || 0)}
+                    <input type="number" className="input" aria-label={`Cantidad repuesto ${idx + 1}`} min="0.01" step="0.01" value={rep.cantidad}
+                      disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)}
+                      onChange={e => actualizarRepuesto(idx,'cantidad', e.target.value)}
                       style={{ width:'60px', padding:'4px' }}
                     />
                   </td>
-                  <td className="num" style={{ color:'#64748b' }}>${rep.costo_unitario.toFixed(2)}</td>
+                  <td className="num" style={{ color:'#64748b' }}>${(Number(rep.costo_unitario) || 0).toFixed(2)}</td>
                   <td className="num" style={{ fontWeight:600, color:'#f8fafc' }}>
-                    ${(rep.cantidad * rep.costo_unitario).toFixed(2)}
+                    ${((Number(String(rep.cantidad ?? '').replace(',', '.')) || 0) * (Number(rep.costo_unitario) || 0)).toFixed(2)}
                   </td>
                   <td>
-                    <button onClick={() => eliminarRepuesto(idx)}
+                    <button type="button" className="btn btn-secondary btn-sm" aria-label={`Quitar repuesto ${idx + 1}`} disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)} onClick={() => eliminarRepuesto(idx)}
                       style={{ color:'#ef4444', background:'none', border:'none', cursor:'pointer' }}>✕</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <button type="button" className="btn btn-secondary btn-sm mt-md" disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)} onClick={() => setFormData(prev => ({
+            ...prev, repuestos_consumidos: [...prev.repuestos_consumidos, { uid: generarIdRepuestoConsumido(), material_id: null, item_id: '', descripcion: '', unidad: '', cantidad: '', costo_unitario: 0, disponible: 0 }],
+          }))}>
+            <Icon name="plus" size={12}/> + Agregar repuesto
+          </button>
           <div style={{ textAlign:'right', fontWeight:700, color:'#f8fafc', marginTop: 12 }}>
             Total repuestos: ${totalRepuestos.toFixed(2)}
           </div>

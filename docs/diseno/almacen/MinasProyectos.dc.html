@@ -1,0 +1,178 @@
+﻿<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mock Almacén WMS — Minas y proyectos</title><style>
+/* Variables copiadas de zahory.css, sección DX-UI base */
+.dx-ui{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',system-ui,sans-serif;
+}
+[data-theme='dark'] .dx-ui{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
+[data-theme='dark'] body{background:#020617}
+.mock-shell{display:flex;min-height:100vh}
+.mock-side{width:240px;flex:none;background:#1A2B4A;color:#fff;padding:18px 14px}
+.mock-side b{display:block;font:700 15px 'Sora',sans-serif;margin-bottom:16px}
+.mock-side span{display:block;padding:9px 10px;border-radius:8px;font-size:13px;color:#C7D2E4}
+.mock-side span.on{background:rgba(255,255,255,.12);color:#fff}
+.mock-side small{display:block;margin:14px 10px 6px;font-size:10px;letter-spacing:.08em;color:#8FA2C0}
+.mock-main{flex:1;min-width:0;padding:24px 28px}
+@media (max-width:900px){.mock-side{display:none}.mock-main{padding:16px}}
+
+.dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dx-btn{height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-btn.primary{background:var(--dx-ui-navy);color:var(--dx-ui-card);border-color:var(--dx-ui-navy)}
+[data-theme='dark'] .dx-btn.primary{color:#0F172A}
+.dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-btn[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line);cursor:not-allowed}
+
+.dx-ui-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.dx-ui-tab{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ui-tab.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:transparent}
+
+/* Base compartida (copia de zahory.css) */
+.dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 1px 2px rgba(15,27,48,.04); margin-bottom:16px; }
+.dx-ui-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ui-toolbar h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px/1.4 'Sora',sans-serif; }
+.dx-ui-count { color:var(--dx-ui-gray); font-size:12px; white-space:nowrap; }
+.dx-ui-search { display:flex; align-items:center; gap:8px; width:340px; max-width:100%; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+.dx-ui-search:focus-within { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-ui-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui-head,.dx-ui-row { display:grid; grid-template-columns:var(--dx-ui-cols,minmax(0,1fr)); column-gap:16px; align-items:center; padding-inline:20px; }
+.dx-ui-head { min-height:38px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ui-row { min-height:68px; border-bottom:1px solid var(--dx-ui-line-soft); cursor:pointer; transition:background .12s; }
+.dx-ui-row:last-child { border-bottom:0; }
+.dx-ui-row:hover { background:var(--dx-ui-hover); }
+.dx-ui-row:hover .dx-ui-arrow { color:var(--dx-ui-navy); transform:translateX(2px); }
+.dx-ui-row:focus-visible { position:relative; z-index:1; outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-ui-icon { display:flex; flex:none; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; }
+.dx-ui-icon.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-icon.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ui-pill i { width:6px; height:6px; flex:none; border-radius:50%; background:currentColor; }
+.dx-ui-pill.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-ui-pill.is-amber i { background:var(--dx-ui-amber-dot); }
+.dx-ui-pill.is-green { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-ui-pill.is-red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ui-pill.is-red i { background:var(--dx-ui-red-dot); }
+.dx-ui-pill.is-gray { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui-pill.is-gray i { background:var(--dx-ui-gray-dot); }
+.dx-ui-pill.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-arrow { color:#9AA3B2; transition:.12s; }
+.dx-ui-empty { padding:48px 20px; color:var(--dx-ui-gray); text-align:center; }
+@container (max-width:760px) {
+  .dx-ui-head { display:none; }
+  .dx-ui-row { row-gap:8px; padding:14px 16px; }
+}
+
+/* Reglas propias: Minas y proyectos (dx-min-) */
+.dx-min-grid{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.dx-min-grid{grid-template-columns:1fr}}
+.dx-min-item{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dx-ui-line-soft);cursor:pointer}
+.dx-min-item:last-child{border-bottom:0}
+.dx-min-item:hover{background:var(--dx-ui-hover)}
+.dx-min-item.on{background:var(--dx-ui-cyan-bg)}
+.dx-min-item b{display:block;color:var(--dx-ui-navy);font-weight:600}
+.dx-min-item small{display:block;color:var(--dx-ui-gray);font-size:12px}
+.dx-min-sec{padding:16px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-min-sec:last-child{border-bottom:0}
+.dx-min-sec h3{margin:0 0 4px;color:var(--dx-ui-navy);font:700 14px 'Sora',sans-serif}
+.dx-min-sec p{margin:0 0 12px;color:var(--dx-ui-gray);font-size:13px}
+.dx-min-prow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--dx-ui-line-soft)}
+.dx-min-prow:last-of-type{border-bottom:0}
+.dx-min-prow b{color:var(--dx-ui-navy);font-weight:600}
+.dx-min-prow small{color:var(--dx-ui-gray);margin-left:6px}
+.dx-min-prow .sp{margin-left:auto}
+.dx-min-alm{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--dx-ui-line);border-radius:10px}
+.dx-min-alm b{color:var(--dx-ui-navy)}
+.dx-min-field{display:grid;gap:6px;margin-bottom:12px}
+.dx-min-field label{color:var(--dx-ui-gray);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.dx-min-field input,.dx-min-field select{height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-min-field input:focus,.dx-min-field select:focus{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-min-hint{font-size:12px;color:var(--dx-ui-gray)}
+.dx-min-cascada{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dx-min-step{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--dx-ui-head);border:1px solid var(--dx-ui-line);font-size:13px}
+.dx-min-step b{color:var(--dx-ui-navy)}
+.dx-min-arrow{color:var(--dx-ui-gray)}
+.dx-min-panel{display:none}.dx-min-panel.on{display:block}
+.dx-min-modal{max-width:520px;margin:0 auto;padding:20px;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 12px 32px rgba(15,27,48,.12)}
+.dx-min-modal h3{margin:0 0 14px;color:var(--dx-ui-navy);font:700 16px 'Sora',sans-serif}
+.dx-min-modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+</style></head><body>
+<div class="mock-shell"><aside class="mock-side"><b>OPERA · Operaciones</b><small>ALMACÉN · WMS</small><span>Inventario &amp; Kardex</span><span>Reserva de Repuestos</span><span>Ubicaciones</span><span class="on">Minas y proyectos</span><small>OPERACIONES</small><span>Bandeja de OTs</span><span>Nueva OT</span></aside>
+<main class="mock-main"><div class="dx-ui">
+<div class="dx-ui-head-page"><div><div class="dx-ui-eyebrow">Almacén · WMS · Abastecimiento</div><h1 class="dx-ui-title">Minas y proyectos</h1><p class="dx-ui-sub">Cada mina pertenece a un cliente, tiene proyectos y un almacén periférico que la abastece.</p></div><div class="dx-ui-actions"><button class="dx-btn" onclick="show('cascada')">Cómo se abastece una OT</button><button class="dx-btn primary" onclick="show('nueva')">Nueva mina</button></div></div>
+<div class="dx-ui-tabs"><button class="dx-ui-tab on" data-t="lista" onclick="show('lista')">Minas</button><button class="dx-ui-tab" data-t="almacen" onclick="show('almacen')">Agregar periférico</button><button class="dx-ui-tab" data-t="ot" onclick="show('ot')">Vista en Nueva OT</button><button class="dx-ui-tab" data-t="cascada" onclick="show('cascada')">Cascada de reserva</button><button class="dx-ui-tab" data-t="nueva" onclick="show('nueva')">Nueva mina</button></div>
+
+<div class="dx-ui-summary"><div class="dx-ui-chip"><b>3</b><span>minas activas</span></div><div class="dx-ui-chip"><b>7</b><span>proyectos</span></div><div class="dx-ui-chip dx-stk-chip-warn"><b>1</b><span>mina sin almacén periférico</span></div></div>
+
+<section class="dx-min-panel on" id="p-lista"><div class="dx-min-grid">
+<div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Minas</h2><span class="dx-ui-count">3 minas</span></div>
+<div class="dx-min-item on" onclick="pick(this)"><span class="dx-ui-icon is-cyan">⛏</span><span><b>Mina Norte</b><small>Cliente Minero A · 3 proyectos</small></span><span class="dx-ui-pill is-green" style="margin-left:auto"><i></i>Con periférico</span></div>
+<div class="dx-min-item" onclick="pick(this)"><span class="dx-ui-icon is-cyan">⛏</span><span><b>Mina Sur</b><small>Cliente Minero A · 2 proyectos</small></span><span class="dx-ui-pill is-green" style="margin-left:auto"><i></i>Con periférico</span></div>
+<div class="dx-min-item" onclick="pick(this)"><span class="dx-ui-icon is-violet">⛏</span><span><b>Mina Altiplano</b><small>Cliente Minero B · 2 proyectos</small></span><span class="dx-ui-pill is-amber" style="margin-left:auto"><i></i>Sin periférico</span></div></div>
+<div class="dx-ui-card"><div class="dx-ui-toolbar"><h2 id="m-nombre">Mina Norte</h2><span class="dx-ui-pill is-green"><i></i>Activa</span><button class="dx-btn">Editar mina</button></div>
+<div class="dx-min-sec"><h3>Proyectos</h3><p>Una OT de proyecto debe apuntar a uno de estos. Los proyectos de Flota y Alquileres existentes se asignan a su mina aquí.</p>
+<div class="dx-min-prow"><span class="dx-ui-icon is-violet">▣</span><span><b>PRY-001 Mantenimiento flota</b><small>Contrato CT-2026-002</small></span><span class="dx-ui-pill is-green sp"><i></i>Activo</span></div>
+<div class="dx-min-prow"><span class="dx-ui-icon is-violet">▣</span><span><b>PRY-002 Taller en sitio</b><small>sin contrato</small></span><span class="dx-ui-pill is-green sp"><i></i>Activo</span></div>
+<div class="dx-min-prow"><span class="dx-ui-icon is-violet">▣</span><span><b>PRY-004 Paradas programadas</b><small>sin contrato</small></span><span class="dx-ui-pill is-gray sp"><i></i>Inactivo</span></div>
+<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="dx-btn" onclick="show('proy')">+ Nuevo proyecto</button><button class="dx-btn">Asignar proyecto existente</button></div></div>
+<div class="dx-min-sec"><h3>Almacenes periféricos</h3><p>Abastecen solo a esta mina (todos sus proyectos). No maneja ubicaciones: una ubicación general oculta.</p>
+<div class="dx-min-alm"><span class="dx-ui-icon is-cyan">▤</span><span><b>ALM-MN Periférico Mina Norte</b><br><small class="dx-min-hint">128 materiales · 1 ubicación general</small></span><button class="dx-btn" style="margin-left:auto" onclick="show('almacen')">Quitar</button></div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="dx-btn" onclick="show('almacen')">+ Agregar almacén periférico</button></div></div></div></div></section>
+
+<section class="dx-min-panel" id="p-almacen"><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Agregar almacén periférico a Mina Altiplano</h2><span class="dx-ui-pill is-amber"><i></i>Sin periférico</span></div>
+<div class="dx-min-sec"><h3>Elige cómo asignarlo</h3><p>Una mina puede tener varios almacenes periféricos. Un almacén periférico pertenece a una sola mina.</p>
+<div class="dx-min-field"><label>Asignar almacén existente</label><select><option>Seleccionar almacén…</option><option>ALM-002 Repuestos Ate (hoy central)</option></select><span class="dx-min-hint">Solo aparecen almacenes centrales activos. Al asignarlo deja de abastecer a otras operaciones. Si tiene stock en ubicaciones distintas de la general, primero hay que moverlo.</span></div>
+<div style="text-align:center;color:var(--dx-ui-gray);margin:6px 0">— o —</div>
+<div class="dx-min-field"><label>Crear almacén periférico nuevo</label><input value="Periférico Mina Altiplano"><span class="dx-min-hint">Código sugerido ALM-MA. Se crea con su ubicación general; no se pueden crear más ubicaciones.</span></div>
+<div style="display:flex;gap:8px;justify-content:flex-end"><button class="dx-btn">Cancelar</button><button class="dx-btn primary">Guardar almacén periférico</button></div></div></div></section>
+
+<section class="dx-min-panel" id="p-ot"><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Nueva OT · selector de proyecto</h2></div>
+<div class="dx-min-sec"><div class="dx-min-field"><label>Proyecto (opcional)</label><select><option>Sin proyecto (abastece el almacén central)</option><option>Mina Norte · PRY-001 Mantenimiento flota</option><option>Mina Norte · PRY-002 Taller en sitio</option><option>Mina Sur · PRY-003 Overhaul</option></select><span class="dx-min-hint">Con proyecto, los repuestos se piden primero al almacén periférico de su mina. Sin proyecto, al central.</span></div>
+<div class="dx-stk-note">OT de proyecto en Mina Norte → reserva en <b>ALM-MN Periférico Mina Norte</b>, luego en el central, luego SOLPE.</div></div></div></section>
+
+<section class="dx-min-panel" id="p-cascada"><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Cascada de reserva de repuestos</h2></div>
+<div class="dx-min-sec"><h3>OT con proyecto (también el pedido del parte diario)</h3><p>Para cada material se reserva en este orden hasta cubrir la cantidad:</p>
+<div class="dx-min-cascada"><div class="dx-min-step"><b>1</b> Periféricos de la mina (mayor disponible primero)</div><span class="dx-min-arrow">→</span><div class="dx-min-step"><b>2</b> Central</div><span class="dx-min-arrow">→</span><div class="dx-min-step"><b>3</b> SOLPE por el faltante</div></div>
+<p style="margin-top:14px">Lo que se reserva en el central para una OT de proyecto queda a la espera de traslado al periférico (aviso para almacén). Un periférico nunca abastece a otra mina; el traslado de mina a mina sale solo del central.</p></div>
+<div class="dx-min-sec"><h3>OT sin proyecto</h3><div class="dx-min-cascada"><div class="dx-min-step"><b>1</b> Central</div><span class="dx-min-arrow">→</span><div class="dx-min-step"><b>2</b> SOLPE por el faltante</div></div></div>
+<div class="dx-min-sec"><h3>Resultado visible en Reserva de Repuestos</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="dx-ui-pill is-green"><i></i>Reservado en periférico</span><span class="dx-ui-pill is-cyan"><i></i>Reservado en central · por trasladar</span><span class="dx-ui-pill is-amber"><i></i>Sin stock · SOLPE en curso</span></div></div></div></section>
+
+<section class="dx-min-panel" id="p-nueva"><div class="dx-min-modal"><h3>Nueva mina</h3>
+<div class="dx-min-field"><label>Cliente (cuenta)</label><select><option>Cliente Minero A</option><option>Cliente Minero B</option></select></div>
+<div class="dx-min-field"><label>Código</label><input value="MIN-004"></div>
+<div class="dx-min-field"><label>Nombre</label><input value="Mina Poniente"></div>
+<div class="row"><button class="dx-btn" onclick="show('lista')">Cancelar</button><button class="dx-btn primary" onclick="show('lista')">Guardar mina</button></div></div></section>
+
+<section class="dx-min-panel" id="p-proy"><div class="dx-min-modal"><h3>Nuevo proyecto en Mina Norte</h3>
+<div class="dx-min-field"><label>Código</label><input value="PRY-005"></div>
+<div class="dx-min-field"><label>Nombre</label><input value="Revisión de chancadoras"></div>
+<div class="dx-min-field"><label>Estado</label><select><option>Activo</option><option>Inactivo</option></select></div>
+<div class="row"><button class="dx-btn" onclick="show('lista')">Cancelar</button><button class="dx-btn primary" onclick="show('lista')">Guardar proyecto</button></div></div></section>
+</div></main></div>
+<script>
+function show(id){document.querySelectorAll('.dx-min-panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));document.querySelectorAll('.dx-ui-tab').forEach(t=>t.classList.toggle('on',t.dataset.t===id))}
+function pick(el){document.querySelectorAll('.dx-min-item').forEach(i=>i.classList.remove('on'));el.classList.add('on');document.getElementById('m-nombre').textContent=el.querySelector('b').textContent}
+</script></body></html>

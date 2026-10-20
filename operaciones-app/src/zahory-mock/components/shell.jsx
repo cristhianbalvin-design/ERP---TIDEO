@@ -245,6 +245,7 @@ export const SIDEBAR_ZONES = [
           { id: 'almacen-reservas',    label: 'Reserva de Repuestos',    icon: 'lock' },
           { id: 'almacen-alertas',     label: 'Stock Mínimos & Alertas', icon: 'alert' },
           { id: 'almacen-ubicaciones', label: 'Ubicaciones',             icon: 'box' },
+          { id: 'almacen-minas',       label: 'Minas y proyectos',       icon: 'box' },
         ],
       },
       {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc }) }));
-import { conciliarCierreOT, despacharReservaOT, liberarReservaOT, listarReservasOT, pedirRepuestosParte, revertirDespachoOT } from '../src/services/reservasRepuestosService.js';
+import { conciliarCierreOT, despacharReservaOT, liberarReservaOT, listarReservasOT, pedirRepuestosParte, revertirDespachoOT, trasladarReservaOT } from '../src/services/reservasRepuestosService.js';
 
 describe('reservasRepuestosService', () => {
   beforeEach(() => { rpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null }); });
@@ -50,6 +50,11 @@ describe('reservasRepuestosService', () => {
   it('llama conciliarCierreOT con nombre RPC y parámetros exactos', async () => {
     await conciliarCierreOT({ empresa_id: 'empresa-1', ot_id: 'ot-1' });
     expect(rpc).toHaveBeenCalledWith('wms_conciliar_cierre_ot', { p_empresa_id: 'empresa-1', p_ot_id: 'ot-1' });
+  });
+
+  it('llama trasladarReservaOT con nombre RPC y parámetros exactos', async () => {
+    await trasladarReservaOT({ empresa_id: 'empresa-1', ot_id: 'ot-1' });
+    expect(rpc).toHaveBeenCalledWith('wms_trasladar_reserva_ot', { p_empresa_id: 'empresa-1', p_ot_id: 'ot-1' });
   });
 
   it('lanza Error conservando message y code cuando falla el RPC', async () => {
