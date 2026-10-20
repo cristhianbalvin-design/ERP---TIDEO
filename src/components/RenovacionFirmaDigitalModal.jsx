@@ -25,11 +25,15 @@ const fechaInicioRenovacion = documento => {
 };
 
 const avisoFechaInicioPasada = (fechaInicio, documento) => {
-  if (!fechaInicio || fechaInicio >= fechaLocalHoy()) return '';
+  const hoy = fechaLocalHoy();
+  if (!fechaInicio || fechaInicio >= hoy) return '';
   const vencimiento = documento?.periodo_fecha_fin || documento?.fecha_vencimiento;
   if (!vencimiento) return 'La fecha de inicio es anterior a hoy. Revisa si corresponde una renovaci\u00f3n retroactiva.';
   const [anio, mes, dia] = vencimiento.split('-');
-  return `El contrato anterior venci\u00f3 el ${dia}/${mes}/${anio}; la renovaci\u00f3n empezar\u00eda con fecha pasada. Revisa la fecha de inicio.`;
+  if (vencimiento < hoy) {
+    return `El contrato anterior venci\u00f3 el ${dia}/${mes}/${anio}; la renovaci\u00f3n empezar\u00eda con fecha pasada. Revisa la fecha de inicio.`;
+  }
+  return `La fecha de inicio es anterior a hoy y el contrato actual vence el ${dia}/${mes}/${anio}. Revisa la fecha de inicio.`;
 };
 
 export default function RenovacionFirmaDigitalModal({ empresa, persona, documento, onClose, onComplete }) {
