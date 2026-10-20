@@ -36,7 +36,7 @@ const json = (body: unknown, status: number, origin: string) => new Response(JSO
 });
 
 const escapar = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]!));
-const textoPdf = (v: unknown) => String(v ?? "").replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, "\"").replace(/[^\x20-\xFF]/g, "?");
+const textoPdf = (v: unknown) => String(v ?? "").replace(/[\u00A0\u2009\u202F]/g, " ").replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, "\"").replace(/[^\x20-\xFF]/g, "?");
 const mascara = (correo: string) => {
   const [n, d] = correo.split("@");
   return d ? `${n.slice(0, 1)}***@${d}` : correo;
