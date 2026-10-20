@@ -496,6 +496,8 @@ export async function persistirOSCliente(supabase, empresaId, osc) {
     overhead_estimado_monto: osc.overhead_estimado_monto ?? null,
     overhead_estimado_pct: osc.overhead_estimado_pct ?? null,
     overhead_modo: osc.overhead_modo || 'monto',
+    tipo_cobro: osc.tipo_cobro || null,
+    tarifa_mensual: osc.tarifa_mensual ?? null,
   };
   return supabase.from('os_clientes').insert(row);
 }
@@ -535,6 +537,8 @@ export async function actualizarOSCliente(supabase, oscId, datos) {
     'overhead_estimado_monto',
     'overhead_estimado_pct',
     'overhead_modo',
+    'tipo_cobro',
+    'tarifa_mensual',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])

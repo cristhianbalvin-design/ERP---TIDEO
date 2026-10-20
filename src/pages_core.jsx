@@ -28,6 +28,7 @@ import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
 import { AdvertenciaHojaCosteoDuplicada } from './components/AdvertenciaHojaCosteoDuplicada.jsx';
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
+import { TIPOS_COBRO, esCobroMensual, etiquetaTipoCobro, validarCobroOS } from './utils/cobroMensual.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -5011,6 +5012,8 @@ function OSCliente() {
     centro_beneficio_id: os?.centro_beneficio_id || '',
     responsable_comercial_id: os?.responsable_comercial_id || '',
     observaciones: os?.observaciones || '',
+    tipo_cobro: os?.tipo_cobro || 'puntual',
+    tarifa_mensual: os?.tarifa_mensual ?? '',
   });
   const [modalFormularioOS, setModalFormularioOS] = useState(null);
   const [formularioOS, setFormularioOS] = useState(() => formularioOSBase());
@@ -5078,6 +5081,8 @@ function OSCliente() {
     if (formularioOS.fecha_inicio && formularioOS.fecha_fin && formularioOS.fecha_fin < formularioOS.fecha_inicio) {
       return setErrorFormularioOS('La fecha de cierre no puede ser anterior a la fecha de inicio.');
     }
+    const errorCobro = validarCobroOS(formularioOS);
+    if (errorCobro) return setErrorFormularioOS(errorCobro);
     const sociedadId = formularioOS.sociedad_id || modoVistaSociedadOSCliente.sociedadIdEscritura || null;
     if (!editandoOS && empresa?.multisociedad_habilitado && !sociedadId) {
       return setErrorFormularioOS('Selecciona la sociedad que emitirá esta OS.');
@@ -5099,6 +5104,8 @@ function OSCliente() {
       responsable_comercial_id: formularioOS.responsable_comercial_id || null,
       responsable_comercial: responsable?.nombre || null,
       observaciones: formularioOS.observaciones.trim() || null,
+      tipo_cobro: formularioOS.tipo_cobro,
+      tarifa_mensual: esCobroMensual(formularioOS) ? Number(formularioOS.tarifa_mensual) : null,
     };
     if (editandoOS) {
       const anterior = modalFormularioOS;
@@ -5224,6 +5231,9 @@ function OSCliente() {
               <div className="input-group"><label>Fecha de emisión</label><input className="input" type="date" value={formularioOS.fecha_emision} onChange={e => actualizarFormularioOS('fecha_emision', e.target.value)} /></div>
               <div className="input-group"><label>Inicio</label><input className="input" type="date" value={formularioOS.fecha_inicio} onChange={e => actualizarFormularioOS('fecha_inicio', e.target.value)} /></div>
               <div className="input-group"><label>Cierre estimado</label><input className="input" type="date" value={formularioOS.fecha_fin} onChange={e => actualizarFormularioOS('fecha_fin', e.target.value)} /></div>
+              <div className="input-group"><label>Tipo de cobro</label><select className="select" value={formularioOS.tipo_cobro} onChange={e => actualizarFormularioOS('tipo_cobro', e.target.value)}>{TIPOS_COBRO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div>
+              {esCobroMensual(formularioOS) ? <div className="input-group"><label>Tarifa mensual sin IGV *</label><input className="input" type="number" min="0.01" step="0.01" value={formularioOS.tarifa_mensual} onChange={e => actualizarFormularioOS('tarifa_mensual', e.target.value)} required /></div> : <div />}
+              {esCobroMensual(formularioOS) && <div className="text-muted" style={{gridColumn:'1/-1', fontSize:12, marginTop:-6}}>Cada mes de la vigencia se crea sola su OT en ejecución el día 1, copiando la OT del mes anterior; la primera OT la creas tú. Los meses incompletos se valorizan prorrateados por días.</div>}
               <div className="input-group"><label>Condición de pago</label><input className="input" value={formularioOS.condicion_pago} onChange={e => actualizarFormularioOS('condicion_pago', e.target.value)} placeholder="Ej. Crédito 30 días" /></div>
               <div className="input-group"><label>CEBE</label><select className="select" value={formularioOS.centro_beneficio_id} onChange={e => actualizarFormularioOS('centro_beneficio_id', e.target.value)}><option value="">Sin asignar</option>{cebesFormularioOS.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Responsable comercial</label><select className="select" value={formularioOS.responsable_comercial_id} onChange={e => actualizarFormularioOS('responsable_comercial_id', e.target.value)}><option value="">Sin asignar</option>{(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>
@@ -5398,6 +5408,11 @@ function OSCliente() {
                   )}
                 </span>
               )}
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8, fontSize:12}}>
+              <span style={{color:'var(--fg-muted)', fontWeight:600}}>Cobro:</span>
+              <span className={`badge ${esCobroMensual(os) ? 'badge-cyan' : 'badge-gray'}`}>{etiquetaTipoCobro(os.tipo_cobro)}</span>
+              {esCobroMensual(os) && <span>Tarifa mensual <strong>{moneyCurrency(os.tarifa_mensual || 0, os.moneda)}</strong> sin IGV</span>}
             </div>
             <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
               <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>CEBE:</span>

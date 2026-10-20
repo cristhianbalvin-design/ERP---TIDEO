@@ -7561,7 +7561,7 @@ function Servicios({ embedded = false }) {
   const formBase = { 
     codigo: '', familia_id: '', familia: '', descripcion: '', unidad: 'Servicio',
     moneda: 'PEN', costo: '', precio: '', estado: 'activo', facturable: true, 
-    precio_incluido: false, detalle: '', entregables: [], notas_internas: '', spot_catalogo_id: ''
+    precio_incluido: false, detalle: '', entregables: [], notas_internas: '', spot_catalogo_id: '', tipo_cobro: 'puntual'
   };
   const [form, setForm] = useState(formBase);
   const formularioServicioRef = useRef(null);
@@ -7606,7 +7606,7 @@ function Servicios({ embedded = false }) {
       precio_incluido: s.precio_incluido ?? false, 
       detalle: s.detalle || '', 
       notas_internas: s.notas_internas || '',
-      entregables: s.entregables ? [...s.entregables] : [], spot_catalogo_id: s.spot_catalogo_id || ''
+      entregables: s.entregables ? [...s.entregables] : [], spot_catalogo_id: s.spot_catalogo_id || '', tipo_cobro: s.tipo_cobro || 'puntual'
     });
     setNuevoEntregable('');
     setEditando(s);
@@ -8006,6 +8006,14 @@ function Servicios({ embedded = false }) {
                   <option value="activo">Activo</option>
                   <option value="inactivo">Inactivo</option>
                 </select>
+              </div>
+              <div className="input-group">
+                <label>Tipo de cobro</label>
+                <select className="select" value={form.tipo_cobro} onChange={e => upd('tipo_cobro', e.target.value)}>
+                  <option value="puntual">Servicio puntual</option>
+                  <option value="recurrente_mensual">Recurrente mensual</option>
+                </select>
+                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Referencia del catálogo. El cobro efectivo se define en cada OS Cliente.</div>
               </div>
             </div>
 

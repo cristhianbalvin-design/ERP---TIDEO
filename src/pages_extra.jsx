@@ -21,6 +21,7 @@ import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { obtenerRecepcionActivoCliente } from './services/recepcionesActivosClienteService.js';
+import { conformidadValorizable, esCobroMensual, partidaTarifaMensual, periodoMensualISO } from './utils/cobroMensual.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -2471,7 +2472,7 @@ function Cotizaciones() {
 }
 
 const MESES_VAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago' };
+const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago', tarifa_mensual: 'Por tarifa mensual' };
 
 function Valorizacion({ role }) {
   const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery, personalOperativo, personalAdmin, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
@@ -2531,7 +2532,7 @@ function Valorizacion({ role }) {
   // ── Helpers ──────────────────────────────────────────────────────────
   const conformidadCompleta = otId => {
     const c = cierresTecnicos.find(ct => ct.ot_id === otId);
-    return ['digital', 'fisico'].includes(c?.conformidad_cliente?.tipo);
+    return conformidadValorizable(c);
   };
   // OTs en ejecucion no tienen cierre técnico aún: la conformidad se gestiona externamente para avance parcial
   const conformidadOK = ot => ot.estado === 'ejecucion' || conformidadCompleta(ot.id);
@@ -2676,6 +2677,10 @@ function Valorizacion({ role }) {
       });
     }
 
+    if (modelo === 'tarifa_mensual') {
+      return [partidaTarifaMensual(os, periodoAnio, periodoMes, MESES_VAL[periodoMes])];
+    }
+
     if (modelo === 'hitos_pago') {
       const cot = getCot(selOs);
       const hitos = cot?.hitos_pago || [];
@@ -2701,8 +2706,19 @@ function Valorizacion({ role }) {
   // ── Step transitions ──────────────────────────────────────────────────
   const handleSelOs = osId => {
     setSelOs(osId);
+    const mensual = esCobroMensual(getOs(osId));
+    if (mensual) setModelo('tarifa_mensual');
+    else if (modelo === 'tarifa_mensual') setModelo('');
     const dis = osId ? ots.filter(ot => ot.os_cliente_id === osId && ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)) : [];
     setOtSeleccionadas(dis.map(ot => ot.id));
+  };
+  // Tarifa mensual: se proponen las OT del mes elegido.
+  const avanzarDesdePaso1 = () => {
+    if (modelo === 'tarifa_mensual') {
+      const periodoISO = periodoMensualISO(periodoAnio, periodoMes);
+      setOtSeleccionadas(otsDisponibles.filter(ot => ot.periodo_mensual === periodoISO).map(ot => ot.id));
+    }
+    setStep(2);
   };
   const advanceToStep3 = () => { setPartidas(computePartidas(otSeleccionadas)); setStep(3); };
   const resetForm = () => {
@@ -2997,7 +3013,7 @@ function Valorizacion({ role }) {
             {step < 4 && (
               <button className="btn btn-primary"
                 disabled={(step === 1 && (!selOs || !modelo || !!valDuplicada)) || (step === 2 && otSeleccionadas.length === 0)}
-                onClick={step === 2 ? advanceToStep3 : () => setStep(s => s + 1)}>
+                onClick={step === 2 ? advanceToStep3 : step === 1 ? avanzarDesdePaso1 : () => setStep(s => s + 1)}>
                 Siguiente →
               </button>
             )}
@@ -3087,12 +3103,14 @@ function Valorizacion({ role }) {
                     <option value="avance_pct">Por avance %</option>
                     <option value="costo_real">Por costo real</option>
                     <option value="hitos_pago">Por hitos de pago</option>
+                    {esCobroMensual(getOs(selOs)) && <option value="tarifa_mensual">Por tarifa mensual</option>}
                   </select>
                   {modelo && (
                     <div style={{marginTop:8, padding:'10px 12px', borderRadius:6, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
                       {modelo === 'avance_pct' && '% de avance de cada OT aplicado sobre el monto de cotización, descontando lo ya valorizado.'}
                       {modelo === 'costo_real' && 'Costo real de ejecución (MO + materiales + terceros + logística) más el margen definido.'}
                       {modelo === 'hitos_pago' && 'Hitos de pago definidos en la cotización. Selecciona los completados en el período.'}
+                      {modelo === 'tarifa_mensual' && 'Tarifa fija mensual de la OS, sin IGV. Si la vigencia no cubre el mes completo, se prorratea por días.'}
                     </div>
                   )}
                 </div>
@@ -3191,6 +3209,7 @@ function Valorizacion({ role }) {
                     {modelo === 'avance_pct' && 'Montos calculados. Puedes ajustar el importe a valorizar.'}
                     {modelo === 'costo_real' && 'Costos tomados de partes aprobados y cierre técnico. Ajusta el margen por OT.'}
                     {modelo === 'hitos_pago' && 'Incluye los hitos o conceptos a valorizar en este período.'}
+                    {modelo === 'tarifa_mensual' && 'Monto propuesto desde la tarifa mensual de la OS. Puedes ajustarlo.'}
                   </div>
                 </div>
                 {modelo === 'hitos_pago' && (
@@ -3339,6 +3358,32 @@ function Valorizacion({ role }) {
                   </div>
                 </>
               )}
+
+              {/* Modelo D — Por tarifa mensual */}
+              {modelo === 'tarifa_mensual' && (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Concepto</th>
+                        <th style={{width:160}}>Tarifa mensual</th>
+                        <th style={{width:120}}>Días</th>
+                        <th style={{width:160}}>Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {partidas.map(p => (
+                        <tr key={p.id}>
+                          <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
+                          <td className="num">{moneyCurrency(p._tarifa_mensual || 0, monedaOs)}</td>
+                          <td className="num">{p._dias ?? '—'} / {p._dias_mes ?? '—'}</td>
+                          <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', Number(e.target.value))} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -3389,7 +3434,7 @@ function Valorizacion({ role }) {
                 );
               })()}
 
-              {modelo !== 'hitos_pago' && (
+              {!['hitos_pago', 'tarifa_mensual'].includes(modelo) && (
                 <div style={{marginBottom:12, padding:'8px 12px', borderRadius:6, background:'color-mix(in srgb, var(--cyan) 8%, transparent)', border:'1px solid color-mix(in srgb, var(--cyan) 30%, transparent)', fontSize:12, color:'var(--fg-muted)'}}>
                   Para ajustar los montos, regresa al paso <strong>Partidas</strong> y modifica el margen por OT.
                 </div>
