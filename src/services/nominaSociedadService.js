@@ -89,6 +89,28 @@ function esSucesorDe(sucesor, documento) {
     && (!documento.sociedad_id || !sucesor.sociedad_id || sucesor.sociedad_id === documento.sociedad_id);
 }
 
+export function tieneRenovacionAprobadaContigua(documentos = [], contratoActual, hoy) {
+  const fechaVencimiento = contratoActual?.periodo_fecha_fin || contratoActual?.fecha_vencimiento || null;
+  const periodoActual = contratoActual?.contrato_periodo_id;
+  if (!contratoActual || !fechaVencimiento || !periodoActual || !hoy) return false;
+  const diaSiguienteVencimiento = new Date(`${fechaVencimiento}T00:00:00Z`);
+  if (Number.isNaN(diaSiguienteVencimiento.getTime())) return false;
+  diaSiguienteVencimiento.setUTCDate(diaSiguienteVencimiento.getUTCDate() + 1);
+  const limite = `${diaSiguienteVencimiento.getUTCFullYear()}-${String(diaSiguienteVencimiento.getUTCMonth() + 1).padStart(2, '0')}-${String(diaSiguienteVencimiento.getUTCDate()).padStart(2, '0')}`;
+  return (documentos || []).some(doc => {
+    const inicio = fechaInicioContrato(doc);
+    return doc.estado_validacion === 'aprobado'
+      && !doc.contrato_referencia_id
+      && !/adenda/.test(texto(doc.tipo_doc))
+      && doc.contrato_periodo_predecesor_id === periodoActual
+      && (!contratoActual.personal_id || !doc.personal_id || doc.personal_id === contratoActual.personal_id)
+      && (!contratoActual.sociedad_id || !doc.sociedad_id || doc.sociedad_id === contratoActual.sociedad_id)
+      && (!(doc.tipo_documento_id || doc.tipo_doc) || !(contratoActual.tipo_documento_id || contratoActual.tipo_doc)
+        || (doc.tipo_documento_id || doc.tipo_doc) === (contratoActual.tipo_documento_id || contratoActual.tipo_doc))
+      && Boolean(inicio) && inicio > hoy && inicio <= limite;
+  });
+}
+
 function suprimidoPorSucesor(documento, documentos, fechaLimite) {
   if (documento?.activo === true || !documento?.contrato_periodo_id || !fechaLimite) return false;
   return (documentos || []).some(sucesor => sucesor.estado_validacion !== 'rechazado'

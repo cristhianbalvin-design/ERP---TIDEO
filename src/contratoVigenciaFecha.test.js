@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolverContratosNominaSociedad, seleccionarContratoPorFecha } from './services/nominaSociedadService.js';
+import { resolverContratosNominaSociedad, seleccionarContratoPorFecha, tieneRenovacionAprobadaContigua } from './services/nominaSociedadService.js';
 
 const tipo = { id: 'contrato', nombre: 'Contrato Laboral', captura_snapshot_laboral: true };
 const contrato = (id, inicio, fin, extra = {}) => ({
@@ -137,4 +137,38 @@ test('una autoreferencia entre versiones del mismo periodo no suprime la version
     }),
   ];
   assert.equal(seleccionarContratoPorFecha(docs, '2026-10-19').id, 'v3');
+});
+
+test('renovacion aprobada contigua excluye del aviso de vencimiento', () => {
+  const actual = contrato('actual', '2026-01-01', '2026-10-20', { contrato_periodo_id: 'periodo-actual' });
+  const renovacion = contrato('renovacion', '2026-10-21', '2027-10-20', {
+    contrato_periodo_id: 'periodo-nuevo', contrato_periodo_predecesor_id: 'periodo-actual',
+  });
+  assert.equal(tieneRenovacionAprobadaContigua([actual, renovacion], actual, '2026-10-20'), true);
+});
+
+test('renovacion pendiente o rechazada no excluye del aviso de vencimiento', () => {
+  const actual = contrato('actual', '2026-01-01', '2026-10-20', { contrato_periodo_id: 'periodo-actual' });
+  for (const estado of ['pendiente', 'rechazado']) {
+    const renovacion = contrato(`renovacion-${estado}`, '2026-10-21', '2027-10-20', {
+      contrato_periodo_id: `periodo-${estado}`, contrato_periodo_predecesor_id: 'periodo-actual', estado_validacion: estado,
+    });
+    assert.equal(tieneRenovacionAprobadaContigua([renovacion], actual, '2026-10-20'), false);
+  }
+});
+
+test('renovacion con hueco de mas de un dia no excluye del aviso de vencimiento', () => {
+  const actual = contrato('actual', '2026-01-01', '2026-10-20', { contrato_periodo_id: 'periodo-actual' });
+  const renovacion = contrato('renovacion', '2026-10-22', '2027-10-20', {
+    contrato_periodo_id: 'periodo-nuevo', contrato_periodo_predecesor_id: 'periodo-actual',
+  });
+  assert.equal(tieneRenovacionAprobadaContigua([renovacion], actual, '2026-10-20'), false);
+});
+
+test('adenda aprobada no cuenta como renovacion contigua', () => {
+  const actual = contrato('actual', '2026-01-01', '2026-10-20', { contrato_periodo_id: 'periodo-actual' });
+  const adenda = contrato('adenda', '2026-10-21', '2027-10-20', {
+    tipo_doc: 'Adenda contractual', contrato_periodo_id: 'periodo-nuevo', contrato_periodo_predecesor_id: 'periodo-actual',
+  });
+  assert.equal(tieneRenovacionAprobadaContigua([adenda], actual, '2026-10-20'), false);
 });

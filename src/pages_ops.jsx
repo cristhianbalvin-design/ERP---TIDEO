@@ -42,7 +42,7 @@ import * as personalDocumentosService from './services/personalDocumentosService
 import { contratoFirmaService } from './contratoFirmaService.js';
 import { CATEGORIA_FIRMA_RUBRICA, obtenerFirmaParaDocumento } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
-import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato } from './services/nominaSociedadService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato, tieneRenovacionAprobadaContigua } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { getEquiposClientesConHistorial } from './services/activosService.js';
@@ -25634,13 +25634,16 @@ function RRHH_Operativo() {
   }
 
   const operativosActivos = personal.filter(p => p.estado !== 'inactivo').length;
+  const hoyContratosFecha = new Date();
+  const hoyContratosFechaStr = `${hoyContratosFecha.getFullYear()}-${String(hoyContratosFecha.getMonth() + 1).padStart(2, '0')}-${String(hoyContratosFecha.getDate()).padStart(2, '0')}`;
   const contratosVencerOp = personal
     .map(p => {
       const contratoDoc = rrhhContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
       const contratoInfo = rrhhContratoVencimientoInfo(contratoDoc);
-      return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias };
+      return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias,
+        renovacionContigua: tieneRenovacionAprobadaContigua(documentosContratoFecha, contratoDoc, hoyContratosFechaStr) };
     })
-    .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30);
+    .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30 && !p.renovacionContigua);
   const docsVencidosPorVencerOp = alertasDocumentales.filter(a => a.estado === 'vencido' || a.estado === 'por_vencer' || a.estado === 'rechazado').length;
 
   const descargarPersonalOperativoExcel = () => {

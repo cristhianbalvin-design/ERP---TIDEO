@@ -24,6 +24,14 @@ const fechaInicioRenovacion = documento => {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
 };
 
+const avisoFechaInicioPasada = (fechaInicio, documento) => {
+  if (!fechaInicio || fechaInicio >= fechaLocalHoy()) return '';
+  const vencimiento = documento?.periodo_fecha_fin || documento?.fecha_vencimiento;
+  if (!vencimiento) return 'La fecha de inicio es anterior a hoy. Revisa si corresponde una renovaci\u00f3n retroactiva.';
+  const [anio, mes, dia] = vencimiento.split('-');
+  return `El contrato anterior venci\u00f3 el ${dia}/${mes}/${anio}; la renovaci\u00f3n empezar\u00eda con fecha pasada. Revisa la fecha de inicio.`;
+};
+
 export default function RenovacionFirmaDigitalModal({ empresa, persona, documento, onClose, onComplete }) {
   const { role } = useApp();
   const [plantillas, setPlantillas] = useState([]);
@@ -163,6 +171,7 @@ export default function RenovacionFirmaDigitalModal({ empresa, persona, document
       {plantillas.length > 0 && <div style={{ display: 'grid', gap: 12 }}>
         <label className="input-group">Plantilla publicada<select className="select" value={plantillaId} onChange={e => setPlantillaId(e.target.value)}>{plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre_interno} · v{p.version}</option>)}</select></label>
         <div className="grid-2"><label className="input-group">Fecha de inicio<input className="input" type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} /></label><label className="input-group">Fecha de fin<input className="input" type="date" min={fechaInicio} value={fechaFin} onChange={e => setFechaFin(e.target.value)} /></label></div>
+        {avisoFechaInicioPasada(fechaInicio, documento) && <div className="alert alert-warning">{avisoFechaInicioPasada(fechaInicio, documento)}</div>}
         <label className="input-group">Cargo<input className="input" value={cargo} onChange={e => setCargo(e.target.value)} /></label>
         <div className="grid-2"><label className="input-group">Remuneración base<input className="input" type="number" min="0" value={remuneracion} onChange={e => setRemuneracion(e.target.value)} /></label><label className="input-group">Forma de trabajo<select className="select" value={formaTrabajo} onChange={e => setFormaTrabajo(e.target.value)}><option>Presencial</option><option>Remota</option><option>Mixta</option></select></label></div>
         {persona?.modalidad_contrato !== 'honorarios' && <><label className="input-group">Modalidad del contrato<select required className="select" value={modalidadLegal} onChange={e => setModalidadLegal(e.target.value)}><option value="">Selecciona una modalidad</option>{MODALIDADES_LEGALES.map(m => <option key={m}>{m}</option>)}</select></label>{modalidadLegal !== 'Indefinido' && <label className="input-group">Causa objetiva<textarea required className="input" rows={3} value={causaObjetiva} onChange={e => setCausaObjetiva(e.target.value)} placeholder="Describe la razón concreta y verificable de la contratación temporal." /></label>}</>}
