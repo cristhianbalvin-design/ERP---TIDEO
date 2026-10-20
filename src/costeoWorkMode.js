@@ -1,7 +1,7 @@
 // Modo trabajo de la Hoja de Costeo: en tablet y móvil oculta el header del ERP
 // y convierte la barra lateral en un cajón que se abre con el botón de menú.
-// Incluye tablets en horizontal (pantalla táctil hasta 1366 px de ancho).
-const QUERIES = ['(max-width: 1024px)', '(max-height: 520px)', '(pointer: coarse) and (max-width: 1366px)'];
+// Incluye tablets en horizontal (hasta 1180 px, o pantalla táctil hasta 1366 px).
+const QUERIES = ['(max-width: 1180px)', '(max-height: 520px)', '(pointer: coarse) and (max-width: 1366px)'];
 
 export function isCosteoWorkViewport(viewport = globalThis.window) {
   if (!viewport?.matchMedia) return false;
