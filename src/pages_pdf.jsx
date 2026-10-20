@@ -3,8 +3,20 @@ import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/render
 import { currencySymbol, normalizeCurrency } from './lib/currency.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 
+// Totales de implementación: los campos *_impl pueden venir en 0 (cotizaciones antiguas o creadas desde hoja);
+// en ese caso se usan los totales de cabecera y, si tampoco existen, la suma de partidas.
+const totalesCotImpl = cot => {
+  const n = v => Number(v) || 0;
+  const items = (cot?.items || cot?.partidas || []).filter(p => !p.incluido && p.tipo !== 'recurrente');
+  const sumaItems = items.reduce((t, p) => t + (n(p.total) || n(p.subtotal) || n(p.cantidad || 1) * n(p.precio_unitario)), 0);
+  const sub = n(cot?.subtotal_impl) || n(cot?.subtotal) || Math.round(sumaItems * 100) / 100;
+  const igv = n(cot?.igv_impl) || n(cot?.igv) || Math.round(sub * n(cot?.igv_pct || 18)) / 100;
+  const total = n(cot?.total_impl) || n(cot?.total) || Math.round((sub + igv) * 100) / 100;
+  return { sub, igv, total };
+};
+
 const fmt = (n, sym = 'S/') =>
-  sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
+  sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00');
 
 function richTextInline(nodes = [], keyPrefix = '', textoCtx = {}) {
   return nodes.filter(node => node?.type === 'text').map((node, index) => {
@@ -408,6 +420,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
           <View style={S.tHead}>
             <Text style={[S.tHeadCell, { width: 22 }]}>N°</Text>
             <Text style={[S.tHeadCell, { flex: 1 }]}>Descripción</Text>
+            <Text style={[S.tHeadCell, { width: 40, textAlign: 'right' }]}>Cant.</Text>
             <Text style={[S.tHeadCell, { width: 70, textAlign: 'right' }]}>Precio unit.</Text>
             <Text style={[S.tHeadCell, { width: 75, textAlign: 'right' }]}>Total</Text>
           </View>
@@ -439,6 +452,9 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                       </Text>
                     ))}
                   </View>
+                  <Text style={[S.tCell, { width: 40, textAlign: 'right' }]}>
+                    {Number(p.cantidad || 1).toLocaleString('es-PE', { maximumFractionDigits: 2 })}
+                  </Text>
                   <Text style={[S.tCell, { width: 70, textAlign: 'right' }]}>
                     {p.incluido ? 'Incluido' : fmt(p.precio_unitario || 0, s)}
                   </Text>
@@ -458,15 +474,15 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
             <View style={S.totBox}>
               <View style={S.totRow}>
                 <Text style={S.totLabel}>Subtotal s/ IGV</Text>
-                <Text style={S.totVal}>{fmt(cot.subtotal_impl ?? cot.subtotal, s)}</Text>
+                <Text style={S.totVal}>{fmt(totalesCotImpl(cot).sub, s)}</Text>
               </View>
               <View style={S.totRow}>
                 <Text style={S.totLabel}>IGV ({cot.igv_pct || 18}%)</Text>
-                <Text style={S.totVal}>{fmt(cot.igv_impl ?? cot.igv, s)}</Text>
+                <Text style={S.totVal}>{fmt(totalesCotImpl(cot).igv, s)}</Text>
               </View>
               <View style={S.totFinal}>
                 <Text style={S.totFinalLabel}>Total</Text>
-                <Text style={S.totFinalVal}>{fmt(cot.total_impl ?? cot.total, s)}</Text>
+                <Text style={S.totFinalVal}>{fmt(totalesCotImpl(cot).total, s)}</Text>
               </View>
             </View>
           </View>

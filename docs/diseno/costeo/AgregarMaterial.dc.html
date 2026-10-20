@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Hoja de Costeo: agregar material</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./dx.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="shell">
+  <div class="modal"></div>
+  <div class="dim"></div>
+  <aside class="side" aria-label="Agregar material">
+    <div class="sh">
+      <div style="display:flex;flex-direction:column;gap:4px"><h2>Agregar material</h2><span style="font-size:13px;color:#6B7280">Elige para qué tarea lo necesitas</span></div>
+      <button type="button" class="xbtn" aria-label="Cerrar panel"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg></button>
+    </div>
+
+    <div class="ctxbox">
+      <span class="l1">¿PARA QUÉ TAREA?</span>
+      <div class="ctxrow">
+        <label>Trabajo<span class="fb">Tapa</span></label>
+        <label>Actividad<span class="fb">Fabricación de tapa</span></label>
+        <label>Tarea<span class="fb" style="border-color:#00ACC1;box-shadow:0 0 0 3px #E0F7FA">Mecanizado en torno</span></label>
+      </div>
+      <span style="font-size:12px;color:#0B4F5A">Se agregará a: Tapa › Fabricación de tapa › <b>Mecanizado en torno</b></span>
+    </div>
+
+    <div style="padding:0 24px 12px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:8px;height:44px;border:2px solid #00ACC1;border-radius:10px;padding:0 12px;background:#fff">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#0B4F5A" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
+        <span style="flex:1;font-size:15px">inserto</span><span style="font-size:12px;color:#6B7280">nombre, código o N.º de parte</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span class="b s" style="background:#1A2B4A;color:#fff;border-radius:999px;height:32px">Todos</span>
+        <span class="b s" style="border-radius:999px;height:32px;border-color:#C9CFD8">Más usados</span>
+        <span class="b s" style="border-radius:999px;height:32px;border-color:#C9CFD8">Consumibles</span>
+        <span class="b s" style="border-radius:999px;height:32px;border-color:#C9CFD8">Herramientas</span>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow:hidden;border-top:1px solid #E4E7EB;display:flex;flex-direction:column">
+      <div style="padding:10px 24px;font-size:12px;color:#6B7280;background:#F8F9FA;border-bottom:1px solid #E4E7EB">3 resultados para “inserto” · 1,840 materiales en el catálogo</div>
+      <div class="mres sel"><span class="bx on"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2"><path d="M2 6l3 3 5-6"/></svg></span><div class="t"><b>Inserto de carburo CNMG 120408</b><small>MAT-03120 · Herramientas › Insertos</small></div><div class="pc">S/ 38.50<small>por unid · stock 24</small></div></div>
+      <div class="mres"><span class="bx"></span><div class="t"><b>Inserto de carburo DNMG 150608</b><small>MAT-03124 · Herramientas › Insertos</small></div><div class="pc">S/ 42.00<small>por unid · stock 12</small></div></div>
+      <div class="mres"><span class="bx"></span><div class="t"><b>Inserto para roscar 16ER 1.5</b><small>MAT-03188 · Herramientas › Insertos</small></div><div class="pc">S/ 51.20<small>por unid · stock 6</small></div></div>
+      <div style="padding:14px 24px;font-size:13px;color:#6B7280">¿No está? Pide crearlo desde el catálogo de materiales.</div>
+    </div>
+
+    <div style="padding:12px 24px;border-top:1px solid #E4E7EB;display:grid;grid-template-columns:100px 1fr;gap:12px;align-items:end">
+      <div><span class="lb" style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:6px">Cantidad</span><div class="fb n">3<i>unid</i></div></div>
+      <div style="text-align:right;line-height:1.2"><span style="font-size:12px;color:#6B7280">3 × 38.50</span><br><b style="font-family:'Sora',sans-serif;font-size:18px;color:#1A2B4A">S/ 115.50</b></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid #E4E7EB">
+      <span style="font-size:14px;color:#1A2B4A"><b>1</b> seleccionado</span>
+      <div class="sp"></div>
+      <button type="button" class="b">Cancelar</button>
+      <button type="button" class="b p">Agregar a la tarea</button>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

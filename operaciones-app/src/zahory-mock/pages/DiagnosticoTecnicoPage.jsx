@@ -12,6 +12,7 @@ import { DiagnosticoAgregarTareasPanel } from './DiagnosticoAgregarTareasPanel.j
 import { DiagnosticoInformePanel } from './DiagnosticoInformePanel.jsx';
 import { MejorarRedaccionIA } from '../components/MejorarRedaccionIA.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import {
   buscarOCrearFamiliaTrabajo,
   buscarOCrearTipoServicioInterno,
@@ -459,6 +460,8 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [access, setAccess] = useState({ loading: true, ver: false, crear: false, editar: false, aprobar: false, error: '' });
   const [diagnosticos, setDiagnosticos] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [generandoHojaCosteo, setGenerandoHojaCosteo] = useState(false);
+  const [errorHojaCosteo, setErrorHojaCosteo] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
   const [wizardStep, setWizardStep] = useState(1);
   const [datosIniciales, setDatosIniciales] = useState({ motivo: '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false });
@@ -1248,6 +1251,30 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setConfirmarQuitarTrabajoId('');
     setNotice(`Trabajo \"${nombre}\" quitado. Guarda para aplicar los cambios.`);
   };
+  const generarHojaCosteo = async () => {
+    const sociedadId = sesion.sociedadActiva?.id;
+    if (!sociedadId || sociedadId === '**todas**') {
+      setErrorHojaCosteo('Selecciona una sociedad concreta en la barra superior para generar la Hoja de Costeo.');
+      return;
+    }
+    setErrorHojaCosteo('');
+    setGenerandoHojaCosteo(true);
+    try {
+      const { data, error: rpcError } = await getSupabaseClient().rpc('generar_hoja_costeo_desde_diagnostico', {
+        p_diagnostico_id: selected.id,
+        p_sociedad_id: sociedadId,
+      });
+      if (rpcError) throw rpcError;
+      const hojaId = data?.hoja_costeo_id;
+      if (!hojaId) throw new Error('La RPC no devolvió el identificador de la Hoja de Costeo.');
+      const adminBase = (import.meta.env.VITE_ADMIN_APP_URL || '/').replace(/\/$/, '');
+      window.location.assign(`${adminBase}/#hoja_costeo_wizard?hojaId=${encodeURIComponent(hojaId)}`);
+    } catch (rpcError) {
+      setErrorHojaCosteo(errorMessage(rpcError));
+    } finally {
+      setGenerandoHojaCosteo(false);
+    }
+  };
   const renderLineas = lines => <DiagnosticoLineasTabla lines={lines} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />;
   const renderFamilyGroup = group => {
     const familyId = group.familia.id;
@@ -1423,6 +1450,8 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {PASOS_MANTENIMIENTO.map((label, index) => <button key={label} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} type="button" aria-current={workStep === index + 1 ? 'step' : undefined} onClick={async () => { const step = index + 1; if (step === 6) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><i>{workStep > index + 1 ? '✓' : index + 1}</i><span>{index + 1} · {label}</span></button>)}
           </nav><div className="dx-work-mobile-step" aria-live="polite"><strong>Paso {workStep} de 6 · {PASOS_MANTENIMIENTO[workStep - 1]}</strong><div className="dx-work-mobile-segments" aria-label="Ir a un paso del diagnóstico">{PASOS_MANTENIMIENTO.map((label, index) => <button key={label} type="button" aria-label={`Paso ${index + 1}: ${label}`} aria-current={workStep === index + 1 ? 'step' : undefined} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} onClick={async () => { const step = index + 1; if (step === 6) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><span>{label}</span></button>)}</div></div></div>}
           {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} permitirEmision={selected.tipo !== 'mantenimiento' || workStep === 6} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button> : null} />}
+          {selected.tipo === 'fabricacion' && selected.estado === 'emitido' && <div className="dx-inf-open-row"><button type="button" className="btn btn-primary" onClick={generarHojaCosteo} disabled={generandoHojaCosteo} aria-busy={generandoHojaCosteo}>{generandoHojaCosteo ? 'Generando Hoja de Costeo…' : 'Generar hoja de costeo'}</button></div>}
+          {errorHojaCosteo && <div className="alert alert-error" role="alert">{errorHojaCosteo}</div>}
           {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button></div>}
           <div className="dx-summary" style={selected.tipo === 'mantenimiento' && (workStep !== 5 || informePanel || hallazgoView === 'editor') ? { display: 'none' } : undefined}>
             <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>

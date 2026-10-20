@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Hoja de Costeo en tablet</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./dx.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="dev" style="width:834px;height:1112px">
+  <div class="mt" style="height:60px">
+    <button type="button" class="xbtn" style="border-color:#C9CFD8" aria-label="Menú"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A2B4A" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="tt">Costeo · Cilindro hidráulico CH-120</div>
+    <span class="bdg am">Borrador</span>
+    <button type="button" class="b" style="height:44px">Agregar trabajo</button>
+  </div>
+  <div class="stp w4">
+    <div class="on" style="padding:12px 14px"><b>1</b><span>Trabajos</span></div>
+    <div style="padding:12px 14px"><b>2</b><span>Materiales</span></div>
+    <div style="padding:12px 14px"><b>3</b><span>Terceros y log.</span></div>
+    <div style="padding:12px 14px"><b>4</b><span>Precio</span></div>
+  </div>
+  <div class="sc2" style="padding:16px;gap:14px">
+    <section class="tw">
+      <div class="twh open">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5l4 4 4-4"/></svg>
+        <div style="display:flex;flex-direction:column;gap:2px"><div style="display:flex;align-items:center;gap:10px"><span class="nm">Tapa</span><span class="bdg cy" style="font-weight:600">Fabricación de tapa</span></div><span class="meta">5 tareas · 10,0 h-hombre · 7,0 h-máquina</span></div>
+        <div class="sp"></div>
+        <div class="money">S/ 583.50</div>
+      </div>
+      <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="tk"><div class="h"><b>Trazado y corte de plancha</b><span class="v">44.00</span></div>
+          <div class="kv"><label>Cargo<span class="fb">Ayudante mec.</span></label><label>Horas-hombre<span class="fb n">2,0 h</span></label></div>
+          <div class="rate">Mano de obra 44.00 · S/ 22.00 por hora</div></div>
+        <div class="tk"><div class="h"><b>Mecanizado en torno</b><span class="v">240.00</span></div>
+          <div class="kv"><label>Cargo<span class="fb">Tornero</span></label><label>Horas-hombre<span class="fb n">3,0 h</span></label><label>Activo<span class="fb">Torno paralelo</span></label><label>Horas-máq.<span class="fb n">3,0 h</span></label></div>
+          <div class="rate">MO 96.00 + máquina 144.00 (S/ 48.00/h)</div></div>
+        <div class="tk" style="background:#F3FBFC"><div class="h"><b>Soldadura de unión</b><span class="v">135.00</span></div>
+          <div class="kv"><label>Cargo<span class="fb">Soldador</span></label><label>Horas-hombre<span class="fb n">2,5 h</span></label><label>Activo<span class="fb">Soldadora MIG</span></label><label>Horas-máq.<span class="fb n">2,5 h</span></label></div>
+          <div class="rate">MO 90.00 + máquina 45.00 (S/ 18.00/h)</div></div>
+        <div class="tk"><div class="h"><b>Rectificado de asiento</b><span class="v">130.50</span></div>
+          <div class="kv"><label>Cargo<span class="fb">Tornero</span></label><label>Horas-hombre<span class="fb n adj">1,5 h</span></label><label>Activo<span class="fb">Rectificadora</span></label><label>Horas-máq.<span class="fb n adj">1,5 h</span></label></div>
+          <div class="rate">MO 48.00 + máquina 82.50 · ajustado vs receta</div></div>
+      </div>
+    </section>
+    <section class="tw"><div class="twh"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l4 4-4 4"/></svg><div style="display:flex;flex-direction:column;gap:2px"><span class="nm">Camisa</span><span class="meta">6 tareas · 18,5 h-hombre · 12,0 h-máquina</span></div><div class="sp"></div><div class="money">S/ 1,159.00</div></div></section>
+    <section class="tw"><div class="twh"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l4 4-4 4"/></svg><div style="display:flex;flex-direction:column;gap:2px"><span class="nm">Vástago</span><span class="meta">2 tareas · 5,0 h-hombre · 2,0 h-máquina</span></div><div class="sp"></div><div class="money">S/ 274.00</div></div></section>
+  </div>
+  <div class="mb" style="padding:12px 16px">
+    <button type="button" class="b" style="height:48px">Guardar</button>
+    <div class="pr" style="text-align:right"><small>Costo directo hasta ahora</small><b>S/ 4,861.10</b></div>
+    <button type="button" class="b p" style="height:48px">Siguiente: Materiales ›</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":834,"height":1112}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -291,11 +291,14 @@ const DICCIONARIO_COMERCIAL_DEFAULT = [
 
 function getInitialNavigation() {
   if (typeof window === 'undefined') return { pagina: 'dashboard', params: {} };
-  const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
+  const [hashRoute = '', hashQuery = ''] = window.location.hash.replace(/^#\/?/, '').trim().split('?');
   const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
   const savedPage = localStorage.getItem('tideo_active_page')?.trim();
-  const initial = normalizeDashboardRoute(hashPage || queryPage || savedPage || 'dashboard');
-  return { pagina: initial.pagina || 'dashboard', params: initial.pestana ? { pestana: initial.pestana } : {} };
+  const initial = normalizeDashboardRoute(hashRoute || queryPage || savedPage || 'dashboard');
+  return {
+    pagina: initial.pagina || 'dashboard',
+    params: { ...(initial.pestana ? { pestana: initial.pestana } : {}), ...Object.fromEntries(new URLSearchParams(hashQuery)) },
+  };
 }
 
 export function AppProvider({ children }) {
@@ -3118,7 +3121,8 @@ export function AppProvider({ children }) {
     const extras = {
       activo_id: cotFinal.activo_id,
       recepcion_id: cotFinal.recepcion_id,
-      ...(hc.oportunidad_id ? {} : { linea_negocio: lineaResuelta }),
+      // La línea viene de la oportunidad; si la oportunidad no tiene, se usa la elegida al generar.
+      ...(cotFinal.linea_negocio || !lineaResuelta ? {} : { linea_negocio: lineaResuelta }),
     };
     const extrasResult = await crmPersist(sb2 => svcActualizarCotizacion(sb2, cotFinal.id, extras));
     if (extrasResult?.error) throw extrasResult.error;

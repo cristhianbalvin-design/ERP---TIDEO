@@ -453,7 +453,7 @@ function MainLayout({ onShowApplicationWelcome }) {
 }
 
 function ApplicationEntry() {
-  const [selected, setSelected] = useState(false);
+  const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard'));
   const { setMobileMode, setMobileProfile } = useApp();
   const enterAttendance = () => {
     setMobileProfile('asistencia');

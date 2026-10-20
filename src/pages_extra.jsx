@@ -893,8 +893,8 @@ function CotizacionesInner() {
                     {mostrarBadgeSociedadCotizaciones && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
                     <td><strong>{cliente}</strong></td>
                     <td className="text-muted">{opp?.nombre || '—'}</td>
-                    <td className="num"><strong>{esEspecial ? '—' : money(impl, currencySymbol(r.moneda))}</strong></td>
-                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? money(rec, currencySymbol(r.moneda)) : '—')}</td>
+                    <td className="num"><strong>{esEspecial ? '—' : moneyD(impl, currencySymbol(r.moneda))}</strong></td>
+                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? moneyD(rec, currencySymbol(r.moneda)) : '—')}</td>
                     <td className="text-muted">{r.fecha}</td>
                     <td><span className={'badge ' + badgeEstado}>{r.estado?.replace('_', ' ')}</span></td>
                   </tr>
@@ -1093,6 +1093,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   const toggleSeccion = k => setSeccionesOpen(p => ({ ...p, [k]: !p[k] }));
   const [confirmEnviar, setConfirmEnviar] = useState(false);
   const [showAprobModal, setShowAprobModal] = useState(false);
+  const [confirmarAprobInterna, setConfirmarAprobInterna] = useState(false);
   const sym = currencySymbol(cot.moneda);
   const calcDetalleTotal = p => toCotNumber(p.total) || (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario));
   const subtotalDetalleImpl = partidas
@@ -1108,7 +1109,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
     toCotNumber(cot.subtotal_rec) <= 0 || toCotNumber(cot.total_rec) <= 0
   );
   const subtotalImplDetalle = usarTotalesPartidasHC ? subtotalDetalleImpl : (cot.subtotal_impl ?? cot.subtotal);
-  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18) / 100) : (cot.igv_impl ?? cot.igv);
+  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18)) / 100 : (cot.igv_impl ?? cot.igv);
   const totalImplDetalle = usarTotalesPartidasHC ? subtotalImplDetalle + igvImplDetalle : (cot.total_impl ?? cot.total);
   const subtotalRecDetalle = usarTotalesRecPartidasHC ? subtotalDetalleRec : cot.subtotal_rec;
   const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18) / 100) : cot.igv_rec;
@@ -1188,10 +1189,20 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
               ✕ Cancelar solicitud
             </button>
           )}
-          {mostrarAprobarBtn && (
-            <button className="btn btn-secondary" onClick={onAprobarInterna} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
+          {mostrarAprobarBtn && !confirmarAprobInterna && (
+            <button className="btn btn-secondary" onClick={() => setConfirmarAprobInterna(true)} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
               ✓ Aprobar para envío
             </button>
+          )}
+          {mostrarAprobarBtn && confirmarAprobInterna && (
+            <>
+              <button className="btn btn-primary" onClick={() => { setConfirmarAprobInterna(false); onAprobarInterna(); }}>
+                ✓ Confirmar aprobación
+              </button>
+              <button className="btn btn-ghost" onClick={() => setConfirmarAprobInterna(false)}>
+                Cancelar
+              </button>
+            </>
           )}
           {esBorrador && (
             <button
@@ -1294,8 +1305,8 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                     </td>
                     <td className="num">{p.cantidad}</td>
                     <td className="text-muted" style={{fontSize:12}}>{renderComercial(p.detalle_cantidad) || '—'}</td>
-                    <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : money(p.precio_unitario || 0, sym)}</td>
-                    <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : money(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
+                    <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : moneyD(p.precio_unitario || 0, sym)}</td>
+                    <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : moneyD(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1494,7 +1505,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
               <div key={i} className="row" style={{justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border-subtle)', fontSize:13}}>
                 <span className="badge badge-gray">v{h.version}</span>
                 <span className="text-muted">{h.fecha}</span>
-                <span className="num">{money(h.total, sym)}</span>
+                <span className="num">{moneyD(h.total, sym)}</span>
                 <span className="text-muted mono" style={{fontSize:11}}>{h.cotizacion_id}</span>
               </div>
             ))}
@@ -1529,13 +1540,13 @@ function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
   return (
     <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
       <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">Subtotal s/ IGV</span><span className="num">{money(subtotal || 0, sym)}{suffix}</span>
+        <span className="text-muted">Subtotal s/ IGV</span><span className="num">{moneyD(subtotal || 0, sym)}{suffix}</span>
       </div>
       <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">IGV ({igvPct}%)</span><span className="num">{money(igv || 0, sym)}{suffix}</span>
+        <span className="text-muted">IGV ({igvPct}%)</span><span className="num">{moneyD(igv || 0, sym)}{suffix}</span>
       </div>
       <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
-        <span>Total{suffix === '/mes' ? ' mensual' : ''}</span><span className="num">{money(total || 0, sym)}{suffix}</span>
+        <span>Total{suffix === '/mes' ? ' mensual' : ''}</span><span className="num">{moneyD(total || 0, sym)}{suffix}</span>
       </div>
     </div>
   );
@@ -2180,7 +2191,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
           <div className="modal-body col" style={{gap:14}}>
             <div style={infoBox}>
           <div className="eyebrow">{esCotizacionEspecial ? 'Cotización especial aceptada' : 'Cotización aprobada'}</div>
-              <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
+              <strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
             </div>
             <div style={{fontWeight:500, fontSize:14}}>Se detectaron OS activas para este cliente. ¿Esta cotización corresponde a una OS existente o es una OS nueva?</div>
             <div className="col" style={{gap:8}}>
@@ -2216,7 +2227,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
             <button className="icon-btn" onClick={onClose}>{I.x}</button>
           </div>
           <div className="modal-body col" style={{gap:16}}>
-            <div style={infoBox}><strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
+            <div style={infoBox}><strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
             <div style={{fontWeight:500}}>¿El cliente proporcionó un número de OS?</div>
             <div className="col" style={{gap:8}}>
               <label style={{...optStyle, background: tieneNumero === true ? 'var(--cyan-lt)' : 'transparent'}}>
@@ -2260,7 +2271,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
         </div>
         <form className="modal-body col" style={{gap:14}} onSubmit={e => { e.preventDefault(); onCrearNueva(form); }}>
           <div style={infoBox}>
-            <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
+            <strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
             {tieneNumero && form.numero_doc_cliente && <> · OS cliente: <strong>{form.numero_doc_cliente}</strong></>}
           </div>
           <div className="input-group">

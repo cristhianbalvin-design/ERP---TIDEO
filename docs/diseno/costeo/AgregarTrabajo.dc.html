@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Agregar trabajo a la hoja de costeo</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./dx.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="shell">
+  <div class="modal" style="filter:none"></div>
+  <div class="dim"></div>
+  <div class="pnl" role="dialog" aria-label="Agregar trabajo">
+    <div class="ph1">
+      <div><h2>Agregar a la hoja de costeo</h2><p>Trabajo › Actividad › Tarea. Cada tarea trae sus horas y su costo; ajústalos para esta hoja.</p></div>
+      <span class="bdg cy">Fabricación</span>
+    </div>
+    <div class="stp">
+      <div class="dn"><b>✓</b><span>Camisa</span></div>
+      <div class="dn"><b>✓</b><span>Fabricación de camisa</span></div>
+      <div class="on"><b>3</b><span>Tareas de la actividad</span></div>
+    </div>
+    <div class="cols">
+      <div class="col">
+        <div class="ct"><h3>Trabajo o componente</h3><div class="sr">Buscar</div></div>
+        <div class="lst">
+          <div class="ro"><span class="t">Tapa<small>1 actividad</small></span><span class="tg c">Componente</span></div>
+          <div class="ro sel"><span class="t">Camisa<small>1 actividad</small></span><span class="tg c">Componente</span></div>
+          <div class="ro"><span class="t">Vástago<small>1 actividad</small></span><span class="tg c">Componente</span></div>
+          <div class="ro"><span class="t">Sistema de sellado<small>1 actividad</small></span><span class="tg c">Componente</span></div>
+          <div class="ro"><span class="t">Trabajos generales<small>3 actividades</small></span><span class="tg">Trabajo</span></div>
+        </div>
+        <div class="crt"><div>+ Crear trabajo o componente</div></div>
+      </div>
+      <div class="col">
+        <div class="ct"><h3>Actividad</h3><div class="sr">Buscar</div></div>
+        <div class="lst">
+          <div class="ro sel"><span class="t">Fabricación de camisa<small>CAM-001 · 6 tareas en receta</small></span><span>›</span></div>
+          <div class="ro"><span class="t">Reparación de camisa<small>CAM-004 · 4 tareas en receta</small></span><span>›</span></div>
+        </div>
+        <div class="crt"><div>+ Crear actividad</div></div>
+      </div>
+      <div class="col">
+        <div class="ct"><h3>Tarea</h3><div class="sr">Buscar o agregar otra tarea…</div></div>
+        <div class="note2">Cargadas desde la receta: 6 tareas. Desmarca las que no apliquen. El costo por hora viene de la planilla y del activo.</div>
+        <div style="overflow:hidden;padding:0 8px">
+          <div class="ln">
+            <div class="lt"><span class="chk"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2"><path d="M2 6l3 3 5-6"/></svg></span><span class="t">Preparación de tubo<small>CAM-001-1</small></span><span class="sub">S/ 44.00</span></div>
+            <div class="lg">
+              <label>Cargo<span class="fb">Ayudante mecánico</span></label><label>H-H<span class="fb n">2,0</span></label><label>S/ por hora<span class="fb n off">22.00</span></label>
+              <label>Activo<span class="fb off">Sin activo</span></label><label>H-máq.<span class="fb n off">0</span></label><label>S/ por hora<span class="fb n off">—</span></label>
+            </div>
+            <span class="dv ok">Igual a la receta</span>
+          </div>
+          <div class="ln">
+            <div class="lt"><span class="chk"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2"><path d="M2 6l3 3 5-6"/></svg></span><span class="t">Mecanizado interior<small>CAM-001-2</small></span><span class="sub">S/ 400.00</span></div>
+            <div class="lg">
+              <label>Cargo<span class="fb">Tornero</span></label><label>H-H<span class="fb n">5,0</span></label><label>S/ por hora<span class="fb n off">32.00</span></label>
+              <label>Activo<span class="fb">Torno paralelo</span></label><label>H-máq.<span class="fb n">5,0</span></label><label>S/ por hora<span class="fb n off">48.00</span></label>
+            </div>
+            <span class="dv ok">Igual a la receta</span>
+          </div>
+          <div class="ln">
+            <div class="lt"><span class="chk"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2"><path d="M2 6l3 3 5-6"/></svg></span><span class="t">Bruñido interior<small>CAM-001-3</small></span><span class="sub">S/ 296.00</span></div>
+            <div class="lg">
+              <label>Cargo<span class="fb">Tornero</span></label><label>H-H<span class="fb n adj">4,0</span></label><label>S/ por hora<span class="fb n off">32.00</span></label>
+              <label>Activo<span class="fb">Bruñidora</span></label><label>H-máq.<span class="fb n adj">4,0</span></label><label>S/ por hora<span class="fb n off">42.00</span></label>
+            </div>
+            <span class="dv ch">Receta: H-H 3,5 · H-máq. 3,5</span>
+          </div>
+          <div class="ln">
+            <div class="lt"><span class="chk"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2"><path d="M2 6l3 3 5-6"/></svg></span><span class="t">Rectificado exterior<small>CAM-001-4</small></span><span class="sub">S/ 261.00</span></div>
+            <div class="lg">
+              <label>Cargo<span class="fb">Tornero</span></label><label>H-H<span class="fb n">3,0</span></label><label>S/ por hora<span class="fb n off">32.00</span></label>
+              <label>Activo<span class="fb">Rectificadora</span></label><label>H-máq.<span class="fb n">3,0</span></label><label>S/ por hora<span class="fb n off">55.00</span></label>
+            </div>
+            <span class="dv ok">Igual a la receta</span>
+          </div>
+          <div style="padding:12px 8px;font-size:13px;color:#6B7280">2 tareas más: Soldadura de bridas · Control dimensional</div>
+        </div>
+      </div>
+    </div>
+    <div class="pf">
+      <div class="sm"><b>Camisa › Fabricación de camisa · 6 tareas</b><span>18,5 h-hombre · 12,0 h-máquina · S/ 1,159.00 (los materiales se piden en el paso 2)</span></div>
+      <div style="display:flex;gap:8px"><button type="button" class="b">Limpiar</button><button type="button" class="b p">Agregar a la hoja</button></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

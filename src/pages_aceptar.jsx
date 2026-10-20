@@ -7,9 +7,21 @@ const sb = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
+// Totales de implementación: los campos *_impl pueden venir en 0 (cotizaciones antiguas o creadas desde hoja);
+// en ese caso se usan los totales de cabecera y, si tampoco existen, la suma de partidas.
+const totalesCotImpl = cot => {
+  const n = v => Number(v) || 0;
+  const items = (cot?.items || cot?.partidas || []).filter(p => !p.incluido && p.tipo !== 'recurrente');
+  const sumaItems = items.reduce((t, p) => t + (n(p.total) || n(p.subtotal) || n(p.cantidad || 1) * n(p.precio_unitario)), 0);
+  const sub = n(cot?.subtotal_impl) || n(cot?.subtotal) || Math.round(sumaItems * 100) / 100;
+  const igv = n(cot?.igv_impl) || n(cot?.igv) || Math.round(sub * n(cot?.igv_pct || 18)) / 100;
+  const total = n(cot?.total_impl) || n(cot?.total) || Math.round((sub + igv) * 100) / 100;
+  return { sub, igv, total };
+};
+
 const fmtMoney = (n, m = 'PEN') => {
   const s = m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
-  return s + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
+  return s + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00');
 };
 
 const fmtDt = (iso) => iso ? new Date(iso).toLocaleString('es-PE', { dateStyle: 'long', timeStyle: 'short' }) : '—';
@@ -245,10 +257,10 @@ export function PaginaAceptacion({ token, tipo = 'estandar' }) {
           <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 220, background: '#f5f8fc', borderRadius: 6, padding: 14 }}>
               {hayRec && <div style={{ fontSize: 10, fontWeight: 700, color: secondary, letterSpacing: 0.5, marginBottom: 8 }}>IMPLEMENTACIÓN</div>}
-              <div style={styles.totRow}><span style={{ color: '#666' }}>Subtotal s/ IGV</span><span>{fmtMoney(cot?.subtotal_impl ?? cot?.subtotal, cot?.moneda)}</span></div>
-              <div style={styles.totRow}><span style={{ color: '#666' }}>IGV ({cot?.igv_pct || 18}%)</span><span>{fmtMoney(cot?.igv_impl ?? cot?.igv, cot?.moneda)}</span></div>
+              <div style={styles.totRow}><span style={{ color: '#666' }}>Subtotal s/ IGV</span><span>{fmtMoney(totalesCotImpl(cot).sub, cot?.moneda)}</span></div>
+              <div style={styles.totRow}><span style={{ color: '#666' }}>IGV ({cot?.igv_pct || 18}%)</span><span>{fmtMoney(totalesCotImpl(cot).igv, cot?.moneda)}</span></div>
               <div style={{ ...styles.totRow, borderTop: '1px solid #cdd5de', paddingTop: 8, marginTop: 4, fontWeight: 700, fontSize: 15, color: primary }}>
-                <span>Total</span><span>{fmtMoney(cot?.total_impl ?? cot?.total, cot?.moneda)}</span>
+                <span>Total</span><span>{fmtMoney(totalesCotImpl(cot).total, cot?.moneda)}</span>
               </div>
             </div>
             {hayRec && (

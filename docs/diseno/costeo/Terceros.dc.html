@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Hoja de Costeo: paso 3 terceros y logística</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./dx.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="shell">
+  <div class="modal">
+    <div class="mh">
+      <div>
+        <div class="l"><h1>Costeo · Cilindro hidráulico CH-120</h1><span class="bdg am">Borrador</span><span class="bdg cy">Cotización especial</span></div>
+        <div class="s">Hoja HC-2026-0147 · Minera Andes Sur S.A. · Origen: diagnóstico DT-2026-0089</div>
+      </div>
+      <button type="button" class="xbtn" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg></button>
+    </div>
+    <div class="sumbar">
+      <div class="sc"><b>1</b><span>servicio de terceros</span></div>
+      <div class="sc"><b>1</b><span>concepto de logística</span></div>
+      <div class="sc"><b>S/ 1,330.00</b><span>total</span></div>
+      <div class="sp"></div>
+    </div>
+    <div class="stp w4">
+      <div class="dn"><b>✓</b><span>Trabajos</span><small>S/ 2,016.50</small></div>
+      <div class="dn"><b>✓</b><span>Materiales</span><small>S/ 1,514.60</small></div>
+      <div class="on"><b>3</b><span>Terceros y logística</span><small>S/ 1,330.00</small></div>
+      <div><b>4</b><span>Resumen y precio</span><small>S/ 7,966.81</small></div>
+    </div>
+
+    <div class="body">
+      <section class="sec">
+        <div class="sech">
+          <span class="nm">Servicios de terceros</span><span class="bdg gy">1 servicio</span>
+          <div class="sp"></div>
+          <b style="font-family:'Sora',sans-serif;color:#1A2B4A">S/ 950.00</b>
+          <button type="button" class="b s"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>Agregar servicio</button>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Servicio</th><th>Proveedor</th><th>Para qué trabajo y tarea</th><th class="r">Monto</th><th></th></tr></thead>
+          <tbody><tr>
+            <td><b style="color:#1A2B4A">Cromado duro de vástago</b></td>
+            <td>Cromados Lima S.A.C.</td>
+            <td><span style="color:#6B7280">Vástago › Sin actividad ›</span> <b style="color:#1A2B4A">Rectificado de vástago</b></td>
+            <td class="r"><div class="fb n" style="display:inline-flex;min-width:110px">950.00</div></td>
+            <td style="width:44px"><button type="button" class="dt" aria-label="Quitar">✕</button></td>
+          </tr></tbody>
+        </table>
+      </section>
+
+      <section class="sec">
+        <div class="sech">
+          <span class="nm">Logística</span><span class="bdg gy">1 concepto</span>
+          <div class="sp"></div>
+          <b style="font-family:'Sora',sans-serif;color:#1A2B4A">S/ 380.00</b>
+          <button type="button" class="b s"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>Agregar concepto</button>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Concepto</th><th>Detalle</th><th>Aplica a</th><th class="r">Cantidad</th><th class="r">Precio unit.</th><th class="r">Monto</th><th></th></tr></thead>
+          <tbody><tr>
+            <td><b style="color:#1A2B4A">Flete a planta del cliente</b></td>
+            <td>Cama baja, ida y vuelta</td>
+            <td><span class="bdg gy" style="font-weight:600">Toda la hoja</span></td>
+            <td class="r"><div class="fb n" style="display:inline-flex;min-width:64px">1</div></td>
+            <td class="r"><div class="fb n" style="display:inline-flex;min-width:96px">380.00</div></td>
+            <td class="r"><b style="color:#1A2B4A">380.00</b></td>
+            <td style="width:44px"><button type="button" class="dt" aria-label="Quitar">✕</button></td>
+          </tr></tbody>
+        </table>
+      </section>
+    </div>
+
+    <div class="foot">
+      <span class="warn"><i></i>Sin cambios pendientes</span>
+      <div class="sp"></div>
+      <div class="pr"><small>Costo directo hasta ahora</small><b>S/ 4,861.10</b></div>
+      <button type="button" class="b">‹ Materiales</button>
+      <button type="button" class="b">Guardar</button>
+      <button type="button" class="b p">Siguiente: Resumen y precio ›</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
