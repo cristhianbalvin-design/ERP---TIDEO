@@ -3,6 +3,7 @@ import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import './hoja_costeo_listado.css';
 import './cotizaciones_listado.css';
+import './valorizaciones.css';
 import './cotizacion_detalle.css';
 import './cotizacion_editor.css';
 import { maestrosService } from './services/maestrosService.js';
@@ -2533,12 +2534,10 @@ function Valorizacion({ role }) {
   const [confirmarExceso, setConfirmarExceso] = useState(false);
 
   // List filter states
-  const [filterCliente, setFilterCliente] = useState('');
-  const [filterOs, setFilterOs] = useState('');
+  const [busquedaVal, setBusquedaVal] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterMoneda, setFilterMoneda] = useState('');
-  const [filterPeriodo, setFilterPeriodo] = useState('');
-  const [filterModelo, setFilterModelo] = useState('');
+  const [filterFecha, setFilterFecha] = useState('');
 
   const periodo = `${MESES_VAL[periodoMes]} ${periodoAnio}`;
 
@@ -2819,75 +2818,46 @@ function Valorizacion({ role }) {
           </div>
         )}
 
-        <div className="side-panel-backdrop" onClick={() => setSelVal(null)} />
-        <div className="side-panel">
-        <div className="side-panel-head">
+        <div className="dx-val-back" onClick={() => setSelVal(null)} />
+        <aside className="dx-val-panel" role="dialog" aria-modal="true" aria-label={`Valorización ${v.numero}`}>
+        <div className="dx-val-ph">
           <div>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>{clienteNombre} · {os?.numero || '—'} · {v.periodo || '—'}</div>
-            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-              <strong style={{fontSize:16}}>{v.numero}</strong>
-              <span className={'badge ' + badgeC(v.estado)}>{badgeL(v.estado)}</span>
+            <div className="dx-val-eyebrow">Valorización · {v.periodo || 'sin período'}</div>
+            <h2>{v.numero}</h2>
+            <div className="dx-val-ph-tags">
+              <span className={`dx-val-pill ${({ aprobada: 'is-green', facturada: 'is-blue', anulada: 'is-red' })[v.estado] || 'is-gray'}`}><i />{badgeL(v.estado)}</span>
+              {v.tipo === 'avance' && <span className="dx-val-tag is-avance">Avance</span>}
+              {v.tipo === 'final' && <span className="dx-val-tag is-final">Final</span>}
+              {v.modelo_calculo && <span className="dx-val-tag is-modelo">{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo}</span>}
               {mostrarBadgeSociedadValorizaciones && <SociedadBadge sociedadId={v.sociedad_id} />}
-              {v.tipo === 'avance' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--orange) 15%,transparent)',color:'var(--orange)'}}>Avance</span>}
-              {v.tipo === 'final' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--green) 15%,transparent)',color:'var(--green)'}}>Final</span>}
             </div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            {v.estado === 'borrador' && <button className="btn btn-primary btn-sm" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>}
-            {v.estado === 'aprobada' && <button className="btn btn-primary btn-sm" style={{background:'var(--green)'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>{I.plus} Factura</button>}
-            <button className="icon-btn" onClick={() => setSelVal(null)}>{I.x}</button>
+          <div className="dx-val-ph-acts">
+            {v.estado === 'borrador' && <button type="button" className="dx-val-ghost" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>}
+            {v.estado === 'aprobada' && <button type="button" className="dx-val-ghost is-danger" onClick={() => setModalAnular(true)}>Anular</button>}
+            {v.estado === 'borrador' && <button type="button" className="dx-val-primary" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>}
+            {v.estado === 'aprobada' && <button type="button" className="dx-val-primary" onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>{I.plus} Facturar</button>}
+            <button type="button" className="dx-val-x" aria-label="Cerrar" onClick={() => setSelVal(null)}>{I.x}</button>
           </div>
         </div>
-        <div className="side-panel-body">
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-            {v.estado === 'borrador' && <button className="btn btn-secondary btn-sm" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>}
-            {v.estado === 'aprobada' && <button className="btn btn-secondary btn-sm" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnular(true)}>Anular</button>}
+        <div className="dx-val-panel-in">
+        <div className="dx-val-pb">
+          <div className="dx-val-tiles">
+            <div className="dx-val-tile"><small>OS Cliente</small><b>{os?.numero || '—'}</b><span>{clienteNombre}</span></div>
+            <div className="dx-val-tile"><small>Período</small><b>{v.periodo || '—'}</b><span>Fecha: {v.fecha || '—'}</span></div>
+            <div className="dx-val-tile"><small>Modelo</small><b>{(MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—').replace(/^Por /, '')}</b><span>{otsIncluidas.length} OT{otsIncluidas.length === 1 ? '' : 's'} incluida{otsIncluidas.length === 1 ? '' : 's'}</span></div>
+            <div className="dx-val-tile"><small>Total</small><b>{moneyCurrency(v.total, v.moneda)}</b><span>{moneyCurrency(v.subtotal, v.moneda)} + IGV {moneyCurrency(v.igv, v.moneda)}</span></div>
           </div>
-          {/* Info cards */}
-          <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:16}}>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>OS Cliente</div>
-            <div style={{fontWeight:600}}>{os?.numero || '—'}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{clienteNombre}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Período</div>
-            <div style={{fontWeight:600}}>{v.periodo || '—'}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)'}}>Fecha: {v.fecha || '—'}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Modelo</div>
-            <div style={{fontWeight:600, fontSize:12}}>{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—'}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total</div>
-            <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>{moneyCurrency(v.total, v.moneda)}</div>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Subtotal: {moneyCurrency(v.subtotal, v.moneda)} + IGV: {moneyCurrency(v.igv, v.moneda)}</div>
-          </div>
-        </div>
 
-        {v.estado === 'anulada' && v.motivo_anulacion && (
-          <div style={{marginBottom:16, padding:'12px 16px', borderRadius:8, border:'1px solid var(--danger)', background:'color-mix(in srgb, var(--danger) 6%, transparent)'}}>
-            <div style={{fontWeight:600, fontSize:13, color:'var(--danger)', marginBottom:4}}>Motivo de anulación</div>
-            <div style={{fontSize:13}}>{v.motivo_anulacion}</div>
+          {v.estado === 'anulada' && v.motivo_anulacion && (
+            <div className="dx-val-alert"><b>Motivo de anulación</b>{v.motivo_anulacion}</div>
+          )}
+
+          <div className="dx-val-tabs" role="tablist">
+            {TABS.map(t => (
+              <button type="button" key={t.id} role="tab" aria-selected={fichaTab === t.id} className={`dx-val-tab${fichaTab === t.id ? ' is-on' : ''}`} onClick={() => setFichaTab(t.id)}>{t.label}</button>
+            ))}
           </div>
-        )}
-
-        {/* Tabs */}
-        <div style={{display:'flex', borderBottom:'2px solid var(--border)', marginBottom:16, gap:0}}>
-          {TABS.map(t => (
-            <button key={t.id} className="btn btn-ghost"
-              onClick={() => setFichaTab(t.id)}
-              style={{
-                borderRadius:0, padding:'10px 20px', fontWeight: fichaTab === t.id ? 700 : 400,
-                borderBottom: fichaTab === t.id ? '2px solid var(--cyan)' : '2px solid transparent',
-                marginBottom:-2, color: fichaTab === t.id ? 'var(--cyan)' : 'var(--fg-muted)',
-              }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {/* Tab: Partidas */}
         {fichaTab === 'partidas' && (
           <div className="card">
@@ -3000,8 +2970,9 @@ function Valorizacion({ role }) {
             ))}
           </div>
         )}
-        </div>{/* end side-panel-body */}
-        </div>{/* end side-panel */}
+        </div>{/* end dx-val-pb */}
+        </div>{/* end dx-val-panel-in */}
+        </aside>
       </>
     );
     } // end if (v)
@@ -3010,63 +2981,36 @@ function Valorizacion({ role }) {
   // ── Editing view (4-step wizard) ──────────────────────────────────────
   if (editing) {
     const stepLabels = ['Datos generales', 'OTs incluidas', 'Partidas', 'Resumen'];
+    const osPaso4 = getOs(selOs);
+    const saldoPaso4 = Number(osPaso4?.saldo_por_valorizar || 0);
+    const excedePaso4 = saldoPaso4 > 0 && totalVal > saldoPaso4;
+    const MODELOS_VAL_DX = [
+      ['tarifa_mensual', 'Por tarifa mensual', 'Tarifa fija de la OS; prorratea los meses incompletos.'],
+      ['avance_pct', 'Por avance %', 'Avance de cada OT sobre el monto de la cotización.'],
+      ['costo_real', 'Por costo real', 'Costo de ejecución más el margen definido.'],
+      ['hitos_pago', 'Por hitos de pago', 'Hitos de pago definidos en la cotización.'],
+    ].filter(([valor]) => valor !== 'tarifa_mensual' || esCobroMensual(getOs(selOs)));
     return (
-      <>
-        {/* Header */}
-        <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
+      <div className="dx-val">
+      <div className="dx-val-in">
+        <header className="dx-val-top">
           <div>
-            <button className="btn btn-ghost" onClick={resetAndClose} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a Valorizaciones</button>
-            <h1 className="page-title">{editingValId ? 'Editar Valorización' : 'Generar Valorización'}</h1>
-            <div className="page-sub">
-              {selOs ? `${getOs(selOs)?.numero} — ${getClienteNombre(selOs)}` : 'Complete los pasos para crear la valorización'}
-            </div>
+            <div className="dx-val-eyebrow">Valorizaciones</div>
+            <h1 className="dx-val-title">{editingValId ? 'Editar valorización' : 'Generar valorización'}</h1>
+            <p className="dx-val-sub">
+              {selOs ? `${getOs(selOs)?.numero} — ${getClienteNombre(selOs)}` : `${nextNumero} · completa los pasos para crear la valorización`}
+            </p>
           </div>
-          <div className="row">
-            {step > 1 && <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Anterior</button>}
-            {step < 4 && (
-              <button className="btn btn-primary"
-                disabled={(step === 1 && (!selOs || !modelo || !!valDuplicada)) || (step === 2 && otSeleccionadas.length === 0)}
-                onClick={step === 2 ? advanceToStep3 : step === 1 ? avanzarDesdePaso1 : () => setStep(s => s + 1)}>
-                Siguiente →
-              </button>
-            )}
-            {step === 4 && (() => {
-              const os4 = getOs(selOs);
-              const saldo4 = Number(os4?.saldo_por_valorizar || 0);
-              const excede4 = saldo4 > 0 && totalVal > saldo4;
-              return <>
-                <button className="btn btn-secondary" onClick={() => handleSave('borrador')}>{I.save} Guardar borrador</button>
-                <button className="btn btn-primary" disabled={partidas.length === 0 || (excede4 && !confirmarExceso)} onClick={() => handleSave('aprobada')}>{I.check} Aprobar Valorización</button>
-              </>;
-            })()}
-          </div>
-        </div>
+          <button type="button" className="dx-val-ghost" onClick={resetAndClose}>Cancelar</button>
+        </header>
 
-        {/* Step indicator */}
-        <div style={{display:'flex', gap:0, margin:'16px 0', borderRadius:8, overflow:'hidden', border:'1px solid var(--border)'}}>
+        <ol className="dx-val-steps" aria-label="Pasos de la valorización" style={{listStyle:'none', padding:0, margin:'0 0 16px'}}>
           {stepLabels.map((label, i) => (
-            <div key={i} style={{
-              flex:1, padding:'10px 12px', textAlign:'center', fontSize:12,
-              fontWeight: step === i+1 ? 700 : 400,
-              color: step > i ? 'var(--green)' : step === i+1 ? 'var(--fg)' : 'var(--fg-muted)',
-              borderBottom: `2px solid ${step === i+1 ? 'var(--cyan)' : step > i ? 'var(--green)' : 'transparent'}`,
-              background: step === i+1 ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg-card)',
-              borderRight: i < 3 ? '1px solid var(--border)' : 'none',
-            }}>
-              <span style={{
-                display:'inline-flex', alignItems:'center', justifyContent:'center',
-                width:18, height:18, borderRadius:'50%', marginRight:5,
-                background: step > i ? 'var(--green)' : step === i+1 ? 'var(--cyan)' : 'var(--border)',
-                color: step >= i+1 ? '#fff' : 'var(--fg-muted)',
-                fontSize:10, fontWeight:700,
-              }}>
-                {step > i ? '✓' : i+1}
-              </span>
-              {label}
-            </div>
+            <li key={label} className={`dx-val-step${step === i + 1 ? ' is-on' : ''}${step > i + 1 ? ' is-ok' : ''}`} aria-current={step === i + 1 ? 'step' : undefined}>
+              <b>{step > i + 1 ? '✓' : i + 1}</b><span>{label}</span>
+            </li>
           ))}
-        </div>
-
+        </ol>
         {/* ─── PASO 1 — Datos generales ─── */}
         {step === 1 && (
           <div className="card">
@@ -3111,21 +3055,13 @@ function Valorizacion({ role }) {
                 <SociedadReadOnlyField {...destinoValorizacion} style={{gridColumn:'1/-1'}} />
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Modelo de cálculo <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={modelo} onChange={e => setModelo(e.target.value)}>
-                    <option value="">Seleccione modelo...</option>
-                    <option value="avance_pct">Por avance %</option>
-                    <option value="costo_real">Por costo real</option>
-                    <option value="hitos_pago">Por hitos de pago</option>
-                    {esCobroMensual(getOs(selOs)) && <option value="tarifa_mensual">Por tarifa mensual</option>}
-                  </select>
-                  {modelo && (
-                    <div style={{marginTop:8, padding:'10px 12px', borderRadius:6, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
-                      {modelo === 'avance_pct' && '% de avance de cada OT aplicado sobre el monto de cotización, descontando lo ya valorizado.'}
-                      {modelo === 'costo_real' && 'Costo real de ejecución (MO + materiales + terceros + logística) más el margen definido.'}
-                      {modelo === 'hitos_pago' && 'Hitos de pago definidos en la cotización. Selecciona los completados en el período.'}
-                      {modelo === 'tarifa_mensual' && 'Tarifa fija mensual de la OS, sin IGV. Si la vigencia no cubre el mes completo, se prorratea por días.'}
-                    </div>
-                  )}
+                  <div className="dx-val-modelos" role="radiogroup" aria-label="Modelo de cálculo">
+                    {MODELOS_VAL_DX.map(([valor, titulo, texto]) => (
+                      <button type="button" key={valor} role="radio" aria-checked={modelo === valor} className={`dx-val-modelo${modelo === valor ? ' is-on' : ''}`} onClick={() => setModelo(valor)}>
+                        <span className="dx-val-radio" /><span><b>{titulo}</b><small>{texto}</small></span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -3572,197 +3508,166 @@ function Valorizacion({ role }) {
             </div>
           </div>
         )}
-      </>
+
+        <div className="dx-val-foot">
+          {step > 1 && <button type="button" className="dx-val-ghost" onClick={() => setStep(s => s - 1)}>{I.chevLeft} Anterior</button>}
+          <div>
+            {step < 4 && (
+              <button type="button" className="dx-val-primary"
+                disabled={(step === 1 && (!selOs || !modelo || !!valDuplicada)) || (step === 2 && otSeleccionadas.length === 0)}
+                onClick={step === 2 ? advanceToStep3 : step === 1 ? avanzarDesdePaso1 : () => setStep(s => s + 1)}>
+                Siguiente {I.chevRight}
+              </button>
+            )}
+            {step === 4 && <>
+              <button type="button" className="dx-val-ghost" onClick={() => handleSave('borrador')}>{I.save} Guardar borrador</button>
+              <button type="button" className="dx-val-primary" disabled={partidas.length === 0 || (excedePaso4 && !confirmarExceso)} onClick={() => handleSave('aprobada')}>{I.check} Aprobar valorización</button>
+            </>}
+          </div>
+        </div>
+      </div>
+      </div>
     );
   }
 
-  const badgeClass = e => ({ aprobada: 'badge-green', facturada: 'badge-navy', anulada: 'badge-red' }[e] || 'badge-gray');
-  const badgeLabel = e => ({ borrador: 'Borrador', aprobada: 'Aprobada', facturada: 'Facturada', anulada: 'Anulada' }[e] || (e || '—'));
+  const ESTADO_VAL_DX = {
+    borrador: { label: 'Borrador', clase: 'is-gray' },
+    aprobada: { label: 'Aprobada', clase: 'is-green' },
+    facturada: { label: 'Facturada', clase: 'is-blue' },
+    anulada: { label: 'Anulada', clase: 'is-red' },
+  };
+  const CHIPS_VAL_DX = [['', 'Todas', '#1A2B4A'], ['borrador', 'Borrador', '#6B7280'], ['aprobada', 'Aprobada', '#16A34A'], ['facturada', 'Facturada', '#2F6FD6'], ['anulada', 'Anulada', '#DC2626']];
+  const estadoValDx = e => ESTADO_VAL_DX[e] || { label: e || '—', clase: 'is-gray' };
 
-  // KPIs
+  // KPIs (siguen el filtro de moneda; sin filtro se muestran por separado)
   const hoy = new Date();
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
   const valMes = valorizacionesVista.filter(v => (v.fecha || '').startsWith(mesActual)).length;
-  const montoPendientePEN = valorizacionesVista.filter(v => v.estado === 'aprobada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoPendienteUSD = valorizacionesVista.filter(v => v.estado === 'aprobada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoFacturadoPEN = valorizacionesVista.filter(v => v.estado === 'facturada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoFacturadoUSD = valorizacionesVista.filter(v => v.estado === 'facturada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
+  const sumaEstadoMoneda = (estado, moneda) => valorizacionesVista.filter(v => v.estado === estado && (v.moneda || 'PEN') === moneda).reduce((s, v) => s + Number(v.total || 0), 0);
+  const kpiMonto = estado => {
+    if (filterMoneda) return { valor: moneyCurrency(sumaEstadoMoneda(estado, filterMoneda), filterMoneda), nota: `en ${filterMoneda}` };
+    const usd = sumaEstadoMoneda(estado, 'USD');
+    return { valor: moneyCurrency(sumaEstadoMoneda(estado, 'PEN'), 'PEN'), nota: usd > 0 ? `+ ${moneyCurrency(usd, 'USD')}` : 'en PEN' };
+  };
+  const kpiPendiente = kpiMonto('aprobada');
+  const kpiFacturado = kpiMonto('facturada');
   const otsListasCount = ots.filter(ot => ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)).length;
 
-  // Unique filter options from data
-  const clienteOpts = [...new Map(valorizacionesVista.map(v => {
-    const cId = getClienteId(v.os_cliente_id);
-    return [cId, getClienteNombre(v.os_cliente_id)];
-  })).entries()].filter(([k]) => k);
-  const osOpts = [...new Map(valorizacionesVista.map(v => [v.os_cliente_id, getOs(v.os_cliente_id)?.numero || v.os_cliente_id])).entries()];
-  const periodoOpts = [...new Set(valorizacionesVista.map(v => v.periodo).filter(Boolean))];
-  const modeloOpts = [...new Set(valorizacionesVista.map(v => v.modelo_calculo).filter(Boolean))];
-
-  // Filtering
-  const query = searchQuery.toLowerCase();
-  const filtered = valorizacionesVista.filter(v => {
-    if (filterCliente && getClienteId(v.os_cliente_id) !== filterCliente) return false;
-    if (filterOs && v.os_cliente_id !== filterOs) return false;
-    if (filterEstado && v.estado !== filterEstado) return false;
+  // Buscador inteligente: número, OS, nombre de la OS, cliente, período, modelo, estado y montos.
+  const qVal = cotNormDx(busquedaVal.trim());
+  const qGlobalVal = cotNormDx(searchQuery);
+  const coincideTexto = v => {
+    const os = getOs(v.os_cliente_id);
+    return cotNormDx([v.numero, os?.numero, os?.nombre, getClienteNombre(v.os_cliente_id), v.periodo, MODELO_LABELS[v.modelo_calculo], estadoValDx(v.estado).label, v.tipo, v.total, v.subtotal].join(' '));
+  };
+  const baseFiltrada = valorizacionesVista.filter(v => {
+    const texto = coincideTexto(v);
+    if (qGlobalVal && !texto.includes(qGlobalVal)) return false;
+    if (qVal && !texto.includes(qVal)) return false;
     if (filterMoneda && (v.moneda || 'PEN') !== filterMoneda) return false;
-    if (filterPeriodo && (v.periodo || '') !== filterPeriodo) return false;
-    if (filterModelo && (v.modelo_calculo || '') !== filterModelo) return false;
-    if (query) {
-      return (v.numero || '').toLowerCase().includes(query) ||
-        (getOs(v.os_cliente_id)?.numero || '').toLowerCase().includes(query) ||
-        getClienteNombre(v.os_cliente_id).toLowerCase().includes(query) ||
-        (v.periodo || '').toLowerCase().includes(query);
-    }
+    if (filterFecha && String(v.fecha || '').slice(0, 10) !== filterFecha) return false;
     return true;
   });
-
-  const hasFilters = filterCliente || filterOs || filterEstado || filterMoneda || filterPeriodo || filterModelo;
+  const filtered = baseFiltrada.filter(v => !filterEstado || v.estado === filterEstado);
+  const hasFilters = Boolean(busquedaVal || filterEstado || filterMoneda || filterFecha);
+  const limpiarFiltros = () => { setBusquedaVal(''); setFilterEstado(''); setFilterMoneda(''); setFilterFecha(''); };
 
   return (
-    <>
+    <div className="dx-val">
       {fichaVal}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Valorizaciones</h1>
-          <div className="page-sub">{valorizacionesVista.length} valorizaciones registradas</div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setEditing(true)}>{I.plus} Generar Valorización</button>
-      </div>
-
-      {/* KPIs */}
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card">
-          <div className="kpi-label">Valorizaciones este mes</div>
-          <div className="kpi-value" style={{marginTop:12}}>{valMes}</div>
-          <div className="kpi-icon cyan">{I.clipboard}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Pendiente de facturar</div>
-          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-            <span>{money(montoPendientePEN)}</span>
-            {montoPendienteUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{moneyCurrency(montoPendienteUSD, 'USD')}</span>}
+      <div className="dx-val-in">
+        <header className="dx-val-top">
+          <div>
+            <div className="dx-val-eyebrow">Finanzas</div>
+            <h1 className="dx-val-title">Valorizaciones</h1>
+            <p className="dx-val-sub">{valorizacionesVista.length} valorizaciones · lo ejecutado por OS Cliente, listo para aprobar y facturar.</p>
           </div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado aprobada</div>
-          <div className="kpi-icon orange">{I.clock}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Total facturado</div>
-          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-            <span>{money(montoFacturadoPEN)}</span>
-            {montoFacturadoUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{moneyCurrency(montoFacturadoUSD, 'USD')}</span>}
-          </div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado facturada</div>
-          <div className="kpi-icon green">{I.check}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">OTs listas para valorizar</div>
-          <div className="kpi-value" style={{marginTop:12}}>{otsListasCount}</div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Con conformidad registrada</div>
-          <div className="kpi-icon cyan">{I.warehouse}</div>
-        </div>
-      </div>
+          <button type="button" className="dx-val-primary" onClick={() => setEditing(true)}>{I.plus} Generar valorización</button>
+        </header>
 
-      {/* Filtros */}
-      <div className="card" style={{marginBottom:8}}>
-        <div style={{padding:'12px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center'}}>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterCliente} onChange={e => setFilterCliente(e.target.value)}>
-            <option value="">Todos los clientes</option>
-            {clienteOpts.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterOs} onChange={e => setFilterOs(e.target.value)}>
-            <option value="">Todas las OS</option>
-            {osOpts.map(([id, num]) => <option key={id} value={id}>{num}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="borrador">Borrador</option>
-            <option value="aprobada">Aprobada</option>
-            <option value="facturada">Facturada</option>
-            <option value="anulada">Anulada</option>
-          </select>
-          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterPeriodo} onChange={e => setFilterPeriodo(e.target.value)}>
-            <option value="">Todos los períodos</option>
-            {periodoOpts.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterModelo} onChange={e => setFilterModelo(e.target.value)}>
-            <option value="">Todos los modelos</option>
-            {modeloOpts.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 110px', minWidth:100}} value={filterMoneda} onChange={e => setFilterMoneda(e.target.value)}>
-            <option value="">Todas las monedas</option>
-            <option value="PEN">S/ Soles (PEN)</option>
-            <option value="USD">US$ Dólares (USD)</option>
-          </select>
-          {hasFilters && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setFilterCliente(''); setFilterOs(''); setFilterEstado(''); setFilterMoneda(''); setFilterPeriodo(''); setFilterModelo(''); }}>
-              {I.x} Limpiar
-            </button>
+        <section className="dx-val-kpis" aria-label="Resumen de valorizaciones">
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>Este mes</span><span className="dx-val-ico is-cyan">{I.clipboard}</span></div>
+            <strong className="dx-val-kpi-val">{valMes}</strong>
+            <span className="dx-val-kpi-note">valorizaciones generadas</span>
+          </div>
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>Por facturar</span><span className="dx-val-ico is-amber">{I.clock}</span></div>
+            <strong className="dx-val-kpi-val is-money">{kpiPendiente.valor}</strong>
+            <span className="dx-val-kpi-note">Aprobadas · {kpiPendiente.nota}</span>
+          </div>
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>Facturado</span><span className="dx-val-ico is-green">{I.check}</span></div>
+            <strong className="dx-val-kpi-val is-money">{kpiFacturado.valor}</strong>
+            <span className="dx-val-kpi-note">{kpiFacturado.nota}</span>
+          </div>
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>OTs listas</span><span className="dx-val-ico is-blue">{I.warehouse}</span></div>
+            <strong className="dx-val-kpi-val">{otsListasCount}</strong>
+            <span className="dx-val-kpi-note">Con conformidad registrada</span>
+          </div>
+        </section>
+
+        <section className="dx-val-card" aria-label="Listado de valorizaciones">
+          <div className="dx-val-bar">
+            <h2 className="dx-val-bar-title">Valorizaciones<span className="dx-val-count">{filtered.length} de {valorizacionesVista.length}</span></h2>
+            <label className="dx-val-search">{I.search}<input type="search" value={busquedaVal} onChange={e => setBusquedaVal(e.target.value)} placeholder="Buscar N°, OS, cliente, período o modelo" aria-label="Buscar valorizaciones" /></label>
+            <input type="date" className="dx-val-date" value={filterFecha} onChange={e => setFilterFecha(e.target.value)} aria-label="Fecha exacta de la valorización" />
+            <select className="dx-val-select" value={filterMoneda} onChange={e => setFilterMoneda(e.target.value)} aria-label="Filtrar por moneda">
+              <option value="">Toda moneda</option>
+              <option value="PEN">Soles (S/)</option>
+              <option value="USD">Dólares (US$)</option>
+            </select>
+            {hasFilters && <button type="button" className="dx-val-clear" onClick={limpiarFiltros}>Limpiar</button>}
+          </div>
+          <div className="dx-val-chips" role="group" aria-label="Filtrar por estado">
+            {CHIPS_VAL_DX.map(([estado, etiqueta, punto]) => {
+              const cantidad = baseFiltrada.filter(v => !estado || v.estado === estado).length;
+              return (
+                <button type="button" key={estado || 'todas'} className={`dx-val-chip${filterEstado === estado ? ' is-on' : ''}${cantidad === 0 && estado ? ' is-zero' : ''}`} style={{'--dx-val-dot': punto}} aria-pressed={filterEstado === estado} onClick={() => setFilterEstado(estado)}>
+                  <i />{etiqueta}<b>{cantidad}</b>
+                </button>
+              );
+            })}
+          </div>
+          <div className="dx-val-cols dx-val-head" role="row"><span>N° valorización</span><span>OS · Cliente</span><span>Período</span><span>Total</span><span>Estado</span><span /><span /></div>
+          {filtered.map(v => {
+            const os = getOs(v.os_cliente_id);
+            const estado = estadoValDx(v.estado);
+            const abrir = () => setSelVal(v.id);
+            return (
+              <div key={v.id} className="dx-val-cols dx-val-row" role="button" tabIndex={0} aria-label={`Abrir valorización ${v.numero}, ${getClienteNombre(v.os_cliente_id)}, ${estado.label}`} onClick={abrir} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } }}>
+                <div className="dx-val-num">
+                  <span className="dx-val-mono">{v.numero}</span>
+                  <div className="dx-val-tags">
+                    {v.tipo === 'avance' && <span className="dx-val-tag is-avance">Avance</span>}
+                    {v.tipo === 'final' && <span className="dx-val-tag is-final">Final</span>}
+                    {v.modelo_calculo && <span className="dx-val-tag is-modelo">{(MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo).replace(/^Por /, '')}</span>}
+                    {mostrarBadgeSociedadValorizaciones && <SociedadBadge sociedadId={v.sociedad_id} />}
+                  </div>
+                </div>
+                <div className="dx-val-client"><strong>{getClienteNombre(v.os_cliente_id)}</strong><span>{[os?.numero, os?.nombre].filter(Boolean).join(' · ') || '—'}</span></div>
+                <div className="dx-val-periodo">{v.periodo || '—'}<span>{v.fecha || ''}</span></div>
+                <div className="dx-val-money"><strong>{moneyCurrency(v.total, v.moneda)}</strong><span>{moneyCurrency(v.subtotal, v.moneda)} + IGV</span></div>
+                <div className="dx-val-estado"><span className={`dx-val-pill ${estado.clase}`}><i />{estado.label}</span></div>
+                <div className="dx-val-accion" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                  {v.estado === 'aprobada' && <button type="button" className="dx-val-act" onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>Facturar</button>}
+                  {v.estado === 'borrador' && <button type="button" className="dx-val-act is-primary" onClick={() => aprobarValorizacion(v.id)}>Aprobar</button>}
+                </div>
+                <span className="dx-val-go" aria-hidden="true">{I.chevRight}</span>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="dx-val-empty">
+              {valorizacionesVista.length === 0
+                ? <><strong>Aún no hay valorizaciones</strong><span>Créalas con “Generar valorización” desde una OS con OTs ejecutadas.</span></>
+                : <><strong>Sin resultados</strong><span>Ninguna valorización coincide con los filtros.</span><button type="button" className="dx-val-ghost" onClick={limpiarFiltros}>Limpiar filtros</button></>}
+            </div>
           )}
-        </div>
+        </section>
       </div>
-
-      {/* Tabla */}
-      <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>N° Valorización</th>
-                {mostrarBadgeSociedadValorizaciones && <th>Sociedad</th>}
-                <th>OS Cliente</th>
-                <th>Cliente</th>
-                <th>Período</th>
-                <th>Modelo</th>
-                <th className="num">Subtotal</th>
-                <th className="num">IGV</th>
-                <th className="num">Total</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(v => (
-                <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVal(v.id)}>
-                  <td className="mono" style={{fontWeight:600}}>{v.numero}</td>
-                  {mostrarBadgeSociedadValorizaciones && <td><SociedadBadge sociedadId={v.sociedad_id} /></td>}
-                  <td className="mono text-muted">{getOs(v.os_cliente_id)?.numero || '—'}</td>
-                  <td style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{getClienteNombre(v.os_cliente_id)}</td>
-                  <td className="text-muted">{v.periodo || '—'}</td>
-                  <td className="text-muted" style={{fontSize:12}}>{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—'}</td>
-                  <td className="num">{moneyCurrency(v.subtotal, v.moneda)}</td>
-                  <td className="num">{moneyCurrency(v.igv, v.moneda)}</td>
-                  <td className="num" style={{fontWeight:600}}>{moneyCurrency(v.total, v.moneda)}</td>
-                  <td>
-                    <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
-                      <span className={'badge ' + badgeClass(v.estado)}>{badgeLabel(v.estado)}</span>
-                      {v.tipo === 'avance' && <span style={{fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3, background:'color-mix(in srgb, var(--orange) 15%, transparent)', color:'var(--orange)'}}>Avance</span>}
-                      {v.tipo === 'final' && <span style={{fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3, background:'color-mix(in srgb, var(--green) 15%, transparent)', color:'var(--green)'}}>Final</span>}
-                    </div>
-                  </td>
-                  <td onClick={e => e.stopPropagation()}>
-                    {v.estado === 'aprobada' && (
-                      <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>
-                        Facturar
-                      </button>
-                    )}
-                    {v.estado === 'borrador' && (
-                      <button className="btn btn-primary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => aprobarValorizacion(v.id)}>
-                        {I.check} Aprobar
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={mostrarBadgeSociedadValorizaciones ? 11 : 10} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
-                  {query || hasFilters ? 'No se encontraron resultados' : 'No hay valorizaciones registradas'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
