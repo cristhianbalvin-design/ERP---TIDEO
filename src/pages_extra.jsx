@@ -3,6 +3,7 @@ import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import './hoja_costeo_listado.css';
 import './cotizaciones_listado.css';
+import './cotizacion_detalle.css';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
@@ -809,6 +810,8 @@ function CotizacionesInner() {
           onAprobar={() => { aprobarCotizacion(cot.id); setOsModal(cot); }}
           onAprobacionManual={async (datos) => { await registrarAprobacionManual(cot.id, datos); }}
           onGenerarOS={() => setOsModal(cot)}
+          osVinculada={(osClientes || []).find(os => os.id === cot.os_cliente_id) || (osClientes || []).find(os => os.cotizacion_id === cot.id) || null}
+          onVerOS={osId => navigate('os_cliente', { detail: osId })}
           onDescargarPDF={handleDescargarPDF}
           generandoPDF={generandoPDF}
         />
@@ -1216,14 +1219,16 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
 }
 
 // ── Detalle (lectura) ──────────────────────────────────────────────────
-function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onSolicitarAprobacion, onCancelarSolicitud, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
+function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onSolicitarAprobacion, onCancelarSolicitud, onAprobacionManual, onGenerarOS, onVerOS, osVinculada, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
-  const toggleSeccion = k => setSeccionesOpen(p => ({ ...p, [k]: !p[k] }));
   const [confirmEnviar, setConfirmEnviar] = useState(false);
   const [showAprobModal, setShowAprobModal] = useState(false);
   const [confirmarAprobInterna, setConfirmarAprobInterna] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [enlaceCopiado, setEnlaceCopiado] = useState(false);
+  const [firmasAbiertas, setFirmasAbiertas] = useState(false);
   const sym = currencySymbol(cot.moneda);
   const calcDetalleTotal = p => toCotNumber(p.total) || (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario));
   const subtotalDetalleImpl = partidas
@@ -1242,7 +1247,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18)) / 100 : (cot.igv_impl ?? cot.igv);
   const totalImplDetalle = usarTotalesPartidasHC ? subtotalImplDetalle + igvImplDetalle : (cot.total_impl ?? cot.total);
   const subtotalRecDetalle = usarTotalesRecPartidasHC ? subtotalDetalleRec : cot.subtotal_rec;
-  const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18) / 100) : cot.igv_rec;
+  const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18)) / 100 : cot.igv_rec;
   const totalRecDetalle = usarTotalesRecPartidasHC ? subtotalRecDetalle + igvRecDetalle : cot.total_rec;
 
   const { authUser, role } = useApp();
@@ -1291,331 +1296,306 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
 
   const historial = cot.historial_versiones || [];
 
+  const fechaLocalDx = valor => {
+    const fecha = valor ? new Date(valor) : null;
+    return fecha && !Number.isNaN(fecha.getTime()) ? fecha : null;
+  };
+  const fechaCortaDx = valor => { const f = fechaLocalDx(valor); return f ? `${String(f.getDate()).padStart(2, '0')} ${COT_MESES_DX[f.getMonth()]}` : null; };
+  const fechaHoraDx = valor => { const f = fechaLocalDx(valor); return f ? `${fechaCortaDx(valor)} ${f.getFullYear()} · ${String(f.getHours()).padStart(2, '0')}:${String(f.getMinutes()).padStart(2, '0')}` : null; };
+  const estadoDx = COT_ESTADOS_DX[cot.estado] || { label: String(cot.estado || '—').replace('_', ' '), clase: 'is-gray' };
+  const clienteNombre = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
+  const tieneOS = Boolean(osVinculada || cot.os_cliente_id);
+  const osEtiqueta = osVinculada?.numero || osVinculada?.codigo || 'OS vinculada';
+  const aceptadaCliente = Boolean(cot.aceptacion_fecha) || Boolean(cot.aprobacion_tipo) || ['aprobada', 'aceptada', 'ganada', 'convertida'].includes(cot.estado);
+  const enviadaCliente = Boolean(cot.fecha_envio) || ['enviada', 'aprobada', 'aceptada', 'ganada', 'convertida'].includes(cot.estado);
+  const puedeGenerarOS = ['aprobada', 'aceptada', 'ganada'].includes(cot.estado) && !tieneOS;
+  const mostrarQR = Boolean(cot.token_aceptacion) && cot.token_activo !== false && !cot.aceptacion_fecha && cot.aprobacion_tipo !== 'manual';
+  const enlaceAceptacion = cot.token_aceptacion ? `${window.location.origin}/#aceptar/${cot.token_aceptacion}` : '';
+
+  const pasosCiclo = [
+    { titulo:'Borrador', hecho:true, detalle:cotFechaDx(cot.fecha) },
+    { titulo: esPendiente ? 'Pendiente de revisión' : 'Aprobada internamente', hecho:aprobadaInterna || enviadaCliente, detalle: aprobadaInterna ? [fechaCortaDx(cot.aprobada_interna_at), cot.aprobada_interna_por].filter(Boolean).join(' · ') : (esPendiente ? 'Jefatura comercial' : 'Revisión de jefatura') },
+    { titulo: enviadaCliente ? 'Enviada' : 'Enviar al cliente', hecho:enviadaCliente, detalle: cot.fecha_envio ? fechaHoraDx(cot.fecha_envio) : 'Bloquea la edición' },
+    { titulo:'Aceptada por el cliente', hecho:aceptadaCliente, detalle: cot.aceptacion_fecha ? `${fechaCortaDx(cot.aceptacion_fecha)} · ${cot.aceptacion_nombre || 'Cliente'} (QR)` : (cot.aprobacion_tipo === 'manual' ? [cot.aprobacion_fecha_cliente ? cotFechaDx(cot.aprobacion_fecha_cliente) : null, cot.aprobacion_canal].filter(Boolean).join(' · ') : 'QR o registro manual') },
+    { titulo:'Orden de servicio', hecho:tieneOS || cot.estado === 'convertida', detalle: tieneOS ? osEtiqueta : 'Al aceptar' },
+  ];
+  const pasoActual = pasosCiclo.findIndex(paso => !paso.hecho);
+
+  const accionesDisponibles = [];
+  if (esBorrador && puedeEnviar) accionesDisponibles.push({ clave:'enviar', icono:I.send, etiqueta:'Enviar a cliente', accion:() => setConfirmEnviar(true) });
+  if (mostrarAprobarBtn) accionesDisponibles.push({ clave:'aprobar_interna', icono:I.check, etiqueta:'Aprobar para envío', accion:() => setConfirmarAprobInterna(true) });
+  if (mostrarSolicitarBtn) accionesDisponibles.push({ clave:'solicitar', icono:I.arrowUp, etiqueta:'Solicitar aprobación', accion:onSolicitarAprobacion });
+  if (cot.estado === 'enviada') accionesDisponibles.push({ clave:'aprob_manual', icono:I.check, etiqueta:'Registrar aprobación', accion:() => setShowAprobModal(true) });
+  if (tieneOS && onVerOS && osVinculada?.id) accionesDisponibles.push({ clave:'ver_os', icono:I.clipboard, etiqueta:`Ver ${osEtiqueta}`, accion:() => onVerOS(osVinculada.id) });
+  if (puedeGenerarOS) accionesDisponibles.push({ clave:'generar_os', icono:I.clipboard, etiqueta:'Generar OS', accion:onGenerarOS });
+  const ordenPrincipal = ['ver_os', 'generar_os', 'aprob_manual', 'enviar', 'aprobar_interna', 'solicitar'];
+  const accionPrincipal = ordenPrincipal.map(clave => accionesDisponibles.find(a => a.clave === clave)).find(Boolean) || null;
+  const accionesMenu = [
+    ...accionesDisponibles.filter(a => a !== accionPrincipal),
+    ...(puedeEditar ? [{ clave:'editar', icono:I.edit, etiqueta:'Editar', accion:onEdit }] : []),
+    ...(esPendiente && !puedeAprobarCot ? [{ clave:'cancelar_solicitud', icono:I.x, etiqueta:'Cancelar solicitud', accion:onCancelarSolicitud }] : []),
+    ...(puedeAprobarCot ? [{ clave:'version', icono:I.plus, etiqueta:'Nueva versión', accion:onCrearVersion }] : []),
+    ...(cot.estado === 'enviada' && puedeAprobarCot ? [{ clave:'revertir', icono:I.refresh, etiqueta:'Revertir a borrador', accion:onRevertirBorrador, separada:true }] : []),
+  ];
+  const ejecutarMenu = accion => { setMenuAbierto(false); accion?.(); };
+  const copiarEnlace = async () => {
+    try { await navigator.clipboard.writeText(enlaceAceptacion); setEnlaceCopiado(true); setTimeout(() => setEnlaceCopiado(false), 2000); } catch { setEnlaceCopiado(false); }
+  };
+  const claseTipoPartida = tipo => (tipo === 'recurrente' ? 'is-violet' : (tipo === 'bien' || tipo === 'material') ? 'is-amber' : 'is-cyan');
+
   return (
-    <>
-      <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
-        <div>
-          <button className="btn btn-ghost" onClick={onBack} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a lista</button>
-          <h1 className="page-title row" style={{gap:10, alignItems:'center'}}>
-            {cot.numero}
-            <span className="badge badge-gray" style={{fontSize:12}}>v{cot.version || 1}</span>
-            <span className={'badge ' + COT_BADGE(cot.estado)}>{cot.estado?.replace('_', ' ')}</span>
-          </h1>
-          <div className="page-sub">
-            {opp?.nombre && <>Oportunidad: <strong>{opp.nombre}</strong> · </>}
-            Cliente: <strong>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</strong>
-            {cuenta?.ruc && <> · RUC: {cuenta.ruc}</>}
+    <div className="dx-cotd" onClick={() => menuAbierto && setMenuAbierto(false)}>
+      <div className="dx-cotd-in">
+        <button type="button" className="dx-cotd-back" onClick={onBack}>{I.chevLeft}Cotizaciones</button>
+        <header className="dx-cotd-top">
+          <div className="dx-cotd-head">
+            <div className="dx-cotd-eyebrow">Comercial · Cotización estándar</div>
+            <h1 className="dx-cotd-title">
+              {cot.numero}
+              <span className="dx-cotd-pill is-gray">v{cot.version || 1}</span>
+              <span className={`dx-cotd-pill ${estadoDx.clase}`}><i />{estadoDx.label}</span>
+              {cot.hoja_costeo_id && <span className="dx-cotd-pill is-cyan">Desde Hoja de Costeo</span>}
+            </h1>
+            <p className="dx-cotd-sub"><strong>{clienteNombre}</strong>{cuenta?.ruc && <> · RUC {cuenta.ruc}</>}{opp?.nombre && <> · {opp.nombre}</>}</p>
           </div>
-        </div>
-        <div className="row">
-          {puedeEditar && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
-          {mostrarSolicitarBtn && (
-            <button className="btn btn-secondary" onClick={onSolicitarAprobacion} style={{color:'var(--orange)', borderColor:'var(--orange)'}}>
-              ⏫ Solicitar aprobación
-            </button>
-          )}
-          {esPendiente && !puedeAprobarCot && (
-            <button className="btn btn-ghost" onClick={onCancelarSolicitud} style={{color:'var(--fg-muted)'}}>
-              ✕ Cancelar solicitud
-            </button>
-          )}
-          {mostrarAprobarBtn && !confirmarAprobInterna && (
-            <button className="btn btn-secondary" onClick={() => setConfirmarAprobInterna(true)} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
-              ✓ Aprobar para envío
-            </button>
-          )}
-          {mostrarAprobarBtn && confirmarAprobInterna && (
-            <>
-              <button className="btn btn-primary" onClick={() => { setConfirmarAprobInterna(false); onAprobarInterna(); }}>
-                ✓ Confirmar aprobación
-              </button>
-              <button className="btn btn-ghost" onClick={() => setConfirmarAprobInterna(false)}>
-                Cancelar
-              </button>
-            </>
-          )}
-          {esBorrador && (
-            <button
-              className="btn btn-primary"
-              onClick={() => setConfirmEnviar(true)}
-              disabled={!puedeEnviar}
-              title={!puedeEnviar ? 'Pendiente de aprobación del jefe comercial' : ''}
-              style={!puedeEnviar ? {opacity:0.45, cursor:'not-allowed'} : {}}
-            >
-              {I.send} Enviar a cliente
-            </button>
-          )}
-          {cot.estado === 'enviada' && puedeAprobarCot && <button className="btn btn-ghost" onClick={onRevertirBorrador} style={{color:'var(--text-muted)'}}>↩ Revertir a borrador</button>}
-          {cot.estado === 'enviada' && <button className="btn btn-secondary" onClick={() => setShowAprobModal(true)}>{I.check} Aprobar manualmente</button>}
-          {cot.estado === 'aprobada' && <button className="btn btn-primary" onClick={onGenerarOS}>{I.clipboard} Generar OS</button>}
-          {puedeAprobarCot && <button className="btn btn-secondary" onClick={onCrearVersion}>{I.plus} Nueva versión</button>}
-          <button className="btn btn-secondary" onClick={onDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
-        </div>
-      </div>
-
-      {/* Bloque 1 — Encabezado */}
-      <div className="card mt-6">
-        <div className="card-body">
-          {/* Fila 1: datos del documento */}
-          <div className="grid-4" style={{marginBottom:16}}>
-            <div><div className="eyebrow">Fecha emisión</div><div style={{fontWeight:600, marginTop:4}}>{cot.fecha}</div></div>
-            <div><div className="eyebrow">Moneda</div><div style={{fontWeight:600, marginTop:4}}>{cot.moneda}</div></div>
-            <div><div className="eyebrow">Validez</div><div style={{fontWeight:600, marginTop:4}}>{validezTexto()}</div></div>
-            <div><div className="eyebrow">Attn. (contacto cliente)</div><div style={{fontWeight:600, marginTop:4}}>{contacto?.nombre || '—'}</div></div>
-          </div>
-          {/* Fila 2: datos internos */}
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, paddingTop:14, borderTop:'1px solid var(--border)'}}>
-            <div>
-              <div className="eyebrow">Vendedor responsable</div>
-              <div style={{fontWeight:600, marginTop:4}}>{vendedorNombre}</div>
-            </div>
-            <div>
-              <div className="eyebrow">Email vendedor</div>
-              <div style={{marginTop:4}}>
-                {vendedorEmail
-                  ? <a href={`mailto:${vendedorEmail}`} style={{color:'var(--cyan)', textDecoration:'none', fontWeight:600}}>{vendedorEmail}</a>
-                  : <span style={{color:'var(--fg-muted)'}}>—</span>}
+          <div className="dx-cotd-acts">
+            {accionPrincipal && <button type="button" className="dx-cotd-btn is-primary" onClick={accionPrincipal.accion}>{accionPrincipal.icono}{accionPrincipal.etiqueta}</button>}
+            <button type="button" className="dx-cotd-btn" onClick={onDescargarPDF} disabled={generandoPDF}>{I.download}{generandoPDF ? 'Generando…' : 'PDF'}</button>
+            {accionesMenu.length > 0 && (
+              <div className="dx-cotd-more">
+                <button type="button" className="dx-cotd-btn" aria-haspopup="menu" aria-expanded={menuAbierto} onClick={event => { event.stopPropagation(); setMenuAbierto(valor => !valor); }}>
+                  <span className="dx-cotd-dots" aria-hidden="true">•••</span>Más
+                </button>
+                {menuAbierto && (
+                  <div className="dx-cotd-menu" role="menu" onClick={event => event.stopPropagation()}>
+                    {accionesMenu.map(item => (
+                      <React.Fragment key={item.clave}>
+                        {item.separada && <div className="dx-cotd-menu-sep" />}
+                        <button type="button" role="menuitem" onClick={() => ejecutarMenu(item.accion)}>{item.icono}{item.etiqueta}</button>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-            <div>
-              <div className="eyebrow">Enviada al cliente</div>
-              <div style={{fontWeight:600, marginTop:4}}>
-                {cot.fecha_envio ? new Date(cot.fecha_envio).toLocaleString('es-PE') : <span style={{color:'var(--fg-muted)'}}>—</span>}
-              </div>
-            </div>
+            )}
           </div>
-          {esBorrador && !aprobadaInterna && !puedeAprobarCot && (
-            <div style={{marginTop:14, padding:'10px 14px', background:'#fff8e1', borderRadius:8, borderLeft:'3px solid #f59e0b', fontSize:13, color:'#92400e', display:'flex', alignItems:'center', gap:8}}>
-              ⏳ <span>Usa <strong>Solicitar aprobación</strong> para que la jefatura comercial revise esta cotización antes de enviarla al cliente.</span>
-            </div>
-          )}
-          {esPendiente && (
-            <div style={{marginTop:14, padding:'10px 14px', background:'#fff7ed', borderRadius:8, borderLeft:'3px solid var(--orange)', fontSize:13, color:'#9a3412', display:'flex', alignItems:'center', gap:8}}>
-              ⏳ <span><strong>Pendiente de revisión</strong> — la jefatura comercial debe aprobar esta cotización para que puedas enviarla al cliente.{puedeAprobarCot ? ' Usa el botón "Aprobar para envío" de arriba.' : ''}</span>
-            </div>
-          )}
-          {aprobadaInterna && (
-            <div style={{marginTop:14, padding:'10px 14px', background:'#f0fdf4', borderRadius:8, borderLeft:'3px solid var(--green)', fontSize:13, color:'#166534', display:'flex', alignItems:'center', gap:8}}>
-              ✓ <span>Aprobada para envío por <strong>{cot.aprobada_interna_por}</strong>{cot.aprobada_interna_at ? ` · ${new Date(cot.aprobada_interna_at).toLocaleDateString('es-PE')}` : ''}</span>
-            </div>
-          )}
-          {cot.descripcion_general && (
-            <div style={{marginTop:16, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid var(--cyan)', fontSize:14, lineHeight:'1.6'}}>
-              {renderComercial(cot.descripcion_general)}
-            </div>
-          )}
-        </div>
-      </div>
+        </header>
 
-      {/* Bloque 2 — Partidas */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Partidas</h3>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr><th style={{width:36}}>N°</th><th>Descripción</th><th>Tipo</th><th style={{width:70}}>Cant.</th><th style={{width:110}}>Det. cant.</th><th style={{width:130}}>P. Unit.</th><th style={{width:120}}>Total</th></tr>
-              </thead>
-              <tbody>
-                {partidas.map((p, i) => (
-                  <tr key={p.id || i}>
-                    <td className="num text-muted">{p.n || i + 1}</td>
-                    <td>
-                      <div style={{fontWeight:600}}>{renderComercial(p.descripcion) || 'Sin descripción'}</div>
-                      {(Array.isArray(p.detalle_items) ? p.detalle_items : []).length > 0 && (
-                        <ul style={{margin:'4px 0 0 16px', padding:0, fontSize:12, color:'var(--fg-muted)', lineHeight:'1.5'}}>
-                          {p.detalle_items.map((d, j) => <li key={j}>{renderComercial(d)}</li>)}
-                        </ul>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge ${p.tipo==='recurrente'?'badge-purple':p.tipo==='bien'?'badge-orange':'badge-cyan'}`}>
-                        {p.tipo || 'servicio'}
-                      </span>
-                    </td>
-                    <td className="num">{p.cantidad}</td>
-                    <td className="text-muted" style={{fontSize:12}}>{renderComercial(p.detalle_cantidad) || '—'}</td>
-                    <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : moneyD(p.precio_unitario || 0, sym)}</td>
-                    <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : moneyD(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
-                  </tr>
+        <section className="dx-cotd-card dx-cotd-flow" aria-label="Ciclo de la cotización">
+          {pasosCiclo.map((paso, index) => (
+            <div key={paso.titulo} className={`dx-cotd-step ${paso.hecho ? 'is-done' : index === pasoActual ? 'is-now' : 'is-todo'}`}>
+              <span className="dx-cotd-dot">{paso.hecho ? I.check : index + 1}</span>
+              <b>{paso.titulo}</b>
+              <span className="dx-cotd-cap">{paso.detalle || '—'}</span>
+            </div>
+          ))}
+        </section>
+
+        <div className="dx-cotd-grid">
+          <div className="dx-cotd-main">
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Datos de la cotización</h2></div>
+              <div className="dx-cotd-card-b">
+                <div className="dx-cotd-fields">
+                  <div className="dx-cotd-f"><small>Fecha de emisión</small><div>{cotFechaDx(cot.fecha)}</div></div>
+                  <div className="dx-cotd-f"><small>Moneda</small><div>{cot.moneda || '—'}</div></div>
+                  <div className="dx-cotd-f"><small>Validez</small><div>{validezTexto()}</div></div>
+                  <div className="dx-cotd-f"><small>Attn. contacto</small><div>{contacto?.nombre || '—'}</div></div>
+                </div>
+                <div className="dx-cotd-fields is-three">
+                  <div className="dx-cotd-f"><small>Vendedor responsable</small><div>{vendedorNombre}</div></div>
+                  <div className="dx-cotd-f"><small>Email vendedor</small><div>{vendedorEmail ? <a href={`mailto:${vendedorEmail}`}>{vendedorEmail}</a> : '—'}</div></div>
+                  <div className="dx-cotd-f"><small>Enviada al cliente</small><div>{fechaHoraDx(cot.fecha_envio) || '—'}</div></div>
+                </div>
+                {esBorrador && !aprobadaInterna && !puedeAprobarCot && <div className="dx-cotd-note is-amber">{I.clock}<span>Usa <strong>Solicitar aprobación</strong> para que la jefatura comercial revise esta cotización antes de enviarla al cliente.</span></div>}
+                {esPendiente && <div className="dx-cotd-note is-amber">{I.clock}<span><strong>Pendiente de revisión</strong> — la jefatura comercial debe aprobar esta cotización para que puedas enviarla al cliente.</span></div>}
+                {aprobadaInterna && <div className="dx-cotd-note is-green">{I.check}<span>Aprobada para envío por <strong>{cot.aprobada_interna_por}</strong>{cot.aprobada_interna_at ? ` · ${new Date(cot.aprobada_interna_at).toLocaleDateString('es-PE')}` : ''}</span></div>}
+                {cot.descripcion_general && <div className="dx-cotd-desc">{renderComercial(cot.descripcion_general)}</div>}
+              </div>
+            </section>
+
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Partidas</h2><span>{partidas.length} {partidas.length === 1 ? 'ítem' : 'ítems'}</span></div>
+              <div className="dx-cotd-card-b">
+                {partidas.length === 0 ? <div className="dx-cotd-muted">Esta cotización no tiene partidas.</div> : (
+                  <table className="dx-cotd-tbl">
+                    <thead><tr><th>N°</th><th>Descripción</th><th>Tipo</th><th className="is-r">Cant.</th><th>Det. cant.</th><th className="is-r">P. unit.</th><th className="is-r">Total</th></tr></thead>
+                    <tbody>
+                      {partidas.map((p, i) => (
+                        <tr key={p.id || i}>
+                          <td className="is-n">{p.n || i + 1}</td>
+                          <td className="is-d">
+                            <strong>{renderComercial(p.descripcion) || 'Sin descripción'}</strong>
+                            {(Array.isArray(p.detalle_items) ? p.detalle_items : []).length > 0 && <ul>{p.detalle_items.map((d, j) => <li key={j}>{renderComercial(d)}</li>)}</ul>}
+                          </td>
+                          <td className="is-tipo"><span className={`dx-cotd-tag ${claseTipoPartida(p.tipo)}`}>{p.tipo || 'servicio'}</span></td>
+                          <td className="is-c is-r">{p.cantidad}</td>
+                          <td className="is-dc">{renderComercial(p.detalle_cantidad) || p.unidad || ''}</td>
+                          <td className="is-pu is-r">{p.incluido ? <span className="dx-cotd-tag is-gray">Incluido</span> : moneyD(p.precio_unitario || 0, sym)}</td>
+                          <td className="is-m is-r">{p.incluido ? '—' : moneyD(calcDetalleTotal(p), sym)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+
+            {cot.hitos_activos && (cot.hitos_pago || []).length > 0 && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Hitos de pago</h2><span>{cot.hitos_pago.length} hitos</span></div>
+                <div className="dx-cotd-card-b">
+                  <table className="dx-cotd-tbl is-hitos">
+                    <thead><tr><th>N°</th><th>Concepto</th><th className="is-r">%</th><th>Condición / vencimiento</th><th className="is-r">Monto</th></tr></thead>
+                    <tbody>
+                      {cot.hitos_pago.map((h, i) => (
+                        <tr key={h.id || i}>
+                          <td className="is-n">{i + 1}</td>
+                          <td className="is-d"><strong>{renderComercial(h.concepto)}</strong></td>
+                          <td className="is-tipo is-r">{h.porcentaje}%</td>
+                          <td className="is-dc">{renderComercial(h.condicion) || '—'}</td>
+                          <td className="is-m is-r">{money(h.monto, sym)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {cot.glosa_factura && <div className="dx-cotd-desc"><small className="dx-cotd-label">Glosa recomendada para facturas</small><div>{renderComercial(cot.glosa_factura)}</div></div>}
+                </div>
+              </section>
+            )}
+
+            {COND_SECTIONS.length > 0 && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Condiciones comerciales</h2><span>{COND_SECTIONS.length} secciones</span></div>
+                <div className="dx-cotd-card-b">
+                  {COND_SECTIONS.map(({ key, label, contenido }, index) => {
+                    const texto = renderComercial(contenido);
+                    if (!texto) return null;
+                    const open = seccionesOpen[key] ?? index === 0;
+                    return (
+                      <div key={key} className={`dx-cotd-acc${open ? ' is-open' : ''}`}>
+                        <button type="button" aria-expanded={open} onClick={() => setSeccionesOpen(actual => ({ ...actual, [key]: !open }))}>{label}{I.chev}</button>
+                        {open && <div className="dx-cotd-acc-b">{texto}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            <section className="dx-cotd-card">
+              <div className={`dx-cotd-acc is-card${firmasAbiertas ? ' is-open' : ''}`}>
+                <button type="button" aria-expanded={firmasAbiertas} onClick={() => setFirmasAbiertas(valor => !valor)}><span className="dx-cotd-acc-title">Página de firmas</span>{I.chev}</button>
+                {firmasAbiertas && (
+                  <div className="dx-cotd-firmas">
+                    <div className="dx-cotd-firma">
+                      <small>Por {cfg.razon_social || 'TIDEO'}</small>
+                      {cfg.firma_url ? <img src={cfg.firma_url} alt="Firma" /> : <div className="dx-cotd-firma-ln" />}
+                      <b>{cfg.firmante || '(sin configurar)'}</b>
+                      <span>{cfg.cargo_firmante}</span>
+                      <span>{cfg.email_comercial}</span>
+                    </div>
+                    <div className="dx-cotd-firma">
+                      <small>Por {clienteNombre === '—' ? 'Cliente' : clienteNombre}</small>
+                      <div className="dx-cotd-firma-ln" />
+                      <b>{contacto?.nombre || '—'}</b>
+                      <span>Sello y firma · Fecha</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <aside className="dx-cotd-aside">
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Totales</h2><span>{cot.moneda}</span></div>
+              <div className="dx-cotd-card-b">
+                <div className="dx-cotd-tot-h">Implementación</div>
+                <div className="dx-cotd-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtotalImplDetalle || 0, sym)}</b></div>
+                <div className="dx-cotd-tot"><span>IGV ({cot.igv_pct || 18}%)</span><b>{moneyD(igvImplDetalle || 0, sym)}</b></div>
+                <div className="dx-cotd-tot is-big"><span>Total</span><b>{moneyD(totalImplDetalle || 0, sym)}</b></div>
+                {hayRecurrente && (
+                  <>
+                    <div className="dx-cotd-tot-h is-sep">Recurrente mensual</div>
+                    <div className="dx-cotd-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtotalRecDetalle || 0, sym)}/mes</b></div>
+                    <div className="dx-cotd-tot"><span>IGV ({cot.igv_pct || 18}%)</span><b>{moneyD(igvRecDetalle || 0, sym)}/mes</b></div>
+                    <div className="dx-cotd-tot is-big"><span>Total</span><b>{moneyD(totalRecDetalle || 0, sym)}/mes</b></div>
+                  </>
+                )}
+              </div>
+            </section>
+
+            {cot.aceptacion_fecha && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Aceptación registrada</h2><span className="dx-cotd-pill is-green"><i />Digital</span></div>
+                <div className="dx-cotd-card-b">
+                  <div className="dx-cotd-kv"><span>Aceptado por</span><b>{cot.aceptacion_nombre || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>DNI</span><b>{cot.aceptacion_dni || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Fecha y hora</span><b>{fechaHoraDx(cot.aceptacion_fecha)}</b></div>
+                  <div className="dx-cotd-kv"><span>IP registrada</span><b className="is-mono">{cot.aceptacion_ip || '—'}</b></div>
+                </div>
+              </section>
+            )}
+
+            {cot.aprobacion_tipo === 'manual' && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Aprobación registrada</h2><span className="dx-cotd-pill is-cyan"><i />Manual</span></div>
+                <div className="dx-cotd-card-b">
+                  <div className="dx-cotd-kv"><span>Canal</span><b>{cot.aprobacion_canal || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Fecha del cliente</span><b>{cot.aprobacion_fecha_cliente ? cotFechaDx(cot.aprobacion_fecha_cliente) : '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Registrado por</span><b>{cot.aprobacion_registrada_por || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Registrado el</span><b>{fechaHoraDx(cot.aprobacion_registrada_at) || '—'}</b></div>
+                  {cot.aprobacion_notas && <div className="dx-cotd-desc">{cot.aprobacion_notas}</div>}
+                  {(cot.aprobacion_archivos || []).length > 0 && (
+                    <div className="dx-cotd-files">
+                      {(cot.aprobacion_archivos || []).map((a, i) => (
+                        <a key={i} href={a.url} target="_blank" rel="noopener noreferrer">{I.download}<span>{a.nombre}</span><small>{a.tamanio ? `${(a.tamanio / 1024).toFixed(0)} KB` : ''}</small></a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {mostrarQR && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Aceptación del cliente</h2><span className="dx-cotd-pill is-amber"><i />Pendiente</span></div>
+                <div className="dx-cotd-card-b">
+                  <div className="dx-cotd-qr">
+                    <QRBlock token={cot.token_aceptacion} />
+                    <div><b>Aceptación digital</b><p>El cliente escanea el QR o abre el enlace para revisar y aceptar la cotización. No necesita cuenta en el sistema.</p></div>
+                  </div>
+                  <div className="dx-cotd-link">{enlaceAceptacion}</div>
+                  <button type="button" className="dx-cotd-btn is-block" onClick={copiarEnlace}>{I.copy}{enlaceCopiado ? 'Enlace copiado' : 'Copiar enlace'}</button>
+                </div>
+              </section>
+            )}
+
+            {tieneOS && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Orden de servicio</h2></div>
+                <div className="dx-cotd-card-b">
+                  {osVinculada?.id && onVerOS
+                    ? <button type="button" className="dx-cotd-os" onClick={() => onVerOS(osVinculada.id)}><span>{I.clipboard}{osEtiqueta}</span>{I.chevRight}</button>
+                    : <div className="dx-cotd-os is-static"><span>{I.clipboard}{osEtiqueta}</span></div>}
+                  <p className="dx-cotd-muted">Generada desde esta cotización. Ábrela para ver sus OTs y facturación.</p>
+                </div>
+              </section>
+            )}
+
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Historial de versiones</h2></div>
+              <div className="dx-cotd-card-b">
+                {historial.length === 0 ? <div className="dx-cotd-muted">Esta es la única versión.</div> : historial.map((h, i) => (
+                  <div key={i} className="dx-cotd-kv"><span><span className="dx-cotd-pill is-gray">v{h.version}</span> {h.fecha}</span><b>{moneyD(h.total, sym)}</b></div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </section>
+          </aside>
         </div>
       </div>
 
-      {/* Bloque 3 — Totales */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className={hayRecurrente ? 'grid-2' : ''} style={{gap:24, maxWidth: hayRecurrente ? '100%' : 380, marginLeft:'auto'}}>
-            <div>
-              {hayRecurrente && <div className="eyebrow" style={{marginBottom:12}}>Implementación</div>}
-              <TotalesBox subtotal={subtotalImplDetalle} igvPct={cot.igv_pct || 18} igv={igvImplDetalle} total={totalImplDetalle} sym={sym} />
-            </div>
-            {hayRecurrente && (
-              <div>
-                <div className="eyebrow" style={{marginBottom:12}}>Recurrente mensual</div>
-                <TotalesBox subtotal={subtotalRecDetalle} igvPct={cot.igv_pct || 18} igv={igvRecDetalle} total={totalRecDetalle} suffix="/mes" sym={sym} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bloque 4 — Hitos de pago */}
-      {cot.hitos_activos && (cot.hitos_pago || []).length > 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Hitos de pago</h3>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>N°</th><th>Concepto</th><th>%</th><th>Monto</th><th>Condición / vencimiento</th></tr></thead>
-                <tbody>
-                  {cot.hitos_pago.map((h, i) => (
-                    <tr key={h.id || i}>
-                      <td className="num text-muted">{i + 1}</td>
-                      <td style={{fontWeight:600}}>{renderComercial(h.concepto)}</td>
-                      <td className="num">{h.porcentaje}%</td>
-                      <td className="num" style={{fontWeight:600}}>{money(h.monto, sym)}</td>
-                      <td className="text-muted" style={{fontSize:13}}>{renderComercial(h.condicion) || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {cot.glosa_factura && (
-              <div style={{marginTop:16, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
-                <div className="eyebrow" style={{marginBottom:4}}>Glosa recomendada para facturas</div>
-                {renderComercial(cot.glosa_factura)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Bloque 5 — Condiciones comerciales */}
-      {COND_SECTIONS.length > 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Condiciones comerciales</h3>
-            {COND_SECTIONS.map(({ key, label, contenido }) => {
-              const texto = renderComercial(contenido);
-              if (!texto) return null;
-              const open = seccionesOpen[key] !== false;
-              return (
-                <div key={key} style={{marginBottom:10, border:'1px solid var(--border)', borderRadius:8, overflow:'hidden'}}>
-                  <button type="button"
-                    style={{width:'100%', textAlign:'left', padding:'10px 14px', background:'var(--bg-subtle)', border:'none', cursor:'pointer', fontWeight:600, fontSize:14, display:'flex', justifyContent:'space-between'}}
-                    onClick={() => toggleSeccion(key)}>
-                    {label}<span style={{color:'var(--fg-muted)', fontSize:12}}>{open ? '▲' : '▼'}</span>
-                  </button>
-                  {open && <div style={{padding:'10px 14px', fontSize:13, lineHeight:'1.6', whiteSpace:'pre-wrap'}}>{texto}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Bloque 6 — Firmas */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Página de cierre — Firmas</h3>
-          <div className="grid-2" style={{gap:40}}>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cfg.razon_social || 'TIDEO'}</div>
-              {cfg.firma_url && <img src={cfg.firma_url} alt="Firma" style={{maxHeight:60, marginBottom:8, display:'block', margin:'0 auto 8px'}} />}
-              <div style={{borderTop:'1px solid var(--border-strong)', paddingTop:8, fontWeight:600}}>{cfg.firmante || '(sin configurar)'}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.cargo_firmante}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.email_comercial}</div>
-            </div>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cuenta?.razon_social || cuenta?.nombre_comercial || 'Cliente'}</div>
-              <div style={{height:60, display:'flex', alignItems:'flex-end', justifyContent:'center'}}>
-                <div style={{width:'80%', borderBottom:'1px solid var(--border-strong)'}}></div>
-              </div>
-              <div style={{paddingTop:8, fontWeight:600}}>{contacto?.nombre || '—'}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>Sello y firma</div>
-              <div style={{marginTop:8, width:'50%', margin:'8px auto 0', borderBottom:'1px solid var(--border)', paddingBottom:4, fontSize:12, color:'var(--fg-muted)'}}>Fecha</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* QR de aceptación digital */}
-      {cot.token_aceptacion && cot.token_activo !== false && !cot.aceptacion_fecha && (
-        <div className="card mt-4">
-          <div className="card-body row" style={{gap:24, alignItems:'flex-start', flexWrap:'wrap'}}>
-            <div style={{flex:1, minWidth:220}}>
-              <h3 style={{marginBottom:6}}>Aceptación digital</h3>
-              <div className="text-muted" style={{fontSize:13, lineHeight:1.6}}>
-                El cliente puede escanear el código QR para revisar y aceptar la cotización digitalmente desde su dispositivo. No necesita cuenta en el sistema.
-              </div>
-              <div style={{marginTop:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:12, fontFamily:'monospace', wordBreak:'break-all', color:'var(--fg-muted)'}}>
-                {window.location.origin}/#aceptar/{cot.token_aceptacion}
-              </div>
-            </div>
-            <QRBlock token={cot.token_aceptacion} />
-          </div>
-        </div>
-      )}
-
-      {/* Bloque: Aprobación digital (vía QR) */}
-      {cot.aceptacion_fecha && (
-        <div className="card mt-4" style={{borderLeft:'4px solid var(--green)'}}>
-          <div className="card-body">
-            <div className="row" style={{alignItems:'center', gap:10, marginBottom:12}}>
-              <h3 style={{margin:0, color:'var(--green)'}}>✓ Aprobación registrada</h3>
-              <span className="badge badge-green">Aprobación digital</span>
-            </div>
-            <div className="grid-4" style={{fontSize:13}}>
-              <div><div className="eyebrow">Aceptado por</div><div style={{fontWeight:600, marginTop:4}}>{cot.aceptacion_nombre || '—'}</div></div>
-              <div><div className="eyebrow">DNI</div><div style={{fontWeight:600, marginTop:4}}>{cot.aceptacion_dni || '—'}</div></div>
-              <div><div className="eyebrow">Fecha y hora</div><div style={{fontWeight:600, marginTop:4}}>{new Date(cot.aceptacion_fecha).toLocaleString('es-PE')}</div></div>
-              <div><div className="eyebrow">IP registrada</div><div style={{fontWeight:600, marginTop:4, fontSize:11, fontFamily:'monospace'}}>{cot.aceptacion_ip || '—'}</div></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bloque: Aprobación manual (registrada por vendedor) */}
-      {cot.aprobacion_tipo === 'manual' && (
-        <div className="card mt-4" style={{borderLeft:'4px solid var(--green)'}}>
-          <div className="card-body">
-            <div className="row" style={{alignItems:'center', gap:10, marginBottom:16}}>
-              <h3 style={{margin:0, color:'var(--green)'}}>✓ Aprobación registrada</h3>
-              <span className="badge badge-cyan">Aprobación manual</span>
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, fontSize:13}}>
-              <div><div className="eyebrow">Canal</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_canal || '—'}</div></div>
-              <div><div className="eyebrow">Fecha aprobación cliente</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_fecha_cliente || '—'}</div></div>
-              <div><div className="eyebrow">Registrado por</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_registrada_por || '—'}</div></div>
-              <div><div className="eyebrow">Fecha y hora de registro</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_registrada_at ? new Date(cot.aprobacion_registrada_at).toLocaleString('es-PE') : '—'}</div></div>
-              {cot.aprobacion_notas && (
-                <div style={{gridColumn:'span 2'}}><div className="eyebrow">Notas</div><div style={{marginTop:4}}>{cot.aprobacion_notas}</div></div>
-              )}
-            </div>
-            {(cot.aprobacion_archivos || []).length > 0 && (
-              <div style={{marginTop:14}}>
-                <div className="eyebrow" style={{marginBottom:8}}>Archivos adjuntos</div>
-                <div style={{display:'flex', flexDirection:'column', gap:6}}>
-                  {(cot.aprobacion_archivos || []).map((a, i) => (
-                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
-                      style={{display:'flex', alignItems:'center', gap:8, padding:'7px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, textDecoration:'none', color:'var(--cyan)'}}>
-                      {I.download}
-                      <span style={{flex:1}}>{a.nombre}</span>
-                      <span style={{fontSize:11, color:'var(--fg-muted)'}}>{a.tamanio ? (a.tamanio/1024).toFixed(0)+' KB' : ''}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Aprobar manualmente */}
       {showAprobModal && (
         <AprobacionManualModal
           onClose={() => setShowAprobModal(false)}
@@ -1626,24 +1606,24 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
         />
       )}
 
-      {/* Historial de versiones */}
-      {historial.length > 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <h3 style={{marginBottom:12, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Historial de versiones</h3>
-            {historial.map((h, i) => (
-              <div key={i} className="row" style={{justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border-subtle)', fontSize:13}}>
-                <span className="badge badge-gray">v{h.version}</span>
-                <span className="text-muted">{h.fecha}</span>
-                <span className="num">{moneyD(h.total, sym)}</span>
-                <span className="text-muted mono" style={{fontSize:11}}>{h.cotizacion_id}</span>
+      {confirmarAprobInterna && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:460}}>
+            <div className="modal-head">
+              <h2>Aprobar para envío</h2>
+              <button className="icon-btn" onClick={() => setConfirmarAprobInterna(false)}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{gap:20}}>
+              <p style={{margin:0, lineHeight:'1.6'}}>¿Confirmas la aprobación interna de esta cotización? Quedará habilitada para enviarse al cliente.</p>
+              <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+                <button className="btn btn-secondary" onClick={() => setConfirmarAprobInterna(false)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={() => { setConfirmarAprobInterna(false); onAprobarInterna(); }}>Confirmar aprobación</button>
               </div>
-            ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal confirmación envío */}
       {confirmEnviar && (
         <div className="modal-backdrop">
           <div className="modal" style={{maxWidth:460}}>
@@ -1661,7 +1641,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
