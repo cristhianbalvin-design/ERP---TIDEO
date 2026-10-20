@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { renderTextoComercial } from './lib/textoComercial.js';
+import { PaginaConformidadActa } from './pages_conformidad_acta.jsx';
 
 const sb = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -378,7 +379,12 @@ export function PaginaAceptacionEspecial({ token }) {
   return <PaginaAceptacion token={token} tipo="especial" />;
 }
 
+// El enlace de un acta móvil usa la página nueva; los cierres anteriores siguen con el formulario antiguo.
 export function PaginaConformidadOT({ token }) {
+  return <PaginaConformidadActa token={token} renderAnterior={() => <PaginaConformidadOTAnterior token={token} />} />;
+}
+
+function PaginaConformidadOTAnterior({ token }) {
   const [phase, setPhase] = useState('loading');
   const [ot, setOt]       = useState(null);
   const [nombre, setNombre] = useState('');
