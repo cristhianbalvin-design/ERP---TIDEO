@@ -38,12 +38,12 @@ export function esContratoDocumentoNomina(doc = {}, tiposDocumento = []) {
   return /contrato/.test(texto(doc.tipo_doc));
 }
 
-const vigenteDurantePeriodo = (doc, periodo) => {
+export const vigenteDurantePeriodo = (doc, periodo) => {
   const desde = periodo?.fecha_inicio || (periodo?.anio && periodo?.mes
     ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}-01`
     : null);
   const hasta = periodo?.fecha_fin || (periodo?.anio && periodo?.mes
-    ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}-${String(new Date(periodo.anio, periodo.mes, 0).getDate()).padStart(2, '0')}`
+    ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}-${String(new Date(Date.UTC(periodo.anio, periodo.mes, 0)).getUTCDate()).padStart(2, '0')}`
     : null);
   const inicioContrato = doc.periodo_fecha_inicio || doc.fecha_emision || null;
   const finContrato = doc.es_indefinido ? null : (doc.periodo_fecha_fin || doc.fecha_vencimiento || null);
@@ -52,14 +52,80 @@ const vigenteDurantePeriodo = (doc, periodo) => {
   return true;
 };
 
-function contratoEsSuperado(contrato, candidatos, tiposPorId) {
-  const tipo = tiposPorId.get(contrato.tipo_documento_id || contrato.tipo_doc);
-  if (!tipo?.tipo_sucesor_id) return false;
-  return candidatos.some(otro =>
-    otro.personal_id === contrato.personal_id
-    && otro.id !== contrato.id
-    && (otro.tipo_documento_id || otro.tipo_doc) === tipo.tipo_sucesor_id
-  );
+const fechaInicioContrato = doc => doc.periodo_fecha_inicio || doc.fecha_emision || null;
+const fechaFinContrato = doc => doc.es_indefinido ? null : (doc.periodo_fecha_fin || doc.fecha_vencimiento || null);
+const creadoContrato = doc => String(doc.creado_en || doc.created_at || '');
+
+export function ultimasVersionesNoRechazadas(documentos) {
+  const ultimas = new Map();
+  (documentos || []).filter(doc => doc.estado_validacion !== 'rechazado').forEach(doc => {
+    const clave = doc.contrato_periodo_id || doc.id;
+    const anterior = ultimas.get(clave);
+    const version = Number(doc.version || 0);
+    const versionAnterior = Number(anterior?.version || 0);
+    if (!anterior || version > versionAnterior || (version === versionAnterior && creadoContrato(doc) > creadoContrato(anterior))) {
+      ultimas.set(clave, doc);
+    }
+  });
+  const noRechazados = (documentos || []).filter(doc => doc.estado_validacion !== 'rechazado');
+  return [...ultimas.values()].filter(doc => {
+    if (doc.estado_validacion !== 'aprobado') return false;
+    if (!doc.contrato_periodo_id) return doc.activo === true;
+    if (doc.activo === true) return true;
+    return noRechazados.some(sucesor => esSucesorDe(sucesor, doc));
+  });
+}
+
+function esSucesorDe(sucesor, documento) {
+  return sucesor.id !== documento.id
+    && Boolean(sucesor.contrato_periodo_id)
+    && sucesor.contrato_periodo_id !== documento.contrato_periodo_id
+    && !sucesor.contrato_referencia_id
+    && sucesor.contrato_periodo_predecesor_id === documento.contrato_periodo_id
+    && (!(sucesor.tipo_documento_id || sucesor.tipo_doc) || !(documento.tipo_documento_id || documento.tipo_doc)
+      || (sucesor.tipo_documento_id || sucesor.tipo_doc) === (documento.tipo_documento_id || documento.tipo_doc))
+    && (!documento.personal_id || !sucesor.personal_id || sucesor.personal_id === documento.personal_id)
+    && (!documento.empresa_id || !sucesor.empresa_id || sucesor.empresa_id === documento.empresa_id)
+    && (!documento.sociedad_id || !sucesor.sociedad_id || sucesor.sociedad_id === documento.sociedad_id);
+}
+
+function suprimidoPorSucesor(documento, documentos, fechaLimite) {
+  if (documento?.activo === true || !documento?.contrato_periodo_id || !fechaLimite) return false;
+  return (documentos || []).some(sucesor => sucesor.estado_validacion !== 'rechazado'
+    && esSucesorDe(sucesor, documento)
+    && Boolean(fechaInicioContrato(sucesor))
+    && fechaInicioContrato(sucesor) <= fechaLimite);
+}
+
+export function seleccionarProximoContrato(documentos = [], fecha) {
+  return ultimasVersionesNoRechazadas(documentos)
+    .filter(doc => (fechaInicioContrato(doc) || '') > fecha)
+    .filter(doc => !suprimidoPorSucesor(doc, documentos, fechaInicioContrato(doc)))
+    .sort((a, b) => String(fechaInicioContrato(a) || '').localeCompare(String(fechaInicioContrato(b) || ''))
+      || creadoContrato(a).localeCompare(creadoContrato(b)))[0] || null;
+}
+
+function diasInterseccionContrato(doc, periodo) {
+  const desde = periodo?.fecha_inicio || (periodo?.anio && periodo?.mes ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}-01` : null);
+  const hasta = periodo?.fecha_fin || (periodo?.anio && periodo?.mes
+    ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}-${String(new Date(Date.UTC(periodo.anio, periodo.mes, 0)).getUTCDate()).padStart(2, '0')}`
+    : null);
+  const inicio = fechaInicioContrato(doc);
+  const fin = fechaFinContrato(doc);
+  const inicioInterseccion = [desde, inicio].filter(Boolean).sort().at(-1) || null;
+  const finInterseccion = [hasta, fin].filter(Boolean).sort()[0] || null;
+  if (inicioInterseccion && finInterseccion && inicioInterseccion > finInterseccion) return 0;
+  if (!inicioInterseccion || !finInterseccion) return Number.POSITIVE_INFINITY;
+  const a = Date.parse(`${inicioInterseccion}T00:00:00Z`);
+  const b = Date.parse(`${finInterseccion}T00:00:00Z`);
+  return Math.floor((b - a) / 86400000) + 1;
+}
+
+export function seleccionarContratoPorFecha(documentos = [], fecha) {
+  return ultimasVersionesNoRechazadas(documentos)
+    .filter(doc => !suprimidoPorSucesor(doc, documentos, fecha))
+    .filter(doc => vigenteDurantePeriodo(doc, { fecha_inicio: fecha, fecha_fin: fecha }))
+    .sort((a, b) => String(fechaInicioContrato(b) || '').localeCompare(String(fechaInicioContrato(a) || '')) || creadoContrato(b).localeCompare(creadoContrato(a)))[0] || null;
 }
 
 function lineaPeriodosContrato(contrato, documentos) {
@@ -161,16 +227,14 @@ export function resolverContratosNominaSociedad({
   periodo,
 }) {
   if (!sociedadId) return { contratos: [], ambiguos: [] };
-  const tiposPorId = new Map(tiposDocumento.map(tipo => [tipo.id, tipo]));
-  const candidatos = documentos
+  const candidatos = ultimasVersionesNoRechazadas(documentos
     .filter(doc => doc.sociedad_id === sociedadId)
-    .filter(doc => doc.activo === true && doc.estado_validacion === 'aprobado' && doc.periodo_estado !== 'archivado')
-    .filter(doc => esContratoDocumentoNomina(doc, tiposDocumento))
+    .filter(doc => esContratoDocumentoNomina(doc, tiposDocumento)))
+    .filter(doc => !suprimidoPorSucesor(doc, documentos, periodo?.fecha_inicio))
     .filter(doc => vigenteDurantePeriodo(doc, periodo));
 
-  const vigentes = candidatos.filter(contrato => !contratoEsSuperado(contrato, candidatos, tiposPorId));
   const porTrabajador = new Map();
-  vigentes.forEach(contrato => {
+  candidatos.forEach(contrato => {
     const lista = porTrabajador.get(contrato.personal_id) || [];
     lista.push(contrato);
     porTrabajador.set(contrato.personal_id, lista);
@@ -179,8 +243,9 @@ export function resolverContratosNominaSociedad({
   const ambiguos = [];
   const contratos = [];
   porTrabajador.forEach(lista => {
-    const ordenados = [...lista].sort((a, b) => String(b.periodo_fecha_inicio || b.fecha_emision || b.creado_en || '')
-      .localeCompare(String(a.periodo_fecha_inicio || a.fecha_emision || a.creado_en || '')));
+    const ordenados = [...lista].sort((a, b) => diasInterseccionContrato(b, periodo) - diasInterseccionContrato(a, periodo)
+      || String(fechaInicioContrato(b) || '').localeCompare(String(fechaInicioContrato(a) || ''))
+      || creadoContrato(b).localeCompare(creadoContrato(a)));
     if (ordenados.length > 1) ambiguos.push({ personal_id: ordenados[0].personal_id, contratos: ordenados.map(item => item.id) });
     contratos.push(aplicarAdendas(ordenados[0], documentos, periodo));
   });
@@ -231,13 +296,20 @@ export function resolverSociedadContratoVigente({
   personalId,
   fecha,
 } = {}) {
-  const tiposPorId = new Map(tiposDocumento.map(tipo => [tipo.id, tipo]));
-  const candidatos = documentos
+  const candidatos = ultimasVersionesNoRechazadas(documentos
     .filter(doc => doc.personal_id === personalId && doc.sociedad_id)
-    .filter(doc => doc.activo === true && doc.estado_validacion === 'aprobado' && doc.periodo_estado !== 'archivado')
-    .filter(doc => esContratoDocumentoNomina(doc, tiposDocumento))
+    .filter(doc => esContratoDocumentoNomina(doc, tiposDocumento)))
+    .filter(doc => !suprimidoPorSucesor(doc, documentos, fecha))
     .filter(doc => vigenteDurantePeriodo(doc, { fecha_inicio: fecha, fecha_fin: fecha }));
-  const vigentes = candidatos.filter(contrato => !contratoEsSuperado(contrato, candidatos, tiposPorId));
+  const porSociedad = new Map();
+  candidatos.forEach(doc => {
+    const lista = porSociedad.get(doc.sociedad_id) || [];
+    lista.push(doc);
+    porSociedad.set(doc.sociedad_id, lista);
+  });
+  const vigentes = [...porSociedad.values()].map(lista => lista.sort((a, b) =>
+    String(fechaInicioContrato(b) || '').localeCompare(String(fechaInicioContrato(a) || ''))
+    || creadoContrato(b).localeCompare(creadoContrato(a)))[0]);
   const sociedadIds = [...new Set(vigentes.map(contrato => contrato.sociedad_id).filter(Boolean))];
   const sociedadesPorId = new Map((sociedades || []).map(sociedad => [sociedad.id, sociedad]));
   const nombres = sociedadIds.map(id => {

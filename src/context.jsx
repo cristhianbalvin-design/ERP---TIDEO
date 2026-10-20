@@ -484,6 +484,7 @@ export function AppProvider({ children }) {
   const [licencias, setLicencias] = useState([]);
   const [solicitudesRRHH, setSolicitudesRRHH] = useState(useSupabase ? [] : (MOCK.solicitudesRRHH || []));
   const [personalDocumentos, setPersonalDocumentos] = useState(useSupabase ? [] : (MOCK.personalDocumentos || []));
+  const [contratosArchivados, setContratosArchivados] = useState([]);
   const [reclutamientoVacantes, setReclutamientoVacantes] = useState(useSupabase ? [] : (MOCK.reclutamientoVacantes || []));
   const [reclutamientoCandidaturas, setReclutamientoCandidaturas] = useState(useSupabase ? [] : (MOCK.reclutamientoCandidaturas || []));
   const [amonestacionesPersonal, setAmonestacionesPersonal] = useState(useSupabase ? [] : (MOCK.amonestacionesPersonal || []));
@@ -1252,13 +1253,15 @@ export function AppProvider({ children }) {
         }
 
         try {
-          const [solData, pdocsData] = await Promise.all([
+          const [solData, pdocsData, contratosArchivadosData] = await Promise.all([
             solicitudesRrhhService.cargarSolicitudes(empresa.id),
             personalDocumentosService.getDocumentosActivos(empresa.id),
+            personalDocumentosService.getContratosArchivadosRelevantes(empresa.id),
           ]);
           if (mounted) {
             setSolicitudesRRHH(solData || []);
             setPersonalDocumentos(pdocsData || []);
+            setContratosArchivados(contratosArchivadosData || []);
           }
         } catch (_err) { /* módulo documental puede no estar migrado aún */ }
 
@@ -6357,7 +6360,7 @@ export function AppProvider({ children }) {
     let sociedadHonorariosId = null;
     if (empresa?.multisociedad_habilitado) {
       const resolucionSociedad = resolverSociedadContratoVigente({
-        documentos: personalDocumentos,
+        documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
         tiposDocumento,
         sociedades: sociedadesDisponibles,
         personalId: recibo.vendedor_id,
@@ -10290,11 +10293,18 @@ export function AppProvider({ children }) {
   const recargarPersonalDocumentosPersonaCtx = async (personalId) => {
     if (!isSupabaseConfigured() || !empresa?.id) return;
     try {
-      const docsPersona = await personalDocumentosService.getDocumentosActivosPersona(empresa.id, personalId);
+      const [docsPersona, contratosArchivadosPersona] = await Promise.all([
+        personalDocumentosService.getDocumentosActivosPersona(empresa.id, personalId),
+        personalDocumentosService.getContratosArchivadosRelevantes(empresa.id, personalId),
+      ]);
       setPersonalDocumentos(prev => {
         const sinPersona = prev.filter(d => String(d.personal_id) !== String(personalId));
         return [...sinPersona, ...(docsPersona || [])];
       });
+      setContratosArchivados(prev => [
+        ...prev.filter(d => String(d.personal_id) !== String(personalId)),
+        ...(contratosArchivadosPersona || []),
+      ]);
     } catch (e) {
       console.error('Error al recargar documentos del personal:', e);
     }
@@ -10725,7 +10735,7 @@ export function AppProvider({ children }) {
           throw new Error('No se pudo identificar al colaborador y la fecha de cese para derivar la sociedad de la liquidación.');
         }
         const resolucionSociedad = resolverSociedadContratoVigente({
-          documentos: personalDocumentos,
+          documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
           tiposDocumento,
           sociedades: sociedadesDisponibles,
           personalId,
@@ -12060,6 +12070,7 @@ export function AppProvider({ children }) {
     licencias, setLicencias,
     solicitudesRRHH, setSolicitudesRRHH,
     personalDocumentos, setPersonalDocumentos,
+    contratosArchivados,
     reclutamientoVacantes, setReclutamientoVacantes,
     reclutamientoCandidaturas, setReclutamientoCandidaturas,
     amonestacionesPersonal, setAmonestacionesPersonal,

@@ -23,7 +23,7 @@ import {
   listarSociedadesAdministracion,
   resolverFiltroSociedadesVista,
 } from './services/sociedadesService.js';
-import { resolverContratoConAdendasEnFecha, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { resolverContratoConAdendasEnFecha, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
@@ -75,6 +75,10 @@ import { listNavModules, listNavSections, useTenantNavLabels } from './services/
 import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoService.js';
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 import { RecetasActividadPanel } from './components/RecetasActividadPanel.jsx';
+import RenovacionFirmaDigitalModal from './components/RenovacionFirmaDigitalModal.jsx';
+import FirmantesContratoModal from './components/FirmantesContratoModal.jsx';
+import FirmaEmpleadorModal from './components/FirmaEmpleadorModal.jsx';
+import { contratoFirmaService } from './contratoFirmaService.js';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
 const rrhhDesplazarPeriodoMes = (periodo, delta) => {
@@ -6273,7 +6277,7 @@ function Maestros() {
   // El codigo de un nivel jerarquico es el valor real guardado en roles.nivel_jerarquico
   // (ej. 'practicante'), no un correlativo decorativo — se deriva del nombre.
   const slugifyNivel = (nombre) => String(nombre || '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
   // Cuenta asignaciones vigentes en personal_asignaciones_um (sin fecha_fin, o con
@@ -11030,10 +11034,14 @@ const rrhhAdminEsDocContrato = (doc = {}, tiposDocumento = []) => {
   const tipo = tiposDocumento.find(t => t.id === doc.tipo_documento_id || t.id === doc.tipo_doc);
   return rrhhAdminEsTipoContrato(tipo);
 };
-const rrhhAdminContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) =>
-  (docs || [])
-    .filter(d => d.personal_id === personalId && d.activo !== false && ['aprobado', 'validado'].includes(d.estado_validacion) && rrhhAdminEsDocContrato(d, tiposDocumento))
-    .sort((a, b) => String(b.fecha_vencimiento || b.fecha_emision || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.fecha_emision || a.created_at || '')))[0] || null;
+const rrhhAdminContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) => {
+  const contratos = (docs || []).filter(d => d.personal_id === personalId && ['aprobado', 'validado'].includes(d.estado_validacion) && rrhhAdminEsDocContrato(d, tiposDocumento));
+  const hoy = new Date();
+  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  return seleccionarContratoPorFecha(contratos, hoyStr)
+    || contratos.filter(d => d.activo !== false).sort((a, b) => String(b.fecha_vencimiento || b.fecha_emision || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.fecha_emision || a.created_at || '')))[0]
+    || null;
+};
 const rrhhAdminCalcVacProp = (p, solicitudes) => {
   const misSols = (solicitudes || []).filter(s => String(s.personal_id) === String(p.id));
   return computarSaldoVacaciones(p.fecha_ingreso || null, p.dias_vacaciones_total ?? 30, misSols).saldo;
@@ -11560,9 +11568,26 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], authUser, comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], contratosArchivados = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const documentosContratoFecha = [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()];
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
+  useEffect(() => {
+    const personaId = typeof sel === 'string' ? sel : null;
+    if (!personaId || tab !== 'documentos' || typeof recargarPersonalDocumentosPersonaCtx !== 'function') return undefined;
+    let ultimaRecarga = 0;
+    const recargarAlVolver = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - ultimaRecarga < 15000) return;
+      ultimaRecarga = Date.now();
+      Promise.resolve(recargarPersonalDocumentosPersonaCtx(personaId)).catch(() => {});
+    };
+    window.addEventListener('focus', recargarAlVolver);
+    document.addEventListener('visibilitychange', recargarAlVolver);
+    return () => {
+      window.removeEventListener('focus', recargarAlVolver);
+      document.removeEventListener('visibilitychange', recargarAlVolver);
+    };
+  }, [sel, tab, recargarPersonalDocumentosPersonaCtx]);
   const [view, setView] = useState('personal');
   const [documentosAtencionExpandido, setDocumentosAtencionExpandido] = useState(false);
   const [filtroPersonal, setFiltroPersonal] = useState('');
@@ -11608,7 +11633,7 @@ function RRHHAdmin() {
     }
     const resolucionVista = resolverPersonalConContratosVigentes({
       personal: personalAdmin,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: sociedadesContratosPersonalAdminIds,
       fecha: fechaVigenciaPersonalAdmin,
@@ -11625,10 +11650,10 @@ function RRHHAdmin() {
       };
     }
 
-    const todasLasSociedadesIds = [...new Set(personalDocumentos.map(doc => doc.sociedad_id).filter(Boolean))];
+    const todasLasSociedadesIds = [...new Set(documentosContratoFecha.map(doc => doc.sociedad_id).filter(Boolean))];
     const resolucionGlobal = resolverPersonalConContratosVigentes({
       personal: personalAdmin,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: todasLasSociedadesIds,
       fecha: fechaVigenciaPersonalAdmin,
@@ -11647,7 +11672,7 @@ function RRHHAdmin() {
       )),
       personalSinContratoVigenteIds,
     };
-  }, [empresa?.multisociedad_habilitado, personalAdmin, personalDocumentos, tiposDocumento, sociedadesContratosPersonalAdminKey, fechaVigenciaPersonalAdmin, vistaSociedadConcretaPersonalAdmin, mostrarBadgeSociedadPersonalAdmin]);
+  }, [empresa?.multisociedad_habilitado, personalAdmin, personalDocumentos, contratosArchivados, tiposDocumento, sociedadesContratosPersonalAdminKey, fechaVigenciaPersonalAdmin, vistaSociedadConcretaPersonalAdmin, mostrarBadgeSociedadPersonalAdmin]);
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
@@ -11712,6 +11737,43 @@ function RRHHAdmin() {
   const [retroWallInline, setRetroWallInline] = useState(null);
   const [retroWallMotivoInline, setRetroWallMotivoInline] = useState('');
   const [modalEnviarFirmaDocAdmin, setModalEnviarFirmaDocAdmin] = useState(null);
+  const [renovacionFirmaDigitalAdmin, setRenovacionFirmaDigitalAdmin] = useState(null);
+  const [solicitudesFirmaDigitalAdmin, setSolicitudesFirmaDigitalAdmin] = useState({});
+  const [firmasEmpresaAdmin, setFirmasEmpresaAdmin] = useState({});
+  const [firmaEmpresaActivaAdmin, setFirmaEmpresaActivaAdmin] = useState(null);
+  const [mostrarFirmantesAdmin, setMostrarFirmantesAdmin] = useState(false);
+  const [accionFirmaDigitalDocAdmin, setAccionFirmaDigitalDocAdmin] = useState(null);
+  const cargarSolicitudesFirmaDigitalAdmin = useCallback(async () => {
+    const todosLosDocumentos = [...new Map([...(personalDocumentos || []), ...(contratosArchivados || [])].map(doc => [doc.id, doc])).values()];
+    const docs = todosLosDocumentos.filter(d => rrhhAdminEsTipoContrato(d.tipo || d) || String(d.tipo_doc || '').toLowerCase().includes('contrato'));
+    try {
+      const rows = await contratoFirmaService.listarSolicitudesDocumentos(docs.map(d => d.id));
+      const empresaRows = await contratoFirmaService.listarFirmasEmpleador(docs.map(d => d.id));
+      const agrupadas = {};
+      for (const solicitud of rows) (agrupadas[solicitud.documento_id] ||= []).push(solicitud);
+      setSolicitudesFirmaDigitalAdmin(agrupadas);
+      const agrupadasEmpresa = {};
+      for (const firma of empresaRows) (agrupadasEmpresa[firma.documento_id] ||= []).push(firma);
+      setFirmasEmpresaAdmin(agrupadasEmpresa);
+    } catch { setSolicitudesFirmaDigitalAdmin({}); setFirmasEmpresaAdmin({}); }
+  }, [personalDocumentos, contratosArchivados]);
+  useEffect(() => { cargarSolicitudesFirmaDigitalAdmin(); }, [cargarSolicitudesFirmaDigitalAdmin]);
+  const enviarSolicitudFirmaTrabajadorAdmin = async (documentoId, canales) => {
+    if (accionFirmaDigitalDocAdmin === documentoId) return;
+    setAccionFirmaDigitalDocAdmin(documentoId);
+    try {
+      const resultado = await contratoFirmaService.crearSolicitud({ documentoId, empresaId: empresa.id, canales });
+      const personaId = typeof sel === 'string' ? sel : sel?.id;
+      if (recargarPersonalDocumentosPersonaCtx && personaId) await recargarPersonalDocumentosPersonaCtx(personaId);
+      await cargarSolicitudesFirmaDigitalAdmin();
+      addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : 'No se pudo enviar el enlace de firma.');
+    } catch (e) {
+      const detalle = e?.canales ? ` Detalle por canal: ${Object.entries(e.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+      addNotificacion((e.message || 'No se pudo enviar a firma del trabajador.') + detalle);
+    } finally {
+      setAccionFirmaDigitalDocAdmin(null);
+    }
+  };
   const [enviarFirmaMensajeAdmin, setEnviarFirmaMensajeAdmin] = useState('');
   const [enviandoFirmaAdmin, setEnviandoFirmaAdmin] = useState(false);
   const [documentoAEliminarAdmin, setDocumentoAEliminarAdmin] = useState(null);
@@ -11949,7 +12011,16 @@ function RRHHAdmin() {
     const ADV = new Set(['por_vencer', 'en_revision']);
     for (const pid of Object.keys(mapa)) {
       const h = mapa[pid];
-      for (const d of h.docs) d.doc = docIdx[`${pid}|${d.tipo_documento_id}`] || null;
+      for (const d of h.docs) {
+        const tipoContrato = /contrato/i.test(String(d.tipo?.nombre || '')) && !/adenda/i.test(String(d.tipo?.nombre || ''));
+        if (tipoContrato) {
+          const docsTipo = documentosContratoFecha.filter(doc => doc.personal_id === pid
+            && (doc.tipo_documento_id || doc.tipo_doc) === d.tipo_documento_id && !doc.contrato_referencia_id);
+          const hoy = new Date();
+          const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+          d.doc = seleccionarContratoPorFecha(docsTipo, hoyStr) || docIdx[`${pid}|${d.tipo_documento_id}`] || null;
+        } else d.doc = docIdx[`${pid}|${d.tipo_documento_id}`] || null;
+      }
       if (h.estado_global === 'sin_cargo') continue;
       if (!h.docs.length) { h.estado_global = 'sin_requisitos'; continue; }
       const obs = h.docs.filter(d => d.obligatorio).map(d => d.estado);
@@ -11960,7 +12031,7 @@ function RRHHAdmin() {
       if (!mapa[p.id]) mapa[p.id] = { estado_global: p.cargo_id ? 'sin_requisitos' : 'sin_cargo', tiene_cargo: !!p.cargo_id, cargo_id: p.cargo_id, docs: [] };
     }
     return mapa;
-  }, [tiposDocumento, personalDocumentos, personalAdmin]);
+  }, [tiposDocumento, personalDocumentos, contratosArchivados, personalAdmin]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -13571,12 +13642,12 @@ function RRHHAdmin() {
                     setDocValidandoId(null);
                   }
                 }}
-                onCorregir={() => {
+                onCorregir={docPreviewReqAdmin?.doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaAdmin[docPreviewReqAdmin?.doc?.id] || []).some(f => f.estado === 'firmado') ? undefined : () => {
                   const req = docPreviewReqAdmin;
                   cerrarPreviewDocumentoAdmin();
                   handleOpenInlineUpload(req, habPersona.docs, persona, 'corregir');
                 }}
-                onNuevoContrato={() => {
+                onNuevoContrato={docPreviewReqAdmin?.doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaAdmin[docPreviewReqAdmin?.doc?.id] || []).some(f => f.estado === 'firmado') ? undefined : () => {
                   const req = docPreviewReqAdmin;
                   cerrarPreviewDocumentoAdmin();
                   handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato');
@@ -13595,11 +13666,14 @@ function RRHHAdmin() {
             };
             const docsAdicionales = docsPersona.filter(doc => !docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] && !doc.contrato_referencia_id);
             const cerrarInline = () => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); };
-            const accionesEliminarArchivar = (doc) => puedeEliminarDocumentosRrhhAdmin ? [
+            const accionesEliminarArchivar = (doc) => {
+              const firmado = doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaAdmin[doc?.id] || []).some(f => f.estado === 'firmado') || (solicitudesFirmaDigitalAdmin[doc?.id] || []).some(s => s.estado === 'firmado');
+              return puedeEliminarDocumentosRrhhAdmin && !firmado ? [
               { label: 'Archivar', icon: I.archive, onClick: () => { setErrorArchivarDocumentoAdmin(''); setDocumentoAArchivarAdmin({ doc, persona }); } },
               'sep',
               { label: 'Eliminar', icon: I.trash, danger: true, onClick: () => { setErrorEliminarDocumentoAdmin(''); setDocumentoAEliminarAdmin({ doc, persona }); } },
-            ] : [];
+              ] : [];
+            };
             const pieRechazo = (doc) => ({ tone: 'rej', content: (
               <>
                 <strong>Rechazar:</strong>
@@ -13625,11 +13699,42 @@ function RRHHAdmin() {
               const tiposHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === req.tipo_documento_id && t.estado === 'activo');
               const docPadreValidado = req.doc?.estado_validacion === 'aprobado';
               const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
-              const hoy = new Date().toISOString().slice(0, 10);
+              const fechaHoy = new Date();
+              const hoy = `${fechaHoy.getFullYear()}-${String(fechaHoy.getMonth() + 1).padStart(2, '0')}-${String(fechaHoy.getDate()).padStart(2, '0')}`;
               const isHistorico = req.estado === 'historico';
               const nombreTipo = req.tipo?.nombre || req.tipo_documento_id;
               const tono = DOC_TONO[req.estado] || 'gray';
               const puedeValidar = req.doc?.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion;
+              const esContratoReq = rrhhAdminEsTipoContrato(req.tipo);
+              const docsTipoContrato = esContratoReq ? documentosContratoFecha.filter(d => d.personal_id === persona.id && (d.tipo_documento_id || d.tipo_doc) === req.tipo_documento_id && !d.contrato_referencia_id) : [];
+              const proximoContrato = esContratoReq ? seleccionarProximoContrato(docsTipoContrato, hoy) : null;
+              const solicitudesDoc = req.doc ? (solicitudesFirmaDigitalAdmin[req.doc.id] || []) : [];
+              const solicitudActivaDoc = solicitudesDoc.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
+              const firmaEmpresaDoc = req.doc ? (firmasEmpresaAdmin[req.doc.id] || []).find(f => f.estado !== 'anulado') : null;
+              const firmaEnCurso = Boolean(solicitudActivaDoc || (firmaEmpresaDoc && ['pendiente', 'otp_enviado'].includes(firmaEmpresaDoc.estado)));
+              const docFirmado = req.doc?.estado_firma === 'firmado_trabajador' || firmaEmpresaDoc?.estado === 'firmado' || solicitudesDoc.some(s => s.estado === 'firmado');
+              const tipoSucesor = req.tipo?.tipo_sucesor_id ? tiposDocumento.find(t => t.id === req.tipo.tipo_sucesor_id) : null;
+              const sucesorAprobado = tipoSucesor && docsPersona.some(d => (d.tipo_documento_id === tipoSucesor.id || d.tipo_doc === tipoSucesor.id || d.tipo_doc === tipoSucesor.codigo || d.tipo_doc === tipoSucesor.nombre) && d.estado_validacion === 'aprobado');
+              const puedeRenovarFirmaDigital = esContratoReq && !firmaEnCurso && !isHistorico && !sucesorAprobado && !req.tipo?.documento_padre_tipo_id;
+              const hayDatosFirmaContrato = (doc) => (firmasEmpresaAdmin[doc.id] || []).some(f => f.estado !== 'anulado') || (solicitudesFirmaDigitalAdmin[doc.id] || []).length > 0;
+              const panelFirmaContrato = (doc) => {
+                const solicitudes = solicitudesFirmaDigitalAdmin[doc.id] || [];
+                const solActiva = solicitudes.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
+                const sol = solActiva || solicitudes[0];
+                const firma = (firmasEmpresaAdmin[doc.id] || []).find(f => f.estado !== 'anulado');
+                const trabajadorFirmo = sol?.estado === 'firmado' || doc.estado_firma === 'firmado_trabajador';
+                if (!firma && !sol) return null;
+                return <div className="dx-ficha-actions" style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                  {firma && <FichaPill tone={firma.estado === 'firmado' ? 'green' : 'amber'}>{firma.estado === 'firmado' ? `Firmado por la empresa · ${new Date(firma.firmado_en).toLocaleDateString('es-PE')}` : `Pendiente firma de la empresa · ${firma.firmante_nombre || ''}`}</FichaPill>}
+                  {firma?.estado !== 'firmado' && firma?.firmante_usuario_id === authUser?.id && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setFirmaEmpresaActivaAdmin(firma.id)}>Firmar como empresa</button>}
+                  {firma && firma.estado !== 'firmado' && <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firma.id); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>}
+                  {firma?.estado === 'firmado' && !solActiva && !trabajadorFirmo && <button type="button" className="dx-ficha-btn is-sm is-primary" disabled={accionFirmaDigitalDocAdmin === doc.id} onClick={() => enviarSolicitudFirmaTrabajadorAdmin(doc.id, firma.canales_trabajador || [])}>Enviar a firma del trabajador</button>}
+                  {sol && <FichaPill tone={trabajadorFirmo ? 'green' : solActiva ? 'amber' : 'gray'}>{trabajadorFirmo ? `Firmado por el trabajador${sol.firmado_en ? ` · ${new Date(sol.firmado_en).toLocaleDateString('es-PE')}` : ''}` : solActiva ? 'Pendiente de firma del trabajador' : `Solicitud ${sol.estado}`}</FichaPill>}
+                  {solActiva && <><button type="button" className="dx-ficha-btn is-sm" disabled={accionFirmaDigitalDocAdmin === doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: doc.id, empresaId: empresa.id, canales: sol.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Reenviar enlace</button><button type="button" className="dx-ficha-btn is-sm is-danger-text" disabled={accionFirmaDigitalDocAdmin === doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(doc.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: sol.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Anular solicitud</button></>}
+                  {trabajadorFirmo && firma?.estado === 'firmado' && <FichaPill tone="green">Firmado por empresa y trabajador{sol?.firmado_en ? ` · ${new Date(sol.firmado_en).toLocaleDateString('es-PE')}` : ''}</FichaPill>}
+                  {trabajadorFirmo && sol?.pdf_firmado_path && <button type="button" className="dx-ficha-btn is-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(sol.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
+                </div>;
+              };
               const meta = [
                 <>{!req.obligatorio ? 'Opcional' : 'Obligatorio'}{req.es_habilitante ? ' · Habilitante' : ''}</>,
                 req.doc?.version ? `v${req.doc.version}` : null,
@@ -13669,10 +13774,11 @@ function RRHHAdmin() {
               const acciones = req.doc ? (
                 <>
                   {req.doc.archivo_url && <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumentoAdmin(req, persona)}>{I.eye} Ver</button>}
-                  <button type="button" className={'dx-ficha-btn is-sm' + (req.estado === 'rechazado' ? ' is-primary' : '')} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona)}>Actualizar</button>
-                  {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
+                  {!docFirmado && <button type="button" className={'dx-ficha-btn is-sm' + (req.estado === 'rechazado' ? ' is-primary' : '')} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona)}>Actualizar</button>}
+                  {!docFirmado && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
                     <button type="button" className="dx-ficha-btn is-sm is-amber" onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>{I.refresh} Renovar</button>
                   )}
+                  {puedeRenovarFirmaDigital && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setRenovacionFirmaDigitalAdmin({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'administrativo' })}>Renovar con firma digital</button>}
                   {docPadreValidado && tiposHijos.map(th => (
                     <button key={th.id} type="button" className="dx-ficha-btn is-sm is-cyan" onClick={() => {
                       setInlineUploadReq({ tipo: th, tipo_documento_id: th.id, doc: null, estado: 'falta', obligatorio: false });
@@ -13682,7 +13788,7 @@ function RRHHAdmin() {
                     }}>{I.plus} {th.nombre}</button>
                   ))}
                   {botonFirma}
-                  <FichaMenu label={`Más acciones de ${nombreTipo}`} items={accionesEliminarArchivar(req.doc)} />
+                  {!docFirmado && <FichaMenu label={`M\u00e1s acciones de ${nombreTipo}`} items={accionesEliminarArchivar(req.doc)} />}
                 </>
               ) : (
                 <button type="button" className="dx-ficha-btn is-sm is-primary" title={tooltipPredecesor || undefined} aria-label={`Subir ${nombreTipo}`} disabled={!hasAprobadoPredecesor} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona)}>{I.upload} Subir documento</button>
@@ -13706,11 +13812,12 @@ function RRHHAdmin() {
                       hint={!req.doc ? (tooltipPredecesor || (tPredecesor ? `Requiere el ${tPredecesor.nombre} aprobado · cumplido` : null)) : null}
                       hintTone={tooltipPredecesor ? 'warn' : 'ok'}
                       actions={acciones}
-                      footers={pies}
+                      footers={[...pies, ...(req.doc && esContratoReq && hayDatosFirmaContrato(req.doc) ? [{ tone: 'sig', content: panelFirmaContrato(req.doc) }] : [])]}
                       missing={!req.doc}
                       highlight={Boolean(docHighlightTipoAdmin) && req.tipo_documento_id === docHighlightTipoAdmin}
                       historico={isHistorico}
                     />
+                    {proximoContrato && <FichaDocRow linked icon={I.clock} tone="cyan" titulo={'Pr\u00f3ximo contrato'} estado={<FichaPill tone="cyan">{'Pr\u00f3ximo \u00b7 desde ' + (proximoContrato.periodo_fecha_inicio || proximoContrato.fecha_emision || '').split('-').reverse().join('/')}</FichaPill>} meta={[proximoContrato.nombre_archivo || 'Contrato programado']} actions={proximoContrato.archivo_url ? <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumentoAdmin({ ...req, doc: proximoContrato }, persona)}>{I.eye} Ver</button> : null} footers={hayDatosFirmaContrato(proximoContrato) ? [{ tone: 'sig', content: panelFirmaContrato(proximoContrato) }] : []} />}
                     {docsVinculados.map(dv => {
                       const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id);
                       const dvCond = dv.condiciones_laborales || {};
@@ -13749,7 +13856,18 @@ function RRHHAdmin() {
 
             return (
               <>
+              {firmaEmpresaActivaAdmin && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaAdmin} onClose={() => { setFirmaEmpresaActivaAdmin(null); cargarSolicitudesFirmaDigitalAdmin(); }} onComplete={async resultado => { const detalle = resultado?.canales ? ` Detalle por canal: ${Object.entries(resultado.canales).map(([canal, detalleCanal]) => `${canal}: ${detalleCanal.motivo || (detalleCanal.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : ''; addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : (resultado?.aviso || 'La empresa firm\u00f3, pero no se pudo enviar al trabajador.') + detalle); if (recargarPersonalDocumentosPersonaCtx && persona?.id) await recargarPersonalDocumentosPersonaCtx(persona.id); await cargarSolicitudesFirmaDigitalAdmin(); }} />}
               {previewNodeAdmin}
+              {renovacionFirmaDigitalAdmin && <RenovacionFirmaDigitalModal
+                empresa={empresa}
+                persona={persona}
+                documento={renovacionFirmaDigitalAdmin}
+                onClose={() => setRenovacionFirmaDigitalAdmin(null)}
+                onComplete={async (renovacion, envio) => {
+                  addNotificacion(envio?.aviso || (envio?.ok === false ? `La renovaci\u00f3n se cre\u00f3, pero el env\u00edo fall\u00f3: ${envio.error || 'error desconocido'}. Usa \u00abEnviar a firma digital\u00bb en el contrato.` : 'Renovaci\u00f3n creada. El enlace se envi\u00f3 por los canales disponibles.'));
+                  if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(persona.id);
+                }}
+              />}
               {modalEnviarFirmaDocAdmin && (
                 <div className="modal-backdrop" onClick={() => !enviandoFirmaAdmin && setModalEnviarFirmaDocAdmin(null)}>
                   <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Enviar a firma del trabajador" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
@@ -13771,10 +13889,12 @@ function RRHHAdmin() {
                         setEnviandoFirmaAdmin(true);
                         try {
                           await enviarDocumentoAFirmaCtx({ documentoId: modalEnviarFirmaDocAdmin.doc.id, workerAuthUserId: persona?.auth_user_id, mensaje: enviarFirmaMensajeAdmin });
+                          if (recargarPersonalDocumentosPersonaCtx && persona?.id) await recargarPersonalDocumentosPersonaCtx(persona.id);
                           setModalEnviarFirmaDocAdmin(null);
-                          addNotificacion('Documento enviado a firma del trabajador.');
+                          addNotificacion('Enlace de firma enviado');
                         } catch (err) {
-                          addNotificacion(err?.message || 'Error al enviar a firma.');
+                          const detalle = err?.canales ? ` Detalle por canal: ${Object.entries(err.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+                          addNotificacion((err?.message || 'Error al enviar a firma.') + detalle);
                         } finally {
                           setEnviandoFirmaAdmin(false);
                         }
@@ -14274,7 +14394,7 @@ function RRHHAdmin() {
               try {
                 const sociedadId = resolverSociedadDocumentoLaboral({
                   multisociedadHabilitado: empresa?.multisociedad_habilitado,
-                  documentos: personalDocumentos,
+                  documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
                   tiposDocumento,
                   sociedades: sociedadesDisponibles,
                   personalId: persona.id,
@@ -14630,7 +14750,7 @@ function RRHHAdmin() {
   const maxArea = Math.max(...Object.values(porArea), 1);
   const contratosVencer = todosPersonal
     .map(p => {
-      const contratoDoc = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
+      const contratoDoc = rrhhAdminContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
       const contratoInfo = rrhhAdminContratoVencimientoInfo(contratoDoc);
       return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias };
     })
@@ -14653,7 +14773,7 @@ function RRHHAdmin() {
     const idsPersonal = new Set(todosPersonal.map(p => p.id));
     const filasPersonal = todosPersonal.map(p => {
       const esHonorarios = normalizarModalidadContrato(p.modalidad_contrato || p.modalidad || p.tipo_contrato) === 'honorarios';
-      const contrato = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
+      const contrato = rrhhAdminContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
       const sociedades = (resolucionPersonalAdminSociedad.sociedadesPorPersonal.get(p.id) || [])
         .map(id => sociedadesPorId.get(id) || id)
         .join(', ');
@@ -14722,8 +14842,9 @@ function RRHHAdmin() {
 
   return (
     <>
+      {mostrarFirmantesAdmin && <FirmantesContratoModal onClose={() => setMostrarFirmantesAdmin(false)} />}
       <div className="dx-personal"><div className="dx-personal-in">
-        <header className="dx-personal-top"><div><div className="dx-personal-eyebrow">RRHH</div><h1 className="dx-personal-title">RRHH Administrativo</h1><p className="dx-personal-sub">{colaboradoresActivos} colaboradores activos</p></div><div className="dx-personal-head-actions"><PersonalAccionesMenu columnas={COLUMNAS_DEFAULT_ADMIN} visibleCols={visibleColsAdmin} setVisibleCols={setVisibleColsAdmin} descargarExcel={descargarPersonalAdministrativoExcel} abrirCargaMasiva={() => setShowCargaMasivaAdmin(true)} abrirTiposDocumento={() => setShowTiposDocumentoRRHH(true)} abrirRequisitos={() => setShowRequisitosRRHH(true)} /><button type="button" className="dx-personal-btn is-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button></div></header>
+        <header className="dx-personal-top"><div><div className="dx-personal-eyebrow">RRHH</div><h1 className="dx-personal-title">RRHH Administrativo</h1><p className="dx-personal-sub">{colaboradoresActivos} colaboradores activos</p></div><div className="dx-personal-head-actions"><PersonalAccionesMenu columnas={COLUMNAS_DEFAULT_ADMIN} visibleCols={visibleColsAdmin} setVisibleCols={setVisibleColsAdmin} descargarExcel={descargarPersonalAdministrativoExcel} abrirCargaMasiva={() => setShowCargaMasivaAdmin(true)} abrirTiposDocumento={() => setShowTiposDocumentoRRHH(true)} abrirRequisitos={() => setShowRequisitosRRHH(true)} />{Boolean(role?.es_admin_empresa || role?.permisos?.todo) && <button type="button" className="dx-personal-btn" onClick={() => setMostrarFirmantesAdmin(true)}>Firmantes de contratos</button>}<button type="button" className="dx-personal-btn is-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button></div></header>
         {!turnosOptions.length && <p className="dx-personal-warn">Crea un turno en Turnos y Horarios para habilitar esta opción.</p>}
         {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => {setShowRequisitosRRHH(false);setShowTiposDocumentoRRHH(true);}} />}{showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => {setShowTiposDocumentoRRHH(false);setShowRequisitosRRHH(true);}} />}{showCargaMasivaAdmin && <CargaMasivaAdminPanel onClose={() => setShowCargaMasivaAdmin(false)} turnosOptions={turnosOptions} cargosAdminOptions={cargosAdminOptions} areasOptions={areasOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearAdminPersonalCtx={crearAdminPersonalCtx} addNotificacion={addNotificacion} personalAdmin={personalAdmin} />}
         <section className="dx-personal-kpis" aria-label="Resumen de personal administrativo">
@@ -14739,7 +14860,7 @@ function RRHHAdmin() {
           {(()=>{const bloques=[{id:'colaborador',title:'Colaborador',keys:['colaborador'],width:'minmax(174px, 2.1fr)',compact:'minmax(174px, 2.1fr)'},{id:'cargo',title:'Cargo / unidad',keys:['cargo','unidad','sede'],width:'minmax(150px, 1.4fr)',compact:'minmax(150px, 1.4fr)'},{id:'turno',title:'Turno / jornada',keys:['turno','jornada'],width:'minmax(120px, 1.3fr)',compact:null},{id:'contrato',title:'Contrato',keys:['contrato'],width:'minmax(132px, 1.1fr)',compact:'minmax(132px, 1.1fr)'},{id:'vacaciones',title:'Vacaciones / modalidad',keys:['vacaciones','modalidad'],width:'minmax(150px, .9fr)',compact:'minmax(150px, .9fr)'},{id:'estado',title:'Estado',keys:['estado'],width:'minmax(132px, 1.1fr)',compact:'minmax(132px, 1.1fr)'},{id:'acciones',title:'Acciones',keys:['acciones'],width:'112px',compact:'112px'}].filter(b=>b.id==='colaborador'||b.keys.some(k=>visibleColsAdmin.includes(k))), cols=bloques.map(b=>b.width).join(' '), compact=bloques.filter(b=>b.id!=='turno').map(b=>b.compact||b.width).join(' '), filtrado=todosPersonal.filter(p=>{if(filtroEstado&&p.estado!==filtroEstado)return false;if(filtroModalidad){const h=normalizarModalidadContrato(p.modalidad_contrato||p.tipo_contrato)==='honorarios';if(filtroModalidad==='honorarios'&&!h)return false;if(filtroModalidad==='planilla'&&h)return false;}if(filtroPersonal){const q=filtroPersonal.toLowerCase();if(!p.nombre?.toLowerCase().includes(q)&&!p.cargo?.toLowerCase().includes(q))return false;}return true;});return <>
             <div className="dx-personal-table-head" style={{'--dx-personal-cols':cols,'--dx-personal-cols-compact':compact}}>{bloques.map(b=><span key={b.id} className={'dx-personal-head-'+b.id}>{b.title}</span>)}</div>
             {todosPersonal.length===0?<div className="dx-personal-empty">Sin personal administrativo registrado.</div>:filtrado.length===0?<div className="dx-personal-empty">No hay colaboradores que coincidan con los filtros.</div>:filtrado.map(p=>{
-              const hon=normalizarModalidadContrato(p.modalidad_contrato||p.tipo_contrato)==='honorarios', doc=rrhhAdminContratoActivoPersonal(personalDocumentos,p.id,tiposDocumento), info=rrhhAdminContratoVencimientoInfo(doc), unidad=unidadNombrePorId.get(posiciones.find(x=>x.id===p.posicion_id)?.unidad_organizacional_id)||p.area, abrir=()=>{setSel(p.id);setTab('ficha');}, sin=resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id), estado=({activo:'is-green',no_disponible:'is-amber',bloqueado:'is-red',inactivo:'is-gray'})[p.estado]||'is-gray', contrato=info.estado==='sin_contrato'&&!p.cargo_confianza?'is-red':({'badge-green':'is-green','badge-cyan':'is-cyan','badge-orange':'is-amber','badge-red':'is-red','badge-gray':'is-gray'}[info.badge]||'is-gray');
+              const hon=normalizarModalidadContrato(p.modalidad_contrato||p.tipo_contrato)==='honorarios', doc=rrhhAdminContratoActivoPersonal(documentosContratoFecha,p.id,tiposDocumento), info=rrhhAdminContratoVencimientoInfo(doc), unidad=unidadNombrePorId.get(posiciones.find(x=>x.id===p.posicion_id)?.unidad_organizacional_id)||p.area, abrir=()=>{setSel(p.id);setTab('ficha');}, sin=resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id), estado=({activo:'is-green',no_disponible:'is-amber',bloqueado:'is-red',inactivo:'is-gray'})[p.estado]||'is-gray', contrato=info.estado==='sin_contrato'&&!p.cargo_confianza?'is-red':({'badge-green':'is-green','badge-cyan':'is-cyan','badge-orange':'is-amber','badge-red':'is-red','badge-gray':'is-gray'}[info.badge]||'is-gray');
               return <div key={p.id} className="dx-personal-row" style={{'--dx-personal-cols':cols,'--dx-personal-cols-compact':compact}} role="group" tabIndex={0} aria-label={'Abrir ficha de '+p.nombre} onClick={abrir} onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();abrir();}}}>
                 <div className="dx-personal-cell dx-personal-who"><span className="dx-personal-avatar">{(p.nombre||'?').split(' ').map(x=>x[0]).slice(0,2).join('')}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">DNI {p.dni||p.documento||'—'}{visibleColsAdmin.includes('codigo')&&<> · <span className="dx-personal-mono">{p.codigo||'—'}</span></>}</span>{vistaSociedadConcretaPersonalAdmin&&sin&&<span className="dx-personal-pill is-amber">Sin contrato vigente</span>}{mostrarBadgeSociedadPersonalAdmin&&<span className="dx-personal-pills dx-personal-society-pills">{(resolucionPersonalAdminSociedad.sociedadesPorPersonal.get(p.id)||[]).map(id=><SociedadBadge key={id} sociedadId={id}/>)}{sin&&<span className="dx-personal-pill is-amber">Sin contrato vigente</span>}</span>}</div></div>
                 {visibleColsAdmin.some(k=>['cargo','unidad','sede'].includes(k))&&<div className="dx-personal-cell dx-personal-block dx-personal-block-cargo">{visibleColsAdmin.includes('cargo')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo||'—'}</span></div>}{visibleColsAdmin.includes('unidad')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{unidad||<span className="dx-personal-muted">Sin posición</span>}</span></div>}{visibleColsAdmin.includes('sede')&&p.sede&&<div className="dx-personal-fragment"><span className="dx-personal-label">Sede</span><span className="dx-personal-pill is-gray" title={p.sede}>{p.sede}</span></div>}</div>}
