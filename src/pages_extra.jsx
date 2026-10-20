@@ -1761,11 +1761,12 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const pRec  = partidas.filter(p => !p.incluido && p.tipo === 'recurrente');
   const calcPartidaTotal = p => toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario);
   const subtImpl  = pImpl.reduce((s, p) => s + calcPartidaTotal(p), 0);
-  const igvImpl   = Math.round(subtImpl * toCotNumber(igvPct) / 100);
-  const totalImpl = subtImpl + igvImpl;
+  // IGV con céntimos (igual que Hoja de Costeo y el detalle).
+  const igvImpl   = Math.round(subtImpl * toCotNumber(igvPct)) / 100;
+  const totalImpl = Math.round((subtImpl + igvImpl) * 100) / 100;
   const subtRec   = pRec.reduce((s, p) => s + calcPartidaTotal(p), 0);
-  const igvRec    = Math.round(subtRec * toCotNumber(igvPct) / 100);
-  const totalRec  = subtRec + igvRec;
+  const igvRec    = Math.round(subtRec * toCotNumber(igvPct)) / 100;
+  const totalRec  = Math.round((subtRec + igvRec) * 100) / 100;
 
   // ── Bloque 4: hitos ─────────────────────────────────────────────────
   const [hitosActivos, setHitosActivos] = useState(cotizacionBase?.hitos_activos || false);
