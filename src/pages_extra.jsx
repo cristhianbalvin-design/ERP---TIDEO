@@ -4,6 +4,8 @@ import { I, money, moneyD } from './icons.jsx';
 import './hoja_costeo_listado.css';
 import './cotizaciones_listado.css';
 import './cotizacion_detalle.css';
+import './cotizacion_editor.css';
+import { maestrosService } from './services/maestrosService.js';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
@@ -1645,23 +1647,6 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   );
 }
 
-// ── Totales helper ──────────────────────────────────────────────────────
-function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
-  return (
-    <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-      <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">Subtotal s/ IGV</span><span className="num">{moneyD(subtotal || 0, sym)}{suffix}</span>
-      </div>
-      <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">IGV ({igvPct}%)</span><span className="num">{moneyD(igv || 0, sym)}{suffix}</span>
-      </div>
-      <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
-        <span>Total{suffix === '/mes' ? ' mensual' : ''}</span><span className="num">{moneyD(total || 0, sym)}{suffix}</span>
-      </div>
-    </div>
-  );
-}
-
 // ── Editor (crear o editar borrador) ───────────────────────────────────
 function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, contactos, empresaConfig, diccionarioComercial = [], onSave, onCancel }) {
   const { centrosBeneficio, monedasActivas, empresa } = useApp();
@@ -1680,6 +1665,35 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     return String(a.nombre || '').localeCompare(String(b.nombre || ''));
   });
 
+  // ── Estado de la pantalla (dx-cote) ───────────────────────────────────
+  const [hayCambios, setHayCambios] = useState(false);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [errorSociedad, setErrorSociedad] = useState(false);
+  const [subitemsVisibles, setSubitemsVisibles] = useState({});
+  const [condicionesAbiertas, setCondicionesAbiertas] = useState({});
+  const [firmasAbiertasEditor, setFirmasAbiertasEditor] = useState(false);
+  const [catalogoServicios, setCatalogoServicios] = useState([]);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
+  const marcarCambio = () => setHayCambios(true);
+
+  useEffect(() => {
+    if (!hayCambios) return undefined;
+    const avisar = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [hayCambios]);
+
+  useEffect(() => {
+    let activo = true;
+    if (!isSupabaseConfigured() || !empresa?.id) { setCatalogoServicios([]); return () => { activo = false; }; }
+    setCargandoCatalogo(true);
+    maestrosService.getServicios(empresa.id)
+      .then(data => { if (activo) setCatalogoServicios((data || []).filter(servicio => servicio.estado === 'activo')); })
+      .catch(() => { if (activo) setCatalogoServicios([]); })
+      .finally(() => { if (activo) setCargandoCatalogo(false); });
+    return () => { activo = false; };
+  }, [empresa?.id]);
+
   // ── Bloque 1 ────────────────────────────────────────────────────────
   const [numeroCot,   setNumeroCot]   = useState(cotizacionBase?.numero      || '');
   const [moneda,      setMoneda]      = useState(() => normalizeCurrencyCode(cotizacionBase?.moneda || opp?.moneda || 'PEN'));
@@ -1691,6 +1705,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
   const [sociedadId,  setSociedadId]  = useState(cotizacionBase?.sociedad_id || sociedadIdEscritura || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
+  useEffect(() => { if (sociedadId) setErrorSociedad(false); }, [sociedadId]);
   const opcionesMoneda = (monedasActivas || [])
     .map(m => ({ ...m, codigo: normalizeCurrencyCode(m.codigo) }))
     .filter((m, idx, arr) => m.codigo && arr.findIndex(x => x.codigo === m.codigo) === idx);
@@ -1726,19 +1741,20 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     return [{ ...emptyPartida(), descripcion: opp?.servicio_interes || opp?.nombre || '', precio_unitario: Number(opp?.monto_estimado || 0) }];
   });
 
-  const addPartida     = () => setPartidas(p => [...p, emptyPartida()]);
-  const removePartida  = id => setPartidas(p => p.filter(x => x.id !== id));
-  const updatePartida  = (id, field, value) => setPartidas(p => p.map(x => x.id === id ? { ...x, [field]: value } : x));
-  const movePartida    = (idx, dir) => setPartidas(prev => {
+  const addPartida     = () => { marcarCambio(); setPartidas(p => [...p, emptyPartida()]); };
+  const removePartida  = id => { marcarCambio(); setPartidas(p => p.filter(x => x.id !== id)); };
+  const updatePartida  = (id, field, value) => { marcarCambio(); setPartidas(p => p.map(x => x.id === id ? { ...x, [field]: value } : x)); };
+  const movePartida    = (idx, dir) => { marcarCambio(); setPartidas(prev => {
     const arr = [...prev]; [arr[idx], arr[idx + dir]] = [arr[idx + dir], arr[idx]]; return arr;
-  });
-  const addFromCatalogo = srv => setPartidas(prev => [...prev, {
+  }); };
+  const addFromCatalogo = srv => { marcarCambio(); setPartidas(prev => [...prev, {
     ...emptyPartida(), id: Date.now(),
     descripcion: srv.descripcion,
     detalle_items_txt: (srv.entregables || []).join('\n'),
+    detalle_cantidad: srv.unidad || '',
     precio_unitario: srv.precio || 0,
     incluido: srv.precio_incluido || false,
-  }]);
+  }]); };
 
   // ── Bloque 3: cálculos ───────────────────────────────────────────────
   const pImpl = partidas.filter(p => !p.incluido && p.tipo !== 'recurrente');
@@ -1757,9 +1773,11 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const [glosa, setGlosa]               = useState(cotizacionBase?.glosa_factura ?? cfg.cond_glosa_factura ?? '');
   const sumPct = hitos.reduce((s, h) => s + Number(h.porcentaje || 0), 0);
 
-  const addHito    = () => setHitos(p => [...p, { id: Date.now(), concepto: '', porcentaje: 0, condicion: '' }]);
-  const removeHito = id => setHitos(p => p.filter(h => h.id !== id));
-  const updateHito = (id, f, v) => setHitos(p => p.map(h => h.id === id ? { ...h, [f]: v } : h));
+  const addHito    = () => { marcarCambio(); setHitos(p => [...p, { id: Date.now(), concepto: '', porcentaje: 0, condicion: '' }]); };
+  const removeHito = id => { marcarCambio(); setHitos(p => p.filter(h => h.id !== id)); };
+  const updateHito = (id, f, v) => { marcarCambio(); setHitos(p => p.map(h => h.id === id ? { ...h, [f]: v } : h)); };
+  // Monto de cada hito con céntimos sobre el total de implementación.
+  const montoHito = h => Math.round(totalImpl * Number(h.porcentaje || 0)) / 100;
 
   // ── Bloque 5: condiciones versionadas ─────────────────────────────────
   const [tiposDocumento, setTiposDocumento] = useState([]);
@@ -1828,11 +1846,12 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
 
   const handleSave = async () => {
     if (empresa?.multisociedad_habilitado && !sociedadId) {
-      alert('Selecciona una sociedad para la cotización.');
+      setErrorSociedad(true);
+      setErrorGuardar('Selecciona una sociedad para la cotización.');
       return;
     }
     if (hitosActivos && Math.abs(sumPct - 100) > 0.01) {
-      alert(`Los porcentajes de hitos suman ${sumPct.toFixed(1)}%. Deben sumar exactamente 100%.`);
+      setErrorGuardar(`Los hitos suman ${sumPct.toFixed(1)}%. Deben sumar exactamente 100%.`);
       return;
     }
     setGuardando(true);
@@ -1888,12 +1907,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
         subtotal_impl: subtImpl, igv_impl: igvImpl, total_impl: totalImpl,
         subtotal_rec: subtRec,   igv_rec: igvRec,   total_rec: totalRec,
         hitos_activos: hitosActivos,
-        hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: Math.round(totalImpl * Number(h.porcentaje || 0) / 100) })) : [],
+        hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: montoHito(h) })) : [],
         glosa_factura:         glosa || null,
         tipo_documento_id: tipoDocumentoId || null,
         condiciones_generales_version_id: bibliotecaCondiciones?.id || null,
         condiciones_snapshot: condicionesSnapshot,
       });
+      setHayCambios(false);
     } catch (err) {
       setErrorGuardar(err?.message || 'No se pudo guardar la cotización. Verifica tus permisos.');
     } finally {
@@ -1901,352 +1921,344 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     }
   };
 
+  const simboloEditor = currencySymbol(monedaActual);
+  const hitosCompletos = Math.abs(sumPct - 100) < 0.01;
+  const partidasConPrecio = partidas.filter(p => p.incluido || toCotNumber(p.precio_unitario) > 0).length;
+  const contactoSeleccionado = contactosCuenta.find(c => c.id === contactoId);
+  const clienteNombreEditor = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
+  const cancelarEditor = () => (hayCambios ? setConfirmarSalida(true) : onCancel());
+
   return (
-    <>
-      {/* Header */}
-      <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
-        <div>
-          <button className="btn btn-ghost" onClick={onCancel} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver</button>
-          <h1 className="page-title">{isEdit ? `Editar ${cotizacionBase.numero} v${cotizacionBase.version}` : 'Nueva Cotización'}</h1>
-          <div className="page-sub">
-            {opp && <>Oportunidad: <strong>{opp.nombre}</strong> · </>}
-            Cliente: <strong>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</strong>
-            {cuenta?.ruc && <> · RUC: {cuenta.ruc}</>}
-          </div>
-        </div>
-        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8}}>
-          <div className="row">
-            <button className="btn btn-secondary" onClick={onCancel} disabled={guardando}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={guardando}>
-              {guardando ? 'Guardando…' : <>{I.save} Guardar cotización</>}
-            </button>
-          </div>
-          {errorGuardar && <span style={{fontSize:12, color:'var(--red)', maxWidth:320, textAlign:'right'}}>{errorGuardar}</span>}
-        </div>
-      </div>
-      {cotizacionBase?.recepcion_id && <div className="alert alert-info mt-4">
-        Origen bloqueado: recepción <strong>{cotizacionBase.recepcion_numero || cotizacionBase.recepcion_id}</strong> · activo <strong>{cotizacionBase.activo_codigo || cotizacionBase.activo_id}</strong>{cotizacionBase.activo_nombre ? ` · ${cotizacionBase.activo_nombre}` : ''}. Estos vínculos se conservarán al guardar.
-      </div>}
+    <div className="dx-cote" onChangeCapture={marcarCambio} onInputCapture={marcarCambio}>
+      <div className="dx-cote-in">
+        <button type="button" className="dx-cote-back" onClick={cancelarEditor} disabled={guardando}>{I.chevLeft}Volver</button>
+        <div className="dx-cote-eyebrow">Comercial · Cotización estándar</div>
+        <h1 className="dx-cote-title">
+          {isEdit ? `Editar ${cotizacionBase.numero}` : 'Nueva cotización'}
+          {isEdit && <span className="dx-cote-pill is-gray">v{cotizacionBase.version || 1}</span>}
+          <span className="dx-cote-pill is-amber"><i />Borrador</span>
+          {cotizacionBase?.hoja_costeo_id && <span className="dx-cote-pill is-cyan">Desde Hoja de Costeo</span>}
+        </h1>
+        <p className="dx-cote-sub"><strong>{clienteNombreEditor}</strong>{cuenta?.ruc && <> · RUC {cuenta.ruc}</>}{opp?.nombre && <> · {opp.nombre}</>}</p>
+        {cotizacionBase?.recepcion_id && <div className="dx-cote-note is-info">Origen bloqueado: recepción <strong>{cotizacionBase.recepcion_numero || cotizacionBase.recepcion_id}</strong> · activo <strong>{cotizacionBase.activo_codigo || cotizacionBase.activo_id}</strong>{cotizacionBase.activo_nombre ? ` · ${cotizacionBase.activo_nombre}` : ''}. Estos vínculos se conservarán al guardar.</div>}
 
-      {/* ── Bloque 1: encabezado ──────────────────────────────────────── */}
-      <div className="card mt-6">
-        <div className="card-body">
-          <div className="eyebrow" style={{marginBottom:16}}>Encabezado</div>
-          {isEdit && (
-            <div className="input-group" style={{marginBottom:16, maxWidth:280}}>
-              <label>Número de cotización</label>
-              <input className="input mono" value={numeroCot} onChange={e => setNumeroCot(e.target.value)} placeholder="Ej. COT-2026-0502" />
-            </div>
-          )}
-          <div className="grid-3" style={{gap:16, marginBottom:16}}>
-            <div className="input-group">
-              <label>Moneda</label>
-              <select className="select" value={monedaActual} onChange={e => setMoneda(normalizeCurrencyCode(e.target.value))}>
-                {opcionesMoneda.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
-              </select>
-            </div>
-            <div className="input-group">
-              <label>IGV (%)</label>
-              <input type="number" className="input" value={igvPct} min="0" max="30" step="0.1" onChange={e => setIgvPct(e.target.value)} />
-            </div>
-            <div className="input-group">
-              <label>Attn. (contacto)</label>
-              <select className="select" value={contactoId} onChange={e => setContactoId(e.target.value)}>
-                <option value="">Sin contacto específico</option>
-                {contactosOrdenados.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}{(c.principal || c.es_principal) ? ' - Principal' : ''}</option>)}
-              </select>
-            </div>
-            <div className="input-group">
-              <label>CEBE</label>
-              <select className="select" value={cebeId} onChange={e => setCebeId(e.target.value)}>
-                <option value="">Sin CEBE asociado</option>
-                {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
-              </select>
-            </div>
-            <SociedadFormField value={sociedadId} onChange={setSociedadId} />
-          </div>
-          <div className="grid-2" style={{gap:16, marginBottom:16}}>
-            <div className="input-group">
-              <label>Tipo de validez</label>
-              <select className="select" value={validezTipo} onChange={e => setValidezTipo(e.target.value)}>
-                <option value="dias">Número de días</option>
-                <option value="fecha_exacta">Fecha exacta ("válida solo hoy")</option>
-              </select>
-            </div>
-            <div className="input-group">
-              {validezTipo === 'dias' ? (
-                <>
-                  <label>Días de validez</label>
-                  <select className="select" value={validezDias} onChange={e => setValidezDias(e.target.value)}>
-                    <option value={15}>15 días</option>
-                    <option value={30}>30 días</option>
-                    <option value={45}>45 días</option>
-                    <option value={60}>60 días</option>
-                  </select>
-                </>
-              ) : (
-                <>
-                  <label>Fecha exacta de validez</label>
-                  <input type="date" className="input" value={validezFecha} onChange={e => setValidezFecha(e.target.value)} />
-                </>
-              )}
-            </div>
-          </div>
-          <div className="input-group">
-            <label>Descripción general del servicio</label>
-            <SmartTextField
-              value={descripcion}
-              onChange={setDescripcion}
-              diccionario={diccionarioComercial}
-              rows={3}
-              placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF."
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Bloque 2: partidas ────────────────────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>
-            <h3>Partidas</h3>
-            <div className="row" style={{gap:8}}>
-              <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} Agregar línea</button>
-              <select className="select" style={{fontSize:13, padding:'4px 10px', height:32}} defaultValue=""
-                onChange={e => { if (!e.target.value) return; const s = MOCK.servicios?.find(x => x.id === e.target.value); if (s) addFromCatalogo(s); e.target.value = ''; }}>
-                <option value="">Del catálogo ▾</option>
-                {(MOCK.servicios || []).filter(s => s.estado === 'activo').map(s => <option key={s.id} value={s.id}>{s.descripcion}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {partidas.map((p, idx) => (
-            <div key={p.id} style={{marginBottom:12, padding:'14px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-              {/* Fila 1: descripción + tipo + acciones */}
-              <div className="row" style={{gap:10, marginBottom:10, alignItems:'flex-end'}}>
-                <span style={{fontWeight:600, fontSize:11, color:'var(--fg-muted)', minWidth:60, paddingBottom:8}}>Partida {idx + 1}</span>
-                <div className="input-group" style={{margin:0, flex:3}}>
-                  <label style={{fontSize:11}}>Descripción</label>
-                  <SmartTextField
-                    value={p.descripcion}
-                    onChange={value => updatePartida(p.id, 'descripcion', value)}
-                    diccionario={diccionarioComercial}
-                    multiline={false}
-                    placeholder="Nombre del servicio o bien"
-                  />
-                </div>
-                <div className="input-group" style={{margin:0, flex:1, minWidth:140}}>
-                  <label style={{fontSize:11}}>Tipo</label>
-                  <select className="select" value={p.tipo} onChange={e => updatePartida(p.id, 'tipo', e.target.value)}>
-                    <option value="material">Material</option>
-                    <option value="servicio">Servicio</option>
-                    <option value="bien">Bien</option>
-                    <option value="recurrente">Recurrente (mensual)</option>
-                  </select>
-                </div>
-                <div className="row" style={{gap:4, paddingBottom:2}}>
-                  {idx > 0 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, -1)} title="Subir">↑</button>}
-                  {idx < partidas.length - 1 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, 1)} title="Bajar">↓</button>}
-                  <button type="button" className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button>
-                </div>
-              </div>
-              {/* Fila 2: cantidad + precio + total */}
-              <div className="row" style={{gap:10, marginBottom:10, alignItems:'flex-end'}}>
-                <div className="input-group" style={{margin:0, width:110}}>
-                  <label style={{fontSize:11}}>Cantidad</label>
-                  <input type="number" className="input num" min="0" step="0.01" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} />
-                </div>
-                <div className="input-group" style={{margin:0, flex:1}}>
-                  <label style={{fontSize:11}}>Precio unitario</label>
-                  {p.incluido
-                    ? <div className="row" style={{gap:6, alignItems:'center'}}>
-                        <span className="badge badge-gray" style={{flex:1, textAlign:'center', height:36, lineHeight:'36px'}}>Incluido</span>
-                        <button type="button" className="icon-btn" style={{fontSize:11}} title="Quitar" onClick={() => updatePartida(p.id, 'incluido', false)}>{I.x}</button>
+        <div className="dx-cote-grid">
+          <div className="dx-cote-main">
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h"><h2>Datos de la cotización</h2></div>
+              <div className="dx-cote-card-b">
+                <div className="dx-cote-fields">
+                  {isEdit && (
+                    <div className="dx-cote-fld">
+                      <label htmlFor="dx-cote-numero">Número</label>
+                      <input id="dx-cote-numero" className="dx-cote-inp is-mono" value={numeroCot} onChange={e => setNumeroCot(e.target.value)} placeholder="Ej. COT-2026-0502" />
+                    </div>
+                  )}
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-moneda">Moneda</label>
+                    <select id="dx-cote-moneda" className="dx-cote-inp" value={monedaActual} onChange={e => setMoneda(normalizeCurrencyCode(e.target.value))}>
+                      {opcionesMoneda.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-igv">IGV (%)</label>
+                    <input id="dx-cote-igv" type="number" className="dx-cote-inp is-num" value={igvPct} min="0" max="30" step="0.1" onChange={e => setIgvPct(e.target.value)} />
+                  </div>
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-contacto">Attn. contacto</label>
+                    <select id="dx-cote-contacto" className="dx-cote-inp" value={contactoId} onChange={e => setContactoId(e.target.value)}>
+                      <option value="">Sin contacto específico</option>
+                      {contactosOrdenados.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}{(c.principal || c.es_principal) ? ' - Principal' : ''}</option>)}
+                    </select>
+                  </div>
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-cebe">CEBE</label>
+                    <select id="dx-cote-cebe" className="dx-cote-inp" value={cebeId} onChange={e => setCebeId(e.target.value)}>
+                      <option value="">Sin CEBE asociado</option>
+                      {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
+                    </select>
+                  </div>
+                  {empresa?.multisociedad_habilitado && (
+                    <div className={`dx-cote-fld dx-cote-soc${errorSociedad ? ' has-error' : ''}`}>
+                      <SociedadFormField value={sociedadId} onChange={setSociedadId} />
+                      {errorSociedad && <span className="dx-cote-field-err">Selecciona la sociedad de la cotización.</span>}
+                    </div>
+                  )}
+                  <div className="dx-cote-fld is-span2">
+                    <label htmlFor="dx-cote-validez">Validez</label>
+                    <div className="dx-cote-validez">
+                      <div className="dx-cote-seg" role="group" aria-label="Tipo de validez">
+                        <button type="button" className={validezTipo === 'dias' ? 'is-on' : ''} aria-pressed={validezTipo === 'dias'} onClick={() => { setValidezTipo('dias'); marcarCambio(); }}>Días</button>
+                        <button type="button" className={validezTipo === 'fecha_exacta' ? 'is-on' : ''} aria-pressed={validezTipo === 'fecha_exacta'} onClick={() => { setValidezTipo('fecha_exacta'); marcarCambio(); }}>Fecha exacta</button>
                       </div>
-                    : <div className="row" style={{gap:4, alignItems:'center'}}>
-                        <input type="number" className="input num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} />
-                        <button type="button" className="icon-btn" style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}} title="Marcar como Incluido" onClick={() => updatePartida(p.id, 'incluido', true)}>∅</button>
-                      </div>
-                  }
-                </div>
-                <div className="input-group" style={{margin:0, flex:2}}>
-                  <label style={{fontSize:11}}>Detalle de cantidad</label>
-                  <SmartTextField
-                    value={p.detalle_cantidad}
-                    onChange={value => updatePartida(p.id, 'detalle_cantidad', value)}
-                    diccionario={diccionarioComercial}
-                    multiline={false}
-                    placeholder="1 proyecto, 2 meses…"
-                  />
-                </div>
-                <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total partida</div>
-                  <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>
-                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(calcPartidaTotal(p), monedaActual)}
+                      {validezTipo === 'dias'
+                        ? <select id="dx-cote-validez" className="dx-cote-inp" value={validezDias} onChange={e => setValidezDias(e.target.value)}>
+                            <option value={15}>15 días</option>
+                            <option value={30}>30 días</option>
+                            <option value={45}>45 días</option>
+                            <option value={60}>60 días</option>
+                          </select>
+                        : <input id="dx-cote-validez" type="date" className="dx-cote-inp" value={validezFecha} onChange={e => setValidezFecha(e.target.value)} />}
+                    </div>
+                  </div>
+                  <div className="dx-cote-fld is-full">
+                    <label>Descripción general del servicio</label>
+                    <SmartTextField
+                      value={descripcion}
+                      onChange={valor => { setDescripcion(valor); marcarCambio(); }}
+                      diccionario={diccionarioComercial}
+                      rows={3}
+                      placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF."
+                    />
                   </div>
                 </div>
               </div>
-              {/* Fila 3: sub-ítems (opcional, compacto) */}
-              <div className="input-group" style={{margin:0}}>
-                <label style={{fontSize:11}}>Sub-ítems / entregables (una línea = viñeta en PDF)</label>
-                <SmartTextField
-                  value={p.detalle_items_txt}
-                  onChange={value => updatePartida(p.id, 'detalle_items_txt', value)}
-                  diccionario={diccionarioComercial}
-                  rows={2}
-                  placeholder="Entregable 1&#10;Entregable 2"
-                  inputStyle={{fontSize:12}}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            </section>
 
-      {/* ── Bloque 3: totales ─────────────────────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Resumen de totales</h3>
-          <div className={pRec.length > 0 ? 'grid-2' : ''} style={{gap:24, maxWidth: pRec.length > 0 ? '100%' : 380, marginLeft:'auto'}}>
-            <div>
-              {pRec.length > 0 && <div className="eyebrow" style={{marginBottom:12}}>Implementación</div>}
-              <TotalesBox subtotal={subtImpl} igvPct={igvPct} igv={igvImpl} total={totalImpl} sym={currencySymbol(monedaActual)} />
-            </div>
-            {pRec.length > 0 && (
-              <div>
-                <div className="eyebrow" style={{marginBottom:12}}>Recurrente mensual</div>
-                <TotalesBox subtotal={subtRec} igvPct={igvPct} igv={igvRec} total={totalRec} suffix="/mes" sym={currencySymbol(monedaActual)} />
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h">
+                <h2>Partidas</h2>
+                <select className="dx-cote-inp is-sm" defaultValue="" aria-label="Agregar partida del catálogo de servicios" disabled={!catalogoServicios.length}
+                  onChange={e => { const servicio = catalogoServicios.find(x => x.id === e.target.value); if (servicio) addFromCatalogo(servicio); e.target.value = ''; }}>
+                  <option value="">{cargandoCatalogo ? 'Cargando catálogo…' : catalogoServicios.length ? `Agregar del catálogo (${catalogoServicios.length})…` : 'Catálogo de servicios vacío'}</option>
+                  {catalogoServicios.map(s => <option key={s.id} value={s.id}>{s.codigo ? `${s.codigo} · ` : ''}{s.descripcion}</option>)}
+                </select>
+              </div>
+              <div className="dx-cote-card-b">
+                {partidas.map((p, idx) => {
+                  const subitemsAbiertos = subitemsVisibles[p.id] ?? Boolean(String(p.detalle_items_txt || '').trim());
+                  const cantidadSubitems = String(p.detalle_items_txt || '').split('\n').map(s => s.trim()).filter(Boolean).length;
+                  return (
+                    <div key={p.id} className="dx-cote-part">
+                      <div className="dx-cote-part-h">
+                        <span className="dx-cote-part-n">{idx + 1}</span>
+                        <div className="dx-cote-part-desc">
+                          <SmartTextField
+                            value={p.descripcion}
+                            onChange={value => updatePartida(p.id, 'descripcion', value)}
+                            diccionario={diccionarioComercial}
+                            multiline={false}
+                            placeholder="Nombre del servicio o bien"
+                          />
+                        </div>
+                        <div className="dx-cote-tools">
+                          {idx > 0 && <button type="button" className="dx-cote-icon" onClick={() => movePartida(idx, -1)} aria-label={`Subir partida ${idx + 1}`}>{I.arrowUp}</button>}
+                          {idx < partidas.length - 1 && <button type="button" className="dx-cote-icon" onClick={() => movePartida(idx, 1)} aria-label={`Bajar partida ${idx + 1}`}>{I.arrowDown}</button>}
+                          <button type="button" className="dx-cote-icon is-del" onClick={() => removePartida(p.id)} aria-label={`Eliminar partida ${idx + 1}`}>{I.x}</button>
+                        </div>
+                      </div>
+                      <div className="dx-cote-part-b">
+                        <div className="dx-cote-fld">
+                          <label>Tipo</label>
+                          <select className="dx-cote-inp" value={p.tipo} onChange={e => updatePartida(p.id, 'tipo', e.target.value)}>
+                            <option value="material">Material</option>
+                            <option value="servicio">Servicio</option>
+                            <option value="bien">Bien</option>
+                            <option value="recurrente">Recurrente (mensual)</option>
+                          </select>
+                        </div>
+                        <div className="dx-cote-fld">
+                          <label>Cantidad</label>
+                          <input type="number" className="dx-cote-inp is-num" min="0" step="0.01" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} />
+                        </div>
+                        <div className="dx-cote-fld">
+                          <label>Precio unitario</label>
+                          {p.incluido
+                            ? <div className="dx-cote-incl">Incluido<button type="button" className="dx-cote-icon" onClick={() => updatePartida(p.id, 'incluido', false)} aria-label="Quitar incluido">{I.x}</button></div>
+                            : <div className="dx-cote-money">
+                                <input type="number" className="dx-cote-inp is-num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} />
+                                <button type="button" title="Marcar como incluido (sin costo)" onClick={() => updatePartida(p.id, 'incluido', true)}>Incl.</button>
+                              </div>}
+                        </div>
+                        <div className="dx-cote-fld is-det">
+                          <label>Detalle de cantidad</label>
+                          <SmartTextField
+                            value={p.detalle_cantidad}
+                            onChange={value => updatePartida(p.id, 'detalle_cantidad', value)}
+                            diccionario={diccionarioComercial}
+                            multiline={false}
+                            placeholder="1 proyecto, 2 meses…"
+                          />
+                        </div>
+                        <div className="dx-cote-part-tot"><small>Total</small><b>{p.incluido ? 'Incluido' : moneyCurrency(calcPartidaTotal(p), monedaActual)}</b></div>
+                      </div>
+                      <button type="button" className={`dx-cote-more${subitemsAbiertos ? ' is-on' : ''}`} aria-expanded={subitemsAbiertos} onClick={() => setSubitemsVisibles(actual => ({ ...actual, [p.id]: !subitemsAbiertos }))}>
+                        {I.chev}{cantidadSubitems ? `Sub-ítems (${cantidadSubitems})` : 'Agregar sub-ítems'}
+                      </button>
+                      {subitemsAbiertos && (
+                        <div className="dx-cote-subitems">
+                          <SmartTextField
+                            value={p.detalle_items_txt}
+                            onChange={value => updatePartida(p.id, 'detalle_items_txt', value)}
+                            diccionario={diccionarioComercial}
+                            rows={3}
+                            placeholder="Una línea = una viñeta en el PDF"
+                            inputStyle={{fontSize:13}}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {partidas.length === 0 && <div className="dx-cote-empty">Sin partidas. Agrega la primera.</div>}
+                <button type="button" className="dx-cote-add" onClick={addPartida}>{I.plus}Agregar partida</button>
+              </div>
+            </section>
+
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h">
+                <h2>Hitos de pago</h2>
+                <label className="dx-cote-switch"><input type="checkbox" checked={hitosActivos} onChange={e => setHitosActivos(e.target.checked)} />Dividir el pago en hitos</label>
+              </div>
+              {hitosActivos && (
+                <div className="dx-cote-card-b">
+                  {hitos.map((h, i) => (
+                    <div key={h.id} className="dx-cote-hito">
+                      <span className="dx-cote-part-n">{i + 1}</span>
+                      <div className="dx-cote-hito-c">
+                        <SmartTextField value={h.concepto} onChange={value => updateHito(h.id, 'concepto', value)} diccionario={diccionarioComercial} multiline={false} placeholder="Ej: Anticipo" />
+                      </div>
+                      <div className="dx-cote-pct">
+                        <input type="number" className={`dx-cote-inp is-num${hitosCompletos ? '' : ' is-err'}`} min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} aria-label={`Porcentaje del hito ${i + 1}`} />
+                        <span>%</span>
+                      </div>
+                      <div className="dx-cote-hito-cond">
+                        <SmartTextField value={h.condicion} onChange={value => updateHito(h.id, 'condicion', value)} diccionario={diccionarioComercial} multiline={false} placeholder="Condición / vencimiento" />
+                      </div>
+                      <span className="dx-cote-hito-m">{moneyCurrency(montoHito(h), monedaActual)}</span>
+                      <button type="button" className="dx-cote-icon is-del" onClick={() => removeHito(h.id)} aria-label={`Eliminar hito ${i + 1}`}>{I.x}</button>
+                    </div>
+                  ))}
+                  {hitos.length === 0 && <div className="dx-cote-empty">Sin hitos. Agrega uno.</div>}
+                  <button type="button" className="dx-cote-add" onClick={addHito}>{I.plus}Agregar hito</button>
+                  {!hitosCompletos && <div className="dx-cote-err" role="alert">{I.alertCircle}<span>Los hitos suman <strong>{sumPct.toFixed(1)}%</strong>. Deben sumar exactamente 100% para poder guardar.</span></div>}
+                  <div className="dx-cote-fld dx-cote-glosa">
+                    <label>Glosa recomendada para las facturas</label>
+                    <SmartTextField value={glosa} onChange={valor => { setGlosa(valor); marcarCambio(); }} diccionario={diccionarioComercial} rows={2} placeholder="Texto que irá en las facturas…" />
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h">
+                <h2>Condiciones comerciales</h2>
+                <select className="dx-cote-inp is-sm" value={tipoDocumentoId} onChange={e => setTipoDocumentoId(e.target.value)} disabled={tiposDocumento.length <= 1} aria-label="Tipo de documento">
+                  {!tiposDocumento.length && <option value="">Sin tipos disponibles</option>}
+                  {tiposDocumento.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre} ({tipo.codigo})</option>)}
+                </select>
+              </div>
+              <div className="dx-cote-card-b">
+                <p className="dx-cote-muted">Precargadas desde la biblioteca publicada. Lo que cambies aquí solo aplica a esta cotización.</p>
+                {errorCondiciones && <div className="dx-cote-note is-warn">{errorCondiciones}</div>}
+                {cargandoCondiciones && <div className="dx-cote-muted">Cargando condiciones…</div>}
+                {!cargandoCondiciones && tipoDocumentoId && !bibliotecaCondiciones && <div className="dx-cote-note is-warn">Este tipo no tiene una biblioteca publicada. Publica una versión desde Parámetros.</div>}
+                {condiciones.map((condicion, index) => {
+                  const clave = condicion.id || index;
+                  const abierta = condicionesAbiertas[clave] ?? index === 0;
+                  return (
+                    <div key={clave} className={`dx-cote-acc${abierta ? ' is-open' : ''}`}>
+                      <button type="button" aria-expanded={abierta} onClick={() => setCondicionesAbiertas(actual => ({ ...actual, [clave]: !abierta }))}>{condicion.titulo || `Segmento ${index + 1}`}{I.chev}</button>
+                      {abierta && <div className="dx-cote-acc-b"><RichTextEditor value={condicion.contenido_json} onChange={patch => actualizarCondicion(index, patch)} placeholder={`Contenido de ${condicion.titulo || 'segmento'}…`} /></div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+
+          <aside className="dx-cote-aside">
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h"><h2>Totales</h2><span>{monedaActual} · en vivo</span></div>
+              <div className="dx-cote-card-b">
+                {pRec.length > 0 && <div className="dx-cote-tot-h">Implementación</div>}
+                <div className="dx-cote-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtImpl, simboloEditor)}</b></div>
+                <div className="dx-cote-tot"><span>IGV ({igvPct}%)</span><b>{moneyD(igvImpl, simboloEditor)}</b></div>
+                <div className="dx-cote-tot is-big"><span>Total</span><b>{moneyD(totalImpl, simboloEditor)}</b></div>
+                {pRec.length > 0 && (
+                  <>
+                    <div className="dx-cote-tot-h is-sep">Recurrente mensual</div>
+                    <div className="dx-cote-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtRec, simboloEditor)}/mes</b></div>
+                    <div className="dx-cote-tot"><span>IGV ({igvPct}%)</span><b>{moneyD(igvRec, simboloEditor)}/mes</b></div>
+                    <div className="dx-cote-tot is-big"><span>Total</span><b>{moneyD(totalRec, simboloEditor)}/mes</b></div>
+                  </>
+                )}
+              </div>
+            </section>
+            {hitosActivos && (
+              <section className="dx-cote-card">
+                <div className="dx-cote-card-h"><h2>Hitos</h2><span className={`dx-cote-pill ${hitosCompletos ? 'is-green' : 'is-amber'}`}><i />{sumPct.toFixed(0)}% de 100%</span></div>
+                <div className="dx-cote-card-b">
+                  <div className={`dx-cote-meter${hitosCompletos ? ' is-ok' : ''}`}><i style={{ width: `${Math.min(Math.max(sumPct, 0), 100)}%` }} /></div>
+                  <div className="dx-cote-muted">{hitosCompletos ? 'Listo para guardar.' : sumPct < 100 ? `Falta asignar ${(100 - sumPct).toFixed(1)}% del total.` : `Sobra ${(sumPct - 100).toFixed(1)}% del total.`}</div>
+                </div>
+              </section>
+            )}
+            <section className="dx-cote-card dx-cote-rev">
+              <div className="dx-cote-card-h"><h2>Revisión</h2></div>
+              <div className="dx-cote-card-b dx-cote-checks">
+                <span className={partidas.length && partidasConPrecio === partidas.length ? 'is-ok' : 'is-warn'}>{partidas.length && partidasConPrecio === partidas.length ? I.check : I.alert}{partidasConPrecio} de {partidas.length} partidas con precio</span>
+                {hitosActivos && <span className={hitosCompletos ? 'is-ok' : 'is-warn'}>{hitosCompletos ? I.check : I.alert}Hitos {hitosCompletos ? 'completos' : 'incompletos'}</span>}
+                <span className={contactoSeleccionado ? 'is-ok' : 'is-warn'}>{contactoSeleccionado ? I.check : I.alert}{contactoSeleccionado ? `Attn. ${contactoSeleccionado.nombre}` : 'Sin contacto del cliente'}</span>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <section className="dx-cote-card dx-cote-firmas-card">
+          <div className={`dx-cote-acc is-card${firmasAbiertasEditor ? ' is-open' : ''}`}>
+            <button type="button" aria-expanded={firmasAbiertasEditor} onClick={() => setFirmasAbiertasEditor(valor => !valor)}><span className="dx-cote-acc-title">Página de firmas · vista previa</span>{I.chev}</button>
+            {firmasAbiertasEditor && (
+              <div className="dx-cote-firmas">
+                <div className="dx-cote-firma">
+                  <small>Por {cfg.razon_social || 'TIDEO'}</small>
+                  {cfg.firma_url ? <img src={cfg.firma_url} alt="Firma" /> : <div className="dx-cote-firma-ln" />}
+                  <b>{cfg.firmante || '(configurar en Parámetros)'}</b>
+                  <span>{cfg.cargo_firmante}</span>
+                  <span>{cfg.email_comercial}</span>
+                </div>
+                <div className="dx-cote-firma">
+                  <small>Por {clienteNombreEditor === '—' ? 'Cliente' : clienteNombreEditor}</small>
+                  <div className="dx-cote-firma-ln" />
+                  <b>{contactoSeleccionado?.nombre || '(selecciona un contacto arriba)'}</b>
+                  <span>Sello y firma</span>
+                </div>
               </div>
             )}
           </div>
+        </section>
+      </div>
+
+      <div className="dx-cote-savebar">
+        <div className="dx-cote-savebar-st">
+          {hayCambios ? <span className="dx-cote-pill is-amber"><i />Cambios sin guardar</span> : <span className="dx-cote-pill is-gray"><i />Sin cambios</span>}
+          <span>Total</span><b>{moneyD(totalImpl, simboloEditor)}</b>
+        </div>
+        <div className="dx-cote-savebar-acts">
+          {errorGuardar && <span className="dx-cote-savebar-err" role="alert">{errorGuardar}</span>}
+          <button type="button" className="dx-cote-btn" onClick={cancelarEditor} disabled={guardando}>Cancelar</button>
+          <button type="button" className="dx-cote-btn is-primary" onClick={handleSave} disabled={guardando}>{I.save}{guardando ? 'Guardando…' : 'Guardar cotización'}</button>
         </div>
       </div>
 
-      {/* ── Bloque 4: hitos de pago ───────────────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom: hitosActivos ? 16 : 0}}>
-            <h3>Hitos de pago</h3>
-            <label className="row" style={{gap:8, cursor:'pointer', fontWeight:400, fontSize:14}}>
-              <input type="checkbox" checked={hitosActivos} onChange={e => setHitosActivos(e.target.checked)} />
-              Agregar hitos de pago
-            </label>
-          </div>
-          {hitosActivos && (
-            <>
-              <div className="table-wrap" style={{marginBottom:12}}>
-                <table className="tbl">
-                  <thead>
-                    <tr><th>N°</th><th>Concepto</th><th style={{width:110}}>% del total</th><th style={{width:140}}>Monto (auto)</th><th>Condición / vencimiento</th><th style={{width:36}}></th></tr>
-                  </thead>
-                  <tbody>
-                    {hitos.map((h, i) => (
-                      <tr key={h.id}>
-                        <td className="num text-muted">{i + 1}</td>
-                        <td>
-                          <SmartTextField
-                            value={h.concepto}
-                            onChange={value => updateHito(h.id, 'concepto', value)}
-                            diccionario={diccionarioComercial}
-                            multiline={false}
-                            placeholder="Ej: Anticipo"
-                          />
-                        </td>
-                        <td><input type="number" className="input num" min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} /></td>
-                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Math.round(totalImpl * Number(h.porcentaje || 0) / 100), monedaActual)}</td>
-                        <td>
-                          <SmartTextField
-                            value={h.condicion}
-                            onChange={value => updateHito(h.id, 'condicion', value)}
-                            diccionario={diccionarioComercial}
-                            multiline={false}
-                            placeholder="Al inicio del trabajo"
-                          />
-                        </td>
-                        <td><button className="icon-btn text-danger" onClick={() => removeHito(h.id)}>{I.x}</button></td>
-                      </tr>
-                    ))}
-                    {hitos.length === 0 && <tr><td colSpan="6" style={{textAlign:'center', padding:20, color:'var(--fg-muted)', fontSize:13}}>Sin hitos. Agrega uno.</td></tr>}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan="2"></td>
-                      <td className="num" style={{fontWeight:700, color: Math.abs(sumPct - 100) < 0.01 ? 'var(--green)' : 'var(--danger)'}}>
-                        {sumPct.toFixed(1)}%
-                      </td>
-                      <td colSpan="3" style={{fontSize:12, color: Math.abs(sumPct - 100) < 0.01 ? 'var(--green)' : 'var(--danger)'}}>
-                        {Math.abs(sumPct - 100) < 0.01 ? '✓ Suma correcta' : `Debe sumar 100% (faltan ${(100 - sumPct).toFixed(1)}%)`}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-              <button className="btn btn-secondary btn-sm" onClick={addHito}>{I.plus} Agregar hito</button>
-              <div className="input-group" style={{marginTop:16}}>
-                <label>Glosa recomendada para las facturas</label>
-                <SmartTextField
-                  value={glosa}
-                  onChange={setGlosa}
-                  diccionario={diccionarioComercial}
-                  rows={2}
-                  placeholder="Texto que irá en las facturas…"
-                />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Bloque 5: condiciones comerciales ────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className="eyebrow" style={{marginBottom:4}}>Condiciones comerciales</div>
-          <div className="input-group" style={{maxWidth:520, marginBottom:12}}>
-            <label>Tipo de documento</label>
-            <select className="select" value={tipoDocumentoId} onChange={e=>setTipoDocumentoId(e.target.value)} disabled={tiposDocumento.length <= 1}>
-              {!tiposDocumento.length && <option value="">Sin tipos disponibles</option>}
-              {tiposDocumento.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre} ({tipo.codigo})</option>)}
-            </select>
-          </div>
-          <div className="text-muted" style={{fontSize:12, marginBottom:16}}>Pre-cargadas desde la plantilla. Edita aquí para esta cotización sin afectar la biblioteca general.</div>
-          {errorCondiciones && <div className="alert alert-warning">{errorCondiciones}</div>}
-          {cargandoCondiciones && <div className="text-muted">Cargando condiciones…</div>}
-          {!cargandoCondiciones && tipoDocumentoId && !bibliotecaCondiciones && <div className="alert alert-warning">Este tipo no tiene una biblioteca publicada. Publica una versión desde Parámetros Generales.</div>}
-          {condiciones.map((condicion, index) => (
-            <div className="input-group" key={condicion.id || index}>
-              <label style={{fontSize:13}}>{condicion.titulo || `Segmento ${index + 1}`}</label>
-              <RichTextEditor value={condicion.contenido_json} onChange={patch => actualizarCondicion(index, patch)} placeholder={`Contenido de ${condicion.titulo || 'segmento'}…`} />
+      {confirmarSalida && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:460}}>
+            <div className="modal-head">
+              <h2>Salir sin guardar</h2>
+              <button className="icon-btn" onClick={() => setConfirmarSalida(false)}>{I.x}</button>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Bloque 6: preview de firmas ───────────────────────────────── */}
-      <div className="card mt-4" style={{marginBottom:40}}>
-        <div className="card-body">
-          <div className="eyebrow" style={{marginBottom:16}}>Página de cierre — Preview</div>
-          <div className="grid-2" style={{gap:40}}>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cfg.razon_social || 'TIDEO'}</div>
-              {cfg.firma_url && <img src={cfg.firma_url} alt="Firma" style={{maxHeight:60, marginBottom:8, display:'block', margin:'0 auto 8px'}} />}
-              <div style={{borderTop:'1px solid var(--border-strong)', paddingTop:8, fontWeight:600}}>{cfg.firmante || '(configurar en Parámetros)'}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.cargo_firmante}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.email_comercial}</div>
-            </div>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cuenta?.razon_social || cuenta?.nombre_comercial || 'Cliente'}</div>
-              <div style={{height:60, display:'flex', alignItems:'flex-end', justifyContent:'center'}}>
-                <div style={{width:'80%', borderBottom:'1px solid var(--border-strong)'}}></div>
+            <div className="modal-body col" style={{gap:20}}>
+              <p style={{margin:0, lineHeight:'1.6'}}>Tienes cambios sin guardar en esta cotización. Si sales ahora se perderán.</p>
+              <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+                <button className="btn btn-secondary" onClick={() => setConfirmarSalida(false)}>Seguir editando</button>
+                <button className="btn btn-primary" onClick={() => { setConfirmarSalida(false); setHayCambios(false); onCancel(); }}>Salir sin guardar</button>
               </div>
-              <div style={{paddingTop:8, fontWeight:600, color:'var(--fg-muted)'}}>
-                {(contactos || []).find(c => c.id === contactoId)?.nombre || '(selecciona un contacto arriba)'}
-              </div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>Sello y firma</div>
             </div>
           </div>
         </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
 

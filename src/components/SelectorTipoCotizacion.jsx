@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import { I } from '../icons.jsx';
 import { listarPlantillasCotizacionPublicadas } from '../services/plantillasCotizacionService.js';
 import { CotizacionTarifarioFlota } from './CotizacionTarifarioFlota.jsx';
+import '../cotizacion_selector.css';
 
 const LINEAS_NEGOCIO = [
-  { value: 'flota_alquileres', label: 'Flota & Alquileres' },
-  { value: 'maestranza_fab', label: 'Maestranza / Fabricación' },
-  { value: 'transporte_comercial', label: 'Transporte Comercial' },
-  { value: 'venta_repuestos', label: 'Venta de Repuestos' },
+  { value: 'flota_alquileres', label: 'Flota & Alquileres', descripcion: 'Equipos y vehículos por hora, día o mes con el tarifario.', icono: 'truck', clase: 'is-violet' },
+  { value: 'maestranza_fab', label: 'Maestranza / Fabricación', descripcion: 'Reparación, fabricación y servicios de taller.', icono: 'wrench', clase: 'is-cyan' },
+  { value: 'transporte_comercial', label: 'Transporte Comercial', descripcion: 'Fletes y traslados de carga.', icono: 'mapPin', clase: 'is-amber' },
+  { value: 'venta_repuestos', label: 'Venta de Repuestos', descripcion: 'Venta directa de repuestos y materiales.', icono: 'cart', clase: 'is-green' },
 ];
 
 const LINEA_NEGOCIO_VALUES = new Set(LINEAS_NEGOCIO.map(linea => linea.value));
@@ -69,10 +70,33 @@ export function SelectorTipoCotizacion({ empresaId, cuentaIdInicial = '', lineaN
   };
 
   if (!lineaConfirmada) {
-    return createPortal(<div className="modal-backdrop"><div className="modal" style={{ maxWidth: 560 }}>
-      <div className="modal-head"><div><h2>Línea de negocio</h2><div className="text-muted" style={{ fontSize: 12 }}>Selecciona la línea para iniciar esta cotización.</div></div><button className="icon-btn" onClick={onCancel}>{I.x}</button></div>
-      <div className="modal-body"><div className="input-group"><label>Línea de negocio *</label><select className="select" value={lineaNegocio} onChange={event => setLineaNegocio(event.target.value)}><option value="">Selecciona una línea…</option>{LINEAS_NEGOCIO.map(linea => <option key={linea.value} value={linea.value}>{linea.label}</option>)}</select></div></div>
-      <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={onCancel}>Cancelar</button><button type="button" className="btn btn-primary" disabled={!lineaNegocio} onClick={confirmarLineaNegocio}>Continuar</button></div>
+    return createPortal(<div className="modal-backdrop dx-cotsel-backdrop" onClick={onCancel}><div className="dx-cotsel" role="dialog" aria-modal="true" aria-labelledby="dx-cotsel-titulo" onClick={event => event.stopPropagation()}>
+      <div className="dx-cotsel-head">
+        <div>
+          <div className="dx-cotsel-steps" aria-hidden="true"><span className="is-on" /><span /></div>
+          <div className="dx-cotsel-eyebrow">Nueva cotización · paso 1 de 2</div>
+          <h2 id="dx-cotsel-titulo">¿Para qué línea de negocio?</h2>
+          <p>Define las opciones disponibles y la numeración de la cotización.</p>
+        </div>
+        <button type="button" className="dx-cotsel-close" onClick={onCancel} aria-label="Cerrar">{I.x}</button>
+      </div>
+      <div className="dx-cotsel-body">
+        <div className="dx-cotsel-opts" role="radiogroup" aria-label="Línea de negocio">
+          {LINEAS_NEGOCIO.map(linea => (
+            <button type="button" role="radio" aria-checked={lineaNegocio === linea.value} key={linea.value} className={`dx-cotsel-opt${lineaNegocio === linea.value ? ' is-on' : ''}`} onClick={() => setLineaNegocio(linea.value)}>
+              <span className={`dx-cotsel-ic ${linea.clase}`}>{I[linea.icono]}</span>
+              <span><b>{linea.label}</b><small>{linea.descripcion}</small></span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="dx-cotsel-foot">
+        <span />
+        <div className="dx-cotsel-foot-acts">
+          <button type="button" className="dx-cotsel-btn" onClick={onCancel}>Cancelar</button>
+          <button type="button" className="dx-cotsel-btn is-primary" disabled={!lineaNegocio} onClick={confirmarLineaNegocio}>Continuar</button>
+        </div>
+      </div>
     </div></div>, document.body);
   }
 
@@ -92,17 +116,61 @@ export function SelectorTipoCotizacion({ empresaId, cuentaIdInicial = '', lineaN
   const activarEstandar = () => onEstandar?.(lineaNegocio, contextoActual);
   const activarEspecial = plantilla => onEspecial?.(plantilla, lineaNegocio, contextoActual);
 
-  return createPortal(<div className="modal-backdrop"><div className="modal" style={{ maxWidth: 560 }}>
-    <div className="modal-head"><div><h2>{contextoActual ? 'Tipo de cotización' : esFlotaAlquileres ? 'Tarifario de Flota & Alquileres' : 'Tipo de cotización'}</h2><div className="text-muted" style={{ fontSize: 12 }}>Línea: {LINEAS_NEGOCIO.find(linea => linea.value === lineaNegocio)?.label || lineaNegocio} · {contextoActual ? 'Continúa con el formato de cotización.' : 'Elige cómo deseas iniciar.'}</div></div><button className="icon-btn" onClick={onCancel}>{I.x}</button></div>
-    <div className="modal-body">
-      {error && <div className="alert alert-warning" style={{ marginBottom: 12 }}>No se pudieron cargar las plantillas de Cotización Especial. {permiteHojaCosteo ? 'Aún puedes iniciar una Hoja de Costeo o una Cotización Estándar.' : esFlotaAlquileres ? 'Puedes continuar desde el Tarifario de Flota.' : 'Aún puedes iniciar una Cotización Estándar.'}</div>}
-      {esFlotaAlquileres && !contextoActual && <div style={{ display: 'grid', gap: 10 }}><button type="button" className="btn btn-primary" style={{ justifyContent: 'flex-start', minHeight: 58 }} onClick={() => setTarifarioAbierto(true)}><span>{I.file}</span><span><strong>Cotizar desde Tarifario</strong><br /><small>Selecciona cuenta, proyecto opcional, equipos y horas estimadas.</small></span></button></div>}
-      {(!esFlotaAlquileres || contextoActual) && <div style={{ display: 'grid', gap: 10 }}>
-        {permiteHojaCosteo && <button type="button" className="btn btn-secondary" style={{ justifyContent: 'flex-start', minHeight: 52 }} onClick={() => onHojaCosteo(lineaNegocio)}><span>{I.receipt}</span><span><strong>Hoja de Costeo</strong><br /><small>Construye costos antes de generar la cotización.</small></span></button>}
-        <button type="button" className="btn btn-secondary" style={{ justifyContent: 'flex-start', minHeight: 52 }} onClick={activarEstandar}><span>{I.file}</span><span><strong>Cotización Estándar</strong><br /><small>Continúa con las partidas ya calculadas.</small></span></button>
-        {(plantillas || []).map(plantilla => <button key={plantilla.id} type="button" className="btn btn-secondary" style={{ justifyContent: 'flex-start', minHeight: 52 }} onClick={() => activarEspecial(plantilla)}><span>{I.clipboard}</span><span><strong>{plantilla.etiqueta}</strong><br /><small>{plantilla.tipo_documento?.nombre || 'Cotización Especial'}{plantilla.version ? ` · v${plantilla.version}` : ''}</small></span></button>)}
-      </div>}
+  const lineaEtiqueta = LINEAS_NEGOCIO.find(linea => linea.value === lineaNegocio)?.label || lineaNegocio;
+  const puedeCambiarLinea = !lineaInicialNormalizada && !contextoActual;
+  const cambiarLinea = () => { setError(''); setPlantillas(null); setTarifarioContexto(null); setLineaConfirmada(false); };
+  const opcion = ({ clave, icono, clase, titulo, texto, onClick, principal = false }) => (
+    <button type="button" key={clave} className={`dx-cotsel-opt${principal ? ' is-main' : ''}`} onClick={onClick}>
+      <span className={`dx-cotsel-ic ${clase}`}>{icono}</span>
+      <span><b>{titulo}</b><small>{texto}</small></span>
+    </button>
+  );
+
+  return createPortal(<div className="modal-backdrop dx-cotsel-backdrop" onClick={onCancel}><div className="dx-cotsel" role="dialog" aria-modal="true" aria-labelledby="dx-cotsel-titulo" onClick={event => event.stopPropagation()}>
+    <div className="dx-cotsel-head">
+      <div>
+        <div className="dx-cotsel-steps" aria-hidden="true"><span className="is-on" /><span className="is-on" /></div>
+        <div className="dx-cotsel-eyebrow">Nueva cotización · paso 2 de 2</div>
+        <h2 id="dx-cotsel-titulo">{esFlotaAlquileres && !contextoActual ? 'Tarifario de Flota & Alquileres' : '¿Cómo quieres empezar?'}</h2>
+        <p>Línea: <strong>{lineaEtiqueta}</strong>{contextoActual ? ' · Tarifario listo, elige el formato de la cotización.' : ''}</p>
+      </div>
+      <button type="button" className="dx-cotsel-close" onClick={onCancel} aria-label="Cerrar">{I.x}</button>
     </div>
-    <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={onCancel}>Cancelar</button></div>
+    <div className="dx-cotsel-body">
+      {error && <div className="dx-cotsel-warn" role="alert">No se pudieron cargar las plantillas de Cotización Especial. {permiteHojaCosteo ? 'Aún puedes iniciar una Hoja de Costeo o una Cotización Estándar.' : esFlotaAlquileres ? 'Puedes continuar desde el Tarifario de Flota.' : 'Aún puedes iniciar una Cotización Estándar.'}</div>}
+      {esFlotaAlquileres && !contextoActual && (
+        <div className="dx-cotsel-opts is-one">
+          {opcion({ clave:'tarifario', icono:I.truck, clase:'is-violet', titulo:'Cotizar desde Tarifario', texto:'Selecciona cuenta, proyecto opcional, equipos y horas estimadas.', onClick:() => setTarifarioAbierto(true), principal:true })}
+        </div>
+      )}
+      {(!esFlotaAlquileres || contextoActual) && (
+        <>
+          {permiteHojaCosteo && (
+            <>
+              <div className="dx-cotsel-grp">Calcular primero</div>
+              <div className="dx-cotsel-opts is-one">
+                {opcion({ clave:'hoja_costeo', icono:I.receipt, clase:'is-cyan', titulo:'Hoja de Costeo', texto:'Calcula mano de obra, materiales, equipos y margen; luego genera la cotización con las partidas listas.', onClick:() => onHojaCosteo(lineaNegocio) })}
+              </div>
+            </>
+          )}
+          <div className="dx-cotsel-grp">Cotizar directo</div>
+          <div className="dx-cotsel-opts is-one">
+            {opcion({ clave:'estandar', icono:I.file, clase:'is-gray', titulo:'Cotización Estándar', texto:'Partidas, totales, hitos de pago y condiciones comerciales en el formato estándar.', onClick:activarEstandar })}
+          </div>
+          {(plantillas || []).length > 0 && (
+            <>
+              <div className="dx-cotsel-grp">Cotización Especial · plantillas publicadas</div>
+              <div className="dx-cotsel-opts">
+                {plantillas.map(plantilla => opcion({ clave:plantilla.id, icono:I.clipboard, clase:'is-violet', titulo:plantilla.etiqueta, texto:`${plantilla.tipo_documento?.nombre || 'Cotización Especial'}${plantilla.version ? ` · v${plantilla.version}` : ''}`, onClick:() => activarEspecial(plantilla) }))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+    <div className="dx-cotsel-foot">
+      {puedeCambiarLinea ? <button type="button" className="dx-cotsel-btn" onClick={cambiarLinea}>{I.chevLeft}Cambiar línea</button> : <span />}
+      <button type="button" className="dx-cotsel-btn" onClick={onCancel}>Cancelar</button>
+    </div>
   </div></div>, document.body);
 }
