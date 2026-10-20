@@ -93,6 +93,11 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     let active = true;
     const emisorSnapshot = seleccionVersion?.estado === 'emitido' ? seleccionVersion.snapshot?.emisor : null;
     setFirmaEmitidaUrl(emisorSnapshot?.firma_url || null);
+    // Informe emitido con firma congelada: se usa ese archivo, no la firma actual de la persona.
+    if (emisorSnapshot?.firma_bucket && emisorSnapshot?.firma_storage_path) {
+      obtenerFirmaPersonaParaVista(emisorSnapshot).then(url => { if (active && url) setFirmaEmitidaUrl(url); }).catch(() => {});
+      return () => { active = false; };
+    }
     if (!emisorSnapshot?.persona_id) return () => { active = false; };
     const persona = emisoresPersona.find(item => String(item.id) === String(emisorSnapshot.persona_id));
     if (!persona) return () => { active = false; };
@@ -260,7 +265,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           }
         },
         emitirDiagnostico: () => onEmitirDiagnostico(),
-        emitirInforme: () => emitirInformeDiagnostico({ informeId: informe.id, emisorNombre: nombreFinal, emisorCargo: cargoFinal }),
+        emitirInforme: () => emitirInformeDiagnostico({ informeId: informe.id, emisorNombre: nombreFinal, emisorCargo: cargoFinal, firmaAdjuntoId: emisor.fuente === 'persona' ? emisor.persona?.firma_adjunto_id || null : null }),
       });
       const current = await obtenerInformeVigente(diagnostico.recepcion_id);
       const selectedRow = (current.emitidos || []).find(row => row.id === issued?.id) || issued;

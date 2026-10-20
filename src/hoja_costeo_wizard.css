@@ -192,6 +192,19 @@
   .hcx-wizard .hcx-foot { flex-wrap:wrap; }
 }
 
+/* Trazabilidad con el Diagnóstico Técnico */
+.hcx-wizard .hcx-sync { display:flex; flex-direction:column; gap:10px; padding:12px 24px; background:var(--hcx-card); border-bottom:1px solid var(--hcx-line); }
+.hcx-wizard .hcx-sync:empty { display:none; }
+.hcx-wizard .hcx-sync-origin { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; color:var(--hcx-ink); font-size:13px; }
+.hcx-wizard .hcx-sync-label { color:var(--hcx-cyan-fg); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+.hcx-wizard .hcx-sync-version { color:var(--hcx-gray); }
+.hcx-wizard .hcx-linkbtn { border:0; padding:0; background:none; color:var(--hcx-cyan-fg); font-weight:700; text-decoration:underline; text-underline-offset:2px; }
+.hcx-wizard .hcx-sync-alert { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:12px 14px; border:1px solid color-mix(in srgb,var(--hcx-amber) 30%,var(--hcx-line)); border-radius:10px; background:var(--hcx-amber-bg); color:var(--hcx-amber); }
+.hcx-wizard .hcx-sync-alert > div { flex:1 1 280px; min-width:0; }
+.hcx-wizard .hcx-sync-alert b { display:block; }
+.hcx-wizard .hcx-sync-alert span { display:block; margin-top:2px; color:var(--hcx-ink); font-size:13px; }
+.hcx-wizard .hcx-sync-alert.is-info { border-color:color-mix(in srgb,var(--hcx-cyan) 30%,var(--hcx-line)); background:var(--hcx-cyan-bg); color:var(--hcx-cyan-fg); }
+
 /* ===== Tablet y móvil (mocks docs/diseno/costeo: Tablet y Movil-*) ===== */
 .hcx-wizard .hcx-kv { display:contents; }
 .hcx-wizard .hcx-kv > span,.hcx-wizard .hcx-tasktotal,.hcx-wizard .hcx-menu,.hcx-wizard .hcx-foot-add,.hcx-wizard .hcx-navbackdrop { display:none; }
@@ -235,6 +248,7 @@ html[data-dx-costeo-work-mode="true"] .hcx-wizard .hcx-menu:hover { background:v
   .hcx-wizard .hcx-badges { flex-wrap:nowrap; }
   .hcx-wizard .hcx-badges .hcx-pill { display:none; }
   .hcx-wizard .hcx-summary { padding:10px 16px; gap:8px; }
+  .hcx-wizard .hcx-sync { padding:10px 16px; }
   .hcx-wizard .hcx-summary-add { display:none; }
   .hcx-wizard .hcx-chip { padding:5px 10px; }
   .hcx-wizard .hcx-chip b { font-size:15px; }
@@ -303,6 +317,8 @@ html[data-dx-costeo-work-mode="true"] .hcx-wizard .hcx-menu:hover { background:v
   .hcx-wizard .hcx-head { padding:10px 12px; }
   .hcx-wizard .hcx-back { display:none; }
   .hcx-wizard .hcx-summary { display:none; }
+  .hcx-wizard .hcx-sync { padding:10px 12px; }
+  .hcx-wizard .hcx-sync-alert .hcx-btn { width:100%; }
   .hcx-wizard .hcx-step { padding:8px 6px; min-height:52px; text-align:center; }
   .hcx-wizard .hcx-step small { font-size:11px; }
   .hcx-wizard .hcx-step em { font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

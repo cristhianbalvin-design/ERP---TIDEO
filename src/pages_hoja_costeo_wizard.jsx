@@ -210,6 +210,7 @@ export default function HojaCosteoWizard() {
       return;
     }
     setCargando(true);
+    const hojaEnCarga = hoja.id;
     try {
       const sb = await getSupabaseClient();
       const [familiasResult, actividadesResult, tareasResult, recetasResult, cargosResult, tarifasResult, configuracionesResult, lineasResult, materialesResult, gruposResult, familiasMaterialesResult, subfamiliasResult, lineasMaterialesResult, referenciasResult, activosResult, lineasActivosResult, hojaJsonResult, gastoResult, tipoCambioResult, hallazgosResult] = await Promise.all([
@@ -238,6 +239,8 @@ export default function HojaCosteoWizard() {
       ]);
       const error = [familiasResult, actividadesResult, tareasResult, recetasResult, cargosResult, tarifasResult, configuracionesResult, lineasResult, materialesResult, gruposResult, familiasMaterialesResult, subfamiliasResult, lineasMaterialesResult, referenciasResult, activosResult, lineasActivosResult, hojaJsonResult, gastoResult, tipoCambioResult, hallazgosResult].find(result => result.error)?.error;
       if (error) throw error;
+      // Si mientras cargaba se abrió otra hoja (p. ej. su nueva versión), se descarta esta respuesta.
+      if (hojaCargadaRef.current !== hojaEnCarga) return;
       setFamilias(familiasResult.data || []);
       setActividades(actividadesResult.data || []);
       setTareas(tareasResult.data || []);
@@ -318,11 +321,102 @@ export default function HojaCosteoWizard() {
     valorarPendientes().catch(error => addToast(`No se pudieron valorar las líneas del diagnóstico: ${error.message || error}`, 'error'));
   }, [cargando, bloqueada, hoja?.id, lineas, lineasActivos, tipoCambioPenUsd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { cargarDatos(); }, [hoja?.id, hoja?.moneda, empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hojaCargadaRef = useRef('');
+  useEffect(() => {
+    if (hojaCargadaRef.current !== (hoja?.id || '')) {
+      // Otra hoja: no mostrar las líneas de la anterior mientras se carga la nueva.
+      setLineas([]); setLineasMateriales([]); setLineasActivos([]); setDetallesTarea({});
+      hojaCargadaRef.current = hoja?.id || '';
+    }
+    cargarDatos();
+  }, [hoja?.id, hoja?.moneda, empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Tablet y móvil: modo trabajo (sin header del ERP, menú lateral como cajón).
   const [modoTrabajo, setModoTrabajo] = useState(false);
   const [trabajosContraidos, setTrabajosContraidos] = useState({});
   useEffect(() => mountCosteoWorkMode(setModoTrabajo), []);
+
+  // Trazabilidad con el Diagnóstico Técnico: origen, desfase y versiones.
+  const [sincronizacion, setSincronizacion] = useState(null);
+  const [sincronizando, setSincronizando] = useState('');
+  const cargarSincronizacion = async () => {
+    if (!hoja?.id || !isSupabaseConfigured()) return;
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.rpc('obtener_sincronizacion_hoja_costeo', { p_hoja_id: hoja.id });
+    if (!error) setSincronizacion(data || null);
+  };
+  useEffect(() => {
+    setSincronizacion(null);
+    cargarSincronizacion().catch(() => {});
+  }, [hoja?.id, hoja?.estado]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recargarCabeceraHoja = async id => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.from('hojas_costeo').select('*').eq('id', id).single();
+    if (error) throw error;
+    setHojasCosteo(prev => (prev || []).some(item => item.id === id)
+      ? prev.map(item => item.id === id ? { ...item, ...data } : item)
+      : [data, ...(prev || [])]);
+    return data;
+  };
+  const actualizarDesdeDiagnostico = async () => {
+    if (!hoja?.id || sincronizando) return;
+    setSincronizando('actualizar');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.rpc('actualizar_hoja_costeo_desde_diagnostico', { p_hoja_id: hoja.id });
+      if (error) throw error;
+      await recargarCabeceraHoja(hoja.id);
+      valoracionHecha.current = '';
+      await cargarDatos();
+      await cargarSincronizacion();
+      const partes = [`${data?.agregadas || 0} nuevas`, `${data?.actualizadas || 0} actualizadas`, `${data?.eliminadas || 0} quitadas`];
+      addToast(`Hoja actualizada desde el diagnóstico: ${partes.join(' · ')}.${data?.volvio_a_borrador ? ' Volvió a borrador para revisarla otra vez.' : ''}`, 'success');
+    } catch (error) {
+      addToast(error.message || 'No se pudo actualizar la hoja desde el diagnóstico.', 'error');
+    } finally {
+      setSincronizando('');
+    }
+  };
+  const crearNuevaVersion = async () => {
+    if (!hoja?.id || sincronizando) return;
+    setSincronizando('version');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.rpc('crear_nueva_version_hoja_costeo', { p_hoja_id: hoja.id });
+      if (error) throw error;
+      await recargarCabeceraHoja(hoja.id);
+      await recargarCabeceraHoja(data.hoja_costeo_id);
+      addToast(`Se creó la versión ${data.numero}. La hoja ${hoja.numero} queda sin cambios.`, 'success');
+      navigate('hoja_costeo_wizard', { hojaId: data.hoja_costeo_id });
+    } catch (error) {
+      addToast(error.message || 'No se pudo crear la nueva versión.', 'error');
+    } finally {
+      setSincronizando('');
+    }
+  };
+  const abrirDiagnosticoOrigen = () => {
+    if (!sincronizacion?.diagnostico_id) return;
+    const base = (import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/').replace(/\/?$/, '/');
+    window.location.assign(`${base}#/diagnostico-tecnico?trabajo=${encodeURIComponent(sincronizacion.diagnostico_id)}`);
+  };
+  const renderSincronizacion = () => {
+    const s = sincronizacion;
+    if (!s) return null;
+    const origen = s.tiene_diagnostico
+      ? [s.diagnostico_tipo === 'fabricacion' ? 'Diagnóstico de fabricación' : 'Diagnóstico de mantenimiento', s.oportunidad_nombre || s.recepcion_numero, s.informe_version ? `Informe v${s.informe_version}` : null].filter(Boolean).join(' · ')
+      : null;
+    return <div className="hcx-sync">
+      {(origen || s.hoja_origen) && <div className="hcx-sync-origin">
+        {origen && <><span className="hcx-sync-label">Origen</span><span>{origen}</span><button className="hcx-linkbtn" type="button" onClick={abrirDiagnosticoOrigen}>Abrir diagnóstico</button></>}
+        {s.hoja_origen && <span className="hcx-sync-version">Versión nueva de <button className="hcx-linkbtn" type="button" onClick={() => navigate('hoja_costeo_wizard', { hojaId: s.hoja_origen.id })}>{s.hoja_origen.numero}</button></span>}
+      </div>}
+      {s.reemplazada_por && <div className="hcx-sync-alert is-info" role="status"><div><b>Esta hoja fue reemplazada por {s.reemplazada_por.numero}.</b><span>Se conserva como historial y no se modifica.</span></div><button className="hcx-btn" type="button" onClick={() => navigate('hoja_costeo_wizard', { hojaId: s.reemplazada_por.id })}>Abrir {s.reemplazada_por.numero}</button></div>}
+      {s.desfasada && s.motivo === 'reabierto' && <div className="hcx-sync-alert" role="status"><div><b>El diagnóstico se reabrió y se está editando.</b><span>Cuando se vuelva a emitir podrás traer sus cambios a esta hoja.</span></div></div>}
+      {s.desfasada && s.motivo === 'reemitido' && <div className="hcx-sync-alert" role="alert"><div><b>El diagnóstico cambió después de crear esta hoja.</b><span>{s.puede_actualizar ? 'Trae los trabajos nuevos, quita los eliminados y actualiza horas y cantidades. Las tarifas ya valoradas se conservan.' : s.puede_nueva_version ? 'Esta hoja ya está aprobada o cotizada y no se modifica. Crea una nueva versión con los cambios.' : 'No tienes permiso para actualizar esta hoja.'}</span></div>
+        {s.puede_actualizar && <button className="hcx-btn primary" type="button" disabled={!!sincronizando} onClick={actualizarDesdeDiagnostico}>{sincronizando === 'actualizar' ? 'Actualizando…' : 'Actualizar desde el diagnóstico'}</button>}
+        {s.puede_nueva_version && <button className="hcx-btn primary" type="button" disabled={!!sincronizando} onClick={crearNuevaVersion}>{sincronizando === 'version' ? 'Creando…' : 'Crear nueva versión'}</button>}
+      </div>}
+    </div>;
+  };
 
   useEffect(() => {
     let vigente = true;
@@ -1459,10 +1553,10 @@ export default function HojaCosteoWizard() {
               <div className="hcx-taskname"><b>{nombreTareaLinea(linea)}</b><small>{tareaPorId.get(linea.tarea_id)?.codigo || linea.tarea_id || 'Sin código'}</small></div>
               <div className="hcx-tasktotal"><b>{money(numero(linea.subtotal_mano_obra) + (activoLinea ? numero(linea.subtotal_maquina) : 0))}</b><small>MO + máquina</small></div>
               <label className="hcx-kv kv-cargo"><span>Cargo</span><select className="hcx-cell" disabled={bloqueada || guardandoTareaId === linea.id} value={linea.cargo_id || ''} onChange={event => actualizarTarea(linea, { cargo_id: event.target.value })}><option value="">Sin cargo</option>{cargos.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
-              <label className="hcx-kv kv-horas"><span>Horas-hombre</span><input className="hcx-cell num" disabled={bloqueada || guardandoTareaId === linea.id} type="number" inputMode="decimal" min="0" step="0.1" defaultValue={linea.horas ?? ''} onBlur={guardarHoras} /></label>
+              <label className="hcx-kv kv-horas"><span>Horas-hombre</span><input key={`h:${linea.id}:${linea.horas ?? ''}`} className="hcx-cell num" disabled={bloqueada || guardandoTareaId === linea.id} type="number" inputMode="decimal" min="0" step="0.1" defaultValue={linea.horas ?? ''} onBlur={guardarHoras} /></label>
               <div className="hcx-kv kv-mo"><span>Costo mano de obra</span><div className="hcx-cost"><b>{money(linea.subtotal_mano_obra)}</b><small>{linea.pendiente_valoracion ? 'Sin tarifa: revisa el cargo' : `${money(linea.costo_hora_snapshot)} / h`}</small></div></div>
               <label className="hcx-kv kv-activo"><span>Activo propio</span><select className="hcx-cell" disabled={bloqueada || guardandoTareaId === linea.id} value={activoLinea?.activo_id || ''} onChange={event => actualizarTarea(linea, { activo_id: event.target.value })}><option value="">Sin activo</option>{activos.map(item => <option key={item.activo_id} value={item.activo_id}>{item.nombre}</option>)}</select></label>
-              <label className="hcx-kv kv-hmaq"><span>Horas-máq.</span><input className="hcx-cell num" disabled={bloqueada || guardandoTareaId === linea.id} type="number" inputMode="decimal" min="0" step="0.1" defaultValue={activoLinea?.horas_uso_estimadas ?? 0} onBlur={guardarHorasMaquina} /></label>
+              <label className="hcx-kv kv-hmaq"><span>Horas-máq.</span><input key={`m:${linea.id}:${activoLinea?.horas_uso_estimadas ?? 0}`} className="hcx-cell num" disabled={bloqueada || guardandoTareaId === linea.id} type="number" inputMode="decimal" min="0" step="0.1" defaultValue={activoLinea?.horas_uso_estimadas ?? 0} onBlur={guardarHorasMaquina} /></label>
               <div className="hcx-kv kv-maq"><span>Costo máquina</span><div className={`hcx-cost ${!activoLinea ? 'muted' : ''}`}><b>{activoLinea ? money(linea.subtotal_maquina) : '—'}</b>{activoLinea && <small>{money(activoLinea.costo_hora_equipo)} / h</small>}</div></div>
               <div className="hcx-detail-button"><button className={`hcx-btn detail ${detallesTarea[linea.id] ? 'is-on' : ''}`} type="button" onClick={() => setDetallesTarea(prev => ({ ...prev, [linea.id]: prev[linea.id] ? '' : prev[linea.id] }))}>Detalle</button></div>
               {difiere && <span className="hcx-recipe-hint">Difiere de la receta</span>}
@@ -1478,7 +1572,7 @@ export default function HojaCosteoWizard() {
     const grupos = agruparMaterialesPorTrabajo({ lineas, materiales: lineasMateriales, familias, actividades, tareas });
     const gruposTrabajo = new Map();
     grupos.forEach(grupo => { const key = `${grupo.familia_trabajo_id}:${grupo.actividad_id}`; if (!gruposTrabajo.has(key)) gruposTrabajo.set(key, []); gruposTrabajo.get(key).push(grupo); });
-    return <section className="hcx-card"><header className="hcx-cardhead"><div><h2>Materiales</h2><div className="hcx-sub">Cada material queda dentro de su Trabajo › Actividad › Tarea.</div></div><button className="hcx-btn primary" type="button" disabled={bloqueada} onClick={() => setPanelMaterial(true)}>{I.plus} Agregar material</button></header>{grupos.length === 0 ? <div className="hcx-empty">Aún no hay materiales.</div> : [...gruposTrabajo.entries()].map(([key, tareasTrabajo]) => <section className="hcx-work" key={key}><header className="hcx-workhead"><div><div className="hcx-worktitle"><span className="hcx-workname">{familiaPorId.get(tareasTrabajo[0].familia_trabajo_id)?.nombre || 'Sin trabajo'}</span><span className="hcx-pill">Actividad: {actividadPorId.get(tareasTrabajo[0].actividad_id)?.nombre || 'Sin actividad'}</span></div><div className="hcx-workmeta">{tareasTrabajo.reduce((sum, item) => sum + item.lineas.length, 0)} materiales en {tareasTrabajo.length} tareas</div></div><span className="hcx-money">{money(tareasTrabajo.reduce((sum, item) => sum + item.subtotal, 0))}<small>materiales</small></span></header>{tareasTrabajo.map(grupo => <div className="hcx-material-task" key={grupo.key}><div className="hcx-material-route"><span>{grupo.ruta.join(' › ') || 'Costo general'}</span><span className="hcx-pill muted">{tareaPorId.get(grupo.tarea_id)?.codigo || grupo.tarea_id || 'Sin código'}</span><b>{money(grupo.subtotal)}</b></div><div className="hcx-material-head"><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Costo unit.</span><span>Subtotal</span><span>Origen</span><span></span></div>{grupo.lineas.map(linea => { const material = materialPorId.get(linea.material_id); const origen = linea.diagnostico_material_id ? 'Diagnóstico' : linea.fue_manual ? 'Agregado' : 'Receta'; return <div className="hcx-material-line" key={linea.id}><div><b>{material?.descripcion || linea.descripcion || linea.material_id}</b><small>{material?.codigo || linea.material_id}</small></div><input className="hcx-cell num" type="number" min="0.01" step="0.01" disabled={bloqueada} defaultValue={linea.cantidad} onBlur={event => actualizarCantidadMaterial(linea, event.target.value)} /><span>{material?.unidad || linea.unidad || 'und'}</span><span className="num">{money(linea.costo_unitario_snapshot)}</span><span className="num"><b>{money(linea.subtotal)}</b></span><span className="hcx-source">{origen}</span>{!bloqueada && <button className="hcx-icon" type="button" onClick={() => eliminarLineaMaterial(linea)} aria-label="Eliminar material">{I.trash}</button>}</div>; })}</div>)}</section>)}</section>;
+    return <section className="hcx-card"><header className="hcx-cardhead"><div><h2>Materiales</h2><div className="hcx-sub">Cada material queda dentro de su Trabajo › Actividad › Tarea.</div></div><button className="hcx-btn primary" type="button" disabled={bloqueada} onClick={() => setPanelMaterial(true)}>{I.plus} Agregar material</button></header>{grupos.length === 0 ? <div className="hcx-empty">Aún no hay materiales.</div> : [...gruposTrabajo.entries()].map(([key, tareasTrabajo]) => <section className="hcx-work" key={key}><header className="hcx-workhead"><div><div className="hcx-worktitle"><span className="hcx-workname">{familiaPorId.get(tareasTrabajo[0].familia_trabajo_id)?.nombre || 'Sin trabajo'}</span><span className="hcx-pill">Actividad: {actividadPorId.get(tareasTrabajo[0].actividad_id)?.nombre || 'Sin actividad'}</span></div><div className="hcx-workmeta">{tareasTrabajo.reduce((sum, item) => sum + item.lineas.length, 0)} materiales en {tareasTrabajo.length} tareas</div></div><span className="hcx-money">{money(tareasTrabajo.reduce((sum, item) => sum + item.subtotal, 0))}<small>materiales</small></span></header>{tareasTrabajo.map(grupo => <div className="hcx-material-task" key={grupo.key}><div className="hcx-material-route"><span>{grupo.ruta.join(' › ') || 'Costo general'}</span><span className="hcx-pill muted">{tareaPorId.get(grupo.tarea_id)?.codigo || grupo.tarea_id || 'Sin código'}</span><b>{money(grupo.subtotal)}</b></div><div className="hcx-material-head"><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Costo unit.</span><span>Subtotal</span><span>Origen</span><span></span></div>{grupo.lineas.map(linea => { const material = materialPorId.get(linea.material_id); const origen = linea.diagnostico_material_id ? 'Diagnóstico' : linea.fue_manual ? 'Agregado' : 'Receta'; return <div className="hcx-material-line" key={linea.id}><div><b>{material?.descripcion || linea.descripcion || linea.material_id}</b><small>{material?.codigo || linea.material_id}</small></div><input key={`c:${linea.id}:${linea.cantidad}`} className="hcx-cell num" type="number" min="0.01" step="0.01" disabled={bloqueada} defaultValue={linea.cantidad} onBlur={event => actualizarCantidadMaterial(linea, event.target.value)} /><span>{material?.unidad || linea.unidad || 'und'}</span><span className="num">{money(linea.costo_unitario_snapshot)}</span><span className="num"><b>{money(linea.subtotal)}</b></span><span className="hcx-source">{origen}</span>{!bloqueada && <button className="hcx-icon" type="button" onClick={() => eliminarLineaMaterial(linea)} aria-label="Eliminar material">{I.trash}</button>}</div>; })}</div>)}</section>)}</section>;
   };
 
   const renderResumenNuevo = () => {
@@ -1522,6 +1616,7 @@ export default function HojaCosteoWizard() {
     <div className="hcx-wizard">
       <div className="hcx-shell">
         <header className="hcx-head">{modoTrabajo && <button className="hcx-menu" type="button" aria-label="Abrir menú" onClick={toggleCosteoWorkNav}>☰</button>}<div className="hcx-headtext"><button className="hcx-back" type="button" onClick={() => navigate('hoja_costeo', { detail: hoja.id })}>← Volver a la hoja</button><h1>Costeo · {hoja.numero}</h1><div className="hcx-sub">Hoja de costeo · {monedaHoja} · {(cuentas || []).find(item => item.id === hoja.cuenta_id)?.nombre_comercial || (cuentas || []).find(item => item.id === hoja.cuenta_id)?.razon_social || (hoja.cuenta_id ? 'Cuenta sin nombre' : 'Sin cuenta')}</div></div><div className="hcx-badges"><span className={`hcx-status ${estadoPie.clase}`}><i />{hoja.estado || 'borrador'}</span><span className="hcx-pill">Cotización especial</span></div></header>
+        {renderSincronizacion()}
         <div className="hcx-summary"><div className="hcx-chip"><b>{gruposPorTarea.length}</b><span>trabajos</span></div><div className="hcx-chip"><b>{lineas.length}</b><span>tareas</span></div><div className="hcx-chip"><b>{lineas.reduce((sum, item) => sum + numero(item.horas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-hombre</span></div><div className="hcx-chip"><b>{lineasActivos.reduce((sum, item) => sum + numero(item.horas_uso_estimadas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-máquina</span></div><span className="hcx-spacer" />{paso === 'mano_obra' && <button className="hcx-btn primary hcx-summary-add" type="button" disabled={bloqueada} onClick={() => setPanelTrabajo(true)}>{I.plus} Agregar trabajo</button>}</div>
         <nav className="hcx-stepnav" aria-label="Pasos del wizard">{STEPS.map((item, index) => <button key={item.id} className={`hcx-step ${paso === item.id ? 'is-current' : index < pasoActual ? 'is-done' : ''}`} type="button" onClick={() => setPaso(item.id)}><span>{index < pasoActual ? '✓' : index + 1}</span><small>{item.label}</small><em>{montoPaso(item.id) == null ? '—' : money(montoPaso(item.id))}</em></button>)}</nav>
         <div className="hcx-body">{renderPasoNueva()}</div>
