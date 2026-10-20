@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { getSupabaseAnonKey } from '../_shared/supabaseKeys.ts';
-import { MAX_AUDIO_BYTES, validarAudio, validarDiagnosticoId, validarIdioma } from './transcribirAudio.ts';
+import { MAX_AUDIO_BYTES, esEcoDelPrompt, validarAudio, validarDiagnosticoId, validarIdioma } from './transcribirAudio.ts';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (status: number, body: Record<string, unknown>) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -53,6 +53,7 @@ serve(async req => {
     const result = await response.json();
     const texto = String(result.text || '').trim();
     if (!texto) return fail(502, 'La transcripción llegó vacía. Inténtalo de nuevo.');
+    if (esEcoDelPrompt(texto, PROMPT)) return fail(422, 'No se detectó voz en la grabación. Habla más cerca del micrófono e inténtalo de nuevo.');
     return json(200, { ok: true, texto });
   } catch (error) {
     if (error?.name === 'AbortError') return fail(504, 'La transcripción tardó más de 30 segundos. Puedes reintentar.');
