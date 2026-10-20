@@ -324,6 +324,89 @@ export default function HojaCosteoWizard() {
   const [trabajosContraidos, setTrabajosContraidos] = useState({});
   useEffect(() => mountCosteoWorkMode(setModoTrabajo), []);
 
+  // Trazabilidad con el Diagnóstico Técnico: origen, desfase y versiones.
+  const [sincronizacion, setSincronizacion] = useState(null);
+  const [sincronizando, setSincronizando] = useState('');
+  const cargarSincronizacion = async () => {
+    if (!hoja?.id || !isSupabaseConfigured()) return;
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.rpc('obtener_sincronizacion_hoja_costeo', { p_hoja_id: hoja.id });
+    if (!error) setSincronizacion(data || null);
+  };
+  useEffect(() => {
+    setSincronizacion(null);
+    cargarSincronizacion().catch(() => {});
+  }, [hoja?.id, hoja?.estado]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recargarCabeceraHoja = async id => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.from('hojas_costeo').select('*').eq('id', id).single();
+    if (error) throw error;
+    setHojasCosteo(prev => (prev || []).some(item => item.id === id)
+      ? prev.map(item => item.id === id ? { ...item, ...data } : item)
+      : [data, ...(prev || [])]);
+    return data;
+  };
+  const actualizarDesdeDiagnostico = async () => {
+    if (!hoja?.id || sincronizando) return;
+    setSincronizando('actualizar');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.rpc('actualizar_hoja_costeo_desde_diagnostico', { p_hoja_id: hoja.id });
+      if (error) throw error;
+      await recargarCabeceraHoja(hoja.id);
+      valoracionHecha.current = '';
+      await cargarDatos();
+      await cargarSincronizacion();
+      const partes = [`${data?.agregadas || 0} nuevas`, `${data?.actualizadas || 0} actualizadas`, `${data?.eliminadas || 0} quitadas`];
+      addToast(`Hoja actualizada desde el diagnóstico: ${partes.join(' · ')}.${data?.volvio_a_borrador ? ' Volvió a borrador para revisarla otra vez.' : ''}`, 'success');
+    } catch (error) {
+      addToast(error.message || 'No se pudo actualizar la hoja desde el diagnóstico.', 'error');
+    } finally {
+      setSincronizando('');
+    }
+  };
+  const crearNuevaVersion = async () => {
+    if (!hoja?.id || sincronizando) return;
+    setSincronizando('version');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.rpc('crear_nueva_version_hoja_costeo', { p_hoja_id: hoja.id });
+      if (error) throw error;
+      await recargarCabeceraHoja(hoja.id);
+      await recargarCabeceraHoja(data.hoja_costeo_id);
+      addToast(`Se creó la versión ${data.numero}. La hoja ${hoja.numero} queda sin cambios.`, 'success');
+      navigate('hoja_costeo_wizard', { hojaId: data.hoja_costeo_id });
+    } catch (error) {
+      addToast(error.message || 'No se pudo crear la nueva versión.', 'error');
+    } finally {
+      setSincronizando('');
+    }
+  };
+  const abrirDiagnosticoOrigen = () => {
+    if (!sincronizacion?.diagnostico_id) return;
+    const base = (import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/').replace(/\/?$/, '/');
+    window.location.assign(`${base}#/diagnostico-tecnico?trabajo=${encodeURIComponent(sincronizacion.diagnostico_id)}`);
+  };
+  const renderSincronizacion = () => {
+    const s = sincronizacion;
+    if (!s) return null;
+    const origen = s.tiene_diagnostico
+      ? [s.diagnostico_tipo === 'fabricacion' ? 'Diagnóstico de fabricación' : 'Diagnóstico de mantenimiento', s.oportunidad_nombre || s.recepcion_numero, s.informe_version ? `Informe v${s.informe_version}` : null].filter(Boolean).join(' · ')
+      : null;
+    return <div className="hcx-sync">
+      {(origen || s.hoja_origen) && <div className="hcx-sync-origin">
+        {origen && <><span className="hcx-sync-label">Origen</span><span>{origen}</span><button className="hcx-linkbtn" type="button" onClick={abrirDiagnosticoOrigen}>Abrir diagnóstico</button></>}
+        {s.hoja_origen && <span className="hcx-sync-version">Versión nueva de <button className="hcx-linkbtn" type="button" onClick={() => navigate('hoja_costeo_wizard', { hojaId: s.hoja_origen.id })}>{s.hoja_origen.numero}</button></span>}
+      </div>}
+      {s.reemplazada_por && <div className="hcx-sync-alert is-info" role="status"><div><b>Esta hoja fue reemplazada por {s.reemplazada_por.numero}.</b><span>Se conserva como historial y no se modifica.</span></div><button className="hcx-btn" type="button" onClick={() => navigate('hoja_costeo_wizard', { hojaId: s.reemplazada_por.id })}>Abrir {s.reemplazada_por.numero}</button></div>}
+      {s.desfasada && s.motivo === 'reabierto' && <div className="hcx-sync-alert" role="status"><div><b>El diagnóstico se reabrió y se está editando.</b><span>Cuando se vuelva a emitir podrás traer sus cambios a esta hoja.</span></div></div>}
+      {s.desfasada && s.motivo === 'reemitido' && <div className="hcx-sync-alert" role="alert"><div><b>El diagnóstico cambió después de crear esta hoja.</b><span>{s.puede_actualizar ? 'Trae los trabajos nuevos, quita los eliminados y actualiza horas y cantidades. Las tarifas ya valoradas se conservan.' : s.puede_nueva_version ? 'Esta hoja ya está aprobada o cotizada y no se modifica. Crea una nueva versión con los cambios.' : 'No tienes permiso para actualizar esta hoja.'}</span></div>
+        {s.puede_actualizar && <button className="hcx-btn primary" type="button" disabled={!!sincronizando} onClick={actualizarDesdeDiagnostico}>{sincronizando === 'actualizar' ? 'Actualizando…' : 'Actualizar desde el diagnóstico'}</button>}
+        {s.puede_nueva_version && <button className="hcx-btn primary" type="button" disabled={!!sincronizando} onClick={crearNuevaVersion}>{sincronizando === 'version' ? 'Creando…' : 'Crear nueva versión'}</button>}
+      </div>}
+    </div>;
+  };
+
   useEffect(() => {
     let vigente = true;
     if (!empresa?.id || !isSupabaseConfigured()) return undefined;
@@ -1522,6 +1605,7 @@ export default function HojaCosteoWizard() {
     <div className="hcx-wizard">
       <div className="hcx-shell">
         <header className="hcx-head">{modoTrabajo && <button className="hcx-menu" type="button" aria-label="Abrir menú" onClick={toggleCosteoWorkNav}>☰</button>}<div className="hcx-headtext"><button className="hcx-back" type="button" onClick={() => navigate('hoja_costeo', { detail: hoja.id })}>← Volver a la hoja</button><h1>Costeo · {hoja.numero}</h1><div className="hcx-sub">Hoja de costeo · {monedaHoja} · {(cuentas || []).find(item => item.id === hoja.cuenta_id)?.nombre_comercial || (cuentas || []).find(item => item.id === hoja.cuenta_id)?.razon_social || (hoja.cuenta_id ? 'Cuenta sin nombre' : 'Sin cuenta')}</div></div><div className="hcx-badges"><span className={`hcx-status ${estadoPie.clase}`}><i />{hoja.estado || 'borrador'}</span><span className="hcx-pill">Cotización especial</span></div></header>
+        {renderSincronizacion()}
         <div className="hcx-summary"><div className="hcx-chip"><b>{gruposPorTarea.length}</b><span>trabajos</span></div><div className="hcx-chip"><b>{lineas.length}</b><span>tareas</span></div><div className="hcx-chip"><b>{lineas.reduce((sum, item) => sum + numero(item.horas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-hombre</span></div><div className="hcx-chip"><b>{lineasActivos.reduce((sum, item) => sum + numero(item.horas_uso_estimadas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-máquina</span></div><span className="hcx-spacer" />{paso === 'mano_obra' && <button className="hcx-btn primary hcx-summary-add" type="button" disabled={bloqueada} onClick={() => setPanelTrabajo(true)}>{I.plus} Agregar trabajo</button>}</div>
         <nav className="hcx-stepnav" aria-label="Pasos del wizard">{STEPS.map((item, index) => <button key={item.id} className={`hcx-step ${paso === item.id ? 'is-current' : index < pasoActual ? 'is-done' : ''}`} type="button" onClick={() => setPaso(item.id)}><span>{index < pasoActual ? '✓' : index + 1}</span><small>{item.label}</small><em>{montoPaso(item.id) == null ? '—' : money(montoPaso(item.id))}</em></button>)}</nav>
         <div className="hcx-body">{renderPasoNueva()}</div>

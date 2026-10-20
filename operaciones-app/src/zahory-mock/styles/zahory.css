@@ -4981,3 +4981,10 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
   .dx-acta .dx-acta-status li { flex-direction:column; align-items:flex-start; }
   .dx-acta .dx-acta-status span { text-align:left; }
 }
+
+/* Diagnóstico ↔ Hoja de Costeo: trazabilidad y aviso de desfase */
+.dx-inf-open-row:has(.dx-hc-sync-note) { flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.dx-hc-sync-note { flex:1 1 260px; color:#8A4B00; font-size:13px; text-align:right; }
+.dx-hc-sync-info { margin:0 0 12px; padding:10px 12px; border:1px solid #B2EBF2; border-radius:10px; background:#E0F7FA; color:#0B4F5A; font-size:13px; }
+[data-theme='dark'] .dx-hc-sync-note { color:#FDBA74; }
+[data-theme='dark'] .dx-hc-sync-info { border-color:rgba(34,211,238,.3); background:#0A3038; color:#67E8F9; }
