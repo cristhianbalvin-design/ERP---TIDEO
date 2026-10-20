@@ -9,6 +9,8 @@
 --   7. Vencimiento del enlace público en get_ot_conformidad_publica y registrar_conformidad_ot
 --      (partiendo de la definición remota vigente; solo se agrega el vencimiento y search_path).
 -- No modifica cerrar_ot_con_conformidad ni las políticas existentes de cierres_tecnicos.
+-- Aplicada en producción el 2026-10-20 en 7 partes (acta_conformidad_01 … _07) con el mismo contenido;
+-- no es reejecutable tal cual (las políticas se crean sin drop previo).
 
 -- 1. Tipo de cobro ------------------------------------------------------------
 alter table public.servicios add column if not exists tipo_cobro text not null default 'puntual';
@@ -144,8 +146,8 @@ create index if not exists idx_cierre_tecnico_evidencias_empresa_ot on public.ci
 alter table public.cierre_tecnico_firmas enable row level security;
 alter table public.cierre_tecnico_evidencias enable row level security;
 
--- Solo lectura: las filas las inserta cerrar_ot_con_acta (SECURITY DEFINER).
-drop policy if exists cierre_tecnico_firmas_select on public.cierre_tecnico_firmas;
+-- Solo lectura desde el cliente: sin políticas de escritura, RLS niega insert/update/delete.
+-- Las filas las inserta cerrar_ot_con_acta (SECURITY DEFINER).
 create policy cierre_tecnico_firmas_select on public.cierre_tecnico_firmas
   for select to authenticated
   using (
@@ -153,7 +155,6 @@ create policy cierre_tecnico_firmas_select on public.cierre_tecnico_firmas
     and (public.usuario_puede(empresa_id, 'cierre', 'ver')
          or public.usuario_es_tecnico_responsable_ot(empresa_id, orden_trabajo_id))
   );
-drop policy if exists cierre_tecnico_evidencias_select on public.cierre_tecnico_evidencias;
 create policy cierre_tecnico_evidencias_select on public.cierre_tecnico_evidencias
   for select to authenticated
   using (
@@ -161,13 +162,6 @@ create policy cierre_tecnico_evidencias_select on public.cierre_tecnico_evidenci
     and (public.usuario_puede(empresa_id, 'cierre', 'ver')
          or public.usuario_es_tecnico_responsable_ot(empresa_id, orden_trabajo_id))
   );
-
-revoke insert, update, delete, truncate on public.cierre_tecnico_firmas from anon, authenticated;
-revoke insert, update, delete, truncate on public.cierre_tecnico_evidencias from anon, authenticated;
-revoke all on public.cierre_tecnico_firmas from anon;
-revoke all on public.cierre_tecnico_evidencias from anon;
-grant select on public.cierre_tecnico_firmas to authenticated;
-grant select on public.cierre_tecnico_evidencias to authenticated;
 
 -- 5. Bloqueo de actas emitidas ---------------------------------------------
 create or replace function public.trg_proteger_acta_cierre_tecnico()
@@ -218,8 +212,7 @@ begin
 end;
 $$;
 
-drop trigger if exists ab_proteger_acta_cierre_tecnico on public.cierres_tecnicos;
-create trigger ab_proteger_acta_cierre_tecnico
+create or replace trigger ab_proteger_acta_cierre_tecnico
   before update or delete on public.cierres_tecnicos
   for each row execute function public.trg_proteger_acta_cierre_tecnico();
 
@@ -234,12 +227,10 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_cierre_tecnico_firmas_inmutable on public.cierre_tecnico_firmas;
-create trigger trg_cierre_tecnico_firmas_inmutable
+create or replace trigger trg_cierre_tecnico_firmas_inmutable
   before update or delete on public.cierre_tecnico_firmas
   for each row execute function public.trg_acta_registro_inmutable();
-drop trigger if exists trg_cierre_tecnico_evidencias_inmutable on public.cierre_tecnico_evidencias;
-create trigger trg_cierre_tecnico_evidencias_inmutable
+create or replace trigger trg_cierre_tecnico_evidencias_inmutable
   before update or delete on public.cierre_tecnico_evidencias
   for each row execute function public.trg_acta_registro_inmutable();
 
@@ -265,7 +256,6 @@ revoke all on function public.acta_conformidad_objeto_bloqueado(text) from publi
 grant execute on function public.acta_conformidad_objeto_bloqueado(text) to authenticated, service_role;
 
 -- Ruta: <empresa_id>/<orden_trabajo_id>/<borrador o cierre>/<archivo>
-drop policy if exists storage_actas_conformidad_select on storage.objects;
 create policy storage_actas_conformidad_select on storage.objects
   for select to authenticated
   using (
@@ -274,7 +264,6 @@ create policy storage_actas_conformidad_select on storage.objects
     and (public.usuario_puede(split_part(name, '/', 1), 'cierre', 'ver')
          or public.usuario_es_tecnico_responsable_ot(split_part(name, '/', 1), split_part(name, '/', 2)))
   );
-drop policy if exists storage_actas_conformidad_insert on storage.objects;
 create policy storage_actas_conformidad_insert on storage.objects
   for insert to authenticated
   with check (
@@ -283,7 +272,6 @@ create policy storage_actas_conformidad_insert on storage.objects
     and (public.usuario_puede(split_part(name, '/', 1), 'cierre', 'crear')
          or public.usuario_es_tecnico_responsable_ot(split_part(name, '/', 1), split_part(name, '/', 2)))
   );
-drop policy if exists storage_actas_conformidad_delete on storage.objects;
 create policy storage_actas_conformidad_delete on storage.objects
   for delete to authenticated
   using (
