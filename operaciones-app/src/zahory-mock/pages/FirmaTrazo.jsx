@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const TINTA = '#1A2B4A';
+const LARGO_MINIMO_PX = 24;
+
+// Una firma vale si algún trazo recorre al menos 24 px: descarta toques sueltos sin depender
+// de cuántos eventos de puntero entregue el dispositivo.
+export const largoTrazo = trazo => trazo.reduce((total, [x, y], i) => (i ? total + Math.hypot(x - trazo[i - 1][0], y - trazo[i - 1][1]) : 0), 0);
+export const firmaValida = trazos => trazos.some(trazo => largoTrazo(trazo) >= LARGO_MINIMO_PX);
 
 // Lienzo de firma con el dedo o el mouse. Exporta PNG con fondo blanco para que
 // la firma sea legible en el PDF y en modo oscuro. onChange recibe el dataURL o null.
@@ -65,7 +71,7 @@ export function FirmaTrazo({ etiqueta, valor = null, onChange, deshabilitado = f
   };
 
   const emitir = () => {
-    const valida = trazosRef.current.some(trazo => trazo.length > 3);
+    const valida = firmaValida(trazosRef.current);
     setConTinta(trazosRef.current.length > 0);
     onChange?.(valida ? canvasRef.current.toDataURL('image/png') : null);
   };
@@ -73,7 +79,7 @@ export function FirmaTrazo({ etiqueta, valor = null, onChange, deshabilitado = f
   const alBajar = evento => {
     if (deshabilitado) return;
     evento.preventDefault();
-    canvasRef.current.setPointerCapture?.(evento.pointerId);
+    try { canvasRef.current.setPointerCapture?.(evento.pointerId); } catch { /* puntero no capturable: se sigue dibujando igual */ }
     if (previaRef.current && !trazosRef.current.length) previaRef.current = null;
     actualRef.current = [punto(evento)];
     trazosRef.current.push(actualRef.current);
