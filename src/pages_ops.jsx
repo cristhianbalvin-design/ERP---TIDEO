@@ -22938,6 +22938,7 @@ function RRHH_Operativo() {
   )) : null;
   const bloqueoContratoFicha = Boolean(contratoVigenteEdicion);
   const tituloBloqueoContrato = bloqueoContratoFicha ? 'Definido por el contrato vigente. Cámbialo con una adenda o un nuevo contrato.' : undefined;
+  const estiloBloqueoContrato = bloqueoContratoFicha ? { background: 'var(--bg-subtle)', color: 'var(--fg-muted)', cursor: 'not-allowed' } : undefined;
 
   const cargosOperativosOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Administrativa' && c.tipo !== 'Administrativo' && c.nombre)
@@ -25759,8 +25760,8 @@ function RRHH_Operativo() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personalOperativo.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios || bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios || bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorarios ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorarios} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               {usaOrganigramaV2 ? <>
                 <div style={{gridColumn:'1/-1'}}>
@@ -25834,7 +25835,7 @@ function RRHH_Operativo() {
               {esHonorarios ? <>
                 <div className="input-group">
                   <label>Honorario pactado ({tarifaSym})</label>
-                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Tarifa hora referencial ({tarifaSym})</label>
@@ -25844,7 +25845,7 @@ function RRHH_Operativo() {
               </> : <>
                 <div className="input-group">
                   <label>Monto mensual ({tarifaSym})</label>
-                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:e.target.value}))} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:e.target.value}))} placeholder="0"/>
                 </div>
                 <div className="input-group">
                   <label>Horas base del mes</label>
@@ -25896,7 +25897,7 @@ function RRHH_Operativo() {
               ) : (
                 <>
                   <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/></div>
+                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/></div>
                     <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
                     <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ {asignacionFamiliar.toFixed(2)})</label>
                     <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
