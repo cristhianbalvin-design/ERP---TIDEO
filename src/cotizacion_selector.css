@@ -1,0 +1,97 @@
+.dx-cotsel-backdrop { align-items: flex-start; padding: 48px 16px; overflow-y: auto; }
+.dx-cotsel {
+  --dx-cotsel-navy: #1A2B4A;
+  --dx-cotsel-cyan: #00ACC1;
+  --dx-cotsel-cyan-fg: #0B4F5A;
+  --dx-cotsel-cyan-bg: #E0F7FA;
+  --dx-cotsel-violet: #5B3A8C;
+  --dx-cotsel-violet-bg: #F0EAFB;
+  --dx-cotsel-amber-fg: #8A4B00;
+  --dx-cotsel-amber-bg: #FFF3E0;
+  --dx-cotsel-green-fg: #14633A;
+  --dx-cotsel-green-bg: #E3F6EA;
+  --dx-cotsel-gray: #6B7280;
+  --dx-cotsel-gray-bg: #F1F3F5;
+  --dx-cotsel-gray-fg: #4B5563;
+  --dx-cotsel-ink: #1F2937;
+  --dx-cotsel-line: #E4E7EB;
+  --dx-cotsel-border: #C9CFD8;
+  --dx-cotsel-card: #FFFFFF;
+  --dx-cotsel-hover: #F6FBFC;
+  container-type: inline-size;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  border-radius: 16px;
+  background: var(--dx-cotsel-card);
+  box-shadow: 0 24px 60px rgba(15,27,48,.3);
+  color: var(--dx-cotsel-ink);
+  font: 14px/1.45 'DM Sans', -apple-system, sans-serif;
+}
+.dark .dx-cotsel {
+  --dx-cotsel-navy: #F8FAFC;
+  --dx-cotsel-cyan: #22D3EE;
+  --dx-cotsel-cyan-fg: #67E8F9;
+  --dx-cotsel-cyan-bg: #0A3038;
+  --dx-cotsel-violet: #D8B4FE;
+  --dx-cotsel-violet-bg: #321B3B;
+  --dx-cotsel-amber-fg: #FDBA74;
+  --dx-cotsel-amber-bg: #3A2810;
+  --dx-cotsel-green-fg: #86EFAC;
+  --dx-cotsel-green-bg: #12351F;
+  --dx-cotsel-gray: #94A3B8;
+  --dx-cotsel-gray-bg: #273244;
+  --dx-cotsel-gray-fg: #CBD5E1;
+  --dx-cotsel-ink: #F8FAFC;
+  --dx-cotsel-line: rgba(255,255,255,.1);
+  --dx-cotsel-border: #475569;
+  --dx-cotsel-card: #0F172A;
+  --dx-cotsel-hover: #172033;
+}
+.dx-cotsel *, .dx-cotsel *::before, .dx-cotsel *::after { box-sizing: border-box; }
+.dx-cotsel button { font: inherit; cursor: pointer; }
+.dx-cotsel svg { display: block; width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dx-cotsel :focus-visible { outline: 2px solid var(--dx-cotsel-cyan); outline-offset: 2px; }
+.dx-cotsel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px 14px; }
+.dx-cotsel-head h2 { margin: 4px 0 2px; color: var(--dx-cotsel-navy); font: 700 20px/1.3 'Sora', sans-serif; }
+.dx-cotsel-head p { margin: 0; color: var(--dx-cotsel-gray); font-size: 13px; }
+.dx-cotsel-head p strong { color: var(--dx-cotsel-navy); }
+.dx-cotsel-eyebrow { color: var(--dx-cotsel-cyan-fg); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.dx-cotsel-steps { display: flex; gap: 6px; margin-bottom: 8px; }
+.dx-cotsel-steps span { width: 28px; height: 4px; border-radius: 99px; background: var(--dx-cotsel-line); }
+.dx-cotsel-steps span.is-on { background: var(--dx-cotsel-cyan); }
+.dx-cotsel-close { display: inline-flex; width: 34px; height: 34px; flex: none; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--dx-cotsel-gray); }
+.dx-cotsel-close:hover { border-color: var(--dx-cotsel-line); background: var(--dx-cotsel-hover); color: var(--dx-cotsel-navy); }
+.dx-cotsel-body { padding: 4px 22px 18px; }
+.dx-cotsel-grp { margin: 14px 0 8px; color: var(--dx-cotsel-gray); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.dx-cotsel-grp:first-child { margin-top: 2px; }
+.dx-cotsel-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dx-cotsel-opts.is-one { grid-template-columns: minmax(0, 1fr); }
+.dx-cotsel-opt { display: flex; min-width: 0; align-items: flex-start; gap: 12px; padding: 14px; border: 1.5px solid var(--dx-cotsel-line); border-radius: 12px; background: var(--dx-cotsel-card); color: var(--dx-cotsel-ink); text-align: left; }
+.dx-cotsel-opt:hover { border-color: var(--dx-cotsel-cyan); background: var(--dx-cotsel-hover); }
+.dx-cotsel-opt.is-on, .dx-cotsel-opt.is-main { border-color: var(--dx-cotsel-cyan); box-shadow: inset 0 0 0 1px var(--dx-cotsel-cyan); background: var(--dx-cotsel-hover); }
+.dx-cotsel-opt > span:last-child { min-width: 0; }
+.dx-cotsel-opt b { display: block; overflow: hidden; color: var(--dx-cotsel-navy); font-size: 14px; text-overflow: ellipsis; }
+.dx-cotsel-opt small { display: block; margin-top: 2px; color: var(--dx-cotsel-gray); font-size: 12px; line-height: 1.4; }
+.dx-cotsel-ic { display: flex; width: 38px; height: 38px; flex: none; align-items: center; justify-content: center; border-radius: 10px; }
+.dx-cotsel-ic.is-cyan { background: var(--dx-cotsel-cyan-bg); color: var(--dx-cotsel-cyan-fg); }
+.dx-cotsel-ic.is-violet { background: var(--dx-cotsel-violet-bg); color: var(--dx-cotsel-violet); }
+.dx-cotsel-ic.is-amber { background: var(--dx-cotsel-amber-bg); color: var(--dx-cotsel-amber-fg); }
+.dx-cotsel-ic.is-green { background: var(--dx-cotsel-green-bg); color: var(--dx-cotsel-green-fg); }
+.dx-cotsel-ic.is-gray { background: var(--dx-cotsel-gray-bg); color: var(--dx-cotsel-gray-fg); }
+.dx-cotsel-warn { margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: var(--dx-cotsel-amber-bg); color: var(--dx-cotsel-amber-fg); font-size: 13px; }
+.dx-cotsel-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--dx-cotsel-line); }
+.dx-cotsel-foot-acts { display: flex; gap: 8px; }
+.dx-cotsel-btn { display: inline-flex; height: 40px; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; border: 1px solid var(--dx-cotsel-border); border-radius: 8px; background: var(--dx-cotsel-card); color: var(--dx-cotsel-navy); font-weight: 600; white-space: nowrap; }
+.dx-cotsel-btn svg { width: 16px; height: 16px; }
+.dx-cotsel-btn:hover:not(:disabled) { background: var(--dx-cotsel-hover); }
+.dx-cotsel-btn:disabled { cursor: not-allowed; opacity: .5; }
+.dx-cotsel-btn.is-primary { border-color: #1A2B4A; background: #1A2B4A; color: #fff; }
+.dx-cotsel-btn.is-primary:hover:not(:disabled) { background: #1A2B4A; filter: brightness(1.12); }
+.dark .dx-cotsel-btn.is-primary { border-color: #00ACC1; background: #00ACC1; color: #02161A; }
+@container (max-width: 520px) {
+  .dx-cotsel-opts { grid-template-columns: minmax(0, 1fr); }
+  .dx-cotsel-head, .dx-cotsel-body, .dx-cotsel-foot { padding-left: 16px; padding-right: 16px; }
+  .dx-cotsel-foot { flex-wrap: wrap; }
+}
