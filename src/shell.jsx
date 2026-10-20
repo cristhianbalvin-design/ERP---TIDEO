@@ -370,11 +370,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true');
+  const [costeoWorkMode, setCosteoWorkModeState] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxCosteoWorkMode === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 8, bottom: 'auto', maxHeight: 0 });
   const [busquedaModulo, setBusquedaModulo] = useState('');
-  const effectiveCollapsed = collapsed || isMobileNav || diagnosticoWorkMode;
+  // En el modo trabajo de la Hoja de Costeo la barra lateral es un cajón y se muestra completa.
+  const effectiveCollapsed = costeoWorkMode ? false : collapsed || isMobileNav || diagnosticoWorkMode;
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
@@ -446,6 +448,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   }, []);
 
   useEffect(() => {
+    const onCosteoWorkMode = event => setCosteoWorkModeState(Boolean(event.detail?.active));
+    window.addEventListener('dx-costeo-work-mode', onCosteoWorkMode);
+    if (document.documentElement?.dataset?.dxCosteoWorkMode === 'true') setCosteoWorkModeState(true);
+    return () => window.removeEventListener('dx-costeo-work-mode', onCosteoWorkMode);
+  }, []);
+
+  useEffect(() => {
     if (!activeGroupKey) return;
     setOpenSections(prev => {
       if (prev.has(activeGroupKey)) return prev;
@@ -498,6 +507,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const handleNav = key => {
     setFlyoutKey(null);
     setBusquedaModulo('');
+    if (document.documentElement?.dataset?.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
     onNav(key);
   };
   const handleItem = item => {
