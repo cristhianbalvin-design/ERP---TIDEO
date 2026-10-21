@@ -94,7 +94,7 @@
 .rcx-menu-empty { padding:12px; color:var(--rcx-gray); }
 .rcx-note { margin:12px 16px 16px; padding:10px 12px; border-radius:10px; background:var(--rcx-cyan-bg); color:var(--rcx-cyan-fg); font-size:13px; }
 .rcx-empty { padding:28px; text-align:center; color:var(--rcx-gray); }
-.rcx-foot { position:sticky; bottom:-48px; z-index:10; display:flex; align-items:center; gap:12px; margin:16px -28px -48px; padding:10px 28px; background:var(--rcx-card); border-top:1px solid var(--rcx-line); box-shadow:0 -4px 14px rgba(15,27,48,.08); }
+.rcx-foot { position:sticky; bottom:0; z-index:10; display:flex; align-items:center; gap:12px; margin:16px -28px -48px; padding:10px 28px; background:var(--rcx-card); border-top:1px solid var(--rcx-line); box-shadow:0 -4px 14px rgba(15,27,48,.08); }
 .rcx-status { display:flex; align-items:center; gap:8px; font-weight:700; color:var(--rcx-gray); min-width:0; }
 .rcx-status span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rcx-status i { width:9px; height:9px; border-radius:50%; background:var(--rcx-green); flex:0 0 auto; }
@@ -105,6 +105,10 @@
 @media (max-width:1023px) {
   .rcx-layout { grid-template-columns:1fr; }
   .rcx-tree { max-height:300px; min-height:0; }
+}
+/* La receta pasa a tarjetas según el ancho de su propia tarjeta (la barra lateral ocupa espacio). */
+.rcx-detail { container-type:inline-size; container-name:rcx-detail; }
+@container rcx-detail (max-width: 860px) {
   .rcx-th { display:none; }
   .rcx-grid.rcx-row { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-areas:"name tot" "cargo horas" "equipo hmaq" "mo maq" "ord del"; gap:10px 12px; margin:10px 12px; padding:12px; border:1px solid var(--rcx-line); border-radius:12px; }
   .rcx-tname { grid-area:name; }
@@ -121,8 +125,12 @@
   .rcx-cost { text-align:left; }
   .rcx-totals { text-align:left; }
 }
+@container rcx-detail (min-width: 620px) and (max-width: 860px) {
+  .rcx-rows { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:4px; }
+  .rcx-rows .rcx-grid.rcx-row { margin:6px; }
+}
 @media (max-width:900px) {
-  .rcx-foot { margin:16px -16px -48px; padding:10px 16px; }
+  .rcx-foot { margin:16px 0 -48px; padding:10px 0; }
 }
 @media (max-width:640px) {
   .rcx-chips .rcx-chip:nth-child(n+3) { display:none; }
@@ -130,4 +138,6 @@
   .rcx-add .rcx-btn { width:100%; justify-content:center; }
   .rcx-menu { top:58px; }
   .rcx-status span { display:none; }
+  .rcx-foot { gap:8px; }
+  .rcx-foot .rcx-btn { padding:0 10px; }
 }

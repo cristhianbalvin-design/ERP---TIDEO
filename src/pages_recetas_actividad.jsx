@@ -243,7 +243,7 @@ export default function RecetasActividad() {
           </div>
         </section>
 
-        <section className="rcx-card" aria-label="Receta de la actividad">
+        <section className="rcx-card rcx-detail" aria-label="Receta de la actividad">
           {!actividad ? <div className="rcx-empty">{cargando ? 'Cargando…' : 'Selecciona una actividad.'}</div> : <>
             <div className="rcx-dhead">
               <div><div className="rcx-route">{familiaPorId.get(actividad.familia_trabajo_id)?.nombre || 'Sin trabajo'} › <b>{actividad.codigo || 'Sin código'}</b></div><h2>{actividad.nombre}</h2></div>
@@ -251,7 +251,7 @@ export default function RecetasActividad() {
             </div>
             <div className="rcx-grid rcx-th"><div /><div /><div className="rcx-cat">Mano de obra</div><div className="rcx-cat is-maq">Máquina</div><div /></div>
             <div className="rcx-grid rcx-th"><div>#</div><div>Tarea</div><div>Cargo</div><div>Horas</div><div className="num">Costo</div><div>Equipo</div><div>Horas-máq.</div><div className="num">Costo</div><div /></div>
-            {filas.length ? filas.map(renderFila) : <div className="rcx-empty">Esta actividad todavía no tiene tareas.{puedeEditar ? ' Agrega la primera abajo.' : ''}</div>}
+            {filas.length ? <div className="rcx-rows">{filas.map(renderFila)}</div> : <div className="rcx-empty">Esta actividad todavía no tiene tareas.{puedeEditar ? ' Agrega la primera abajo.' : ''}</div>}
             {puedeEditar && <div className="rcx-add">
               <input className="rcx-search" value={busquedaTarea} onChange={event => { setBusquedaTarea(event.target.value); setMenuTareas(true); }} onFocus={() => setMenuTareas(true)} onBlur={() => setTimeout(() => setMenuTareas(false), 150)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (sugerencias[0]) agregar(sugerencias[0]); } if (event.key === 'Escape') setMenuTareas(false); }} placeholder="Escribe para buscar y añadir una tarea (nombre o código)…" aria-label="Agregar tarea" />
               <button className="rcx-btn" type="button" disabled={!busquedaTarea.trim() || creandoTarea} onClick={crearTarea}>{I.plus} {creandoTarea ? 'Creando…' : 'Crear tarea'}</button>
