@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
+import { useCompactWorkMode } from '../../useCompactWorkMode.js';
 
 const ESTADOS_OT_ASIGNADAS = ['programada', 'ejecucion'];
 
@@ -17,6 +19,7 @@ export default function MisOTsPage({ onNavigate }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [sinPerfilOperativo, setSinPerfilOperativo] = useState(false);
+  useCompactWorkMode(true);
 
   useEffect(() => {
     let vigente = true;
@@ -114,6 +117,7 @@ export default function MisOTsPage({ onNavigate }) {
   return (
     <>
       <div className="page-header">
+        <WorkMenuButton />
         <div>
           <div className="breadcrumb">Operaciones <span>/</span> Mis OTs del día</div>
           <h1>Mis OTs del día</h1>

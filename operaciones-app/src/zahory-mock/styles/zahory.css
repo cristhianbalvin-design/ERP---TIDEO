@@ -4988,3 +4988,17 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-hc-sync-info { margin:0 0 12px; padding:10px 12px; border:1px solid #B2EBF2; border-radius:10px; background:#E0F7FA; color:#0B4F5A; font-size:13px; }
 [data-theme='dark'] .dx-hc-sync-note { color:#FDBA74; }
 [data-theme='dark'] .dx-hc-sync-info { border-color:rgba(34,211,238,.3); background:#0A3038; color:#67E8F9; }
+
+/* Modo trabajo en celular y tablet (data-work-compact lo copia ZahoryScreenHost desde <html>):
+   el header de Operaciones se oculta y cada pantalla muestra su botón ☰ para abrir el cajón. */
+:host([data-work-compact]) .dx-work-menu-button { display:inline-grid; flex:0 0 44px; width:44px; height:44px; place-items:center; border:0; border-radius:8px; background:transparent; color:var(--dx-ui-ink,var(--text)); font-size:21px; cursor:pointer; }
+:host([data-work-compact]) .dx-work-menu-button:hover { background:var(--dx-ui-hover,rgba(26,43,74,.06)); }
+:host([data-work-compact]) .dx-work-menu-button:focus-visible { outline:2px solid var(--cyan,#00ACC1); outline-offset:2px; }
+:host([data-work-compact]) :is(.page-header,.dx-ui-head-page,.dx-ot-head):has(> .dx-work-menu-button) { position:relative; min-height:44px; padding-left:52px; }
+:host([data-work-compact]) :is(.page-header,.dx-ui-head-page,.dx-ot-head) > .dx-work-menu-button { position:absolute; top:0; left:0; }
+:host([data-work-compact]) .page-header:has(> .dx-work-menu-button) .breadcrumb { display:none; }
+:host([data-work-compact]) .zahory-mock-root { min-height:100dvh; }
+:host([data-work-compact]) .dx-recact-mobile-heading { display:flex; align-items:center; gap:4px; height:48px; min-width:0; }
+:host([data-work-compact]) .dx-recact-mobile-heading ~ .dx-recact-header,:host([data-work-compact]) .dx-recact-back { display:none; }
+:host([data-work-compact]) .dx-recact-mobile-back { flex:0 0 44px; width:44px; height:44px; min-height:44px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font-size:20px; }
+:host([data-work-compact]) .dx-recact-mobile-heading strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }

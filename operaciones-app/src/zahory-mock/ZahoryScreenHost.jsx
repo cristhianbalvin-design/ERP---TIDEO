@@ -25,6 +25,26 @@ export function observeZahoryHostTheme(host, documentElement = globalThis.docume
   };
 }
 
+// Modo trabajo en celular/tablet: OperationalApp marca <html data-dx-work-compact="true"> y aquí
+// se copia al host (data-work-compact) para que el CSS del shadow root pueda usar :host([data-work-compact]).
+export function syncZahoryHostWorkCompact(host, documentElement = globalThis.document?.documentElement) {
+  if (!host || !documentElement) return;
+  if (documentElement.dataset?.dxWorkCompact === 'true') host.setAttribute('data-work-compact', '');
+  else host.removeAttribute('data-work-compact');
+}
+
+export function observeZahoryHostWorkCompact(host, documentElement = globalThis.document?.documentElement) {
+  if (!host || !documentElement) return () => {};
+  syncZahoryHostWorkCompact(host, documentElement);
+  if (typeof globalThis.MutationObserver !== 'function') return () => {};
+  const observer = new MutationObserver(() => syncZahoryHostWorkCompact(host, documentElement));
+  observer.observe(documentElement, { attributes: true, attributeFilter: ['data-dx-work-compact'] });
+  return () => {
+    observer.disconnect();
+    host.removeAttribute('data-work-compact');
+  };
+}
+
 const shadowZahoryStyles = transformShadowZahoryStyles(zahoryStyles);
 
 const integrationStyles = `
@@ -71,6 +91,7 @@ export function ZahoryScreenHost({ route, routeParams, onNavigate }) {
   }, []);
 
   useEffect(() => observeZahoryHostTheme(hostRef.current), []);
+  useEffect(() => observeZahoryHostWorkCompact(hostRef.current), []);
 
   return (
     <div className="ops-zahory-host" ref={hostRef}>

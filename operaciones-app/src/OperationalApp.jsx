@@ -6,7 +6,9 @@ import { OperationalHeader } from './OperationalHeader.jsx';
 import { ZahoryScreenHost } from './zahory-mock/ZahoryScreenHost.jsx';
 import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
-import { requestWorkBack } from './workMode.js';
+import { DEFAULT_WORK_BACK_LABEL, WORK_COMPACT_QUERY, requestWorkBack } from './workMode.js';
+import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
+import { useNotificacionesSistema, useTemaOscuro } from './useCuentaOperativa.js';
 import {
   findAreaForRoute,
   findGroupForRoute,
@@ -136,11 +138,19 @@ export function OperationalApp() {
   const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   const [moduleSearch, setModuleSearch] = useState('');
   const [workMode, setWorkModeActive] = useState(() => typeof document !== 'undefined' && (document.documentElement?.dataset.dxWorkMode === 'true' || document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true'));
-  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width:700px), (max-height:520px)').matches);
+  const [workBackLabel, setWorkBackLabel] = useState(() => {
+    const stored = typeof document !== 'undefined' ? document.documentElement?.dataset.dxWorkBack : undefined;
+    return stored === undefined ? DEFAULT_WORK_BACK_LABEL : stored;
+  });
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia(WORK_COMPACT_QUERY).matches);
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => {
-    const onWorkMode = event => setWorkModeActive(Boolean(event.detail?.active));
-    const media = window.matchMedia('(max-width:700px), (max-height:520px)');
+    const onWorkMode = event => {
+      setWorkModeActive(Boolean(event.detail?.active));
+      const label = event.detail?.backLabel;
+      setWorkBackLabel(label === undefined ? DEFAULT_WORK_BACK_LABEL : label);
+    };
+    const media = window.matchMedia(WORK_COMPACT_QUERY);
     const onCompact = event => setCompact(event.matches);
     window.addEventListener('dx-work-mode', onWorkMode);
     window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
@@ -148,6 +158,16 @@ export function OperationalApp() {
     return () => { window.removeEventListener('dx-work-mode', onWorkMode); window.removeEventListener('dx-diagnostico-work-mode', onWorkMode); media.removeEventListener?.('change', onCompact); };
   }, []);
   const workCompact = workMode && compact;
+  // El contenido de las pantallas vive en un shadow root: ZahoryScreenHost copia este atributo
+  // al host para que los botones ☰ se muestren también en tablet.
+  useEffect(() => {
+    const root = typeof document !== 'undefined' ? document.documentElement : null;
+    if (!root?.dataset) return undefined;
+    root.dataset.dxWorkCompact = String(workCompact);
+    return () => { delete root.dataset.dxWorkCompact; };
+  }, [workCompact]);
+  const { notificaciones, markRead: markNotificacionesRead } = useNotificacionesSistema(sesionOperativa?.usuario?.id);
+  const [dark, setDark] = useTemaOscuro();
   useEffect(() => {
     if (!workCompact) { setNavOpen(false); return undefined; }
     const openNav = () => setNavOpen(true);
@@ -279,10 +299,10 @@ export function OperationalApp() {
   };
 
   return (
-    <div className="ops-shell">
+    <div className={`ops-shell${workCompact ? ' is-work-compact' : ''}`}>
       {workCompact && navOpen && <button type="button" className="ops-drawer-backdrop" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
       <aside className={`ops-sidebar${workCompact ? ` is-work-drawer${navOpen ? ' is-open' : ''}` : workMode ? ' is-diagnostico-rail' : ''}${sidebarCollapsed ? ' is-collapsed' : ''}`} aria-hidden={workCompact && !navOpen ? 'true' : undefined} inert={workCompact && !navOpen ? '' : undefined}>
-        {workCompact && <button type="button" className="ops-work-drawer-back" onClick={() => { requestWorkBack(); setNavOpen(false); }}>← Volver a la bandeja</button>}
+        {workCompact && workBackLabel && <button type="button" className="ops-work-drawer-back" onClick={() => { requestWorkBack(); setNavOpen(false); }}>← {workBackLabel}</button>}
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
             <img src={operaIsotipo} alt="OPERA" />
@@ -431,9 +451,21 @@ export function OperationalApp() {
           <span className="ops-sidebar-collapse-icon"><Icon name="chev" size={16} /></span>
           {!sidebarCollapsed && <span>Colapsar</span>}
         </button>
+        {workCompact && (
+          <WorkDrawerFooter
+            empresaNombre={sesionOperativa?.empresa?.nombre_comercial || sesionOperativa?.empresa?.razon_social || 'Empresa'}
+            email={sesionOperativa?.usuario?.email || sesionOperativa?.rolActivo?.nombre || ''}
+            avatarText={(sesionOperativa?.usuario?.email || 'OP').slice(0, 2).toUpperCase()}
+            notificaciones={notificaciones}
+            onMarkRead={markNotificacionesRead}
+            dark={dark}
+            onToggleDark={() => setDark(value => !value)}
+            onSignOut={() => sesionOperativa?.signOut?.()}
+          />
+        )}
       </aside>
       <section className="ops-main-column">
-        <OperationalHeader title={title} sesionOperativa={sesionOperativa} workCompact={workCompact} onMenu={() => setNavOpen(true)} navOpen={navOpen} />
+        <OperationalHeader title={title} sesionOperativa={sesionOperativa} workCompact={workCompact} onMenu={() => setNavOpen(true)} navOpen={navOpen} notificaciones={notificaciones} onMarkNotificacionesRead={markNotificacionesRead} dark={dark} setDark={setDark} />
         {page ? (
           <main className="ops-main">
             <div className="ops-eyebrow">Operaciones</div>

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { I } from './lib/icons.jsx';
 import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID } from './lib/sesionOperativa.js';
-import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 export function SociedadSelector({
   perfilSociedad,
@@ -105,18 +104,11 @@ export function SociedadSelector({
   );
 }
 
-export function OperationalHeader({ title, sesionOperativa, workCompact = false, onMenu, navOpen = false }) {
+export function OperationalHeader({ title, sesionOperativa, workCompact = false, onMenu, navOpen = false, notificaciones = [], onMarkNotificacionesRead, dark = false, setDark }) {
   const [compOpen, setCompOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
   const [isCompactHeader, setIsCompactHeader] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1180px)').matches);
-  const [dark, setDark] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('theme') === 'dark' || document.documentElement.classList.contains('dark');
-  });
-
-  const [notificaciones, setNotificaciones] = useState([]);
-
   useEffect(() => {
     const mediaMobile = window.matchMedia('(max-width: 640px)');
     const onChangeMobile = () => setIsMobile(mediaMobile.matches);
@@ -132,51 +124,7 @@ export function OperationalHeader({ title, sesionOperativa, workCompact = false,
     };
   }, []);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    document.body.classList.toggle('dark', dark);
-    try {
-      localStorage.setItem('theme', dark ? 'dark' : 'light');
-    } catch {}
-  }, [dark]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured() || !sesionOperativa?.usuario?.id) return;
-    const client = getSupabaseClient();
-    client
-      .from('notificaciones_sistema')
-      .select('id, texto, leida, created_at, titulo, prioridad')
-      .eq('user_id', sesionOperativa.usuario.id)
-      .order('created_at', { ascending: false })
-      .limit(30)
-      .then(({ data, error }) => {
-        if (!error && data && data.length) {
-          setNotificaciones(data.map(d => ({
-            id: d.id,
-            text: d.texto,
-            title: d.titulo,
-            read: Boolean(d.leida),
-            time: d.created_at ? new Date(d.created_at).toLocaleDateString() : '',
-            priority: d.prioridad,
-          })));
-        }
-      })
-      .catch(() => {});
-  }, [sesionOperativa?.usuario?.id]);
-
-  const markNotificacionesRead = async (id = null) => {
-    if (id) {
-      setNotificaciones(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-      if (isSupabaseConfigured()) {
-        getSupabaseClient().from('notificaciones_sistema').update({ leida: true }).eq('id', id).catch(() => {});
-      }
-    } else {
-      setNotificaciones(prev => prev.map(n => ({ ...n, read: true })));
-      if (isSupabaseConfigured() && sesionOperativa?.usuario?.id) {
-        getSupabaseClient().from('notificaciones_sistema').update({ leida: true }).eq('user_id', sesionOperativa.usuario.id).catch(() => {});
-      }
-    }
-  };
+  const markNotificacionesRead = (id = null) => onMarkNotificacionesRead?.(id);
 
   const adminAppUrl = import.meta.env.VITE_ADMIN_APP_URL || '/';
   const empresa = sesionOperativa?.empresa;
@@ -403,7 +351,7 @@ export function OperationalHeader({ title, sesionOperativa, workCompact = false,
         <button
           type="button"
           className="icon-btn"
-          onClick={() => setDark(!dark)}
+          onClick={() => setDark?.(!dark)}
           title="Dark mode"
         >
           {dark ? I.sun : I.moon}
