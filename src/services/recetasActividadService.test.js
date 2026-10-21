@@ -30,12 +30,25 @@ test('guardarReceta envía una sola RPC con filas normalizadas', async () => {
       p_empresa_id: 'emp-1',
       p_actividad_id: 'act-1',
       p_filas: [
-        { tarea_id: 'tar-1', cargo_id: null, orden: 1 },
-        { tarea_id: 'tar-2', cargo_id: 'cargo-1', orden: 2 },
+        { tarea_id: 'tar-1', cargo_id: null, horas: 0, activo_id: null, horas_maquina: 0, orden: 1 },
+        { tarea_id: 'tar-2', cargo_id: 'cargo-1', horas: 0, activo_id: null, horas_maquina: 0, orden: 2 },
       ],
     },
   ]]);
   assert.deepEqual(resultado, { insertadas: 1, actualizadas: 0, eliminadas: 0 });
+});
+
+test('guardarReceta conserva horas, equipo y horas-máquina', async () => {
+  llamadas.length = 0;
+  respuesta = { data: { insertadas: 0, actualizadas: 2, eliminadas: 0 }, error: null };
+  await recetasActividadService.guardarReceta('emp-1', 'act-1', [], [
+    { tarea_id: 'tar-1', cargo_id: 'cargo-1', horas: '4', activo_id: 'act-eq', horas_maquina: 2 },
+    { tarea_id: 'tar-2', cargo_id: 'cargo-1', horas: 1.5, activo_id: null, horas_maquina: 3 },
+  ]);
+  assert.deepEqual(llamadas[0][1].p_filas, [
+    { tarea_id: 'tar-1', cargo_id: 'cargo-1', horas: 4, activo_id: 'act-eq', horas_maquina: 2, orden: 1 },
+    { tarea_id: 'tar-2', cargo_id: 'cargo-1', horas: 1.5, activo_id: null, horas_maquina: 0, orden: 2 },
+  ]);
 });
 
 test('guardarReceta propaga el error de la RPC sin llamadas adicionales', async () => {

@@ -2,7 +2,7 @@ import { getSupabaseClient } from '../lib/supabaseClient.js';
 
 const COLUMNAS_ACTIVIDAD = 'id,codigo,nombre,estado';
 const COLUMNAS_CARGO = 'id,codigo,nombre,estado';
-const COLUMNAS_RECETA = 'empresa_id,actividad_id,tarea_id,cargo_id,orden';
+const COLUMNAS_RECETA = 'empresa_id,actividad_id,tarea_id,cargo_id,horas,activo_id,horas_maquina,orden';
 
 export const recetasActividadService = {
   async listarActividades(empresaId) {
@@ -43,11 +43,19 @@ export const recetasActividadService = {
   async guardarReceta(empresaId, actividadId, actuales, deseadas) {
     if (!empresaId || !actividadId) throw new Error('Selecciona una empresa y una actividad para guardar la receta.');
     const supabase = await getSupabaseClient();
-    const payload = (deseadas || []).map((fila, indice) => ({
-      tarea_id: fila.tarea_id,
-      cargo_id: fila.cargo_id || null,
-      orden: indice + 1,
-    }));
+    // Se envían siempre horas, equipo y horas-máquina: la RPC reemplaza la fila completa
+    // y, si faltaran, los dejaría en cero.
+    const payload = (deseadas || []).map((fila, indice) => {
+      const activoId = fila.activo_id || null;
+      return {
+        tarea_id: fila.tarea_id,
+        cargo_id: fila.cargo_id || null,
+        horas: Math.max(0, Number(fila.horas) || 0),
+        activo_id: activoId,
+        horas_maquina: activoId ? Math.max(0, Number(fila.horas_maquina) || 0) : 0,
+        orden: indice + 1,
+      };
+    });
     const { data, error } = await supabase.rpc('reemplazar_receta_actividad', {
       p_empresa_id: empresaId,
       p_actividad_id: actividadId,

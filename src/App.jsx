@@ -90,6 +90,7 @@ const Inventario   = lazy(() => import('./pages_extra.jsx').then(m => ({ default
 const HojaCosteo   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.HojaCosteo })));
 const HojaCosteoWizard = lazy(() => import('./pages_hoja_costeo_wizard.jsx'));
 const CosteoVariables = lazy(() => import('./pages_costeo_variables.jsx'));
+const RecetasActividad = lazy(() => import('./pages_recetas_actividad.jsx'));
 
 // Módulos secundarios
 const MobileFieldView   = lazy(() => import('./pages_mobile.jsx').then(m => ({ default: m.MobileFieldView })));
@@ -386,6 +387,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'hoja_costeo':      return <HojaCosteo/>;
       case 'hoja_costeo_wizard': return <HojaCosteoWizard/>;
       case 'costeo_variables': return <CosteoVariables/>;
+      case 'recetas_actividad': return <RecetasActividad/>;
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
       case 'panel_produccion': return <PanelProduccionOSCliente/>;
