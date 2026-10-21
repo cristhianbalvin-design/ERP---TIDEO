@@ -69,6 +69,7 @@ import {
   retencionIrHonorariosLabel,
 } from './services/rrhhService.js';
 import * as XLSX from 'xlsx';
+import { CATEGORIAS_TIPO_DOCUMENTO, normalizarCategoriaTipoDocumento, sugerirCategoriaTipoDocumento } from './services/tiposDocumentoService.js';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
 import { listNavModules, listNavSections, useTenantNavLabels } from './services/navLabelsService.js';
@@ -4387,6 +4388,9 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
   const handleEdit = (tipo) => {
     setForm({
       nombre: tipo.nombre,
+      categoria: normalizarCategoriaTipoDocumento(tipo.categoria),
+      categoriaOriginal: tipo.categoria && !CATEGORIAS_TIPO_DOCUMENTO.includes(tipo.categoria) ? tipo.categoria : '',
+      categoriaTocada: false,
       ambito: tipo.ambito || 'Ambos',
       exige_vencimiento: Boolean(tipo.exige_vencimiento),
       dias_alerta: tipo.dias_alerta ?? 30,
@@ -4406,6 +4410,9 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
   const handleNew = () => {
     setForm({
       nombre: '',
+      categoria: 'Otros',
+      categoriaOriginal: '',
+      categoriaTocada: false,
       ambito: 'Ambos',
       exige_vencimiento: true,
       dias_alerta: 30,
@@ -4430,6 +4437,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
     try {
       const payload = {
         ...form,
+        categoria: form.categoriaOriginal && !form.categoriaTocada ? form.categoriaOriginal : form.categoria,
         codigo: editando ? editando.codigo : `DOC${String(allTipos.length + 1).padStart(3, '0')}`,
         dias_alerta: form.exige_vencimiento ? (form.dias_alerta || 0) : 0,
         documento_padre_tipo_id: form.documento_padre_tipo_id || null,
@@ -4545,7 +4553,11 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
                 <div className="input-group" style={{ gridColumn: 'span 2' }}>
                   <label>Nombre *</label>
-                  <input className="input" required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Ej: Certificado Médico" />
+                  <input className="input" required value={form.nombre} onChange={e => {
+                    const nombre = e.target.value;
+                    const categoriaSugerida = !editando && !form.categoriaTocada ? sugerirCategoriaTipoDocumento(nombre) : null;
+                    setForm({ ...form, nombre, ...(categoriaSugerida ? { categoria: categoriaSugerida } : {}) });
+                  }} autoFocus placeholder="Ej: Certificado Médico" />
                 </div>
                 <div className="input-group">
                   <label>Ámbito *</label>
@@ -4560,6 +4572,13 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
                   <select className="select" value={form.estado} onChange={e => setForm({ ...form, estado: e.target.value })}>
                     <option value="activo">Activo</option>
                     <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Categoría *</label>
+                  <select className="select" required value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value, categoriaTocada: true })}>
+                    {CATEGORIAS_TIPO_DOCUMENTO.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
+                    {form.categoriaOriginal && <option value={form.categoriaOriginal}>{form.categoriaOriginal}</option>}
                   </select>
                 </div>
                 
@@ -4671,6 +4690,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
                         <th>Código</th>
                         <th>Nombre</th>
                         <th>Ámbito</th>
+                        <th>Categoría</th>
                         <th style={{ textAlign: 'center' }}>Venc.</th>
                         <th style={{ textAlign: 'center' }}>Habilitante</th>
                         <th style={{ textAlign: 'center' }}>Validación</th>
@@ -4688,6 +4708,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
                           <td className="mono text-muted" style={{ fontSize: 12 }}>{t.codigo}</td>
                           <td><strong>{t.nombre}</strong></td>
                           <td><span className="badge badge-cyan" style={{ fontSize: 11 }}>{t.ambito || 'Ambos'}</span></td>
+                          <td><span className="badge badge-gray" style={{ fontSize: 11 }}>{t.categoria || 'Otros'}</span></td>
                           <td style={{ textAlign: 'center' }}>
                             {t.exige_vencimiento ? <span className="badge badge-orange" style={{ fontSize: 10 }}>Sí ({t.dias_alerta}d)</span> : <span className="badge badge-gray" style={{ fontSize: 10 }}>No</span>}
                           </td>

@@ -1,5 +1,19 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
+export const CATEGORIAS_TIPO_DOCUMENTO = [
+  'Contractual',
+  'Identificación',
+  'Seguridad y Salud',
+  'Capacitación',
+  'Otros',
+];
+
+export const normalizarCategoriaTipoDocumento = (categoria) =>
+  CATEGORIAS_TIPO_DOCUMENTO.includes(categoria) ? categoria : 'Otros';
+
+export const sugerirCategoriaTipoDocumento = (nombre) =>
+  /contrato|adenda/i.test(nombre || '') ? 'Contractual' : null;
+
 const makeId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   return `${prefix}_${String(r).replace(/-/g, '').slice(0, 18)}`;
