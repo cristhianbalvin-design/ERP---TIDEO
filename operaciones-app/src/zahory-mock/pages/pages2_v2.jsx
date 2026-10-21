@@ -3,6 +3,8 @@ import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
+import { useCompactWorkMode } from '../../useCompactWorkMode.js';
 import { crearMaterialDesdeSolpe, crearSolpeInterna } from '../../services/solpeService.js';
 
 // ─── OTs Centro de Control Operativo ─────────────────────────────────────────
@@ -508,6 +510,7 @@ const construirConsultaBandejaOT = ({ supabase, empresaId, sociedadId, vistaCons
 const consultaAuxiliarOT = (consulta, ids) => ids.length ? consulta.in('id', ids) : Promise.resolve({ data: [], error: null });
 
 export const OTsListadoPage = ({ onNav }) => {
+  useCompactWorkMode(true);
   const sesionOperativa = useSesionOperativa();
   const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, permiteEscritura, cargando: cargandoSesion, estado: estadoSesion } = sesionOperativa;
   const [filtros, setFiltros] = useS2({ numero: '', estado: '', tecnicoId: '', retrabajos: false });
@@ -688,6 +691,7 @@ export const OTsListadoPage = ({ onNav }) => {
   return (
     <section className="dx-ui dx-ot">
       <header className="dx-ot-head">
+        <WorkMenuButton />
         <div>
           <div className="dx-ui-eyebrow">Taller y operaciones</div>
           <h1 className="dx-ui-title">Bandeja de OTs</h1>
@@ -948,6 +952,7 @@ const PartesDiariosDataTable = ({ rows, onNav, editRoute, openMenu, setOpenMenu 
 
 // ── Gestión de Partes Diarios — Taller ────────────────────────────────────
 export const GestionPartesTallerPage = ({ onNav }) => {
+  useCompactWorkMode(true);
   const sesionOperativa = useSesionOperativa();
   const [tab,      setTab]      = useS2('todos');
   const [search,   setSearch]   = useS2('');
@@ -1030,6 +1035,7 @@ export const GestionPartesTallerPage = ({ onNav }) => {
   return (
     <div className="page" onClick={() => setOpenMenu(null)}>
       <div className="page-header">
+        <WorkMenuButton />
         <div>
           <h1>Gestión de Partes Diarios — Taller</h1>
           <div className="sub">Carapongo y Lurín · {partesReales.length} registros reales</div>

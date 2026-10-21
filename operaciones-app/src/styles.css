@@ -510,3 +510,16 @@ body {
   .header:has(.ops-work-menu-button) .icon-btn { flex:0 0 40px; width:40px; height:40px; }
   .header:has(.ops-work-menu-button) .user-zone { flex:0 0 40px; width:40px; overflow:hidden; }
 }
+
+/* Modo trabajo en tablet: el mismo cajón del celular, activado por clase (WORK_COMPACT_QUERY
+   en workMode.js) en lugar de por ancho. El header se oculta y su contenido pasa al pie del cajón. */
+.ops-shell.is-work-compact { display:block; }
+.ops-shell.is-work-compact .ops-main-column > .header { display:none !important; }
+.ops-shell.is-work-compact .ops-sidebar.is-work-drawer { position:fixed; inset:0 auto 0 0; z-index:1001; display:flex; flex-direction:column; width:min(84vw,320px); max-width:320px; height:100dvh; min-height:0; padding:16px 8px 0; padding-top:max(16px,env(safe-area-inset-top)); transform:translateX(-105%); transition:transform .18s ease; overflow-y:auto; box-shadow:none; }
+.ops-shell.is-work-compact .ops-sidebar.is-work-drawer.is-open { transform:translateX(0); box-shadow:0 12px 32px color-mix(in srgb,var(--navy) 30%,transparent); }
+.ops-shell.is-work-compact .ops-sidebar.is-work-drawer .ops-nav { flex:0 0 auto; max-height:none; overflow:visible; }
+.ops-shell.is-work-compact .ops-sidebar.is-work-drawer .ops-sidebar-collapse { display:none; }
+.ops-shell.is-work-compact .ops-sidebar.is-work-drawer .ops-work-drawer-back { display:block; flex:none; width:100%; min-height:48px; margin:0 0 8px; padding:10px 12px; border:1px solid var(--line,#D5DCE7); border-radius:10px; background:var(--surface,#fff); color:var(--text,#1F2D46); text-align:left; font:700 14px sans-serif; cursor:pointer; }
+.ops-shell.is-work-compact .ops-drawer-backdrop { position:fixed; inset:0; z-index:1000; border:0; background:color-mix(in srgb,var(--navy) 48%,transparent); }
+.ops-shell.is-work-compact .ops-drawer-backdrop:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+.ops-sidebar.is-work-drawer .dx-wdf { margin-inline:-8px; padding-inline:12px; background:var(--navy); }

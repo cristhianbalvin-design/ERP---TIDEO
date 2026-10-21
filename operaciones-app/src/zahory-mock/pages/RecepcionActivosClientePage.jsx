@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
-import { setWorkMode } from '../../workMode.js';
+import { WORK_COMPACT_QUERY, setWorkMode } from '../../workMode.js';
 import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
 import { subirAdjunto, cargarAdjuntosPorEntidades, obtenerUrlAdjunto } from '../../../../src/services/storageService.js';
 import { catalogoComponentesService } from '../../../../src/services/catalogoComponentesService.js';
@@ -109,7 +109,7 @@ export function RecepcionActivosClientePage() {
   }, [empresaId, sociedadId, sesion.estado]);
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => {
-    const media = window.matchMedia('(max-width:680px), (max-height:520px)');
+    const media = window.matchMedia(WORK_COMPACT_QUERY);
     const updateWorkMode = () => setWorkMode(view !== 'list' && media.matches);
     updateWorkMode();
     media.addEventListener?.('change', updateWorkMode);

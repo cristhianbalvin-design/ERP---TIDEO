@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
+import { useCompactWorkMode } from '../../useCompactWorkMode.js';
 import { subirAdjunto } from '../../../../src/services/storageService.js';
 import {
   buscarMaterialesMina, contextoReporteMina, guardarReporteMina, listarReportesMina, revisarReporteMina,
@@ -196,6 +198,7 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
   };
 
   const volverLista = () => { setVista('lista'); setForm(null); setErrorForm(''); };
+  useCompactWorkMode(true, vista === 'lista' ? {} : { backLabel: 'Volver al listado', onBack: volverLista });
 
   // ---------- Formulario ----------
   const otForm = form && (contexto?.ots || []).find(ot => ot.id === form.ot_id);
@@ -284,10 +287,10 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
   };
 
   if (sesion.cargando || sesion.estado === 'cargando') {
-    return <section className="dx-ui dx-rmina"><div className="dx-ui-empty" role="status">Cargando sesión operativa…</div></section>;
+    return <section className="dx-ui dx-rmina"><WorkMenuButton /><div className="dx-ui-empty" role="status">Cargando sesión operativa…</div></section>;
   }
   if (!empresaId || ['sin_empresa', 'sin_sesion'].includes(sesion.estado)) {
-    return <section className="dx-ui dx-rmina"><div className="dx-ui-empty">Selecciona o solicita acceso a una empresa para ver los reportes de mina.</div></section>;
+    return <section className="dx-ui dx-rmina"><WorkMenuButton /><div className="dx-ui-empty">Selecciona o solicita acceso a una empresa para ver los reportes de mina.</div></section>;
   }
 
   return (
@@ -304,6 +307,7 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
     return (
       <>
         <div className="dx-ui-head-page">
+          <WorkMenuButton />
           <div>
             <div className="dx-ui-eyebrow">Taller &amp; Operaciones · Campo</div>
             <h1 className="dx-ui-title">Reportes de mina</h1>
@@ -388,6 +392,7 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
     return (
       <>
         <div className="dx-ui-head-page">
+          <WorkMenuButton />
           <div>
             <div className="dx-ui-eyebrow">Reportes de mina · {form.numero ? 'Edición' : 'Nuevo'}</div>
             <h1 className="dx-ui-title">{titulo}</h1>
@@ -622,6 +627,7 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
     return (
       <>
         <div className="dx-ui-head-page">
+          <WorkMenuButton />
           <div>
             <div className="dx-ui-eyebrow">Reportes de mina · {puedeRevisar ? 'Revisión' : 'Detalle'}</div>
             <h1 className="dx-ui-title">{r.numero || 'Reporte sin número'}</h1>

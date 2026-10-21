@@ -2,6 +2,8 @@ import { useEffect, useState as useS3 } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
+import { useCompactWorkMode } from '../../useCompactWorkMode.js';
 import { eliminarAdjunto, subirAdjunto } from '../../../../src/services/storageService.js';
 import { pedirRepuestosParte } from '../../services/reservasRepuestosService.js';
 import { MaterialAutocomplete } from './MaterialAutocomplete.jsx';
@@ -99,6 +101,7 @@ const BacklogModal = ({ onClose }) => {
 
 // ---------- Parte diario de taller ----------
 export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
+  useCompactWorkMode(true, { backLabel: 'Volver a partes diarios', onBack: () => onNav('partes-taller') });
   const sesionOperativa = useSesionOperativa();
   const [formData, setFormData] = useS3(() => ({
     id: generarIdParte(),
@@ -585,6 +588,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   return (
     <div className="page">
       <div className="page-header">
+        <WorkMenuButton />
         <button className="btn btn-ghost" onClick={() => onNav("partes-taller")}><Icon name="back" size={14}/> Volver</button>
         <div>
           <h1>Parte diario de taller</h1>
