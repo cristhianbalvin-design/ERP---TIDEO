@@ -183,7 +183,7 @@
 .dx-osc-leg span { display:inline-flex; align-items:center; gap:6px; }
 .dx-osc-leg i { width:10px; height:10px; border-radius:3px; }
 .dx-osc-tab b { margin-left:6px; padding:1px 7px; border-radius:999px; background:var(--dx-osc-gray-bg); color:var(--dx-osc-gray-fg); font-size:11px; }
-.dx-osc .card-head { border-color:var(--dx-osc-line); }
+.dx-osc .card-head { flex-wrap:wrap; gap:8px; border-color:var(--dx-osc-line); }
 .dx-osc .tbl .num, .dx-osc .tbl .mono { white-space:nowrap; }
 .dx-osc .badge { border-radius:999px; }
 
@@ -220,6 +220,7 @@
   .dx-osc-row > .dx-osc-estado { grid-area:estado; justify-self:end; }
   .dx-osc-row > .dx-osc-fin { grid-area:fin; }
   .dx-osc-row > .dx-osc-fin::before { content:'Cierre est. '; color:var(--dx-osc-gray); }
+  .dx-osc-row > .dx-osc-fin, .dx-osc-row > .dx-osc-pend { min-width:0; white-space:normal; }
   .dx-osc-row > .dx-osc-go { display:none; }
 }
 @container (max-width: 760px) {
@@ -235,6 +236,8 @@
   .dx-osc-select, .dx-osc-date { flex:1 1 140px; min-width:0; }
   .dx-osc-chips { flex-wrap:nowrap; overflow-x:auto; }
   .dx-osc-chip.is-cobro { margin-left:0; }
+  .dx-osc-row { grid-template-areas:'num estado' 'client client' 'money money' 'fin fin' 'pend pend'; }
+  .dx-osc-row > .dx-osc-pend { text-align:left; }
   .dx-osc-grid, .dx-osc-grid.is-3, .dx-osc-modelos { grid-template-columns:minmax(0,1fr); }
 }
 @container (max-width: 420px) {
