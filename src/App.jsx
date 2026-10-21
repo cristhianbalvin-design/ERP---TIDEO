@@ -56,6 +56,7 @@ const Maestros     = lazy(() => import('./pages_admin.jsx').then(m => ({ default
 const Servicios    = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Servicios })));
 const Tarifarios   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Tarifarios })));
 const Parametros   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Parametros })));
+const NotificacionesConfig = lazy(() => import('./pages_notificaciones_config.jsx'));
 const RRHHAdmin    = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.RRHHAdmin })));
 const Reclutamiento = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.Reclutamiento })));
 const MiPortal      = lazy(() => import('./pages_mi_portal.jsx').then(m => ({ default: m.MiPortal })));
@@ -288,7 +289,9 @@ function MainLayout({ onShowApplicationWelcome }) {
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
-  const activeAllowed = active === 'costeo_variables'
+  const activeAllowed = active === 'notificaciones_config'
+    ? Boolean(role?.permisos?.todo)
+    : active === 'costeo_variables'
     ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
     : puedeVerPantalla(role, active,
       active === 'dashboard' ? DASHBOARDS_ACCESS_ANY_OF : active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'sourcing_bandeja' ? ['ordenes_compra'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
@@ -311,7 +314,7 @@ function MainLayout({ onShowApplicationWelcome }) {
         // Encontrar el primer modulo permitido de acuerdo al orden del SIDEBAR
         for (const group of SIDEBAR) {
           if (group.plataforma && !isSuperadmin) continue;
-          const found = group.items.find(it => puedeVerPantalla(role, it.key, it.accessAnyOf || []));
+          const found = group.items.find(it => (!it.adminOnly || role?.permisos?.todo) && puedeVerPantalla(role, it.key, it.accessAnyOf || []));
           if (found) {
             fallback = found.key;
             break;
@@ -408,6 +411,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'servicios':        return <Servicios/>;
       case 'tarifarios':       return <Tarifarios/>;
       case 'parametros':       return <Parametros/>;
+      case 'notificaciones_config': return <NotificacionesConfig/>;
       case 'rrhh_admin':       return <RRHHAdmin/>;
       case 'metricas_saas':    return isSuperadmin ? <MetricasSaaS/> : <Dashboard role={role}/>;
       case 'salud_implementacion': return isSuperadmin ? <SaludImplementacion/> : <Dashboard role={role}/>;
