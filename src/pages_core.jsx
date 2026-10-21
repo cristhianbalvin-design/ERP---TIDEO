@@ -29,6 +29,7 @@ import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx'
 import { AdvertenciaHojaCosteoDuplicada } from './components/AdvertenciaHojaCosteoDuplicada.jsx';
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 import { TIPOS_COBRO, esCobroMensual, etiquetaTipoCobro, validarCobroOS } from './utils/cobroMensual.js';
+import './os_cliente.css';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -4984,15 +4985,15 @@ function OSCliente() {
   };
 
   const [filtroEstado, setFiltroEstado] = useState('');
-  const [filtroCliente, setFiltroCliente] = useState('');
+  const [busquedaOS, setBusquedaOS] = useState('');
+  const [filtroMonedaOS, setFiltroMonedaOS] = useState('');
+  const [filtroFechaOS, setFiltroFechaOS] = useState('');
+  const [filtroCobroOS, setFiltroCobroOS] = useState(false);
+  const [menuAccionesOS, setMenuAccionesOS] = useState(false);
   const [modalEstado, setModalEstado] = useState(null);
   const [nuevoHito, setNuevoHito] = useState(null);
   const [vinCotModal, setVinCotModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editandoNumCliente, setEditandoNumCliente] = useState(false);
-  const [numClienteTemp, setNumClienteTemp] = useState('');
-  const [editandoNombre, setEditandoNombre] = useState(false);
-  const [nombreTemp, setNombreTemp] = useState('');
   const [tareosOverheadOS, setTareosOverheadOS] = useState([]);
   const hoyOS = new Date().toISOString().slice(0, 10);
   const formularioOSBase = os => ({
@@ -5023,10 +5024,7 @@ function OSCliente() {
   const [eliminandoOS, setEliminandoOS] = useState(false);
 
   useEffect(() => {
-    setEditandoNumCliente(false);
-    setNumClienteTemp('');
-    setEditandoNombre(false);
-    setNombreTemp('');
+    setMenuAccionesOS(false);
   }, [activeParams?.detail]);
 
   useEffect(() => {
@@ -5044,20 +5042,29 @@ function OSCliente() {
   const getNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
   const query = searchQuery.toLowerCase();
 
-  const BADGE = { activa:'badge-green', en_ejecucion:'badge-green', en_pausa:'badge-orange', cerrada:'badge-gray', facturada:'badge-gray', por_facturar:'badge-cyan', anulada:'badge-red' };
   const LABEL = { activa:'Activa', en_ejecucion:'Activa', en_pausa:'En pausa', cerrada:'Cerrada', facturada:'Cerrada', por_facturar:'Pendiente', anulada:'Anulada' };
 
-  const clientesConOS = useMemo(() => [...new Set(osClientesAlcance.map(o => o.cuenta_id).filter(Boolean))].map(id => ({ id, nombre: getNombre(id) })), [osClientesAlcance, cuentas]);
+  // Estados agrupados para los chips del listado (los valores legacy caen en su grupo).
+  const GRUPOS_ESTADO_OS = { activa: ['activa', 'en_ejecucion', 'por_facturar'], en_pausa: ['en_pausa'], cerrada: ['cerrada', 'facturada'], anulada: ['anulada'] };
+  const PILL_OS = { activa:'is-green', en_ejecucion:'is-green', por_facturar:'is-green', en_pausa:'is-amber', cerrada:'is-gray', facturada:'is-gray', anulada:'is-red' };
+  const fechaOS = valor => (valor ? String(valor).slice(0, 10).split('-').reverse().join('/') : '—');
+  const normOS = valor =>String(valor ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-  const filtered = useMemo(() => osClientesAlcance.filter(os => {
-    const matchQ = (os.numero || '').toLowerCase().includes(query) ||
-      (os.nombre || '').toLowerCase().includes(query) ||
-      (os.numero_doc_cliente || '').toLowerCase().includes(query) ||
-      getNombre(os.cuenta_id).toLowerCase().includes(query);
-    return matchQ &&
-      (!filtroEstado || os.estado === filtroEstado) &&
-      (!filtroCliente || os.cuenta_id === filtroCliente);
-  }), [osClientesAlcance, query, filtroEstado, filtroCliente, cuentas]);
+  // Buscador inteligente, moneda y fecha de emisión exacta; los chips de estado se aplican aparte para contar.
+  const baseFiltradaOS = useMemo(() => {
+    const q = normOS(busquedaOS.trim());
+    const qGlobal = normOS(query);
+    return osClientesAlcance.filter(os => {
+      const texto = normOS([os.numero, os.numero_doc_cliente, os.nombre, getNombre(os.cuenta_id), os.responsable_comercial, LABEL[os.estado], etiquetaTipoCobro(os.tipo_cobro), esCobroMensual(os) ? 'mensual' : '', os.monto_aprobado].join(' '));
+      if (qGlobal && !texto.includes(qGlobal)) return false;
+      if (q && !texto.includes(q)) return false;
+      if (filtroMonedaOS && (os.moneda || 'PEN') !== filtroMonedaOS) return false;
+      if (filtroFechaOS && String(os.fecha_emision || '').slice(0, 10) !== filtroFechaOS) return false;
+      if (filtroCobroOS && !esCobroMensual(os)) return false;
+      return true;
+    });
+  }, [osClientesAlcance, query, busquedaOS, filtroMonedaOS, filtroFechaOS, filtroCobroOS, cuentas]);
+  const filtered = baseFiltradaOS.filter(os => !filtroEstado || (GRUPOS_ESTADO_OS[filtroEstado] || [filtroEstado]).includes(os.estado));
 
   const actualizarFormularioOS = (campo, valor) => setFormularioOS(actual => ({ ...actual, [campo]: valor }));
   const abrirNuevaOS = () => {
@@ -5212,7 +5219,7 @@ function OSCliente() {
   );
   const dialogoFormularioOS = modalFormularioOS && (
     <div className="modal-backdrop">
-      <div className="modal" style={{maxWidth:760, width:'calc(100vw - 32px)', maxHeight:'90vh', overflow:'auto'}}>
+      <div className="modal dx-osc dx-osc-modal" style={{maxWidth:760, width:'calc(100vw - 32px)', maxHeight:'90vh', overflow:'auto'}}>
         <div className="modal-head">
           <div><h2>{modalFormularioOS === 'crear' ? 'Nueva OS Cliente' : 'Editar OS Cliente'}</h2><div className="text-muted" style={{fontSize:12}}>La cotización es opcional. Los saldos se inicializan desde el monto aprobado.</div></div>
           <button className="icon-btn" onClick={() => setModalFormularioOS(null)} disabled={guardandoFormularioOS}>{I.x}</button>
@@ -5220,26 +5227,55 @@ function OSCliente() {
         <form onSubmit={guardarFormularioOS}>
           <div className="modal-body">
             {errorFormularioOS && <div className="alert alert-danger" style={{marginBottom:14}}>{errorFormularioOS}</div>}
-            <div className="grid-2" style={{gap:14}}>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Cliente *</label><select className="select" value={formularioOS.cuenta_id} onChange={e => actualizarFormularioOS('cuenta_id', e.target.value)} required><option value="">Selecciona un cliente</option>{(cuentas || []).filter(c => c.estado !== 'inactivo').map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial || c.id}</option>)}</select></div>
-              {modalFormularioOS === 'crear' && <div className="input-group"><label>N° OS interno</label><input className="input" value={formularioOS.numero} onChange={e => actualizarFormularioOS('numero', e.target.value)} placeholder="Automático si se deja vacío" /></div>}
-              <div className="input-group"><label>N° OS del cliente</label><input className="input" value={formularioOS.numero_doc_cliente} onChange={e => actualizarFormularioOS('numero_doc_cliente', e.target.value)} placeholder="Opcional" /></div>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre / alcance de la OS *</label><input className="input" value={formularioOS.nombre} onChange={e => actualizarFormularioOS('nombre', e.target.value)} placeholder="Ej. Alquiler de equipo" required autoFocus /></div>
-              {modalFormularioOS === 'crear' && empresa?.multisociedad_habilitado && <div className="input-group"><label>Sociedad *</label><select className="select" value={formularioOS.sociedad_id} onChange={e => actualizarFormularioOS('sociedad_id', e.target.value)} required><option value="">Selecciona una sociedad</option>{(sociedadesDisponibles || []).filter(s => s.activa !== false).map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre || s.codigo}</option>)}</select></div>}
-              <div className="input-group"><label>Monto aprobado</label><input className="input" type="number" min="0" step="0.01" value={formularioOS.monto_aprobado} onChange={e => actualizarFormularioOS('monto_aprobado', e.target.value)} /></div>
-              <div className="input-group"><label>Moneda</label><select className="select" value={formularioOS.moneda} onChange={e => actualizarFormularioOS('moneda', e.target.value)}>{(monedasActivas.length ? monedasActivas : [{codigo:'PEN',nombre:'Soles'}, {codigo:'USD',nombre:'Dólares'}]).map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre || m.codigo}</option>)}</select></div>
-              <div className="input-group"><label>Fecha de emisión</label><input className="input" type="date" value={formularioOS.fecha_emision} onChange={e => actualizarFormularioOS('fecha_emision', e.target.value)} /></div>
-              <div className="input-group"><label>Inicio</label><input className="input" type="date" value={formularioOS.fecha_inicio} onChange={e => actualizarFormularioOS('fecha_inicio', e.target.value)} /></div>
-              <div className="input-group"><label>Cierre estimado</label><input className="input" type="date" value={formularioOS.fecha_fin} onChange={e => actualizarFormularioOS('fecha_fin', e.target.value)} /></div>
-              <div className="input-group"><label>Tipo de cobro</label><select className="select" value={formularioOS.tipo_cobro} onChange={e => actualizarFormularioOS('tipo_cobro', e.target.value)}>{TIPOS_COBRO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div>
-              {esCobroMensual(formularioOS) ? <div className="input-group"><label>Tarifa mensual sin IGV *</label><input className="input" type="number" min="0.01" step="0.01" value={formularioOS.tarifa_mensual} onChange={e => actualizarFormularioOS('tarifa_mensual', e.target.value)} required /></div> : <div />}
-              {esCobroMensual(formularioOS) && <div className="text-muted" style={{gridColumn:'1/-1', fontSize:12, marginTop:-6}}>Cada mes de la vigencia se crea sola su OT en ejecución el día 1, copiando la OT del mes anterior; la primera OT la creas tú. Los meses incompletos se valorizan prorrateados por días.</div>}
-              <div className="input-group"><label>Condición de pago</label><input className="input" value={formularioOS.condicion_pago} onChange={e => actualizarFormularioOS('condicion_pago', e.target.value)} placeholder="Ej. Crédito 30 días" /></div>
-              <div className="input-group"><label>CEBE</label><select className="select" value={formularioOS.centro_beneficio_id} onChange={e => actualizarFormularioOS('centro_beneficio_id', e.target.value)}><option value="">Sin asignar</option>{cebesFormularioOS.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Responsable comercial</label><select className="select" value={formularioOS.responsable_comercial_id} onChange={e => actualizarFormularioOS('responsable_comercial_id', e.target.value)}><option value="">Sin asignar</option>{(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Estado</label><select className="select" value={formularioOS.estado} onChange={e => actualizarFormularioOS('estado', e.target.value)}><option value="en_ejecucion">Activa</option><option value="en_pausa">En pausa</option><option value="cerrada">Cerrada</option><option value="anulada">Anulada</option></select></div>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Observaciones</label><textarea className="input" rows="3" value={formularioOS.observaciones} onChange={e => actualizarFormularioOS('observaciones', e.target.value)} /></div>
-            </div>
+            <section className="dx-osc-sec">
+              <h4><b>1</b>Cliente y alcance</h4>
+              <div className="dx-osc-grid">
+                <div className="input-group dx-osc-full"><label>Cliente *</label><select className="select" value={formularioOS.cuenta_id} onChange={e => actualizarFormularioOS('cuenta_id', e.target.value)} required><option value="">Selecciona un cliente</option>{(cuentas || []).filter(c => c.estado !== 'inactivo').map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial || c.id}</option>)}</select></div>
+                <div className="input-group dx-osc-full"><label>Nombre / alcance de la OS *</label><input className="input" value={formularioOS.nombre} onChange={e => actualizarFormularioOS('nombre', e.target.value)} placeholder="Ej. Alquiler de equipo" required autoFocus /></div>
+                {modalFormularioOS === 'crear' && <div className="input-group"><label>N° OS interno</label><input className="input" value={formularioOS.numero} onChange={e => actualizarFormularioOS('numero', e.target.value)} placeholder="Automático si se deja vacío" /></div>}
+                <div className="input-group"><label>N° OS del cliente</label><input className="input" value={formularioOS.numero_doc_cliente} onChange={e => actualizarFormularioOS('numero_doc_cliente', e.target.value)} placeholder="Opcional" /></div>
+                {modalFormularioOS === 'crear' && empresa?.multisociedad_habilitado && <div className="input-group"><label>Sociedad *</label><select className="select" value={formularioOS.sociedad_id} onChange={e => actualizarFormularioOS('sociedad_id', e.target.value)} required><option value="">Selecciona una sociedad</option>{(sociedadesDisponibles || []).filter(s => s.activa !== false).map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre || s.codigo}</option>)}</select></div>}
+              </div>
+            </section>
+            <section className="dx-osc-sec">
+              <h4><b>2</b>Monto y forma de cobro</h4>
+              <div className="dx-osc-modelos dx-osc-grid" role="radiogroup" aria-label="Tipo de cobro">
+                {TIPOS_COBRO.map(t => {
+                  const activo = formularioOS.tipo_cobro === t.value;
+                  return (
+                    <button type="button" key={t.value} role="radio" aria-checked={activo} className={`dx-osc-modelo${activo ? ' is-on' : ''}`} onClick={() => actualizarFormularioOS('tipo_cobro', t.value)}>
+                      <span className="dx-osc-radio" />
+                      <span><b>{t.label}</b><small>{t.value === 'recurrente_mensual' ? 'Tarifa fija; la OT de cada mes se crea sola el día 1.' : 'Se valoriza por avance, costo real o hitos de pago.'}</small></span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="dx-osc-grid is-3">
+                <div className="input-group"><label>Monto aprobado</label><input className="input" type="number" min="0" step="0.01" value={formularioOS.monto_aprobado} onChange={e => actualizarFormularioOS('monto_aprobado', e.target.value)} /></div>
+                <div className="input-group"><label>Moneda</label><select className="select" value={formularioOS.moneda} onChange={e => actualizarFormularioOS('moneda', e.target.value)}>{(monedasActivas.length ? monedasActivas : [{codigo:'PEN',nombre:'Soles'}, {codigo:'USD',nombre:'Dólares'}]).map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre || m.codigo}</option>)}</select></div>
+                {esCobroMensual(formularioOS) && <div className="input-group"><label>Tarifa mensual sin IGV *</label><input className="input" type="number" min="0.01" step="0.01" value={formularioOS.tarifa_mensual} onChange={e => actualizarFormularioOS('tarifa_mensual', e.target.value)} required /></div>}
+              </div>
+              {esCobroMensual(formularioOS) && <div className="dx-osc-note">Cada mes de la vigencia se crea sola su OT en ejecución el día 1, copiando la OT del mes anterior; la primera OT la creas tú. Los meses incompletos se valorizan prorrateados por días.</div>}
+            </section>
+            <section className="dx-osc-sec">
+              <h4><b>3</b>Fechas y condiciones</h4>
+              <div className="dx-osc-grid is-3">
+                <div className="input-group"><label>Fecha de emisión</label><input className="input" type="date" value={formularioOS.fecha_emision} onChange={e => actualizarFormularioOS('fecha_emision', e.target.value)} /></div>
+                <div className="input-group"><label>Inicio{esCobroMensual(formularioOS) ? ' *' : ''}</label><input className="input" type="date" value={formularioOS.fecha_inicio} onChange={e => actualizarFormularioOS('fecha_inicio', e.target.value)} /></div>
+                <div className="input-group"><label>Cierre estimado</label><input className="input" type="date" value={formularioOS.fecha_fin} onChange={e => actualizarFormularioOS('fecha_fin', e.target.value)} /></div>
+                <div className="input-group"><label>Condición de pago</label><input className="input" value={formularioOS.condicion_pago} onChange={e => actualizarFormularioOS('condicion_pago', e.target.value)} placeholder="Ej. Crédito 30 días" /></div>
+                <div className="input-group"><label>SLA</label><input className="input" value={formularioOS.sla} onChange={e => actualizarFormularioOS('sla', e.target.value)} placeholder="Opcional" /></div>
+                <div className="input-group"><label>Estado</label><select className="select" value={formularioOS.estado} onChange={e => actualizarFormularioOS('estado', e.target.value)}><option value="en_ejecucion">Activa</option><option value="en_pausa">En pausa</option><option value="cerrada">Cerrada</option><option value="anulada">Anulada</option></select></div>
+              </div>
+            </section>
+            <section className="dx-osc-sec">
+              <h4><b>4</b>Responsable y observaciones</h4>
+              <div className="dx-osc-grid">
+                <div className="input-group"><label>Responsable comercial</label><select className="select" value={formularioOS.responsable_comercial_id} onChange={e => actualizarFormularioOS('responsable_comercial_id', e.target.value)}><option value="">Sin asignar</option>{(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>
+                <div className="input-group"><label>CEBE</label><select className="select" value={formularioOS.centro_beneficio_id} onChange={e => actualizarFormularioOS('centro_beneficio_id', e.target.value)}><option value="">Sin asignar</option>{cebesFormularioOS.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}</select></div>
+                <div className="input-group dx-osc-full"><label>Observaciones</label><textarea className="input" rows="3" value={formularioOS.observaciones} onChange={e => actualizarFormularioOS('observaciones', e.target.value)} /></div>
+              </div>
+            </section>
           </div>
           <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={() => setModalFormularioOS(null)} disabled={guardandoFormularioOS}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={guardandoFormularioOS}>{guardandoFormularioOS ? 'Guardando...' : modalFormularioOS === 'crear' ? 'Crear OS' : 'Guardar cambios'}</button></div>
         </form>
@@ -5356,201 +5392,90 @@ function OSCliente() {
     const comprometidoOS = osComprometidasOS + ocComprometidasOS;
     const margenProyectadoMonto = totalAprobado - realTotalContrato;
     const margenProyectadoPct = totalAprobado > 0 ? Math.round((margenProyectadoMonto / totalAprobado) * 100) : null;
+    const pctAvanceOS = monto => (totalAprobado > 0 ? Math.min(100, Math.max(0, Math.round(Number(monto || 0) / totalAprobado * 100))) : 0);
 
     return (
-      <>
-        <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
+      <div className="dx-osc">
+      <div className="dx-osc-in">
+        <button type="button" className="dx-osc-backlink" onClick={() => navigate('os_cliente')}>{I.chevLeft} Órdenes de servicio</button>
+        <header className="dx-osc-fh">
           <div>
-            <button className="btn btn-ghost" onClick={() => navigate('os_cliente')} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a lista</button>
-            <h1 className="page-title row" style={{gap:10, flexWrap:'wrap'}}>
+            <div className="dx-osc-eyebrow">OS Cliente · {os.numero}</div>
+            <h1 className="dx-osc-title">
               {os.nombre || os.numero}
-              <span className={'badge ' + (BADGE[os.estado] || 'badge-gray')} style={{fontSize:12}}>{LABEL[os.estado] || os.estado}</span>
-              <span className="badge badge-gray" style={{fontSize:11}}>{os.moneda}</span>
+              <span className={`dx-osc-pill ${PILL_OS[os.estado] || 'is-gray'}`}><i />{LABEL[os.estado] || os.estado}</span>
+              <span className="dx-osc-tag is-gray">{os.moneda || 'PEN'}</span>
             </h1>
-            <div className="page-sub" style={{flexWrap:'wrap', gap:6, alignItems:'center'}}>
-              {os.numero} · Cliente: <strong style={{color:'var(--fg)'}}>{getNombre(os.cuenta_id)}</strong>
-              {os.responsable_comercial && <> · {os.responsable_comercial}</>}
-              {editandoNumCliente ? (
-                <span className="row" style={{gap:4, alignItems:'center', marginLeft:4}}>
-                  <span style={{color:'var(--fg-muted)'}}>· Nº OS cliente:</span>
-                  <input
-                    className="input"
-                    style={{fontSize:12, padding:'2px 8px', height:'auto', width:180}}
-                    value={numClienteTemp}
-                    onChange={e => setNumClienteTemp(e.target.value)}
-                    placeholder="Ej. OS-2026-001"
-                    autoFocus
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { actualizarOSCliente(os.id, { numero_doc_cliente: numClienteTemp.trim() || null }); setEditandoNumCliente(false); }
-                      if (e.key === 'Escape') setEditandoNumCliente(false);
-                    }}
-                  />
-                  <button className="btn btn-primary" style={{fontSize:11, padding:'2px 10px', height:'auto'}}
-                    onClick={() => { actualizarOSCliente(os.id, { numero_doc_cliente: numClienteTemp.trim() || null }); setEditandoNumCliente(false); }}>
-                    Guardar
-                  </button>
-                  <button className="btn btn-ghost" style={{fontSize:11, padding:'2px 8px', height:'auto'}}
-                    onClick={() => setEditandoNumCliente(false)}>
-                    Cancelar
-                  </button>
-                </span>
-              ) : (
-                <span className="row" style={{gap:4, alignItems:'center', marginLeft:4}}>
-                  {os.numero_doc_cliente
-                    ? <> · Nº OS cliente: <strong>{os.numero_doc_cliente}</strong></>
-                    : <span style={{color:'var(--fg-muted)', fontSize:12}}>· Sin Nº OS cliente</span>
-                  }
-                  {!cerrada && (
-                    <button className="btn btn-ghost" style={{fontSize:11, padding:'1px 6px', height:'auto', marginLeft:2}}
-                      onClick={() => { setNumClienteTemp(os.numero_doc_cliente || ''); setEditandoNumCliente(true); }}>
-                      ✏
-                    </button>
-                  )}
-                </span>
-              )}
-            </div>
-            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8, fontSize:12}}>
-              <span style={{color:'var(--fg-muted)', fontWeight:600}}>Cobro:</span>
-              <span className={`badge ${esCobroMensual(os) ? 'badge-cyan' : 'badge-gray'}`}>{etiquetaTipoCobro(os.tipo_cobro)}</span>
-              {esCobroMensual(os) && <span>Tarifa mensual <strong>{moneyCurrency(os.tarifa_mensual || 0, os.moneda)}</strong> sin IGV</span>}
-            </div>
-            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
-              <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>CEBE:</span>
-              {!cerrada ? (
-                <select
-                  className="select"
-                  style={{fontSize:12, padding:'3px 8px', height:'auto', width:'auto', minWidth:200}}
-                  value={os.centro_beneficio_id || ''}
-                  onChange={e => actualizarOSCliente(os.id, { centro_beneficio_id: e.target.value || null })}
-                >
-                  <option value="">— Sin CEBE asignado —</option>
-                  {filtrarOpcionesPorSociedadEscritura(
-                    (centrosBeneficio || []).filter(c => c.estado === 'activo'),
-                    modoVistaSociedadOSCliente.sociedadIdEscritura,
-                  ).map(c => (
-                    <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>
-                  ))}
-                </select>
-              ) : (
-                <span style={{fontSize:12}}>
-                  {(centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id)?.nombre || <em style={{color:'var(--fg-muted)'}}>Sin asignar</em>}
-                </span>
-              )}
-            </div>
-            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
-              <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Nombre OS:</span>
-              {!cerrada && editandoNombre ? (
-                <>
-                  <input
-                    className="input"
-                    style={{fontSize:12, padding:'3px 8px', height:'auto', minWidth:260}}
-                    value={nombreTemp}
-                    onChange={e => setNombreTemp(e.target.value)}
-                    autoFocus
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { actualizarOSCliente(os.id, { nombre: nombreTemp.trim() || null }); setEditandoNombre(false); }
-                      if (e.key === 'Escape') setEditandoNombre(false);
-                    }}
-                  />
-                  <button className="btn btn-primary" style={{fontSize:11, padding:'2px 10px', height:'auto'}}
-                    onClick={() => { actualizarOSCliente(os.id, { nombre: nombreTemp.trim() || null }); setEditandoNombre(false); }}>
-                    Guardar
-                  </button>
-                  <button className="btn btn-ghost" style={{fontSize:11, padding:'2px 8px', height:'auto'}}
-                    onClick={() => setEditandoNombre(false)}>
-                    Cancelar
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span style={{fontSize:12}}>{os.nombre || <em style={{color:'var(--fg-muted)'}}>Sin nombre</em>}</span>
-                  {!cerrada && (
-                    <button className="btn btn-ghost" style={{fontSize:11, padding:'1px 6px', height:'auto'}}
-                      onClick={() => { setNombreTemp(os.nombre || ''); setEditandoNombre(true); }}>
-                      ✏
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
-              <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Responsable:</span>
-              {!cerrada ? (
-                <select
-                  className="select"
-                  style={{fontSize:12, padding:'3px 8px', height:'auto', width:'auto', minWidth:200}}
-                  value={os.responsable_comercial_id || ''}
-                  onChange={e => {
-                    const u = (usuarios || []).find(u => u.id === e.target.value);
-                    actualizarOSCliente(os.id, {
-                      responsable_comercial_id: e.target.value || null,
-                      responsable_comercial: u?.nombre || null,
-                    });
-                  }}
-                >
-                  <option value="">— Sin asignar —</option>
-                  {(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                </select>
-              ) : (
-                <span style={{fontSize:12}}>
-                  {os.responsable_comercial || <em style={{color:'var(--fg-muted)'}}>Sin asignar</em>}
-                </span>
-              )}
-            </div>
+            <p className="dx-osc-sub">
+              {getNombre(os.cuenta_id)} · {os.numero_doc_cliente ? <>N° OS del cliente <strong>{os.numero_doc_cliente}</strong></> : 'Sin N° OS del cliente'}
+              {os.fecha_emision && <> · emitida {fechaOS(os.fecha_emision)}</>}
+            </p>
           </div>
-          <div className="row" style={{gap:8, flexWrap:'wrap', alignSelf:'flex-start'}}>
-            {os.cotizacion_id && <button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { detail: os.cotizacion_id })}>{I.file} Ver cotización</button>}
-            {os.cotizacion_especial_id && <button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { especial:'detalle', especial_id:os.cotizacion_especial_id })}>{I.file} Ver cotización especial</button>}
-            {!cerrada && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => abrirEditarOS(os)}>{I.edit} Editar OS</button>}
-            <button className="icon-btn" title="Eliminar OS" style={{color:'var(--danger)'}} onClick={() => abrirEliminarOS(os)}>{I.trash}</button>
-            {!cerrada && <>
-              {os.estado !== 'en_pausa' && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => setModalEstado({ tipo: 'en_pausa' })}>Pausar</button>}
-              {os.estado === 'en_pausa' && <button className="btn btn-secondary" style={{fontSize:12}} onClick={async () => { setSaving(true); await cambiarEstadoOS(os.id, 'activa', ''); setSaving(false); }}>Reactivar</button>}
-              <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => setModalEstado({ tipo: 'cerrada' })}>Cerrar OS</button>
-              <button className="btn btn-secondary" style={{fontSize:12, color:'var(--danger)'}} onClick={() => setModalEstado({ tipo: 'anulada' })}>Anular</button>
-              <button className="btn btn-primary" data-local-form="true" onClick={() => navigate('os_cliente', { detail: os.id, crear_ot: true })}>{I.plus} Crear OT</button>
+          <div className="dx-osc-fh-acts">
+            {os.cotizacion_id && <button type="button" className="dx-osc-ghost" onClick={() => navigate('cotizaciones', { detail: os.cotizacion_id })}>{I.file} Ver cotización</button>}
+            {os.cotizacion_especial_id && <button type="button" className="dx-osc-ghost" onClick={() => navigate('cotizaciones', { especial:'detalle', especial_id:os.cotizacion_especial_id })}>{I.file} Ver cotización especial</button>}
+            {!cerrada && <button type="button" className="dx-osc-ghost" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button>}
+            <button type="button" className="dx-osc-ghost" aria-haspopup="menu" aria-expanded={menuAccionesOS} onClick={() => setMenuAccionesOS(v => !v)}>Más acciones {I.chev}</button>
+            {!cerrada && <button type="button" className="dx-osc-primary" data-local-form="true" onClick={() => navigate('os_cliente', { detail: os.id, crear_ot: true })}>{I.plus} Crear OT</button>}
+            {menuAccionesOS && <>
+              <div className="dx-osc-menu-back" onClick={() => setMenuAccionesOS(false)} />
+              <div className="dx-osc-menu" role="menu">
+                {!cerrada && os.estado !== 'en_pausa' && <button type="button" role="menuitem" onClick={() => { setMenuAccionesOS(false); setModalEstado({ tipo: 'en_pausa' }); }}>Pausar OS</button>}
+                {!cerrada && os.estado === 'en_pausa' && <button type="button" role="menuitem" disabled={saving} onClick={async () => { setMenuAccionesOS(false); setSaving(true); await cambiarEstadoOS(os.id, 'activa', ''); setSaving(false); }}>Reactivar OS</button>}
+                {!cerrada && <button type="button" role="menuitem" onClick={() => { setMenuAccionesOS(false); setModalEstado({ tipo: 'cerrada' }); }}>Cerrar OS</button>}
+                {!cerrada && <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuAccionesOS(false); setModalEstado({ tipo: 'anulada' }); }}>Anular OS</button>}
+                {!cerrada && <hr />}
+                <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuAccionesOS(false); abrirEliminarOS(os); }}>{I.trash} Eliminar OS</button>
+              </div>
             </>}
           </div>
-        </div>
+        </header>
 
-        <div style={{padding:'16px 32px 0'}}>
-          <div className="grid-3" style={{gap:12, marginBottom:16}}>
-            <div className="kpi-card">
-              <div className="kpi-label">Total aprobado</div>
-              <div className="kpi-value">{moneyCurrency(totalAprobado, os.moneda)}</div>
-              <div className="text-muted" style={{fontSize:11}}>{osCotz.length} cotización(es)</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-label">Ejecutado</div>
-              <div className="kpi-value">{moneyCurrency(ejecutado, os.moneda)}</div>
-              <div className="text-muted" style={{fontSize:11}}>Saldo ejec.: {moneyCurrency(os.saldo_por_ejecutar || 0, os.moneda)}</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-label">Valorizado</div>
-              <div className="kpi-value">{moneyCurrency(valorizado, os.moneda)}</div>
-              <div className="text-muted" style={{fontSize:11}}>
-                {osVals.length} valorización(es)
-                {Number(os.saldo_por_valorizar || 0) > 0 && (
-                  <span style={{color:'var(--orange)', marginLeft:6}}>· Saldo: {moneyCurrency(os.saldo_por_valorizar, os.moneda)}</span>
-                )}
-              </div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-label">Facturado</div>
-              <div className="kpi-value">{moneyCurrency(facturado, os.moneda)}</div>
-              <div className="text-muted" style={{fontSize:11}}>Cobrado: {moneyCurrency(os.monto_cobrado || 0, os.moneda)}</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-label">Pendiente de facturar</div>
-              <div className="kpi-value" style={{color: pendiente > 0 ? 'var(--orange)' : 'var(--green)'}}>{moneyCurrency(pendiente, os.moneda)}</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-label">Margen estimado</div>
-              <div className="kpi-value" style={{color: margenEst >= 20 ? 'var(--green)' : margenEst >= 0 ? 'var(--orange)' : 'var(--danger)'}}>{margenEst}%</div>
-              <div className="text-muted" style={{fontSize:11}}>vs ejecutado</div>
-            </div>
+        <section className="dx-osc-meta" aria-label="Datos de la OS">
+          <div><small>Cobro</small><b>{etiquetaTipoCobro(os.tipo_cobro)}</b><span>{esCobroMensual(os) ? `${moneyCurrency(os.tarifa_mensual || 0, os.moneda)} al mes, sin IGV` : 'Por avance, costo real o hitos'}</span></div>
+          <div><small>Vigencia</small><b>{os.fecha_inicio || os.fecha_fin ? `${fechaOS(os.fecha_inicio)} – ${fechaOS(os.fecha_fin)}` : 'Sin fechas'}</b><span>{os.fecha_fin ? 'Cierre estimado' : 'Sin cierre estimado'}</span></div>
+          <div><small>Condición de pago</small><b>{os.condicion_pago || 'Sin definir'}</b><span>{os.sla ? `SLA: ${os.sla}` : 'Sin SLA'}</span></div>
+          <div><small>Responsable comercial</small>
+            {!cerrada ? (
+              <select aria-label="Responsable comercial" value={os.responsable_comercial_id || ''} onChange={e => {
+                const u = (usuarios || []).find(u => u.id === e.target.value);
+                actualizarOSCliente(os.id, { responsable_comercial_id: e.target.value || null, responsable_comercial: u?.nombre || null });
+              }}>
+                <option value="">— Sin asignar —</option>
+                {(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+              </select>
+            ) : <b>{os.responsable_comercial || 'Sin asignar'}</b>}
           </div>
+          <div><small>CEBE</small>
+            {!cerrada ? (
+              <select aria-label="CEBE" value={os.centro_beneficio_id || ''} onChange={e => actualizarOSCliente(os.id, { centro_beneficio_id: e.target.value || null })}>
+                <option value="">— Sin CEBE asignado —</option>
+                {filtrarOpcionesPorSociedadEscritura(
+                  (centrosBeneficio || []).filter(c => c.estado === 'activo'),
+                  modoVistaSociedadOSCliente.sociedadIdEscritura,
+                ).map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>)}
+              </select>
+            ) : <b>{(centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id)?.nombre || 'Sin asignar'}</b>}
+          </div>
+        </section>
 
+        <section className="dx-osc-tiles" aria-label="Montos de la OS">
+          <div className="dx-osc-tile"><small>Aprobado</small><b>{moneyCurrency(totalAprobado, os.moneda)}</b><span>{osCotz.length} cotización(es)</span></div>
+          <div className="dx-osc-tile"><small>Ejecutado</small><b>{moneyCurrency(ejecutado, os.moneda)}</b><span>Saldo ejec.: {moneyCurrency(os.saldo_por_ejecutar || 0, os.moneda)}</span></div>
+          <div className="dx-osc-tile"><small>Valorizado</small><b>{moneyCurrency(valorizado, os.moneda)}</b><span>{osVals.length} valorización(es){Number(os.saldo_por_valorizar || 0) > 0 ? ` · saldo ${moneyCurrency(os.saldo_por_valorizar, os.moneda)}` : ''}</span></div>
+          <div className="dx-osc-tile"><small>Facturado</small><b>{moneyCurrency(facturado, os.moneda)}</b><span>Cobrado: {moneyCurrency(os.monto_cobrado || 0, os.moneda)}</span></div>
+          <div className="dx-osc-tile"><small>Por facturar</small><b style={{color: pendiente > 0 ? 'var(--dx-osc-amber-fg)' : 'var(--dx-osc-green-fg)'}}>{moneyCurrency(pendiente, os.moneda)}</b><span>{totalAprobado > 0 ? `${Math.round(pendiente / totalAprobado * 100)}% del aprobado` : '—'}</span></div>
+          <div className="dx-osc-tile"><small>Margen estimado</small><b style={{color: margenEst >= 20 ? 'var(--dx-osc-green-fg)' : margenEst >= 0 ? 'var(--dx-osc-amber-fg)' : 'var(--dx-osc-red-fg)'}}>{margenEst}%</b><span>vs costo estimado de OTs</span></div>
+        </section>
+
+        <section className="dx-osc-avance" aria-label="Avance del contrato">
+          <div className="dx-osc-avance-top"><h3>Avance del contrato</h3><span>Facturado {pctAvanceOS(facturado)}% · Valorizado {pctAvanceOS(valorizado)}% · Aprobado {moneyCurrency(totalAprobado, os.moneda)}</span></div>
+          <div className="dx-osc-stack" role="img" aria-label={`Facturado ${pctAvanceOS(facturado)}%, valorizado ${pctAvanceOS(valorizado)}%`}>
+            <i style={{width:`${pctAvanceOS(facturado)}%`, background:'var(--dx-osc-green-fg)'}} />
+            <i style={{width:`${Math.max(0, pctAvanceOS(valorizado) - pctAvanceOS(facturado))}%`, background:'var(--dx-osc-cyan)'}} />
+          </div>
+          <div className="dx-osc-leg"><span><i style={{background:'var(--dx-osc-green-fg)'}} />Facturado</span><span><i style={{background:'var(--dx-osc-cyan)'}} />Valorizado sin facturar</span><span><i style={{background:'var(--dx-osc-gray-bg)'}} />Por valorizar</span></div>
+        </section>
           <div className="card" style={{marginBottom:16}}>
             <div className="card-head" style={{justifyContent:'space-between'}}>
               <h3><span style={{width:16,height:16,display:'inline-flex',verticalAlign:'middle',marginRight:6}}>{I.calendar}</span>Calendario de facturación</h3>
@@ -5596,18 +5521,20 @@ function OSCliente() {
                 </div>
             }
           </div>
+
+        <div className="dx-osc-tabs" role="tablist" aria-label="Secciones de la OS">
+          {tabs.map(t => {
+            const cuenta = { 'Cotizaciones': osCotz.length, 'OTs': osOts.length, 'Valorizaciones': osVals.length, 'Facturas': osFacts.length }[t];
+            return (
+              <button type="button" role="tab" aria-selected={activeTab===t} key={t} className={`dx-osc-tab${activeTab===t ? ' is-on' : ''}`} onClick={() => navigate('os_cliente', { detail: os.id, tab: t })}>
+                {t}{cuenta > 0 && <b>{cuenta}</b>}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="tabs os-detail-tabs ficha-detail-tabs" style={{padding:'0 32px'}}>
-          {tabs.map(t => (
-            <button key={t} className={`tab ficha-detail-tab ${activeTab===t?'active':''}`} onClick={() => navigate('os_cliente', { detail: os.id, tab: t })}>
-              {t}
-            </button>
-          ))}
-        </div>
-
-        <div className="os-detail-content" style={{padding:'16px 32px 40px'}}>
-          <div className="card os-detail-panel">
+        <div>
+          <div className="card">
 
             {activeTab === 'Cotizaciones' && <>
               <div className="card-head" style={{justifyContent:'space-between'}}>
@@ -5901,106 +5828,132 @@ function OSCliente() {
         )}
         {dialogoFormularioOS}
         {dialogoEliminarOS}
-      </>
+      </div>
+      </div>
     );
   }
 
-  const osActivas = osClientesAlcance.filter(o => ['activa', 'en_ejecucion'].includes(o.estado));
-  const totalesPorMoneda = osActivas.reduce((acc, o) => { const m = o.moneda || 'PEN'; acc[m] = (acc[m] || 0) + Number(o.monto_aprobado || 0); return acc; }, {});
-  const pendientesPorMoneda = osActivas.reduce((acc, o) => { const m = o.moneda || 'PEN'; acc[m] = (acc[m] || 0) + Number(o.saldo_por_facturar || 0); return acc; }, {});
+  const osActivas = osClientesAlcance.filter(o => GRUPOS_ESTADO_OS.activa.includes(o.estado));
+  const osActivasVista = osActivas.filter(o => !filtroMonedaOS || (o.moneda || 'PEN') === filtroMonedaOS);
+  const sumaPorMoneda = (lista, campo) => lista.reduce((acc, o) => { const m = o.moneda || 'PEN'; acc[m] = (acc[m] || 0) + Number(o[campo] || 0); return acc; }, {});
+  const monedaBaseOS = filtroMonedaOS || empresa?.moneda || 'PEN';
+  // Indicador en la moneda base; las demás monedas van en la nota.
+  const kpiMonedasOS = (porMoneda, notaSinOtras) => {
+    const otras = Object.entries(porMoneda).filter(([m, v]) => m !== monedaBaseOS && v > 0);
+    return { valor: moneyCurrency(porMoneda[monedaBaseOS] || 0, monedaBaseOS), nota: otras.length ? otras.map(([m, v]) => `+ ${moneyCurrency(v, m)}`).join(' · ') : notaSinOtras };
+  };
+  const kpiAprobadoOS = kpiMonedasOS(sumaPorMoneda(osActivasVista, 'monto_aprobado'), `en ${monedaBaseOS}`);
+  const kpiPendienteOS = kpiMonedasOS(sumaPorMoneda(osActivasVista, 'saldo_por_facturar'), `en ${monedaBaseOS}`);
+  const osMensualesActivas = osActivasVista.filter(esCobroMensual);
+  const tarifasMensuales = kpiMonedasOS(sumaPorMoneda(osMensualesActivas, 'tarifa_mensual'), '');
+  const enPausaCount = osClientesAlcance.filter(o => o.estado === 'en_pausa').length;
+  const CHIPS_OS = [['', 'Todas', '#1A2B4A'], ['activa', 'Activa', '#16A34A'], ['en_pausa', 'En pausa', '#E08A00'], ['cerrada', 'Cerrada', '#6B7280'], ['anulada', 'Anulada', '#DC2626']];
+  const hayFiltrosOS = Boolean(busquedaOS || filtroEstado || filtroMonedaOS || filtroFechaOS || filtroCobroOS);
+  const limpiarFiltrosOS = () => { setBusquedaOS(''); setFiltroEstado(''); setFiltroMonedaOS(''); setFiltroFechaOS(''); setFiltroCobroOS(false); };
+  const mensualesEnBase = baseFiltradaOS.filter(esCobroMensual).length;
 
   return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Órdenes de Servicio Cliente</h1>
-          <div className="page-sub">Contratos aprobados y su ejecución</div>
-        </div>
-        <button className="btn btn-primary" onClick={abrirNuevaOS}>{I.plus} Nueva OS</button>
-      </div>
-
-      <div style={{padding:'0 32px 16px'}}>
-        <div className="grid-3" style={{gap:12}}>
-          <div className="kpi-card">
-            <div className="kpi-label">OS activas</div>
-            <div className="kpi-value">{osActivas.length}</div>
+    <div className="dx-osc">
+      <div className="dx-osc-in">
+        <header className="dx-osc-top">
+          <div>
+            <div className="dx-osc-eyebrow">Comercial · Contratos</div>
+            <h1 className="dx-osc-title">Órdenes de servicio</h1>
+            <p className="dx-osc-sub">{osClientesAlcance.length} OS · contratos aprobados por el cliente y cómo avanza su ejecución y facturación.</p>
           </div>
-          <div className="kpi-card">
-            <div className="kpi-label">Monto total aprobado</div>
-            <div className="kpi-value" style={{fontSize: Object.keys(totalesPorMoneda).length > 1 ? 22 : undefined}}>
-              {Object.entries(totalesPorMoneda).map(([m, v]) => <div key={m}>{moneyCurrency(v, m)}</div>)}
-              {Object.keys(totalesPorMoneda).length === 0 && moneyCurrency(0)}
+          <button type="button" className="dx-osc-primary" onClick={abrirNuevaOS}>{I.plus} Nueva OS</button>
+        </header>
+
+        <section className="dx-osc-kpis" aria-label="Resumen de órdenes de servicio">
+          <div className="dx-osc-kpi">
+            <div className="dx-osc-kpi-top"><span>OS activas</span><span className="dx-osc-ico is-cyan">{I.check}</span></div>
+            <strong className="dx-osc-kpi-val">{osActivasVista.length}</strong>
+            <span className="dx-osc-kpi-note">{enPausaCount} en pausa</span>
+          </div>
+          <div className="dx-osc-kpi">
+            <div className="dx-osc-kpi-top"><span>Aprobado activo</span><span className="dx-osc-ico is-blue">{I.file}</span></div>
+            <strong className="dx-osc-kpi-val is-money">{kpiAprobadoOS.valor}</strong>
+            <span className="dx-osc-kpi-note">{kpiAprobadoOS.nota}</span>
+          </div>
+          <div className="dx-osc-kpi">
+            <div className="dx-osc-kpi-top"><span>Pendiente de facturar</span><span className="dx-osc-ico is-amber">{I.clock}</span></div>
+            <strong className="dx-osc-kpi-val is-money">{kpiPendienteOS.valor}</strong>
+            <span className="dx-osc-kpi-note">{kpiPendienteOS.nota}</span>
+          </div>
+          <div className="dx-osc-kpi">
+            <div className="dx-osc-kpi-top"><span>Cobro mensual</span><span className="dx-osc-ico is-green">{I.calendar}</span></div>
+            <strong className="dx-osc-kpi-val">{osMensualesActivas.length}</strong>
+            <span className="dx-osc-kpi-note">{osMensualesActivas.length ? `${tarifasMensuales.valor} al mes${tarifasMensuales.nota ? ` ${tarifasMensuales.nota}` : ''}` : 'Sin OS recurrentes activas'}</span>
+          </div>
+        </section>
+
+        <section className="dx-osc-card" aria-label="Listado de órdenes de servicio">
+          <div className="dx-osc-bar">
+            <h2 className="dx-osc-bar-title">Órdenes de servicio<span className="dx-osc-count">{filtered.length} de {osClientesAlcance.length}</span></h2>
+            <label className="dx-osc-search">{I.search}<input type="search" value={busquedaOS} onChange={e => setBusquedaOS(e.target.value)} placeholder="Buscar N°, cliente, nombre, responsable o N° del cliente" aria-label="Buscar órdenes de servicio" /></label>
+            <input type="date" className="dx-osc-date" value={filtroFechaOS} onChange={e => setFiltroFechaOS(e.target.value)} aria-label="Fecha de emisión exacta" title="Fecha de emisión" />
+            <select className="dx-osc-select" value={filtroMonedaOS} onChange={e => setFiltroMonedaOS(e.target.value)} aria-label="Filtrar por moneda">
+              <option value="">Toda moneda</option>
+              <option value="PEN">Soles (S/)</option>
+              <option value="USD">Dólares (US$)</option>
+            </select>
+            {hayFiltrosOS && <button type="button" className="dx-osc-clear" onClick={limpiarFiltrosOS}>Limpiar</button>}
+          </div>
+          <div className="dx-osc-chips" role="group" aria-label="Filtrar por estado">
+            {CHIPS_OS.map(([estado, etiqueta, punto]) => {
+              const cantidad = baseFiltradaOS.filter(o => !estado || GRUPOS_ESTADO_OS[estado].includes(o.estado)).length;
+              return (
+                <button type="button" key={estado || 'todas'} className={`dx-osc-chip${filtroEstado === estado ? ' is-on' : ''}${cantidad === 0 && estado ? ' is-zero' : ''}`} style={{'--dx-osc-dot': punto}} aria-pressed={filtroEstado === estado} onClick={() => setFiltroEstado(estado)}>
+                  <i />{etiqueta}<b>{cantidad}</b>
+                </button>
+              );
+            })}
+            <button type="button" className={`dx-osc-chip is-cobro${filtroCobroOS ? ' is-on' : ''}`} style={{'--dx-osc-dot': '#00ACC1'}} aria-pressed={filtroCobroOS} onClick={() => setFiltroCobroOS(v => !v)}>
+              <i />Cobro mensual<b>{mensualesEnBase}</b>
+            </button>
+          </div>
+          <div className="dx-osc-cols dx-osc-head" role="row"><span>N° OS</span><span>Nombre · Cliente</span><span>Aprobado · facturado</span><span>Pendiente</span><span>Estado</span><span>Cierre est.</span><span /></div>
+          {filtered.map(os => {
+            const aprobado = Number(os.monto_aprobado || 0);
+            const facturadoOS = Number(os.monto_facturado || 0);
+            const pct = aprobado > 0 ? Math.min(100, Math.round(facturadoOS / aprobado * 100)) : 0;
+            const pendienteOS = Number(os.saldo_por_facturar || 0);
+            const cliente = getNombre(os.cuenta_id);
+            const abrir = () => navigate('os_cliente', { detail: os.id });
+            return (
+              <div key={os.id} className="dx-osc-cols dx-osc-row" role="button" tabIndex={0} aria-label={`Abrir ${os.numero}, ${os.nombre || ''}, ${cliente}, ${LABEL[os.estado] || os.estado}`} onClick={abrir} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } }}>
+                <div className="dx-osc-num">
+                  <span className="dx-osc-mono">{os.numero}</span>
+                  <div className="dx-osc-tags">
+                    <span className="dx-osc-tag is-gray">{os.numero_doc_cliente || 'Sin N° cliente'}</span>
+                    {esCobroMensual(os) && <span className="dx-osc-tag is-mensual">Mensual</span>}
+                  </div>
+                </div>
+                <div className="dx-osc-client"><strong>{os.nombre || '—'}</strong><span>{[cliente, os.responsable_comercial].filter(Boolean).join(' · ')}</span></div>
+                <div className="dx-osc-prog">
+                  <strong>{moneyCurrency(aprobado, os.moneda)}</strong>
+                  <div className="dx-osc-track"><i className={pct >= 100 ? 'is-full' : ''} style={{width:`${pct}%`}} /></div>
+                  <span>Facturado {moneyCurrency(facturadoOS, os.moneda)} · {pct}%</span>
+                </div>
+                <div className={`dx-osc-pend${pendienteOS <= 0 ? ' is-ok' : ''}`}>{moneyCurrency(pendienteOS, os.moneda)}</div>
+                <div className="dx-osc-estado"><span className={`dx-osc-pill ${PILL_OS[os.estado] || 'is-gray'}`}><i />{LABEL[os.estado] || os.estado}</span></div>
+                <div className="dx-osc-fin">{os.fecha_fin ? fechaOS(os.fecha_fin) : '—'}</div>
+                <span className="dx-osc-go" aria-hidden="true">{I.chevRight}</span>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="dx-osc-empty">
+              {osClientesAlcance.length === 0
+                ? <><strong>Aún no hay órdenes de servicio</strong><span>No hay OS Cliente para la sociedad seleccionada. Créala con “Nueva OS”.</span></>
+                : <><strong>Sin resultados</strong><span>Ninguna OS coincide con los filtros.</span><button type="button" className="dx-osc-ghost" onClick={limpiarFiltrosOS}>Limpiar filtros</button></>}
             </div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-label">Pendiente de facturar</div>
-            <div className="kpi-value" style={{color:'var(--orange)', fontSize: Object.keys(pendientesPorMoneda).length > 1 ? 22 : undefined}}>
-              {Object.entries(pendientesPorMoneda).map(([m, v]) => <div key={m}>{moneyCurrency(v, m)}</div>)}
-              {Object.keys(pendientesPorMoneda).length === 0 && moneyCurrency(0)}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{padding:'0 32px 12px', display:'flex', gap:10, flexWrap:'wrap'}}>
-        <select className="select" style={{width:'auto', minWidth:170}} value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)}>
-          <option value="">Todos los clientes</option>
-          {clientesConOS.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
-        <select className="select" style={{width:'auto', minWidth:140}} value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
-          <option value="">Todos los estados</option>
-          <option value="activa">Activa</option>
-          <option value="en_ejecucion">Activa (legacy)</option>
-          <option value="en_pausa">En pausa</option>
-          <option value="cerrada">Cerrada</option>
-          <option value="anulada">Anulada</option>
-        </select>
-      </div>
-
-      <div className="card" style={{margin:'0 32px'}}>
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>N° OS</th>
-                <th>N° Cliente</th>
-                <th>Nombre</th>
-                <th>Cliente</th>
-                <th>Responsable</th>
-                <th>Total aprobado</th>
-                <th>Facturado</th>
-                <th>Pendiente</th>
-                <th>Estado</th>
-                <th>Cierre est.</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(os => (
-                <tr key={os.id} className="hover-row" onClick={() => navigate('os_cliente', { detail: os.id })} style={{cursor:'pointer'}}>
-                  <td className="mono" style={{fontWeight:600}}>{os.numero}</td>
-                  <td className="mono text-muted">{os.numero_doc_cliente || '-'}</td>
-                  <td style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{os.nombre || '-'}</td>
-                  <td>{getNombre(os.cuenta_id)}</td>
-                  <td className="text-muted">{os.responsable_comercial || '-'}</td>
-                  <td className="num" style={{fontWeight:600}}>{moneyCurrency(os.monto_aprobado || 0, os.moneda)}</td>
-                  <td className="num">{moneyCurrency(os.monto_facturado || 0, os.moneda)}</td>
-                  <td className="num" style={{color:'var(--orange)'}}>{moneyCurrency(os.saldo_por_facturar || 0, os.moneda)}</td>
-                  <td><span className={'badge ' + (BADGE[os.estado] || 'badge-gray')}>{LABEL[os.estado] || os.estado}</span></td>
-                  <td className="text-muted">{os.fecha_fin || '-'}</td>
-                  <td onClick={e => e.stopPropagation()}><div className="row" style={{gap:4}}><button className="btn btn-secondary btn-sm" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button><button className="icon-btn" title="Eliminar OS" style={{color:'var(--danger)'}} onClick={() => abrirEliminarOS(os)}>{I.trash}</button><button className="icon-btn" onClick={() => navigate('os_cliente', { detail: os.id })}>{I.chev}</button></div></td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan="11" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{osClientesAlcance.length === 0 ? 'No hay OS Cliente para la sociedad seleccionada.' : 'Sin resultados para los filtros seleccionados.'}</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+          )}
+        </section>
       </div>
       {dialogoFormularioOS}
       {dialogoEliminarOS}
-    </>
+    </div>
   );
 }
 
