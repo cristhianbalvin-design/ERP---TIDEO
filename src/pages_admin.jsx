@@ -15,6 +15,7 @@ import CatalogoComponentesPanel from './components/CatalogoComponentesPanel.jsx'
 import './components/CatalogoComponentesPanel.css';
 import './personal_operativo.css';
 import './ficha_personal.css';
+import './catalogo_servicios.css';
 import { FichaHeader, FichaTabs, FichaCard, FichaDL, FichaKV, FichaAlert, FichaStats, FichaEmpty, FichaTable, FichaMenu, FichaDocRow, FichaHabilitacion, FichaModalHead, FichaPill, fichaTonoDeBadge, fichaIniciales } from './components/FichaPersonalKit.jsx';
 import {
   actualizarSociedad,
@@ -7574,7 +7575,12 @@ function Servicios({ embedded = false }) {
   const importServiciosInputRef = useRef(null);
   const [importRows, setImportRows] = useState([]);
   const [importSummary, setImportSummary] = useState(null);
-  const [seccionesServicio, setSeccionesServicio] = useState({ economia:false, entregables:false, notas:false });
+  const [panelServicio, setPanelServicio] = useState(false);
+  const [busquedaSrv, setBusquedaSrv] = useState('');
+  const [filtroEstadoSrv, setFiltroEstadoSrv] = useState('');
+  const [filtroMonedaSrv, setFiltroMonedaSrv] = useState('');
+  const [filtroFechaSrv, setFiltroFechaSrv] = useState('');
+  const [filtroMensualSrv, setFiltroMensualSrv] = useState(false);
 
   const formBase = { 
     codigo: '', familia_id: '', familia: '', descripcion: '', unidad: 'Servicio',
@@ -7582,7 +7588,6 @@ function Servicios({ embedded = false }) {
     precio_incluido: false, detalle: '', entregables: [], notas_internas: '', spot_catalogo_id: '', tipo_cobro: 'puntual'
   };
   const [form, setForm] = useState(formBase);
-  const formularioServicioRef = useRef(null);
   const [nuevoEntregable, setNuevoEntregable] = useState('');
   const familiaRapidaBase = { codigo: '', nombre: '', descripcion: '', orden: 0 };
   const [creandoFamiliaRapida, setCreandoFamiliaRapida] = useState(false);
@@ -7605,10 +7610,9 @@ function Servicios({ embedded = false }) {
   const verPrecios = role?.permisos?.todo || role?.permisos?.ver_precios;
   
   const margenActual = margenCalc(form.costo, form.precio);
-  const colorMargen = margenActual > 30 ? 'var(--green)' : margenActual >= 10 ? 'var(--orange)' : 'var(--danger)';
+  const claseMargen = m => (m > 30 ? 'is-green' : m >= 10 ? 'is-amber' : 'is-red');
 
   const abrirEditar = (s) => {
-    setSeccionesServicio({ economia:false, entregables:false, notas:false });
     setForm({ 
       id: s.id,
       codigo: s.codigo || s.id || '',
@@ -7632,11 +7636,11 @@ function Servicios({ embedded = false }) {
     setCreandoFamiliaRapida(false);
     setFamiliaRapida(familiaRapidaBase);
     setFamiliaRapidaError('');
-    requestAnimationFrame(() => formularioServicioRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }));
+    setPanelServicio(true);
   };
   
   const cerrar = () => {
-    setSeccionesServicio({ economia:false, entregables:false, notas:false });
+    setPanelServicio(false);
     setEditando(null);
     setForm(formBase);
     setNuevoEntregable('');
@@ -7644,6 +7648,11 @@ function Servicios({ embedded = false }) {
     setFamiliaRapida(familiaRapidaBase);
     setFamiliaRapidaError('');
     setFormError('');
+  };
+
+  const abrirNuevo = () => {
+    cerrar();
+    setPanelServicio(true);
   };
 
   const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
@@ -7893,295 +7902,330 @@ function Servicios({ embedded = false }) {
     }
   };
 
+  // Listado: buscador sin tildes, fecha de alta exacta, moneda y chips; los chips de estado cuentan sobre la base filtrada.
+  const normSrv = valor => String(valor ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const simboloSrv = moneda => (moneda === 'USD' ? 'US$' : 'S/');
+  const esMensualSrv = s => s.tipo_cobro === 'recurrente_mensual';
+  const baseFiltradaSrv = servicios.filter(s => {
+    const q = normSrv(busquedaSrv.trim());
+    if (q && !normSrv([s.codigo, s.descripcion, s.familia, s.unidad, ...(s.entregables || []), esMensualSrv(s) ? 'mensual recurrente' : 'puntual'].join(' ')).includes(q)) return false;
+    if (filtroMonedaSrv && (s.moneda || 'PEN') !== filtroMonedaSrv) return false;
+    if (filtroFechaSrv && String(s.created_at || '').slice(0, 10) !== filtroFechaSrv) return false;
+    if (filtroMensualSrv && !esMensualSrv(s)) return false;
+    return true;
+  });
+  const serviciosVista = baseFiltradaSrv.filter(s => !filtroEstadoSrv || (s.estado || 'activo') === filtroEstadoSrv);
+  const hayFiltrosSrv = Boolean(busquedaSrv || filtroEstadoSrv || filtroMonedaSrv || filtroFechaSrv || filtroMensualSrv);
+  const limpiarFiltrosSrv = () => { setBusquedaSrv(''); setFiltroEstadoSrv(''); setFiltroMonedaSrv(''); setFiltroFechaSrv(''); setFiltroMensualSrv(false); };
+  const activosSrv = servicios.filter(s => (s.estado || 'activo') === 'activo');
+  const familiasUsadas = new Set(servicios.map(s => s.familia_id).filter(Boolean)).size;
+  const sinFamiliaSrv = servicios.filter(s => !s.familia_id).length;
+  const conPrecioSrv = servicios.filter(s => s.precio_incluido || s.precio != null).length;
+  const conMargenSrv = servicios.filter(s => !s.precio_incluido && Number(s.precio) > 0 && s.costo != null);
+  const margenPromedioSrv = conMargenSrv.length ? Math.round(conMargenSrv.reduce((t, s) => t + margenCalc(s.costo, s.precio), 0) / conMargenSrv.length) : null;
+  const CHIPS_SRV = [['', 'Todos', '#1A2B4A'], ['activo', 'Activos', '#16A34A'], ['inactivo', 'Inactivos', '#6B7280']];
+  const accionesSrv = (
+    <div className="dx-srv-tops">
+      <button type="button" className="dx-srv-ghost" onClick={descargarPlantilla}>{I.download} Plantilla</button>
+      <button type="button" className="dx-srv-ghost" disabled={familiasLoading} onClick={() => importServiciosInputRef.current?.click()}>{I.upload} {familiasLoading ? 'Cargando familias...' : 'Importar Excel'}</button>
+      <button type="button" className="dx-srv-primary" onClick={abrirNuevo}>{I.plus} Nuevo servicio</button>
+    </div>
+  );
+  const familiaHeredadaSpot = familiasActivas.find(f => f.id === form.familia_id)?.spot_catalogo_id;
+
   return (
-    <>
-      {embedded ? (
-        <div className="row" style={{justifyContent:'flex-end', marginBottom:18}}>
-          <button className="btn btn-secondary" disabled={familiasLoading} onClick={() => importServiciosInputRef.current?.click()}>{I.download} {familiasLoading ? 'Cargando familias...' : 'Importar Excel'}</button>
-          <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
-        </div>
-      ) : (
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Catálogo de Servicios</h1>
-            <div className="page-sub">Servicios ofrecidos con estructura de costos</div>
+    <div className="dx-srv">
+      <div className={embedded ? '' : 'dx-srv-in'}>
+        {embedded ? (
+          <div className="dx-srv-top" style={{justifyContent:'flex-end'}}>{accionesSrv}</div>
+        ) : (
+          <header className="dx-srv-top">
+            <div>
+              <div className="dx-srv-eyebrow">Maestros · Comercial</div>
+              <h1 className="dx-srv-title">Catálogo de servicios</h1>
+              <p className="dx-srv-sub">{servicios.length} servicios · lo que se cotiza y se factura, con su costo y precio de referencia.</p>
+            </div>
+            {accionesSrv}
+          </header>
+        )}
+        <input ref={importServiciosInputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{display:'none'}} onChange={handleFileUpload} />
+
+        <section className="dx-srv-kpis" aria-label="Resumen del catálogo">
+          <div className="dx-srv-kpi">
+            <div className="dx-srv-kpi-top"><span>Servicios activos</span><span className="dx-srv-ico is-cyan">{I.check}</span></div>
+            <strong className="dx-srv-kpi-val">{activosSrv.length}</strong>
+            <span className="dx-srv-kpi-note">{servicios.length - activosSrv.length} inactivos</span>
           </div>
-          <div className="row">
-            <button className="btn btn-secondary" disabled={familiasLoading} onClick={() => importServiciosInputRef.current?.click()}>{I.download} {familiasLoading ? 'Cargando familias...' : 'Importar Excel'}</button>
-            <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
+          <div className="dx-srv-kpi">
+            <div className="dx-srv-kpi-top"><span>Familias</span><span className="dx-srv-ico is-blue">{I.list}</span></div>
+            <strong className="dx-srv-kpi-val">{familiasUsadas}</strong>
+            <span className="dx-srv-kpi-note">{sinFamiliaSrv ? `${sinFamiliaSrv} servicios sin familia` : 'Todos con familia'}</span>
           </div>
-        </div>
-      )}
-      <input ref={importServiciosInputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{display:'none'}} onChange={handleFileUpload} />
-      <div style={{display:'flex', flexDirection:'column', gap:18}}>
-      <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th style={{width:90}}>Código</th>
-                <th>Familia</th>
-                <th>Descripción</th>
-                <th>Unidad</th>
-                {verCostos && <th>Costo Ref.</th>}
-                {verPrecios && <th>Precio Ref.</th>}
-                {(verCostos || verPrecios) && <th>Margen</th>}
-                <th>Facturable</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="10" className="text-center text-muted" style={{padding:'40px 0'}}>Cargando catálogo...</td></tr>
-              ) : servicios.length === 0 ? (
-                <tr><td colSpan="10" className="text-center text-muted" style={{padding:'40px 0'}}>No hay servicios registrados en el catálogo.</td></tr>
-              ) : servicios.map(s => (
-                <tr key={s.id || s.codigo} className="hover-row">
-                  <td className="mono">{s.codigo || s.id}</td>
-                  <td>{s.familia}</td>
-                  <td style={{fontWeight:500}}>
-                    {s.descripcion}
-                    {s.entregables?.length > 0 && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>· <span className="badge badge-gray">{s.entregables.length} entregables</span></span>}
-                  </td>
-                  <td>{s.unidad}</td>
-                  {verCostos && <td className="mono text-muted">{s.costo == null ? 'Sin estimar' : money(s.costo, s.moneda === 'USD' ? '$' : 'S/')}</td>}
-                  {verPrecios && <td className="mono" style={{fontWeight:600}}>{s.precio_incluido ? <span className="badge badge-gray">Incluido</span> : (s.precio == null ? 'Sin estimar' : money(s.precio, s.moneda === 'USD' ? '$' : 'S/'))}</td>}
-                  {(verCostos || verPrecios) && <td><span className="badge badge-cyan">{s.margen}%</span></td>}
-                  <td>{s.facturable ? <span className="badge badge-green">Sí</span> : <span className="badge badge-gray">No</span>}</td>
-                  <td><span className={`badge ${s.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{s.estado}</span></td>
-                  <td>
-                    <button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={() => abrirEditar(s)} title="Editar servicio">{I.edit}</button>
-                    <button className="icon-btn" style={{color:'var(--danger)', marginLeft: 6}} onClick={() => eliminar(s)} title="Eliminar servicio">{I.trash}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          <div className="dx-srv-kpi">
+            <div className="dx-srv-kpi-top"><span>Con precio de ref.</span><span className="dx-srv-ico is-green">{I.dollar}</span></div>
+            <strong className="dx-srv-kpi-val">{conPrecioSrv}</strong>
+            <span className="dx-srv-kpi-note">{servicios.length - conPrecioSrv} sin estimar</span>
+          </div>
+          {verCostos && verPrecios && (
+            <div className="dx-srv-kpi">
+              <div className="dx-srv-kpi-top"><span>Margen promedio</span><span className="dx-srv-ico is-amber">{I.percent}</span></div>
+              <strong className="dx-srv-kpi-val">{margenPromedioSrv == null ? '—' : `${margenPromedioSrv}%`}</strong>
+              <span className="dx-srv-kpi-note">sobre {conMargenSrv.length} con costo y precio</span>
+            </div>
+          )}
+        </section>
+
+        <section className="dx-srv-card" aria-label="Listado de servicios">
+          <div className="dx-srv-bar">
+            <h2 className="dx-srv-bar-title">Servicios<span className="dx-srv-count">{serviciosVista.length} de {servicios.length}</span></h2>
+            <label className="dx-srv-search">{I.search}<input type="search" value={busquedaSrv} onChange={e => setBusquedaSrv(e.target.value)} placeholder="Buscar código, nombre, familia, unidad o entregable" aria-label="Buscar servicios" /></label>
+            <input type="date" className="dx-srv-date" value={filtroFechaSrv} onChange={e => setFiltroFechaSrv(e.target.value)} aria-label="Fecha de alta exacta" title="Fecha de alta" />
+            <select className="dx-srv-select" value={filtroMonedaSrv} onChange={e => setFiltroMonedaSrv(e.target.value)} aria-label="Filtrar por moneda">
+              <option value="">Toda moneda</option>
+              <option value="PEN">Soles (S/)</option>
+              <option value="USD">Dólares (US$)</option>
+            </select>
+            {hayFiltrosSrv && <button type="button" className="dx-srv-clear" onClick={limpiarFiltrosSrv}>Limpiar</button>}
+          </div>
+          <div className="dx-srv-chips" role="group" aria-label="Filtrar por estado">
+            {CHIPS_SRV.map(([estado, etiqueta, punto]) => {
+              const cantidad = baseFiltradaSrv.filter(s => !estado || (s.estado || 'activo') === estado).length;
+              return (
+                <button type="button" key={estado || 'todos'} className={`dx-srv-chip${filtroEstadoSrv === estado ? ' is-on' : ''}${cantidad === 0 && estado ? ' is-zero' : ''}`} style={{'--dx-srv-dot': punto}} aria-pressed={filtroEstadoSrv === estado} onClick={() => setFiltroEstadoSrv(estado)}>
+                  <i />{etiqueta}<b>{cantidad}</b>
+                </button>
+              );
+            })}
+            <button type="button" className={`dx-srv-chip is-mensual${filtroMensualSrv ? ' is-on' : ''}`} style={{'--dx-srv-dot': '#00ACC1'}} aria-pressed={filtroMensualSrv} onClick={() => setFiltroMensualSrv(v => !v)}>
+              <i />Recurrente mensual<b>{baseFiltradaSrv.filter(esMensualSrv).length}</b>
+            </button>
+          </div>
+          <div className="dx-srv-cols dx-srv-head" role="row"><span>Código</span><span>Servicio · Familia</span><span>{verCostos ? 'Costo ref.' : ''}</span><span>{verPrecios ? 'Precio ref.' : ''}</span><span>{verCostos || verPrecios ? 'Margen' : ''}</span><span>Estado</span><span /></div>
+          {loading ? (
+            <div className="dx-srv-empty"><strong>Cargando catálogo...</strong></div>
+          ) : serviciosVista.map(s => {
+            const activo = (s.estado || 'activo') === 'activo';
+            const margen = !s.precio_incluido && Number(s.precio) > 0 && s.costo != null ? margenCalc(s.costo, s.precio) : null;
+            return (
+              <div key={s.id || s.codigo} className="dx-srv-cols dx-srv-row" role="button" tabIndex={0} aria-label={`Abrir servicio ${s.codigo || ''}, ${s.descripcion || ''}`} onClick={() => abrirEditar(s)} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirEditar(s); } }}>
+                <div className="dx-srv-num">
+                  <span className="dx-srv-mono">{s.codigo || s.id}</span>
+                  <div className="dx-srv-tags">
+                    {s.entregables?.length > 0 && <span className="dx-srv-tag is-gray">{s.entregables.length} entregable{s.entregables.length === 1 ? '' : 's'}</span>}
+                    {esMensualSrv(s) && <span className="dx-srv-tag is-mensual">Mensual</span>}
+                    {s.facturable === false && <span className="dx-srv-tag is-nofact">No facturable</span>}
+                  </div>
+                </div>
+                <div className="dx-srv-client"><strong>{s.descripcion || '—'}</strong><span>{[s.familia || 'Sin familia', s.unidad].filter(Boolean).join(' · ')}</span></div>
+                <div className="dx-srv-monto is-costo">{verCostos && (s.costo == null ? <span>Sin estimar</span> : money(s.costo, simboloSrv(s.moneda)))}</div>
+                <div className="dx-srv-monto is-precio">{verPrecios && (s.precio_incluido ? <b>Incluido</b> : s.precio == null ? <span>Sin estimar</span> : <b>{money(s.precio, simboloSrv(s.moneda))}</b>)}</div>
+                <div className="dx-srv-mg">{(verCostos || verPrecios) && <span className={`dx-srv-margen ${margen == null ? 'is-gray' : claseMargen(margen)}`}>{margen == null ? '—' : `${margen}%`}</span>}</div>
+                <div className="dx-srv-estado"><span className={`dx-srv-pill ${activo ? 'is-green' : 'is-gray'}`}><i />{activo ? 'Activo' : 'Inactivo'}</span></div>
+                <div className="dx-srv-acts" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                  <button type="button" className="dx-srv-iconbtn" onClick={() => abrirEditar(s)} title="Editar servicio" aria-label={`Editar ${s.codigo || 'servicio'}`}>{I.edit}</button>
+                  <button type="button" className="dx-srv-iconbtn is-danger" onClick={() => eliminar(s)} title="Eliminar servicio" aria-label={`Eliminar ${s.codigo || 'servicio'}`}>{I.trash}</button>
+                </div>
+              </div>
+            );
+          })}
+          {!loading && serviciosVista.length === 0 && (
+            <div className="dx-srv-empty">
+              {servicios.length === 0
+                ? <><strong>Aún no hay servicios</strong><span>Créalos con “Nuevo servicio” o impórtalos desde Excel.</span></>
+                : <><strong>Sin resultados</strong><span>Ningún servicio coincide con los filtros.</span><button type="button" className="dx-srv-ghost" onClick={limpiarFiltrosSrv}>Limpiar filtros</button></>}
+            </div>
+          )}
+        </section>
+
+        {importRows.length > 0 && (
+          <section className="dx-srv-card dx-srv-imp" aria-label="Vista previa de importación">
+            <div className="dx-srv-bar">
+              <h2 className="dx-srv-bar-title">Vista previa de importación<span className="dx-srv-count">{importRows.length} filas · {importRows.filter(r => r._errores.length===0).length} válidas · {importRows.filter(r => r._errores.length>0).length} con errores · {importRows.filter(r => r._advertencias?.length).length} con advertencias de familia</span></h2>
+              <button type="button" className="dx-srv-ghost" onClick={() => setImportRows([])}>Subir otro archivo</button>
+              <button type="button" className="dx-srv-ghost" onClick={() => { setImportRows([]); setImportSummary(null); }}>Cerrar</button>
+            </div>
+            <div className="table-wrap">
+              <table className="tbl" style={{minWidth: 1080}}>
+                <thead>
+                  <tr>
+                    <th>Código</th><th>Nombre</th><th>Familia</th><th>Unidad</th><th>Moneda</th><th>Costo</th><th>Precio</th><th>Facturable</th><th>Estado</th><th>Entregables</th><th>Errores</th><th>Advertencias</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.map((r, i) => (
+                    <tr key={i} style={{background: r._errores.length ? 'var(--dx-srv-red-bg)' : 'transparent'}}>
+                      <td className="mono">{r.codigo}</td>
+                      <td>{r.nombre}</td>
+                      <td>{r.familia}</td>
+                      <td>{r.unidad}</td>
+                      <td>{String(r.moneda || 'PEN').toUpperCase()}</td>
+                      <td className="mono">{r.costo_ref}</td>
+                      <td>{r.precio_ref}</td>
+                      <td>{r.facturable ? 'Sí' : 'No'}</td>
+                      <td>{r.estado || 'activo'}</td>
+                      <td className="text-muted" style={{maxWidth:220, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={r.entregables}>{r.entregables}</td>
+                      <td>{r._errores.length ? <span style={{color:'var(--dx-srv-red-fg)', fontSize:12}}>{r._errores.join(', ')}</span> : <span style={{color:'var(--dx-srv-green-fg)', fontSize:12, fontWeight:700}}>OK</span>}</td>
+                      <td>{r._advertencias?.length ? <span style={{color:'var(--dx-srv-amber-fg)', fontSize:12}}>{r._advertencias.join(' ')}</span> : <span className="text-muted">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {importSummary && <div className="alert alert-success" style={{margin:'14px 20px 0'}}>
+              <strong>{importSummary.importados} servicios importados.</strong>
+              {importSummary.advertencias.length > 0 ? <>
+                <div style={{marginTop:8}}>Los siguientes servicios conservaron el texto original, pero quedaron con <code>familia_id = NULL</code>:</div>
+                <ul style={{margin:'8px 0 0 18px'}}>{importSummary.advertencias.map((a, i) => <li key={`${a.fila}-${i}`}>Fila {a.fila} ({a.codigo}): {a.mensaje}</li>)}</ul>
+              </> : <div style={{marginTop:8}}>Todas las familias se normalizaron correctamente.</div>}
+            </div>}
+            <div className="dx-srv-imp-foot">
+              <button type="button" className="dx-srv-primary" onClick={ejecutarImportacion} disabled={Boolean(importSummary) || !importRows.some(r => r._errores.length===0)}>
+                Importar {importRows.filter(r => r._errores.length===0).length} filas válidas
+              </button>
+            </div>
+          </section>
+        )}
       </div>
 
-      <div ref={formularioServicioRef} className="card" style={{order:-1, padding:22, border:'1px solid var(--border)', borderRadius:10}}>
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:18}}>
+      {panelServicio && <>
+        <div className="dx-srv-back" onClick={cerrar} />
+        <aside className="dx-srv-panel" role="dialog" aria-modal="true" aria-label={editando ? `Editar ${form.codigo}` : 'Nuevo servicio'} onKeyDown={e => { if (e.key === 'Escape') cerrar(); }}>
+          <header className="dx-srv-ph">
             <div>
-              <div className="eyebrow">Catálogo de Servicios</div>
-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editando ? 'Editar servicio' : 'Nuevo servicio'}</div>
-            </div>
-            {editando && <button type="button" className="btn btn-secondary btn-sm" onClick={cerrar}>Cancelar edición</button>}
-          </div>
-            {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
-            
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>IDENTIFICACIÓN</div>
-            <div className="grid-2" style={{gap:14, marginBottom:24}}>
-              <div className="input-group">
-                <label>Código *</label>
-                <input className="input" value={form.codigo} onChange={e => upd('codigo', e.target.value)} placeholder="SRV-006" disabled={!!editando} />
-              </div>
-              <div className="input-group">
-                <label>Familia / Categoría</label>
-                <select className="select" value={form.familia_id} onChange={e => seleccionarFamilia(e.target.value)} disabled={familiasLoading}>
-                  <option value="">{familiasLoading ? 'Cargando familias...' : 'Seleccionar familia...'}</option>
-                  {familiasActivas.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-                  <option value="__nueva__">+ Nueva familia...</option>
-                </select>
-                {!form.familia_id && form.familia && !creandoFamiliaRapida && <div className="text-muted" style={{fontSize:11, marginTop:5}}>Familia histórica: {form.familia}. Selecciona una familia normalizada.</div>}
-              </div>
-              <div className="input-group">
-                <label>Código SPOT (override opcional)</label>
-                <select className="select" value={form.spot_catalogo_id || ''} onChange={e => upd('spot_catalogo_id', e.target.value)}>
-                  <option value="">{familiasActivas.find(f => f.id === form.familia_id)?.spot_catalogo_id ? 'Heredado de la familia' : 'Sin detracción'}</option>
-                  {spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}
-                </select>
-                {!form.spot_catalogo_id && form.familia_id && <div className="text-muted" style={{fontSize:11,marginTop:4}}>Heredado de la familia: {spotLabel(spotCatalogo.find(s => s.id === familiasActivas.find(f => f.id === form.familia_id)?.spot_catalogo_id))}</div>}
-              </div>
-              {creandoFamiliaRapida && <div className="card" style={{gridColumn:'1/-1', padding:14, background:'var(--bg-subtle)'}}>
-                <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Nueva familia</div>
-                {familiaRapidaError && <div className="alert alert-danger" style={{marginBottom:10}}>{familiaRapidaError}</div>}
-                <div className="grid-2" style={{gap:10}}>
-                  <div className="input-group"><label>Código *</label><input className="input" value={familiaRapida.codigo} onChange={e => setFamiliaRapida(prev => ({...prev, codigo:e.target.value}))} placeholder="FAM-017" /></div>
-                  <div className="input-group"><label>Nombre *</label><input className="input" value={familiaRapida.nombre} onChange={e => setFamiliaRapida(prev => ({...prev, nombre:e.target.value}))} placeholder="Ej: Servicios especializados" /></div>
-                  <div className="input-group"><label>Orden</label><input className="input" type="number" value={familiaRapida.orden} onChange={e => setFamiliaRapida(prev => ({...prev, orden:e.target.value}))} /></div>
-                  <div className="input-group"><label>Descripción</label><input className="input" value={familiaRapida.descripcion} onChange={e => setFamiliaRapida(prev => ({...prev, descripcion:e.target.value}))} placeholder="Opcional" /></div>
-                </div>
-                <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCreandoFamiliaRapida(false); setFamiliaRapidaError(''); }}>Cancelar</button>
-                  <button type="button" className="btn btn-primary btn-sm" disabled={guardandoFamiliaRapida} onClick={guardarFamiliaRapida}>{guardandoFamiliaRapida ? 'Creando...' : 'Crear y seleccionar'}</button>
-                </div>
-              </div>}
-              <div className="input-group" style={{gridColumn:'1/-1'}}>
-                <label>Descripción (nombre del servicio) *</label>
-                <input className="input" value={form.descripcion} onChange={e => upd('descripcion', e.target.value)} placeholder="Ej: Mantenimiento preventivo mensual" autoFocus />
-              </div>
-              <div className="input-group">
-                <label>Unidad de medida</label>
-                <select className="select" value={form.unidad} onChange={e => upd('unidad', e.target.value)}>
-                  {['Servicio','Hora','Proyecto','Informe','Actividad','Mes','Día','Unidad'].map(u => <option key={u}>{u}</option>)}
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Estado</label>
-                <select className="select" value={form.estado} onChange={e => upd('estado', e.target.value)}>
-                  <option value="activo">Activo</option>
-                  <option value="inactivo">Inactivo</option>
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Tipo de cobro</label>
-                <select className="select" value={form.tipo_cobro} onChange={e => upd('tipo_cobro', e.target.value)}>
-                  <option value="puntual">Servicio puntual</option>
-                  <option value="recurrente_mensual">Recurrente mensual</option>
-                </select>
-                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Referencia del catálogo. El cobro efectivo se define en cada OS Cliente.</div>
+              <div className="dx-srv-eyebrow">Catálogo de servicios</div>
+              <h2>{editando ? `Editar ${form.codigo}` : 'Nuevo servicio'}</h2>
+              <div className="dx-srv-ph-tags">
+                <span className={`dx-srv-pill ${form.estado === 'activo' ? 'is-green' : 'is-gray'}`}><i />{form.estado === 'activo' ? 'Activo' : 'Inactivo'}</span>
+                {form.tipo_cobro === 'recurrente_mensual' && <span className="dx-srv-tag is-mensual">Mensual</span>}
               </div>
             </div>
+            <button type="button" className="dx-srv-x" onClick={cerrar} aria-label="Cerrar">{I.x}</button>
+          </header>
+          <div className="dx-srv-panel-in">
+            <div className="dx-srv-pb">
+              {formError && <div className="alert alert-danger" style={{marginTop:16}}>{formError}</div>}
 
-            {(verCostos || verPrecios) && (
-              <div style={{border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden', marginBottom:18}}>
-                <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesServicio.economia} onClick={()=>setSeccionesServicio(p=>({...p,economia:!p.economia}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesServicio.economia ? '−' : '+'} Economía</button>
-                {seccionesServicio.economia && <div style={{padding:16, borderTop:'1px solid var(--border)'}}>
-                <div className="grid-2" style={{gap:14}}>
-                  <div className="input-group" style={{gridColumn:'1/-1', display:'flex', gap:12, alignItems:'center'}}>
-                    <label style={{margin:0}}>Moneda base:</label>
-                    <select className="select" style={{width:150}} value={form.moneda} onChange={e => upd('moneda', e.target.value)}>
-                      <option value="PEN">Soles (S/)</option>
-                      <option value="USD">Dólares ($)</option>
+              <section className="dx-srv-sec">
+                <h4><b>1</b>Identificación</h4>
+                <div className="dx-srv-grid">
+                  <div className="input-group"><label>Código *</label><input className="input" value={form.codigo} onChange={e => upd('codigo', e.target.value)} placeholder="SRV-006" disabled={!!editando} /></div>
+                  <div className="input-group">
+                    <label>Familia / categoría</label>
+                    <select className="select" value={form.familia_id} onChange={e => seleccionarFamilia(e.target.value)} disabled={familiasLoading}>
+                      <option value="">{familiasLoading ? 'Cargando familias...' : 'Seleccionar familia...'}</option>
+                      {familiasActivas.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                      <option value="__nueva__">+ Nueva familia...</option>
+                    </select>
+                    {!form.familia_id && form.familia && !creandoFamiliaRapida && <div className="dx-srv-hint">Familia histórica: {form.familia}. Selecciona una familia normalizada.</div>}
+                  </div>
+                  {creandoFamiliaRapida && (
+                    <div className="dx-srv-familia dx-srv-full">
+                      <h5>Nueva familia</h5>
+                      {familiaRapidaError && <div className="alert alert-danger" style={{marginBottom:10}}>{familiaRapidaError}</div>}
+                      <div className="dx-srv-grid">
+                        <div className="input-group"><label>Código *</label><input className="input" value={familiaRapida.codigo} onChange={e => setFamiliaRapida(prev => ({...prev, codigo:e.target.value}))} placeholder="FAM-017" /></div>
+                        <div className="input-group"><label>Nombre *</label><input className="input" value={familiaRapida.nombre} onChange={e => setFamiliaRapida(prev => ({...prev, nombre:e.target.value}))} placeholder="Ej: Servicios especializados" /></div>
+                        <div className="input-group"><label>Orden</label><input className="input" type="number" value={familiaRapida.orden} onChange={e => setFamiliaRapida(prev => ({...prev, orden:e.target.value}))} /></div>
+                        <div className="input-group"><label>Descripción</label><input className="input" value={familiaRapida.descripcion} onChange={e => setFamiliaRapida(prev => ({...prev, descripcion:e.target.value}))} placeholder="Opcional" /></div>
+                      </div>
+                      <div className="dx-srv-familia-acts">
+                        <button type="button" className="dx-srv-ghost" onClick={() => { setCreandoFamiliaRapida(false); setFamiliaRapidaError(''); }}>Cancelar</button>
+                        <button type="button" className="dx-srv-primary" disabled={guardandoFamiliaRapida} onClick={guardarFamiliaRapida}>{guardandoFamiliaRapida ? 'Creando...' : 'Crear y seleccionar'}</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="input-group dx-srv-full"><label>Nombre del servicio *</label><input className="input" value={form.descripcion} onChange={e => upd('descripcion', e.target.value)} placeholder="Ej: Mantenimiento preventivo mensual" autoFocus /></div>
+                  <div className="input-group">
+                    <label>Unidad de medida</label>
+                    <select className="select" value={form.unidad} onChange={e => upd('unidad', e.target.value)}>
+                      {['Servicio','Hora','Proyecto','Informe','Actividad','Mes','Día','Unidad'].map(u => <option key={u}>{u}</option>)}
                     </select>
                   </div>
                   <div className="input-group">
-                    <label>Costo de referencia ({form.moneda === 'USD' ? '$' : 'S/'})</label>
-                    <input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="Sin estimar" disabled={!verCostos || form.precio_incluido} />
+                    <label>Estado</label>
+                    <select className="select" value={form.estado} onChange={e => upd('estado', e.target.value)}>
+                      <option value="activo">Activo</option>
+                      <option value="inactivo">Inactivo</option>
+                    </select>
                   </div>
-                  <div className="input-group">
-                    <label>Precio de referencia ({form.moneda === 'USD' ? '$' : 'S/'})</label>
-                    <input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="Sin estimar" disabled={!verPrecios || form.precio_incluido} />
+                  <div className="input-group dx-srv-full">
+                    <label>Código SPOT (opcional)</label>
+                    <select className="select" value={form.spot_catalogo_id || ''} onChange={e => upd('spot_catalogo_id', e.target.value)}>
+                      <option value="">{familiaHeredadaSpot ? 'Heredado de la familia' : 'Sin detracción'}</option>
+                      {spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}
+                    </select>
+                    {!form.spot_catalogo_id && form.familia_id && <div className="dx-srv-hint">Heredado de la familia: {spotLabel(spotCatalogo.find(s => s.id === familiaHeredadaSpot))}</div>}
                   </div>
-                  {!form.precio_incluido && (Number(form.costo) > 0 || Number(form.precio) > 0) && (
-                    <div className="input-group" style={{gridColumn:'1/-1', display:'flex', flexDirection:'row', alignItems:'center', gap:10}}>
-                      <label style={{margin:0}}>Margen calculado:</label>
-                      <strong style={{color: colorMargen, fontSize:15}}>{margenActual}%</strong>
+                </div>
+              </section>
+
+              <section className="dx-srv-sec">
+                <h4><b>2</b>Tipo de cobro de referencia</h4>
+                <div className="dx-srv-modelos" role="radiogroup" aria-label="Tipo de cobro de referencia">
+                  {[['puntual', 'Servicio puntual', 'Se valoriza por avance, costo real o hitos.'], ['recurrente_mensual', 'Recurrente mensual', 'Tarifa fija por mes.']].map(([valor, titulo, ayuda]) => (
+                    <button type="button" key={valor} role="radio" aria-checked={form.tipo_cobro === valor} className={`dx-srv-modelo${form.tipo_cobro === valor ? ' is-on' : ''}`} onClick={() => upd('tipo_cobro', valor)}>
+                      <span className="dx-srv-radio" />
+                      <span><b>{titulo}</b><small>{ayuda}</small></span>
+                    </button>
+                  ))}
+                </div>
+                <div className="dx-srv-hint">Referencia del catálogo. El cobro efectivo se define en cada OS Cliente.</div>
+              </section>
+
+              {(verCostos || verPrecios) && (
+                <section className="dx-srv-sec">
+                  <h4><b>3</b>Economía</h4>
+                  <div className="dx-srv-grid is-3">
+                    <div className="input-group">
+                      <label>Moneda</label>
+                      <select className="select" value={form.moneda} onChange={e => upd('moneda', e.target.value)}>
+                        <option value="PEN">Soles (S/)</option>
+                        <option value="USD">Dólares (US$)</option>
+                      </select>
                     </div>
-                  )}
-                  <div className="input-group" style={{gridColumn:'1/-1'}}>
-                    <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14, marginTop:4}}>
-                      <input type="checkbox" checked={form.facturable} onChange={e => upd('facturable', e.target.checked)} style={{width:16, height:16}} />
-                      <span><strong>Es facturable</strong> (Genera línea de cobro al cliente)</span>
+                    <div className="input-group"><label>Costo de referencia ({simboloSrv(form.moneda)})</label><input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="Sin estimar" disabled={!verCostos || form.precio_incluido} /></div>
+                    <div className="input-group"><label>Precio de referencia ({simboloSrv(form.moneda)})</label><input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="Sin estimar" disabled={!verPrecios || form.precio_incluido} /></div>
+                  </div>
+                  <div className="dx-srv-grid" style={{marginTop:12}}>
+                    {!form.precio_incluido && (Number(form.costo) > 0 || Number(form.precio) > 0)
+                      ? <div className="dx-srv-margenbox"><span>Margen calculado</span><b className={`dx-srv-margen ${claseMargen(margenActual)}`}>{margenActual}%</b></div>
+                      : <div className="dx-srv-margenbox"><span>Margen calculado</span><span className="dx-srv-hint" style={{margin:0}}>Ingresa costo y precio</span></div>}
+                    <label className="dx-srv-switch">
+                      <input type="checkbox" checked={form.facturable} onChange={e => upd('facturable', e.target.checked)} />
+                      <span><b>Es facturable</b><small>Genera línea de cobro al cliente</small></span>
                     </label>
                   </div>
+                </section>
+              )}
+
+              <section className="dx-srv-sec">
+                <h4><b>{verCostos || verPrecios ? 4 : 3}</b>Entregables</h4>
+                {form.entregables.length > 0 && (
+                  <div className="dx-srv-ents">
+                    {form.entregables.map((ent, idx) => (
+                      <span key={idx} className="dx-srv-ent"><span title={ent}>{ent}</span><button type="button" onClick={() => quitarEntregable(idx)} aria-label={`Quitar ${ent}`}>{I.x}</button></span>
+                    ))}
+                  </div>
+                )}
+                <div className="dx-srv-addrow">
+                  <input className="input" value={nuevoEntregable} onChange={e => setNuevoEntregable(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarEntregable())} placeholder="Ej: Capacitación 36 horas" aria-label="Nuevo entregable" />
+                  <button type="button" className="dx-srv-ghost" onClick={agregarEntregable}>{I.plus} Agregar</button>
                 </div>
-                </div>}
-              </div>
-            )}
+              </section>
 
-            <div style={{border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden', marginBottom:18}}>
-              <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesServicio.entregables} onClick={()=>setSeccionesServicio(p=>({...p,entregables:!p.entregables}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesServicio.entregables ? '−' : '+'} Entregables</button>
-              {seccionesServicio.entregables && <div style={{padding:16, borderTop:'1px solid var(--border)'}}>
-              {form.entregables.map((ent, idx) => (
-                <div key={idx} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:6, marginBottom:6, fontSize:13}}>
-                  <span style={{color:'var(--fg-muted)'}}>•</span>
-                  <span style={{flex:1}}>{ent}</span>
-                  <button type="button" className="icon-btn" style={{padding:2, color:'var(--danger)'}} onClick={() => quitarEntregable(idx)}>{I.trash}</button>
-                </div>
-              ))}
-              <div style={{display:'flex', gap:8, marginTop:8}}>
-                <input className="input" style={{flex:1}} value={nuevoEntregable} onChange={e => setNuevoEntregable(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarEntregable())} placeholder="Ej: Capacitación 36 horas" />
-                <button type="button" className="btn btn-secondary" style={{padding:'0 16px'}} onClick={agregarEntregable}>{I.plus} Agregar entregable</button>
-              </div>
-              </div>}
+              <section className="dx-srv-sec">
+                <h4><b>{verCostos || verPrecios ? 5 : 4}</b>Notas internas</h4>
+                <textarea className="input" rows={3} value={form.notas_internas} onChange={e => upd('notas_internas', e.target.value)} placeholder="Instrucciones opcionales para ventas o cotizaciones..." aria-label="Notas internas" style={{width:'100%'}} />
+              </section>
             </div>
-
-            <div style={{border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden', marginBottom:24}}>
-              <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesServicio.notas} onClick={()=>setSeccionesServicio(p=>({...p,notas:!p.notas}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesServicio.notas ? '−' : '+'} Notas internas</button>
-              {seccionesServicio.notas && <div className="input-group" style={{padding:16, borderTop:'1px solid var(--border)'}}>
-              <textarea className="input" rows={3} value={form.notas_internas} onChange={e => upd('notas_internas', e.target.value)} placeholder="Instrucciones opcionales para ventas o cotizaciones..." />
-              </div>}
-            </div>
-
-            <div className="row" style={{justifyContent:'flex-end', gap:10}}>
-              <button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button>
-              <button type="button" className="btn btn-primary" data-local-form="true" onClick={guardar}>{I.save} {editando ? 'Guardar cambios' : 'Crear servicio'}</button>
-            </div>
-      </div>
-      </div>
-
-      {importRows.length > 0 && (
-        <div className="card" style={{padding:22, marginTop:18}}>
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-            <div>
-              <div className="eyebrow">Importar Excel</div>
-              <div className="font-display" style={{fontSize:20, fontWeight:700}}>Vista previa de servicios</div>
-            </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setImportRows([]); setImportSummary(null); }}>Cerrar</button>
           </div>
-          <div className="col" style={{gap:20}}>
-                      <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
-                        <div>
-                          <strong>{importRows.length} filas analizadas</strong>
-                          <div className="text-muted" style={{fontSize:12}}>
-                            {importRows.filter(r => r._errores.length===0).length} válidas, {importRows.filter(r => r._errores.length>0).length} con errores, {importRows.filter(r => r._advertencias?.length).length} con advertencias de familia
-                          </div>
-                        </div>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setImportRows([])}>Subir otro archivo</button>
-                      </div>
-                      <div className="table-wrap" style={{maxHeight: 300, overflow:'auto'}}>
-                        <table className="table" style={{minWidth: 1080}}>
-                          <thead>
-                            <tr>
-                              <th>Código</th>
-                              <th>Nombre</th>
-                              <th>Familia</th>
-                              <th>Unidad</th>
-                              <th>Moneda</th>
-                              <th>Costo</th>
-                              <th>Precio</th>
-                              <th>Facturable</th>
-                              <th>Estado</th>
-                              <th>Entregables</th>
-                              <th>Errores</th>
-                              <th>Advertencias</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {importRows.map((r, i) => (
-                              <tr key={i} style={{background: r._errores.length ? 'var(--danger-subtle)' : 'transparent'}}>
-                                <td className="mono">{r.codigo}</td>
-                                <td>{r.nombre}</td>
-                                <td>{r.familia}</td>
-                                <td>{r.unidad}</td>
-                                <td>{String(r.moneda || 'PEN').toUpperCase()}</td>
-                                <td className="mono">{r.costo_ref}</td>
-                                <td>{r.precio_ref}</td>
-                                <td>{r.facturable ? 'Sí' : 'No'}</td>
-                                <td>{r.estado || 'activo'}</td>
-                                <td className="text-muted" style={{maxWidth:220, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={r.entregables}>{r.entregables}</td>
-                                <td>
-                                  {r._errores.length ? (
-                                    <span style={{color:'var(--danger)', fontSize:12}}>{r._errores.join(', ')}</span>
-                                  ) : (
-                                    <span style={{color:'var(--green)', fontSize:12}}>OK</span>
-                                  )}
-                                </td>
-                                <td>{r._advertencias?.length ? <span style={{color:'var(--orange)', fontSize:12}}>{r._advertencias.join(' ')}</span> : <span className="text-muted">—</span>}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      {importSummary && <div className="alert alert-success" style={{marginTop:14}}>
-                        <strong>{importSummary.importados} servicios importados.</strong>
-                        {importSummary.advertencias.length > 0 ? <>
-                          <div style={{marginTop:8}}>Los siguientes servicios conservaron el texto original, pero quedaron con <code>familia_id = NULL</code>:</div>
-                          <ul style={{margin:'8px 0 0 18px'}}>{importSummary.advertencias.map((a, i) => <li key={`${a.fila}-${i}`}>Fila {a.fila} ({a.codigo}): {a.mensaje}</li>)}</ul>
-                        </> : <div style={{marginTop:8}}>Todas las familias se normalizaron correctamente.</div>}
-                      </div>}
-                      <div className="row" style={{justifyContent:'flex-end'}}>
-                        <button className="btn btn-primary" onClick={ejecutarImportacion} disabled={Boolean(importSummary) || !importRows.some(r => r._errores.length===0)}>
-                          Importar {importRows.filter(r => r._errores.length===0).length} filas válidas
-                        </button>
-                      </div>
-          </div>
-        </div>
-      )}
-    </>
+          <footer className="dx-srv-pfoot">
+            <button type="button" className="dx-srv-ghost" onClick={cerrar}>Cancelar</button>
+            <button type="button" className="dx-srv-primary" data-local-form="true" onClick={guardar}>{I.save} {editando ? 'Guardar cambios' : 'Crear servicio'}</button>
+          </footer>
+        </aside>
+      </>}
+    </div>
   );
 }
 
