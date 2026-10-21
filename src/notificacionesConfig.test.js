@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizarDiasAnticipacion, validarUmbralMinutos, construirMatrizDestinatarios,
-  reglaTieneCambios, etiquetaEstadoEnvio,
+  reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, etiquetaRolDestinatario,
 } from './services/notificacionesConfigService.js';
 
 test('normaliza días únicos entre 1 y 180 en orden descendente', () => {
@@ -26,13 +26,34 @@ test('construye la matriz limitada a roles y canales soportados', () => {
   assert.deepEqual(construirMatrizDestinatarios({
     rrhh: { correo: true, campana: false, sms: true },
     desconocido: { correo: true },
-  }, ['rrhh'], ['correo', 'campana']), { rrhh: { correo: true, campana: false } });
+  }, ['rrhh'], ['correo', 'campana']), { rrhh: { correo: true, campana: false }, correos_adicionales: [] });
+});
+
+test('normaliza y valida correos adicionales, incluyendo duplicados y máximo', () => {
+  assert.deepEqual(normalizarCorreosAdicionales(['  Ana@Example.com  ', 'b@x.com']), ['ana@example.com', 'b@x.com']);
+  assert.throws(() => normalizarCorreosAdicionales(['correo-inválido']), /correo válido/i);
+  assert.throws(() => normalizarCorreosAdicionales(['Ana@x.com', 'ana@x.com']), /ya está agregado/i);
+  assert.throws(() => normalizarCorreosAdicionales(Array.from({ length: 11 }, (_, i) => `u${i}@x.com`)), /hasta 10/i);
+});
+
+test('conserva correos adicionales en el payload de destinatarios', () => {
+  assert.deepEqual(construirMatrizDestinatarios({ rrhh: { correo: true }, correos_adicionales: ['A@x.com'] }, ['rrhh'], ['correo']), {
+    rrhh: { correo: true }, correos_adicionales: ['a@x.com'],
+  });
 });
 
 test('detecta cambios respecto de la regla original', () => {
   const regla = { activo: true, parametros: { a: 1 }, destinatarios: {}, __original: { activo: true, parametros: { a: 1 }, destinatarios: {} } };
   assert.equal(reglaTieneCambios(regla), false);
   assert.equal(reglaTieneCambios({ ...regla, activo: false }), true);
+  assert.equal(reglaTieneCambios({ ...regla, destinatarios: { correos_adicionales: ['uno@x.com'] } }), true);
+});
+
+test('traduce etiquetas de rol del historial', () => {
+  assert.equal(etiquetaRolDestinatario('rrhh'), 'RRHH');
+  assert.equal(etiquetaRolDestinatario('jefe'), 'Jefe directo');
+  assert.equal(etiquetaRolDestinatario('colaborador'), 'Colaborador');
+  assert.equal(etiquetaRolDestinatario('correo_adicional'), 'Correo adicional');
 });
 
 test('etiqueta estados del historial y omisión por falta de correo', () => {

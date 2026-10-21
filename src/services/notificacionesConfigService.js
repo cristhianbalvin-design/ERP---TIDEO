@@ -37,6 +37,20 @@ export function validarUmbralMinutos(value) {
   return umbral;
 }
 
+export function normalizarCorreosAdicionales(value) {
+  const correos = Array.isArray(value) ? value.map(correo => String(correo).trim().toLowerCase()).filter(Boolean) : [];
+  if (correos.length > 10) throw new RangeError('Puedes agregar hasta 10 correos adicionales por evento.');
+  if (correos.some(correo => !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(correo))) {
+    throw new RangeError('Ingresa un correo válido.');
+  }
+  if (new Set(correos).size !== correos.length) throw new RangeError('Ese correo ya está agregado.');
+  return correos;
+}
+
+export function etiquetaRolDestinatario(rol) {
+  return ({ rrhh: 'RRHH', jefe: 'Jefe directo', colaborador: 'Colaborador', correo_adicional: 'Correo adicional' })[rol] || String(rol || '');
+}
+
 export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados = [], canalesSoportados = []) {
   const roles = new Set(rolesSoportados.filter(rol => ['rrhh', 'jefe', 'colaborador'].includes(rol)));
   const canales = new Set(canalesSoportados.filter(canal => ['campana', 'correo'].includes(canal)));
@@ -49,6 +63,7 @@ export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados
     }
     if (Object.keys(fila).length) matriz[rol] = fila;
   }
+  matriz.correos_adicionales = normalizarCorreosAdicionales(destinatarios?.correos_adicionales);
   return matriz;
 }
 
