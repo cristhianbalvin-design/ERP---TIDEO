@@ -179,13 +179,15 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   const suma = hitos.reduce((sum, hito) => sum + numero(hito.porcentaje), 0);
   const patch = (key, field, value) => onChange(hitos.map(hito => hito.client_key === key ? { ...hito, [field]:value } : hito));
   return <div>
-    <label className="row" style={{gap:8, marginBottom:12}}><input type="checkbox" checked={activos} disabled={disabled} onChange={event => onActivosChange(event.target.checked)} /> Usar hitos de pago</label>
+    {disabled
+      ? <div className="dx-cotesp-kv" style={{marginBottom:activos ? 12 : 0}}><span>Hitos de pago</span><b>{activos ? `${hitos.length} ${hitos.length === 1 ? 'hito' : 'hitos'}` : 'Sin hitos'}</b></div>
+      : <label className="row" style={{gap:8, marginBottom:12}}><input type="checkbox" checked={activos} disabled={disabled} onChange={event => onActivosChange(event.target.checked)} /> Usar hitos de pago</label>}
     {activos && <>
-      <div className="table-wrap"><table className="tbl"><thead><tr><th>Concepto</th><th>%</th><th>Condición</th><th>Monto estimado</th>{!disabled && <th />}</tr></thead><tbody>{disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
+      <div className="table-wrap"><table className="tbl"><thead><tr><th>Concepto</th><th>%</th><th>Condición</th><th>{disabled ? 'Monto' : 'Monto estimado'}</th>{!disabled && <th />}</tr></thead><tbody>{disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
         <td className="dx-cotesp-celltxt">{hito.concepto || '—'}</td>
         <td className="num">{numero(hito.porcentaje)}%</td>
         <td className="dx-cotesp-celltxt">{hito.condicion || '—'}</td>
-        <td className="num">{formatMoney(numero(total) * numero(hito.porcentaje) / 100, moneda)}</td>
+        <td className="num">{formatMoney(hito.monto ?? Math.round(numero(total) * numero(hito.porcentaje)) / 100, moneda)}</td>
       </tr>)}{!disabled && hitos.map((hito, index) => <tr key={hito.client_key || hito.id || index}>
         <td><input className="input" value={hito.concepto || ''} disabled={disabled} onChange={event => patch(hito.client_key, 'concepto', event.target.value)} /></td>
         <td><input className="input" type="number" min="0" max="100" step="0.01" value={hito.porcentaje ?? ''} disabled={disabled} onChange={event => patch(hito.client_key, 'porcentaje', event.target.value)} /></td>
@@ -193,7 +195,7 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
         <td className="num">{formatMoney(numero(total) * numero(hito.porcentaje) / 100, moneda)}</td>
         {!disabled && <td><button type="button" className="btn btn-ghost" aria-label="Eliminar hito" onClick={() => onChange(hitos.filter(row => row.client_key !== hito.client_key))}>×</button></td>}
       </tr>)}</tbody></table></div>
-      <div className={Math.abs(suma - 100) <= 0.01 ? 'alert alert-info' : 'alert alert-warning'} style={{marginTop:10}}>Porcentaje acumulado: <strong>{suma}%</strong>. Debe sumar exactamente 100%.</div>
+      {!disabled && <div className={Math.abs(suma - 100) <= 0.01 ? 'alert alert-info' : 'alert alert-warning'} style={{marginTop:10}}>Porcentaje acumulado: <strong>{suma}%</strong>. Debe sumar exactamente 100%.</div>}
       {!disabled && <button type="button" className="btn btn-secondary" onClick={() => onChange([...hitos, nuevoHito()])}>+ Agregar hito</button>}
     </>}
   </div>;
@@ -818,7 +820,10 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   if (loading) return <div className="p-4 text-muted">Cargando Cotización Especial…</div>;
   if (!isSupabaseConfigured()) return <div className="p-4"><div className="alert alert-danger">Supabase no está configurado.</div></div>;
 
-  const selectorDatos = <>
+  const selectorDatos = readonly ? <>
+    <div className="dx-cotesp-kv"><span>Contacto</span><b>{contacto?.nombre || contacto?.email || 'Sin contacto'}</b></div>
+    <div className="dx-cotesp-kv"><span>Validez</span><b>{form.validez_tipo === 'dias' ? `${form.validez_dias || '—'} días` : (form.validez_fecha ? new Date(`${form.validez_fecha}T00:00:00`).toLocaleDateString('es-PE', { day:'2-digit', month:'short', year:'numeric' }) : '—')}</b></div>
+  </> : <>
     <div className="grid-2"><div className="input-group"><label>Contacto (opcional)</label><select className="input" value={form.contacto_id} disabled={readonly || !form.cuenta_id} onChange={event => setForm(current => ({ ...current, contacto_id:event.target.value }))}><option value="">Sin contacto</option>{contactosCuenta.map(row => <option key={row.id} value={row.id}>{row.nombre || row.email || row.id}</option>)}</select></div>
       <div className="input-group"><label>Tipo de validez</label><select className="input" value={form.validez_tipo} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_tipo:event.target.value }))}><option value="dias">Por días</option><option value="fecha_exacta">Fecha exacta</option></select></div></div>
     <div className="input-group" style={{marginTop:10}}>{form.validez_tipo === 'dias' ? <><label>Días de validez</label><input className="input" type="number" min="1" value={form.validez_dias ?? ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_dias:event.target.value }))} /></> : <><label>Válida hasta</label><input className="input" type="date" value={form.validez_fecha || ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_fecha:event.target.value }))} /></>}</div>
