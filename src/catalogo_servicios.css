@@ -215,7 +215,6 @@
 }
 @container (max-width: 760px) {
   .dx-srv-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .dx-srv-modelos { grid-template-columns:minmax(0,1fr); }
 }
 @container (max-width: 600px) {
   .dx-srv-in { padding:18px 14px 32px; }
@@ -227,7 +226,7 @@
   .dx-srv-chip.is-mensual { margin-left:0; }
   .dx-srv-ph { padding:16px; }
   .dx-srv-pb { padding:4px 14px 24px; }
-  .dx-srv-grid, .dx-srv-grid.is-3 { grid-template-columns:minmax(0,1fr); }
+  .dx-srv-grid, .dx-srv-grid.is-3, .dx-srv-modelos { grid-template-columns:minmax(0,1fr); }
   .dx-srv-pfoot > button { flex:1; }
 }
 @container (max-width: 420px) {
