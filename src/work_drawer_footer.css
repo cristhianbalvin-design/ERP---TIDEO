@@ -9,7 +9,7 @@
 .dx-wdf-btn { position:relative; display:flex; align-items:center; gap:8px; min-width:0; min-height:44px; padding:0 10px; border:1px solid var(--dx-wdf-line); border-radius:10px; background:var(--dx-wdf-fill); color:var(--dx-wdf-fg); font-size:13px; font-weight:600; text-align:left; }
 .dx-wdf-btn span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dx-wdf-btn:hover, .dx-wdf-btn.is-active { background:var(--dx-wdf-hover); }
-.dx-wdf-badge { margin-left:auto; min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:#DC2626; color:#fff; font-size:11px; font-weight:700; line-height:20px; text-align:center; }
+.dx-wdf-badge { position:absolute; top:-7px; right:-5px; min-width:20px; box-shadow:0 0 0 2px var(--navy,#1A2B4A); height:20px; padding:0 6px; border-radius:999px; background:#DC2626; color:#fff; font-size:11px; font-weight:700; line-height:20px; text-align:center; }
 .dx-wdf-user { display:flex; align-items:center; gap:10px; min-width:0; padding:6px 4px 0 6px; }
 .dx-wdf-avatar { flex:none; display:grid; place-items:center; width:36px; height:36px; border-radius:50%; background:var(--dx-wdf-cyan); color:#fff; font:700 12px 'Sora',sans-serif; }
 .dx-wdf-user-text { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }

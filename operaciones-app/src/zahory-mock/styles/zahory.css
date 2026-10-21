@@ -4998,6 +4998,10 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 :host([data-work-compact]) :is(.page-header,.dx-ui-head-page,.dx-ot-head) > .dx-work-menu-button { position:absolute; top:0; left:0; }
 :host([data-work-compact]) .page-header:has(> .dx-work-menu-button) .breadcrumb { display:none; }
 :host([data-work-compact]) .zahory-mock-root { min-height:100dvh; }
+:host([data-work-compact]) .ops-page:has(.dx-work-card) { height:100dvh !important; min-height:0; max-height:100dvh !important; }
+:host([data-work-compact]) .dx-work-page.dx-scope.dx-work-card { height:100dvh !important; min-height:0 !important; max-height:100dvh !important; }
+:host([data-work-compact]) .dx-work-page .dx-work-identity:has(> .dx-work-menu-button) { grid-template-columns:44px minmax(0,1fr) auto; align-items:center; column-gap:10px; }
+:host([data-work-compact]) .dx-work-page .dx-work-identity:has(> .dx-work-menu-button) > .dx-work-meta { grid-column:1 / -1; }
 :host([data-work-compact]) .dx-recact-mobile-heading { display:flex; align-items:center; gap:4px; height:48px; min-width:0; }
 :host([data-work-compact]) .dx-recact-mobile-heading ~ .dx-recact-header,:host([data-work-compact]) .dx-recact-back { display:none; }
 :host([data-work-compact]) .dx-recact-mobile-back { flex:0 0 44px; width:44px; height:44px; min-height:44px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font-size:20px; }
