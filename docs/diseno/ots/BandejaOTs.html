@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bandeja de OTs — mock</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#E9ECF0;font-family:'DM Sans',sans-serif}
+  .mk-bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#1A2B4A;color:#fff;font-size:13px}
+  .mk-bar button{height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:transparent;color:#fff;cursor:pointer;font:inherit}
+  .mk-bar button.on{background:#00ACC1;border-color:#00ACC1;color:#02161A}
+  .mk-bar span{opacity:.75;margin:0 2px 0 10px}
+  .mk-frame{display:flex;margin:16px auto;background:#F4F6F8;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+  .mk-side{width:240px;flex:none;background:#14213A}
+  .mk-frame.is-mobile .mk-side{display:none}
+  .mk-main{flex:1;min-width:0}
+  .dark .mk-frame{background:#020617}
+  .mk-note{max-width:1100px;margin:0 auto 24px;padding:0 16px;color:#4B5563;font-size:13px}
+
+  /* ===== Pantalla (clases nuevas dx-otb-) ===== */
+  .dx-otb{--n:#1A2B4A;--cy:#00ACC1;--cyf:#0B4F5A;--cyb:#E0F7FA;--vi:#5B3A8C;--vib:#F0EAFB;--amf:#8A4B00;--amb:#FFF3E0;--amd:#E08A00;--grf:#14633A;--grb:#E3F6EA;--grd:#16A34A;--blf:#1E4E8C;--blb:#E6EFFB;--rdf:#9B1C1C;--rdb:#FDECEC;--rd:#DC2626;--gr:#6B7280;--grb2:#F1F3F5;--grf2:#4B5563;--ink:#1F2937;--line:#E4E7EB;--line2:#EEF0F3;--bd:#C9CFD8;--bg:#F4F6F8;--hd:#F8F9FA;--card:#fff;--hov:#F6FBFC;
+    container-type:inline-size;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans',sans-serif}
+  .dark .dx-otb{--n:#F8FAFC;--cy:#22D3EE;--cyf:#67E8F9;--cyb:#0A3038;--vi:#D8B4FE;--vib:#321B3B;--amf:#FDBA74;--amb:#3A2810;--amd:#F59E0B;--grf:#86EFAC;--grb:#12351F;--grd:#4ADE80;--blf:#93C5FD;--blb:#13294B;--rdf:#FCA5A5;--rdb:#3B1414;--rd:#F87171;--gr:#94A3B8;--grb2:#273244;--grf2:#CBD5E1;--ink:#F8FAFC;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.08);--bd:#475569;--bg:#020617;--hd:#0F172A;--card:#0F172A;--hov:#172033}
+  .dx-otb *{box-sizing:border-box}
+  .dx-otb button,.dx-otb input,.dx-otb select{font:inherit}
+  .dx-otb button{cursor:pointer}
+  .dx-otb svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .dx-otb :focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+  .dx-otb-in{padding:24px 28px 48px}
+  .dx-otb-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .dx-otb-eyebrow{color:var(--cyf);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .dx-otb-title{margin:4px 0;color:var(--n);font:700 28px/1.2 Sora,sans-serif}
+  .dx-otb-sub{margin:0;color:var(--gr)}
+  .dx-otb-primary{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 18px;border:0;border-radius:10px;background:#1A2B4A;color:#fff;font-weight:700;white-space:nowrap}
+  .dark .dx-otb-primary{background:#00ACC1;color:#02161A}
+  .dx-otb-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+  .dx-otb-kpi{display:flex;min-width:0;flex-direction:column;gap:2px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(15,27,48,.04);color:inherit;text-align:left}
+  .dx-otb-kpi:hover{background:var(--hov)}
+  .dx-otb-kpi.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+  .dx-otb-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .dx-otb-ico{display:flex;width:32px;height:32px;flex:none;align-items:center;justify-content:center;border-radius:9px}
+  .dx-otb-ico.is-cyan{background:var(--cyb);color:var(--cyf)} .dx-otb-ico.is-amber{background:var(--amb);color:var(--amf)} .dx-otb-ico.is-violet{background:var(--vib);color:var(--vi)} .dx-otb-ico.is-red{background:var(--rdb);color:var(--rdf)}
+  .dx-otb-kpi-val{margin-top:6px;color:var(--n);font:700 26px/1.1 Sora,sans-serif}
+  .dx-otb-kpi-note{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+  .dx-otb-kpi.is-alert{border-color:color-mix(in srgb,var(--amd) 45%,var(--line))}
+  .dx-otb-kpi.is-alert .dx-otb-kpi-val{color:var(--amf)}
+  .dx-otb-kpi.is-danger{border-color:color-mix(in srgb,var(--rd) 40%,var(--line))}
+  .dx-otb-kpi.is-danger .dx-otb-kpi-val{color:var(--rdf)}
+  .dx-otb-card{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(15,27,48,.04)}
+  .dx-otb-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line)}
+  .dx-otb-bar h2{margin:0 auto 0 0;color:var(--n);font:700 16px/1.4 Sora,sans-serif}
+  .dx-otb-count{margin-left:8px;color:var(--gr);font:500 13px 'DM Sans'}
+  .dx-otb-search{display:flex;width:300px;max-width:100%;height:44px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--gr)}
+  .dx-otb-search:focus-within{border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 15%,transparent)}
+  .dx-otb-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:14px}
+  .dx-otb-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--hd)}
+  .dx-otb-chips{display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:0}
+  .dx-otb-chip{display:inline-flex;height:36px;align-items:center;gap:8px;padding:0 12px 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;white-space:nowrap}
+  .dx-otb-chip i{width:8px;height:8px;border-radius:50%;background:var(--d,#6B7280)}
+  .dx-otb-chip b{min-width:22px;padding:1px 7px;border-radius:999px;background:var(--grb2);color:var(--grf2);font-size:12px;text-align:center}
+  .dx-otb-chip.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n);background:var(--hov)}
+  .dx-otb-chip.is-zero{opacity:.55}
+  .dx-otb-select{height:40px;min-width:170px;padding:0 30px 0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--ink);font-size:14px}
+  .dx-otb-toggle{display:inline-flex;height:40px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600}
+  .dx-otb-toggle.is-on{border-color:var(--rd);color:var(--rdf);background:var(--rdb)}
+  .dx-otb-clear{height:40px;padding:0 10px;border:0;background:transparent;color:var(--cyf);font-weight:600}
+  .dx-otb-cols{display:grid;grid-template-columns:minmax(210px,1.6fr) minmax(170px,1.3fr) minmax(140px,1fr) 140px minmax(150px,1fr) 118px;column-gap:14px;align-items:center;padding-inline:20px}
+  .dx-otb-head{height:40px;border-bottom:1px solid var(--line);background:var(--hd);color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .dx-otb-head span:last-child{text-align:right}
+  .dx-otb-row{min-height:84px;padding-block:14px;border-bottom:1px solid var(--line2)}
+  .dx-otb-row:last-child{border-bottom:0}
+  .dx-otb-row:hover{background:var(--hov)}
+  .dx-otb-ot{display:flex;min-width:0;align-items:flex-start;gap:12px}
+  .dx-otb-oti{display:flex;width:40px;height:40px;flex:none;align-items:center;justify-content:center;border-radius:10px;background:var(--cyb);color:var(--cyf)}
+  .dx-otb-ot div{display:flex;min-width:0;flex-direction:column;gap:2px}
+  .dx-otb-num{display:flex;flex-wrap:wrap;column-gap:6px;color:var(--n);font:700 13px ui-monospace,Menlo,monospace}
+  .dx-otb-num small{color:var(--gr);font:500 12px 'DM Sans'}
+  .dx-otb-strong{overflow:hidden;color:var(--n);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+  .dx-otb-muted{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+  .dx-otb-cell{display:flex;min-width:0;flex-direction:column;gap:2px;font-size:13px}
+  .dx-otb-tag{width:max-content;max-width:100%;overflow:hidden;margin-top:2px;padding:1px 7px;border-radius:6px;background:var(--grb2);color:var(--grf2);font-size:11px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+  .dx-otb-tag.is-warn{background:var(--amb);color:var(--amf)}
+  .dx-otb-pill{display:inline-flex;align-items:center;gap:6px;width:max-content;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+  .dx-otb-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .is-gray.dx-otb-pill{background:var(--grb2);color:var(--grf2)} .is-amber.dx-otb-pill{background:var(--amb);color:var(--amf)} .is-blue.dx-otb-pill{background:var(--blb);color:var(--blf)} .is-violet.dx-otb-pill{background:var(--vib);color:var(--vi)} .is-green.dx-otb-pill{background:var(--grb);color:var(--grf)} .is-cyan.dx-otb-pill{background:var(--cyb);color:var(--cyf)} .is-red.dx-otb-pill{background:var(--rdb);color:var(--rdf)}
+  .dx-otb-cost{display:flex;min-width:0;flex-direction:column;gap:3px}
+  .dx-otb-cost strong{color:var(--n);font:700 14px Sora;white-space:nowrap}
+  .dx-otb-cost strong small{margin-left:6px;color:var(--gr);font:500 12px 'DM Sans'}
+  .dx-otb-cost .is-over{color:var(--rdf)}
+  .dx-otb-bar2{height:6px;border-radius:999px;background:var(--grb2);overflow:hidden}
+  .dx-otb-bar2 i{display:block;height:100%;border-radius:999px;background:var(--cy)}
+  .dx-otb-cost span{color:var(--gr);font-size:12px}
+  .dx-otb-acts{display:flex;justify-content:flex-end;gap:6px}
+  .dx-otb-btn{display:inline-flex;height:36px;align-items:center;gap:6px;padding:0 12px;border:0;border-radius:8px;background:#1A2B4A;color:#fff;font-size:13px;font-weight:700;white-space:nowrap}
+  .dark .dx-otb-btn{background:#00ACC1;color:#02161A}
+  .dx-otb-btn:disabled{opacity:.45;cursor:not-allowed}
+  .dx-otb-empty{display:flex;min-height:180px;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:24px;color:var(--gr);text-align:center}
+  .dx-otb-empty strong{color:var(--n);font:700 16px Sora}
+  .dx-otb-pag{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px;border-top:1px solid var(--line);color:var(--gr);font-size:13px}
+  @container (max-width:1100px){
+    .dx-otb-kpi .dx-otb-ico{display:none}
+    .dx-otb-cols{grid-template-columns:minmax(190px,1.5fr) minmax(150px,1.2fr) minmax(120px,.9fr) 128px minmax(130px,1fr) 108px;column-gap:12px;padding-inline:16px}
+  }
+  @container (max-width:900px){
+    .dx-otb-in{padding:18px 16px 32px}
+    .dx-otb-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .dx-otb-bar h2{width:100%}
+    .dx-otb-search{flex:1 1 100%;width:auto}
+    .dx-otb-head{display:none}
+    .dx-otb-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'ot estado' 'raiz raiz' 'cost acts';gap:10px 14px;padding:14px 16px}
+    .dx-otb-row > .c-ot{grid-area:ot} .dx-otb-row > .c-estado{grid-area:estado;justify-self:end} .dx-otb-row > .c-raiz{grid-area:raiz} .dx-otb-row > .c-cost{grid-area:cost} .dx-otb-row > .c-acts{grid-area:acts;align-self:end}
+  }
+  @container (max-width:600px){
+    .dx-otb-title{font-size:24px}
+    .dx-otb-top .dx-otb-primary{width:100%;justify-content:center}
+    .dx-otb-kpi{padding:12px 14px}
+    .dx-otb-kpi-val{font-size:22px}
+    .dx-otb-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+    .dx-otb-select,.dx-otb-toggle{flex:1 1 140px}
+    .dx-otb-search{order:3;flex-basis:100%}
+    .dx-otb-row{grid-template-areas:'ot ot' 'estado estado' 'raiz raiz' 'cost cost' 'acts acts'}
+    .dx-otb-row > .c-estado{justify-self:start}
+    .dx-otb-acts .dx-otb-btn{width:100%;justify-content:center;height:44px}
+  }
+</style>
+</head>
+<body>
+<div class="mk-bar">
+  <span>Ancho:</span><button data-w="1280" class="on">1280</button><button data-w="1000">1000</button><button data-w="800">800</button><button data-w="375">375</button>
+  <span>Tema:</span><button id="mk-theme">Oscuro</button>
+</div>
+<div class="mk-frame" id="mk-frame" style="width:1280px">
+  <aside class="mk-side"></aside>
+  <main class="mk-main">
+  <div class="dx-otb">
+    <div class="dx-otb-in">
+      <div class="dx-otb-top">
+        <div><div class="dx-otb-eyebrow">Taller y operaciones</div><h1 class="dx-otb-title">Bandeja de OTs</h1><p class="dx-otb-sub" id="sub"></p></div>
+        <button class="dx-otb-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nueva OT</button>
+      </div>
+      <div class="dx-otb-kpis" id="kpis"></div>
+      <section class="dx-otb-card">
+        <div class="dx-otb-bar">
+          <h2>Órdenes de trabajo<span class="dx-otb-count" id="count"></span></h2>
+          <select class="dx-otb-select" id="fTec" aria-label="Técnico"><option value="">Técnico: todos</option></select>
+          <button class="dx-otb-toggle" id="fRw" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Solo retrabajos</button>
+          <label class="dx-otb-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="Buscar por OT, cliente, equipo o técnico" aria-label="Buscar órdenes de trabajo"></label>
+        </div>
+        <div class="dx-otb-filters">
+          <div class="dx-otb-chips" id="chips"></div>
+          <button class="dx-otb-clear" id="clear" hidden>Limpiar</button>
+        </div>
+        <div class="dx-otb-cols dx-otb-head"><span>OT · Equipo</span><span>Raíz de costo · CECO</span><span class="c-tec">Técnico · Ubicación</span><span>Estado</span><span>Costo real · Avance</span><span>Acciones</span></div>
+        <div id="rows"></div>
+        <div class="dx-otb-pag"><span id="pag"></span><span>Página 1 de 2</span></div>
+      </section>
+    </div>
+  </div>
+  </main>
+</div>
+<div class="mk-note">Mock con las 39 OTs reales de la empresa de prueba (emp_2000000000). Los KPIs y los chips cuentan sobre todas las OTs, no solo la página visible. Montos con la moneda de cada OT (21 en USD y 18 en PEN). "Ver detalle" se quitó porque hoy está deshabilitado ("disponible próximamente"); la fila no abre nada hasta que exista el detalle real.</div>
+<script>
+const DATA = [{"n": "OT-20-3", "e": "anulada", "f": "2026-11-01", "cli": "Empresa Industrial Alfa S.A.C.", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-00020", "ceco": "1000 · GERENCIA GENERAL", "m": "PEN"}, {"n": "E2E-ACTA-02", "e": "cerrada", "f": "2026-10-20", "cli": "MINERA DEL SUR", "eq": null, "tec": "Juan", "ub": "Campamento Operativo Mina 2", "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "Sin raíz registrada", "ceco": "CECO-005 · Operaciones y Proyectos / PMO", "m": "PEN"}, {"n": "E2E-ACTA-01", "e": "cerrada", "f": "2026-10-20", "cli": "MINERA DEL SUR", "eq": null, "tec": "Juan", "ub": "Campamento Operativo Mina 2", "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "Sin raíz registrada", "ceco": "CECO-005 · Operaciones y Proyectos / PMO", "m": "PEN"}, {"n": "OT-26-0641", "e": "programada", "f": "2026-10-14", "cli": "Andrea SAC", "eq": "PC - LENOVO", "tec": "Betty Cardenas", "ub": "Taller", "cr": 0, "ce": 0, "av": 0, "tt": "Correctivo", "cf": "Cliente_Contrato", "raiz": "Contrato CT-26-4501", "ceco": "2015 · ACEROS AREQUIPA S.A.", "m": "USD"}, {"n": "OT-26-0838", "e": "programada", "f": "2026-10-13", "cli": null, "eq": "PC - LENOVO", "tec": "Andre", "ub": "Taller", "cr": 0, "ce": 0, "av": 20, "tt": "Correctivo", "cf": "Interno_Plataforma", "raiz": "Equipo interno", "ceco": "1004 · PROYECTOS", "m": "USD"}, {"n": "OT-26-0324", "e": "programada", "f": "2026-10-12", "cli": null, "eq": "PC - LENOVO", "tec": "Andre", "ub": "Taller", "cr": 0, "ce": 382, "av": 0, "tt": "Correctivo", "cf": "Interno_Plataforma", "raiz": "Equipo interno", "ceco": "1004 · PROYECTOS", "m": "USD"}, {"n": "OT-21-2", "e": "anulada", "f": "2026-10-01", "cli": "Empresa Industrial Alfa S.A.C.", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-00021", "ceco": "1000 · GERENCIA GENERAL", "m": "PEN"}, {"n": "OT-20-2", "e": "anulada", "f": "2026-10-01", "cli": "Empresa Industrial Alfa S.A.C.", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-00020", "ceco": "1000 · GERENCIA GENERAL", "m": "PEN"}, {"n": "OT-26-0455", "e": "programada", "f": "2026-09-28", "cli": "TIDEO", "eq": "ACT-00003 - CILINDRO HIDRAÚLICO", "tec": "Andre", "ub": "sed_fd3c37a6f77847619b", "cr": 0, "ce": 152, "av": 0, "tt": "Correctivo", "cf": "Cliente_Contrato", "raiz": "OS OS-PRB-003", "ceco": "4015 · CAJA DE TRANSMISION CAT A5H00341", "m": "PEN"}, {"n": "OT-26-0382", "e": "programada", "f": "2026-09-28", "cli": "Andrea SAC", "eq": "LAPTOP01 - LAPTOP", "tec": "Betty Cardenas", "ub": "sed_fd3c37a6f77847619b", "cr": 0, "ce": 217.5, "av": 0, "tt": "Correctivo", "cf": "Cliente_Contrato", "raiz": "Contrato CT-26-1062", "ceco": "CC-TALL-BRU-01 · Bruñido", "m": "USD"}, {"n": "OT-20-1", "e": "anulada", "f": "2026-09-15", "cli": "Empresa Industrial Alfa S.A.C.", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-00020", "ceco": "1000 · GERENCIA GENERAL", "m": "PEN"}, {"n": "OT-26-0692", "e": "programada", "f": "2026-09-14", "cli": "Andrea SAC", "eq": "PC - LENOVO", "tec": "Betty Cardenas", "ub": "Taller", "cr": 0, "ce": 65.5, "av": 0, "tt": "Correctivo", "cf": "Cliente_Contrato", "raiz": "OS OSC-2026-0325", "ceco": "CECO-002 · Administración y Finanzas", "m": "USD"}, {"n": "OT-21-1", "e": "anulada", "f": "2026-09-01", "cli": "Empresa Industrial Alfa S.A.C.", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 0, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-00021", "ceco": "1000 · GERENCIA GENERAL", "m": "PEN"}, {"n": "OT-26-0072", "e": "valorizada", "f": "2026-06-20", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 144.99, "ce": 1000, "av": 25, "tt": null, "cf": null, "raiz": "OS OSC-2026-0819", "ceco": "CECO-003 · Comercial y Desarrollo de Negocios", "m": "USD"}, {"n": "OT-26-0696", "e": "valorizada", "f": "2026-06-03", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 58.8, "ce": 2316.94, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-0776", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0682", "e": "valorizada", "f": "2026-06-03", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 318.75, "ce": 2275.74, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0303", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0679", "e": "valorizada", "f": "2026-06-03", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 300, "ce": 1795.74, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0933", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0484", "e": "cerrada", "f": "2026-06-03", "cli": "Minera estrella de Arequipa SAC", "eq": null, "tec": null, "ub": null, "cr": 95, "ce": 110, "av": 80, "tt": null, "cf": null, "raiz": "OS OSC-2026-0233", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0306", "e": "valorizada", "f": "2026-06-03", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 176.2, "ce": 750.48, "av": 10, "tt": null, "cf": null, "raiz": "OS OSC-2026-0933", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0131", "e": "valorizada", "f": "2026-06-03", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 612.5, "ce": 144.24, "av": 77, "tt": null, "cf": null, "raiz": "OS OSC-2026-0933", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0530", "e": "valorizada", "f": "2026-06-01", "cli": "Minera estrella de Arequipa SAC", "eq": null, "tec": null, "ub": null, "cr": 202.1, "ce": 169, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0233", "ceco": "CECO-999 · Por clasificar", "m": "USD"}, {"n": "OT-26-0445", "e": "anulada", "f": "2026-05-29", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 4432.6, "av": 0, "tt": null, "cf": null, "raiz": "OS OSC-2026-0819", "ceco": "CECO-005 · Operaciones y Proyectos / PMO", "m": "USD"}, {"n": "OT-26-0241", "e": "valorizada", "f": "2026-05-29", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 11.76, "ce": 1881.6, "av": 55, "tt": null, "cf": null, "raiz": "OS OSC-2026-0819", "ceco": "CECO-002 · Administración y Finanzas", "m": "USD"}, {"n": "OT-26-0863", "e": "valorizada", "f": "2026-05-28", "cli": "Maria SAC", "eq": null, "tec": null, "ub": null, "cr": 706, "ce": 0, "av": 20, "tt": null, "cf": null, "raiz": "OS OSC-2026-0819", "ceco": "CECO-005 · Operaciones y Proyectos / PMO", "m": "USD"}, {"n": "OT-PRB-P01", "e": "programada", "f": "2026-05-25", "cli": "INVERSIONES EL PINO", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 5500, "av": 0, "tt": null, "cf": null, "raiz": "OS OS-PRB-005", "ceco": null, "m": "PEN"}, {"n": "OT-26-0973", "e": "valorizada", "f": "2026-05-23", "cli": "MINERA DEL SUR", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 100, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0137", "ceco": "CECO-007 · Desarrollo e Ingeniería", "m": "USD"}, {"n": "OT-26-0732", "e": "valorizada", "f": "2026-05-20", "cli": "INVERSIONES GENERALES", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 8000, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0208", "ceco": "CECO-007 · Desarrollo e Ingeniería", "m": "USD"}, {"n": "OT-26-0567", "e": "valorizada", "f": "2026-05-19", "cli": "TIDEO", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 500000, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0439", "ceco": "CECO-007 · Desarrollo e Ingeniería", "m": "PEN"}, {"n": "OT-26-0886", "e": "valorizada", "f": "2026-05-18", "cli": "TIDEO", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 7702, "av": 88, "tt": null, "cf": null, "raiz": "OS OSC-2026-0345", "ceco": null, "m": "USD"}, {"n": "OT-26-0668", "e": "valorizada", "f": "2026-05-18", "cli": "TIDEO", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 30000, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0345", "ceco": "CECO-004 · Gestión del Talento", "m": "USD"}, {"n": "OT-26-0117", "e": "valorizada", "f": "2026-05-18", "cli": "TIDEO", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 10000, "av": 100, "tt": null, "cf": null, "raiz": "OS OSC-2026-0345", "ceco": "CECO-007 · Desarrollo e Ingeniería", "m": "USD"}, {"n": "OT-PRB-E01", "e": "ejecucion", "f": null, "cli": "MINERA DEL SUR", "eq": null, "tec": null, "ub": null, "cr": 0, "ce": 8000, "av": 45, "tt": null, "cf": null, "raiz": "OS OS-PRB-001", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-007", "e": "cerrado_conforme", "f": null, "cli": "MINERA DEL SUR", "eq": null, "tec": null, "ub": null, "cr": 7200, "ce": 7500, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-007", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-006", "e": "cerrado_conforme", "f": null, "cli": "TIDEO", "eq": null, "tec": null, "ub": null, "cr": 13500, "ce": 14000, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-006", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-005", "e": "cerrado_conforme", "f": null, "cli": "INVERSIONES EL PINO", "eq": null, "tec": null, "ub": null, "cr": 21000, "ce": 22000, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-005", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-004", "e": "cerrado_conforme", "f": null, "cli": "MINERA DEL SUR", "eq": null, "tec": null, "ub": null, "cr": 19200, "ce": 20000, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-004", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-003", "e": "cerrado_conforme", "f": null, "cli": "TIDEO", "eq": null, "tec": null, "ub": null, "cr": 5800, "ce": 6000, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-003", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-002", "e": "cerrado_conforme", "f": null, "cli": "INVERSIONES EL PINO", "eq": null, "tec": null, "ub": null, "cr": 15500, "ce": 16000, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-002", "ceco": null, "m": "PEN"}, {"n": "OT-PRB-001", "e": "cerrado_conforme", "f": null, "cli": "MINERA DEL SUR", "eq": null, "tec": null, "ub": null, "cr": 11800, "ce": 12000, "av": 100, "tt": null, "cf": null, "raiz": "OS OS-PRB-001", "ceco": null, "m": "PEN"}];
+const EST = {
+  borrador:['Borrador','is-gray','#6B7280'], programada:['Programada','is-amber','#E08A00'], ejecucion:['En ejecución','is-blue','#2F6FD6'],
+  pendiente_cierre:['Pendiente de cierre','is-violet','#5B3A8C'], cerrada:['Cerrada','is-green','#16A34A'], cerrado_conforme:['Cerrada conforme','is-green','#16A34A'],
+  valorizada:['Valorizada','is-cyan','#00ACC1'], anulada:['Anulada','is-red','#DC2626']
+};
+const ABIERTAS = ['borrador','programada','ejecucion','pendiente_cierre'];
+const POR_VALORIZAR = ['cerrada','cerrado_conforme'];
+const CARGO = {Cliente_Contrato:'Cliente · contrato', Interno_Plataforma:'Interno · plataforma', Reclamo_Rework:'Retrabajo'};
+const sym = m => m === 'USD' ? 'US$' : 'S/';
+const money = (v,m) => `${sym(m)} ${Number(v||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const fecha = f => { const x = String(f||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return x ? `${+x[3]} ${MES[+x[2]-1]} ${x[1]}` : 'Sin programar'; };
+const sobrecosto = o => Number(o.ce) > 0 && Number(o.cr) > Number(o.ce);
+const sinTec = o => ABIERTAS.includes(o.e) && !o.tec;
+const ubic = o => !o.ub ? 'Sin ubicación' : /^sed_/.test(o.ub) ? 'Campamento Operativo Mina 1' : o.ub;
+let kpi = '', est = '', rw = false;
+const $ = id => document.getElementById(id);
+[...new Set(DATA.map(o=>o.tec).filter(Boolean))].sort().forEach(t => $('fTec').insertAdjacentHTML('beforeend', `<option>${t}</option>`));
+const I = {
+  wrench:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+  open:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="m17 3 4 4M21 3l-4 4"/>',
+  bill:'<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h6"/>',
+  up:'<path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
+  play:'<path d="m7 4 13 8-13 8z"/>'
+};
+const svg = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
+function render(){
+  const q = $('q').value.trim().toLowerCase(), t = $('fTec').value;
+  const base = DATA.filter(o => {
+    if (q && ![o.n,o.cli,o.eq,o.tec].some(v => (v||'').toLowerCase().includes(q))) return false;
+    if (t && o.tec !== t) return false;
+    if (rw && o.cf !== 'Reclamo_Rework') return false;
+    return true;
+  });
+  const list = base.filter(o => {
+    if (est && o.e !== est) return false;
+    if (kpi==='abiertas' && !ABIERTAS.includes(o.e)) return false;
+    if (kpi==='sintec' && !sinTec(o)) return false;
+    if (kpi==='valorizar' && !POR_VALORIZAR.includes(o.e)) return false;
+    if (kpi==='sobre' && !sobrecosto(o)) return false;
+    return true;
+  });
+  const ab = DATA.filter(o=>ABIERTAS.includes(o.e)), st = DATA.filter(sinTec), pv = DATA.filter(o=>POR_VALORIZAR.includes(o.e)), sc = DATA.filter(sobrecosto);
+  const k = (id,label,val,note,ico,cls,extra='') => `<button class="dx-otb-kpi ${extra} ${kpi===id?'is-on':''}" aria-pressed="${kpi===id}" onclick="kpi=kpi==='${id}'?'':'${id}';est='';render()"><span class="dx-otb-kpi-top">${label}<span class="dx-otb-ico ${cls}">${svg(ico)}</span></span><span class="dx-otb-kpi-val">${val}</span><span class="dx-otb-kpi-note">${note}</span></button>`;
+  $('kpis').innerHTML =
+    k('abiertas','OTs abiertas',ab.length,`${DATA.filter(o=>o.e==='programada').length} programadas · ${DATA.filter(o=>o.e==='ejecucion').length} en ejecución`,'open','is-cyan') +
+    k('sintec','Sin técnico',st.length,'Abiertas sin responsable asignado','user','is-amber', st.length?'is-alert':'') +
+    k('valorizar','Por valorizar',pv.length,'Cerradas pendientes de valorización','bill','is-violet') +
+    k('sobre','Con sobrecosto',sc.length,'Costo real mayor al estimado','up','is-red', sc.length?'is-danger':'');
+  const cnt = e => base.filter(o=>o.e===e).length;
+  $('chips').innerHTML = `<button class="dx-otb-chip ${!est?'is-on':''}" onclick="est='';render()">Todos<b>${base.length}</b></button>` +
+    Object.entries(EST).filter(([e]) => cnt(e) || est===e).map(([e,[l,,d]]) => `<button class="dx-otb-chip ${est===e?'is-on':''} ${cnt(e)?'':'is-zero'}" style="--d:${d}" aria-pressed="${est===e}" onclick="est=est==='${e}'?'':'${e}';kpi='';render()"><i></i>${l}<b>${cnt(e)}</b></button>`).join('');
+  const filtros = q||t||rw||est||kpi;
+  $('clear').hidden = !filtros;
+  $('count').textContent = filtros ? `${list.length} de ${DATA.length}` : `${DATA.length}`;
+  $('sub').textContent = `${ab.length} abiertas · ${DATA.length} en total`;
+  $('pag').textContent = `Mostrando ${Math.min(list.length,25)} de ${list.length}`;
+  if (!list.length) { $('rows').innerHTML = `<div class="dx-otb-empty"><strong>Sin OTs para estos filtros</strong><span>Prueba con otro texto o limpia los filtros.</span></div>`; return; }
+  $('rows').innerHTML = list.slice(0,25).map(o => {
+    const [el,ec] = EST[o.e] || [o.e,'is-gray'];
+    const av = Math.max(0,Math.min(100,+o.av||0));
+    const over = sobrecosto(o);
+    const tecTxt = o.tec ? `<b class="dx-otb-strong" style="font-size:13px">${o.tec}</b>` : `<b class="dx-otb-strong" style="font-size:13px;color:var(--amf)">Sin técnico</b>`;
+    const puedeIniciar = o.e==='programada';
+    const motivo = !o.tec ? 'Asigna un técnico responsable antes de iniciar la OT.' : !o.ceco ? 'Asigna un centro de costo antes de iniciar la OT.' : 'Iniciar esta OT';
+    return `<div class="dx-otb-cols dx-otb-row">
+      <div class="dx-otb-ot c-ot"><span class="dx-otb-oti">${svg('wrench')}</span><div>
+        <span class="dx-otb-num">${o.n}<small>${fecha(o.f)}</small></span>
+        <span class="dx-otb-strong">${o.eq || 'Sin equipo'}</span>
+        <span class="dx-otb-muted">${o.cli || 'Uso interno'}</span>
+        </div></div>
+      <div class="dx-otb-cell c-raiz"><b class="dx-otb-strong" style="font-size:13px">${o.raiz}</b><span class="dx-otb-muted">${o.ceco || 'Sin centro de costo'}</span>
+        <span class="dx-otb-tag ${o.cf==='Reclamo_Rework'?'is-warn':''}">${o.tt || 'Sin clasificar'} · ${CARGO[o.cf] || 'Sin cargo financiero'}</span></div>
+      <div class="dx-otb-cell c-tec">${tecTxt}<span class="dx-otb-muted">${ubic(o)}</span></div>
+      <div class="c-estado"><span class="dx-otb-pill ${ec}"><i></i>${el}</span></div>
+      <div class="dx-otb-cost c-cost"><strong class="${over?'is-over':''}">${money(o.cr,o.m)}<small>est. ${Number(o.ce)>0?money(o.ce,o.m):'—'}</small></strong>
+        <div class="dx-otb-bar2" role="img" aria-label="Avance ${av} por ciento"><i style="width:${av}%"></i></div><span>${av}% de avance${over?' · <b style="color:var(--rdf)">sobrecosto</b>':''}</span></div>
+      <div class="dx-otb-acts c-acts">${puedeIniciar ? `<button class="dx-otb-btn" ${o.tec && o.ceco ? '' : 'disabled'} title="${motivo}">${svg('play')}Iniciar OT</button>` : ''}</div>
+    </div>`;
+  }).join('');
+}
+$('q').addEventListener('input', render); $('fTec').addEventListener('input', render);
+$('fRw').onclick = () => { rw = !rw; $('fRw').classList.toggle('is-on', rw); $('fRw').setAttribute('aria-pressed', rw); render(); };
+$('clear').onclick = () => { $('q').value=''; $('fTec').value=''; rw=false; $('fRw').classList.remove('is-on'); est=''; kpi=''; render(); };
+document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-w]').forEach(x=>x.classList.remove('on')); b.classList.add('on'); const w=+b.dataset.w; $('mk-frame').style.width=w+'px'; $('mk-frame').classList.toggle('is-mobile', w<600); });
+$('mk-theme').onclick = () => { document.documentElement.classList.toggle('dark'); $('mk-theme').classList.toggle('on'); };
+render();
+</script>
+</body>
+</html>

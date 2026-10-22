@@ -476,325 +476,524 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
 // ── Partes Diarios — datos mock ────────────────────────────────────────────
 const OT_PAGE_SIZE = 25;
 const OT_COLUMNS = [
-  'id', 'numero', 'estado', 'fecha_inicio_real', 'fecha_programada', 'cuenta_id', 'os_cliente_id',
-  'contrato_alquiler_id', 'equipo_id', 'tipo_trabajo', 'cargo_financiero',
-  'motivo_rework', 'tecnico_responsable_id', 'avance_pct', 'costo_estimado',
-  'costo_real', 'centro_costo_id', 'horometro_actual', 'direccion_ejecucion',
-].join(', ');
-const ESTADOS_OT_BASE = ['borrador', 'programada', 'ejecucion', 'cerrada', 'pendiente_cierre', 'valorizada'];
-
+  'id', 'numero', 'estado', 'fecha_programada', 'cuenta_id', 'os_cliente_id',
+  'contrato_alquiler_id', 'equipo_id', 'tipo_trabajo', 'cargo_financiero', 'motivo_rework',
+  'tecnico_responsable_id', 'avance_pct', 'costo_estimado', 'costo_real', 'moneda',
+  'centro_costo_id', 'centro_beneficio_id', 'horometro_actual', 'direccion_ejecucion', 'created_at',
+].join(',');
+const ESTADOS_OT_BASE = ['borrador', 'programada', 'ejecucion', 'pendiente_cierre', 'cerrada', 'cerrado_conforme', 'valorizada', 'anulada'];
+const ABIERTAS_OT = ['borrador', 'programada', 'ejecucion', 'pendiente_cierre'];
+const LABEL_OT = {
+  borrador: 'Borrador',
+  programada: 'Programada',
+  ejecucion: 'En ejecución',
+  pendiente_cierre: 'Pendiente de cierre',
+  cerrada: 'Cerrada',
+  cerrado_conforme: 'Cerrada conforme',
+  valorizada: 'Valorizada',
+  anulada: 'Anulada',
+};
+const CARGO_OT = {
+  Cliente_Contrato: 'Cliente · contrato',
+  Interno_Plataforma: 'Interno · plataforma',
+  Garantia_Fabrica: 'Garantía · fábrica',
+  Reclamo_Rework: 'Retrabajo',
+};
+const TIPO_TRABAJO_OT = {
+  Preventivo_PM: 'Preventivo PM',
+  Correctivo: 'Correctivo',
+  Acondicionamiento: 'Acondicionamiento',
+  Overhaul: 'Overhaul',
+};
 const nombreCuentaOT = (cuenta) => cuenta?.nombre_comercial || cuenta?.razon_social || 'Sin cliente';
-const etiquetaEstadoOT = (estado) => String(estado || 'sin estado').replace(/_/g, ' ');
-const formatoFechaOT = (fecha) => fecha ? new Date(`${fecha}T00:00:00`).toLocaleDateString('es-PE') : 'Sin programar';
-const formatoMontoOT = (monto) => Number(monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const construirConsultaBandejaOT = ({ supabase, empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, filtros, soloConteo = false }) => {
+const formatoFechaOT = (fecha) => fecha
+  ? new Date(`${fecha}T00:00:00`).toLocaleDateString('es-PE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).replace('.', '')
+  : 'Sin programar';
+const formatoMontoOT = (valor, moneda) => `${moneda === 'USD' ? 'US$' : 'S/'} ${Number(valor || 0).toLocaleString('es-PE', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})}`;
+// Aplica el mismo alcance de empresa/sociedad a la página visible y a los conteos globales.
+const construirConsultaBandejaOT = ({
+  supabase,
+  empresaId,
+  sociedadId,
+  vistaConsolidada,
+  sociedadesIdsAlcance,
+  filtros = {},
+  soloConteo = false,
+  columnas,
+}) => {
   let consulta = supabase
     .from('ordenes_trabajo')
-    .select(soloConteo ? 'id' : OT_COLUMNS, { count: 'exact', head: soloConteo })
+    .select(soloConteo ? 'id' : (columnas || OT_COLUMNS), { count: 'exact', head: soloConteo })
     .eq('empresa_id', empresaId);
-
-  // RLS de OTs protege el tenant y el permiso, pero no delimita sociedad.
-  // Esta frontera debe viajar en todas las lecturas operativas no consolidadas.
   if (sociedadId && !vistaConsolidada) consulta = consulta.eq('sociedad_id', sociedadId);
   if (vistaConsolidada && Array.isArray(sociedadesIdsAlcance) && sociedadesIdsAlcance.length) {
     consulta = consulta.in('sociedad_id', sociedadesIdsAlcance);
   }
-  if (filtros.numero.trim()) consulta = consulta.ilike('numero', `%${filtros.numero.trim()}%`);
   if (filtros.estado) consulta = consulta.eq('estado', filtros.estado);
   if (filtros.tecnicoId) consulta = consulta.eq('tecnico_responsable_id', filtros.tecnicoId);
   if (filtros.retrabajos) consulta = consulta.eq('cargo_financiero', 'Reclamo_Rework');
+  if (filtros.kpi === 'abiertas' || filtros.kpi === 'sintec') consulta = consulta.in('estado', ABIERTAS_OT);
+  if (filtros.kpi === 'sintec') consulta = consulta.is('tecnico_responsable_id', null);
+  if (filtros.kpi === 'valorizar') consulta = consulta.in('estado', ['cerrada', 'cerrado_conforme']);
+  if (filtros.kpi === 'sobrecosto' && filtros.sobrecostoIds) {
+    consulta = filtros.sobrecostoIds.length
+      ? consulta.in('id', filtros.sobrecostoIds)
+      : consulta.eq('id', '__none__');
+  }
+  if (filtros.busquedaOR) consulta = consulta.or(filtros.busquedaOR);
   return consulta;
 };
+const consultaAuxiliarOT = (consulta, ids) => ids.length
+  ? consulta.in('id', ids)
+  : Promise.resolve({ data: [], error: null });
+// Resuelve coincidencias de cliente, equipo y técnico a IDs; combina esos IDs con el número en un OR de ordenes_trabajo.
+const resolverBusquedaOT = async (supabase, empresaId, texto) => {
+  const termino = texto.trim();
+  if (!termino) return '';
+  const patron = `%${termino.replace(/[%,()]/g, ' ').trim()}%`;
+  const [cuentas, equipos, tecnicos] = await Promise.all([
+    supabase.from('cuentas')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .or(`nombre_comercial.ilike.${patron},razon_social.ilike.${patron}`),
+    supabase.from('activos')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .or(`codigo.ilike.${patron},nombre.ilike.${patron}`),
+    supabase.from('personal_operativo')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .ilike('nombre', patron),
+  ]);
+  for (const resultado of [cuentas, equipos, tecnicos]) {
+    if (resultado.error) throw resultado.error;
+  }
+  const terminos = [`numero.ilike.${patron}`];
+  for (const [campo, resultado] of [
+    ['cuenta_id', cuentas],
+    ['equipo_id', equipos],
+    ['tecnico_responsable_id', tecnicos],
+  ]) {
+    const ids = [...new Set((resultado.data || []).map((fila) => fila.id).filter(Boolean))];
+    if (ids.length) terminos.push(`${campo}.in.(${ids.join(',')})`);
+  }
+  return terminos.join(',');
+};
+export const OTsListadoPage=({onNav})=>{
+ useCompactWorkMode(true);
+  const sesion=useSesionOperativa();
+  const {empresaId,sociedadId,vistaConsolidada,sociedadesIdsAlcance,permiteEscritura,cargando:cargandoSesion,estado:estadoSesion}=sesion;
 
-const consultaAuxiliarOT = (consulta, ids) => ids.length ? consulta.in('id', ids) : Promise.resolve({ data: [], error: null });
+ const [filtros,setFiltros]=useS2({buscar:'',estado:'',tecnicoId:'',retrabajos:false,kpi:''});
+  const [pagina,setPagina]=useS2(1);
+  const [filas,setFilas]=useS2([]);
+  const [total,setTotal]=useS2(0);
 
-export const OTsListadoPage = ({ onNav }) => {
-  useCompactWorkMode(true);
-  const sesionOperativa = useSesionOperativa();
-  const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, permiteEscritura, cargando: cargandoSesion, estado: estadoSesion } = sesionOperativa;
-  const [filtros, setFiltros] = useS2({ numero: '', estado: '', tecnicoId: '', retrabajos: false });
-  const [pagina, setPagina] = useS2(1);
-  const [filas, setFilas] = useS2([]);
-  const [total, setTotal] = useS2(0);
-  const [tecnicos, setTecnicos] = useS2([]);
-  const [cargando, setCargando] = useS2(false);
-  const [error, setError] = useS2('');
-  const [errorTecnicos, setErrorTecnicos] = useS2('');
-  const [aviso, setAviso] = useS2('');
-  const [iniciandoId, setIniciandoId] = useS2(null);
-  const solicitudRef = useRef(0);
+ const [stats,setStats]=useS2({total:0,abiertas:0,programadas:0,ejecucion:0,sinTecnico:0,valorizar:0,sobrecosto:0,estados:{}});
+  const [tecnicos,setTecnicos]=useS2([]);
+  const [cargando,setCargando]=useS2(false);
+  const [error,setError]=useS2('');
+  const [errorTec,setErrorTec]=useS2('');
+  const [aviso,setAviso]=useS2('');
+  const [iniciandoId,setIniciandoId]=useS2(null);
+  const solicitud=useRef(0);
 
-  const actualizarFiltro = useCallback((campo, valor) => {
-    setPagina(1);
-    setFiltros(actual => ({ ...actual, [campo]: valor }));
-  }, []);
+ const setFiltro=useCallback((k,v)=>{setPagina(1);
+  setFiltros(x=>({...x,[k]:v}));
+  },[]);
 
-  useEffect(() => {
-    let activo = true;
-    if (!empresaId) {
-      setTecnicos([]);
-      return undefined;
-    }
-    const cargarTecnicos = async () => {
-      setErrorTecnicos('');
-      try {
-        const { data, error: consultaError } = await getSupabaseClient()
-          .from('personal_operativo')
-          .select('id, nombre, codigo')
-          .eq('empresa_id', empresaId)
-          .eq('estado', 'disponible')
-          .order('nombre');
-        if (consultaError) throw consultaError;
-        if (activo) setTecnicos(data || []);
-      } catch (consultaError) {
-        if (activo) {
-          setTecnicos([]);
-          setErrorTecnicos(consultaError?.message || 'No se pudo cargar el catálogo de técnicos.');
-        }
-      }
-    };
-    cargarTecnicos();
-    return () => { activo = false; };
-  }, [empresaId]);
-
-  useEffect(() => {
-    if (!empresaId || estadoSesion !== 'listo') return undefined;
-    const solicitudId = ++solicitudRef.current;
-    const cargarPagina = async () => {
-      setCargando(true);
-      setError('');
-      try {
-        const supabase = getSupabaseClient();
-        const desde = (pagina - 1) * OT_PAGE_SIZE;
-        const consultaFilas = construirConsultaBandejaOT({
-          supabase, empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, filtros,
-        })
-          .order('fecha_programada', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-          .range(desde, desde + OT_PAGE_SIZE - 1);
-        const consultaConteo = construirConsultaBandejaOT({
-          supabase, empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, filtros, soloConteo: true,
-        });
-        const [{ data: ots, error: otsError }, { count, error: conteoError }] = await Promise.all([
-          consultaFilas,
-          consultaConteo,
-        ]);
-        if (otsError) throw otsError;
-        if (conteoError) throw conteoError;
-
-        const idsCuenta = [...new Set((ots || []).map(ot => ot.cuenta_id).filter(Boolean))];
-        const idsContrato = [...new Set((ots || []).map(ot => ot.contrato_alquiler_id).filter(Boolean))];
-        const idsOS = [...new Set((ots || []).map(ot => ot.os_cliente_id).filter(Boolean))];
-        const idsCECO = [...new Set((ots || []).map(ot => ot.centro_costo_id).filter(Boolean))];
-        const idsTecnico = [...new Set((ots || []).map(ot => ot.tecnico_responsable_id).filter(Boolean))];
-        const idsEquipo = [...new Set((ots || []).map(ot => ot.equipo_id).filter(Boolean))];
-        const idsSede = [...new Set((ots || []).map(ot => ot.direccion_ejecucion).filter(Boolean))];
-        const [cuentasR, contratosR, osR, cecosR, tecnicosR, activosR, sedesR] = await Promise.all([
-          consultaAuxiliarOT(supabase.from('cuentas').select('id, nombre_comercial, razon_social').eq('empresa_id', empresaId), idsCuenta),
-          consultaAuxiliarOT(supabase.from('contratos_alquiler').select('id, numero, cuenta_id').eq('empresa_id', empresaId), idsContrato),
-          consultaAuxiliarOT(supabase.from('os_clientes').select('id, numero, cuenta_id').eq('empresa_id', empresaId), idsOS),
-          consultaAuxiliarOT(supabase.from('centros_costo').select('id, codigo, nombre').eq('empresa_id', empresaId), idsCECO),
-          consultaAuxiliarOT(supabase.from('personal_operativo').select('id, nombre, codigo').eq('empresa_id', empresaId), idsTecnico),
-          consultaAuxiliarOT(supabase.from('activos').select('id, codigo, nombre').eq('empresa_id', empresaId), idsEquipo),
-          consultaAuxiliarOT(supabase.from('sedes').select('id, codigo, nombre').eq('empresa_id', empresaId), idsSede),
-        ]);
-        for (const resultado of [cuentasR, contratosR, osR, cecosR, tecnicosR, activosR, sedesR]) {
-          if (resultado.error) throw resultado.error;
-        }
-        if (solicitudId !== solicitudRef.current) return;
-        const porId = resultados => new Map((resultados.data || []).map(item => [item.id, item]));
-        const cuentas = porId(cuentasR);
-        const contratos = porId(contratosR);
-        const ordenesServicio = porId(osR);
-        const centrosCosto = porId(cecosR);
-        const tecnicosPorId = porId(tecnicosR);
-        const activosPorId = porId(activosR);
-        const sedesPorId = porId(sedesR);
-        setFilas((ots || []).map(ot => ({
-          ...ot,
-          cliente: cuentas.get(ot.cuenta_id) || null,
-          contrato: contratos.get(ot.contrato_alquiler_id) || null,
-          osCliente: ordenesServicio.get(ot.os_cliente_id) || null,
-          centroCosto: centrosCosto.get(ot.centro_costo_id) || null,
-          tecnico: tecnicosPorId.get(ot.tecnico_responsable_id) || null,
-          equipo: activosPorId.get(ot.equipo_id) || null,
-          sede: sedesPorId.get(ot.direccion_ejecucion) || null,
-        })));
-        setTotal(count || 0);
-      } catch (consultaError) {
-        if (solicitudId !== solicitudRef.current) return;
-        setFilas([]);
-        setTotal(0);
-        setError(consultaError?.message || 'No se pudo cargar la Bandeja Maestra.');
-      } finally {
-        if (solicitudId === solicitudRef.current) setCargando(false);
-      }
-    };
-    cargarPagina();
-    return () => { solicitudRef.current += 1; };
-  }, [empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, estadoSesion, pagina, filtros]);
-
-  const estados = useMemo(() => [...new Set([...ESTADOS_OT_BASE, ...filas.map(fila => fila.estado).filter(Boolean)])], [filas]);
-  const totalPaginas = Math.max(1, Math.ceil(total / OT_PAGE_SIZE));
-  const sinSesion = !cargandoSesion && estadoSesion !== 'listo';
-  const mostrarAvisoDetalle = () => {
-    setAviso('El detalle real de OT estará disponible próximamente.');
-    window.setTimeout(() => setAviso(''), 4000);
-  };
-
-  const iniciarOT = async (ot) => {
-    if (!permiteEscritura) {
-      setAviso('La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.');
-      return;
-    }
-    if (!ot.tecnico_responsable_id) {
-      setAviso('Asigna un técnico responsable antes de iniciar la OT.');
-      return;
-    }
-    if (!ot.centro_costo_id) {
-      setAviso('Asigna un centro de costo antes de iniciar la OT.');
-      return;
-    }
-
-    setIniciandoId(ot.id);
-    setAviso('');
+ useEffect(()=>{let live=true;
+  if(!empresaId){setTecnicos([]);
+  return undefined;
+   }
+   const cargarTecnicos = async () => {
     try {
-      const fechaInicioReal = new Date().toISOString();
-      const { data: otActualizada, error: actualizacionError } = await getSupabaseClient()
-        .from('ordenes_trabajo')
-        .update({ estado: 'ejecucion', fecha_inicio_real: fechaInicioReal })
-        .eq('id', ot.id)
-        .eq('empresa_id', empresaId)
-        .eq('estado', 'programada')
-        .select('id, estado, fecha_inicio_real')
-        .maybeSingle();
-
-      if (actualizacionError) throw actualizacionError;
-      if (!otActualizada) {
-        throw new Error('La OT ya no está programada o no tienes permiso para iniciarla. Actualiza la Bandeja e inténtalo nuevamente.');
-      }
-
-      setFilas(actual => actual.map(fila => fila.id === otActualizada.id ? {
-        ...fila,
-        estado: otActualizada.estado,
-        fecha_inicio_real: otActualizada.fecha_inicio_real,
-      } : fila));
-      setAviso(`OT ${ot.numero || ''} iniciada correctamente.`);
-    } catch (actualizacionError) {
-      setAviso(`No se pudo iniciar la OT: ${actualizacionError?.message || 'Error desconocido.'}`);
-    } finally {
-      setIniciandoId(actual => actual === ot.id ? null : actual);
+     const {data,error:err}=await getSupabaseClient()
+      .from('personal_operativo')
+      .select('id,nombre,codigo')
+      .eq('empresa_id',empresaId)
+      .eq('estado','disponible')
+      .order('nombre');
+  if(err)throw err;
+  if(live)setTecnicos(data||[]);
+    } catch(err) {
+     if(live){setTecnicos([]);
+      setErrorTec(err?.message||'No se pudo cargar el catálogo de técnicos.');
+     }
     }
+   };
+   cargarTecnicos();
+  return()=>{live=false;
+  };
+  },[empresaId]);
+
+ useEffect(()=>{if(!empresaId||estadoSesion!=='listo')return undefined;
+  const request=++solicitud.current;
+  (async()=>{setCargando(true);
+  setError('');
+  try{
+   const supabase=getSupabaseClient();
+   const base={supabase,empresaId,sociedadId,vistaConsolidada,sociedadesIdsAlcance};
+   const busquedaOR=await resolverBusquedaOT(supabase,empresaId,filtros.buscar);
+   const bf={tecnicoId:filtros.tecnicoId,retrabajos:filtros.retrabajos,busquedaOR};
+
+  const metricas=[];
+   for(let offset=0;;offset+=1000){
+    const {data,error:err}=await construirConsultaBandejaOT({
+     ...base,
+     columnas:'id,estado,tecnico_responsable_id,costo_estimado,costo_real',
+    }).range(offset,offset+999);
+  if(err)throw err;
+  metricas.push(...(data||[]));
+  if(!data||data.length<1000)break;
+  }
+   const sobreIds=metricas
+    .filter(o=>Number(o.costo_estimado)>0&&Number(o.costo_real)>Number(o.costo_estimado))
+    .map(o=>o.id);
+   const lf={...bf,estado:filtros.estado,kpi:filtros.kpi,sobrecostoIds:sobreIds};
+
+   const [respuestaOTs,respuestaConteo]=await Promise.all([
+    construirConsultaBandejaOT({...base,filtros:lf})
+     .order('fecha_programada',{ascending:false,nullsFirst:false})
+     .order('created_at',{ascending:false})
+     .range((pagina-1)*OT_PAGE_SIZE,pagina*OT_PAGE_SIZE-1),
+    construirConsultaBandejaOT({...base,filtros:lf,soloConteo:true}),
+   ]);
+   const {data:ots,error:err}=respuestaOTs;
+   const {count,error:errCount}=respuestaConteo;
+  if(err)throw err;
+  if(errCount)throw errCount;
+
+  const states=Object.fromEntries(ESTADOS_OT_BASE.map(e=>[e,0]));
+  let abiertas=0,programadas=0,ejecucion=0,sinTecnico=0,valorizar=0,sobrecosto=0;
+  metricas.forEach(o=>{states[o.estado]=(states[o.estado]||0)+1;
+  if(ABIERTAS_OT.includes(o.estado)){abiertas++;
+  if(!o.tecnico_responsable_id)sinTecnico++;
+  }if(o.estado==='programada')programadas++;
+  if(o.estado==='ejecucion')ejecucion++;
+  if(['cerrada','cerrado_conforme'].includes(o.estado))valorizar++;
+  if(Number(o.costo_estimado)>0&&Number(o.costo_real)>Number(o.costo_estimado))sobrecosto++;
+  });
+
+  const ids=k=>[...new Set((ots||[]).map(o=>o[k]).filter(Boolean))];
+   const [cu,ct,os,cc,cb,te,eq,se]=await Promise.all([
+    consultaAuxiliarOT(supabase.from('cuentas').select('id,nombre_comercial,razon_social').eq('empresa_id',empresaId),ids('cuenta_id')),
+    consultaAuxiliarOT(supabase.from('contratos_alquiler').select('id,numero').eq('empresa_id',empresaId),ids('contrato_alquiler_id')),
+    consultaAuxiliarOT(supabase.from('os_clientes').select('id,numero').eq('empresa_id',empresaId),ids('os_cliente_id')),
+    consultaAuxiliarOT(supabase.from('centros_costo').select('id,codigo,nombre').eq('empresa_id',empresaId),ids('centro_costo_id')),
+    consultaAuxiliarOT(supabase.from('centros_beneficio').select('id,codigo,nombre').eq('empresa_id',empresaId),ids('centro_beneficio_id')),
+    consultaAuxiliarOT(supabase.from('personal_operativo').select('id,nombre').eq('empresa_id',empresaId),ids('tecnico_responsable_id')),
+    consultaAuxiliarOT(supabase.from('activos').select('id,codigo,nombre').eq('empresa_id',empresaId),ids('equipo_id')),
+    consultaAuxiliarOT(supabase.from('sedes').select('id,nombre').eq('empresa_id',empresaId),ids('direccion_ejecucion')),
+   ]);
+  for(const r of [cu,ct,os,cc,cb,te,eq,se])if(r.error)throw r.error;
+  if(request!==solicitud.current)return;
+
+  const map=r=>new Map((r.data||[]).map(x=>[x.id,x])),[mcu,mct,mos,mcc,mcb,mte,meq,mse]=[cu,ct,os,cc,cb,te,eq,se].map(map);
+   setFilas((ots||[]).map(o=>({
+    ...o,
+    cliente:mcu.get(o.cuenta_id),
+    contrato:mct.get(o.contrato_alquiler_id),
+    osCliente:mos.get(o.os_cliente_id),
+    centroCosto:mcc.get(o.centro_costo_id),
+    centroBeneficio:mcb.get(o.centro_beneficio_id),
+    tecnico:mte.get(o.tecnico_responsable_id),
+    equipo:meq.get(o.equipo_id),
+    sede:mse.get(o.direccion_ejecucion),
+   })));
+  setTotal(count||0);
+  setStats({total:metricas.length,abiertas,programadas,ejecucion,sinTecnico,valorizar,sobrecosto,estados:states});
+
+ }catch(err){if(request!==solicitud.current)return;
+  setFilas([]);
+  setTotal(0);
+  setError(err?.message||'No se pudo cargar la Bandeja de OTs.');
+  }finally{if(request===solicitud.current)setCargando(false);
+  }})();
+  return()=>{solicitud.current++;
+  };
+  },[empresaId,sociedadId,vistaConsolidada,sociedadesIdsAlcance,estadoSesion,pagina,filtros]);
+
+ const paginas=Math.max(1,Math.ceil(total/OT_PAGE_SIZE)),sinSesion=!cargandoSesion&&estadoSesion!=='listo';
+  const avisoDetalle=()=>{setAviso('El detalle real de OT estará disponible próximamente.');
+  window.setTimeout(()=>setAviso(''),4000);
   };
 
-  return (
-    <section className="dx-ui dx-ot">
-      <header className="dx-ot-head">
-        <WorkMenuButton />
-        <div>
-          <div className="dx-ui-eyebrow">Taller y operaciones</div>
-          <h1 className="dx-ui-title">Bandeja de OTs</h1>
-          <p className="dx-ui-sub">Órdenes de trabajo reales · {total} resultado{total === 1 ? '' : 's'}</p>
-        </div>
-        <button type="button" className="dx-btn primary dx-ot-new" onClick={() => onNav?.('crear-ot')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-          Nueva OT
-        </button>
-      </header>
+ const iniciar=async o=>{if(!permiteEscritura){setAviso('La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.');
+  return;
+  }if(!o.tecnico_responsable_id){setAviso('Asigna un técnico responsable antes de iniciar la OT.');
+  return;
+  }if(!o.centro_costo_id){setAviso('Asigna un centro de costo antes de iniciar la OT.');
+  return;
+  }setIniciandoId(o.id);
+  try{const fecha_inicio_real=new Date().toISOString();
+   const {data,error:err}=await getSupabaseClient()
+    .from('ordenes_trabajo')
+    .update({estado:'ejecucion',fecha_inicio_real})
+    .eq('id',o.id)
+    .eq('empresa_id',empresaId)
+    .eq('estado','programada')
+    .select('id,estado,fecha_inicio_real')
+    .maybeSingle();
+  if(err)throw err;
+  if(!data)throw new Error('La OT ya no está programada o no tienes permiso para iniciarla. Actualiza la Bandeja e inténtalo nuevamente.');
+  setFilas(xs=>xs.map(x=>x.id===data.id?{...x,...data}:x));
+  setAviso(`OT ${o.numero} iniciada correctamente.`);
+  }catch(err){setAviso(`No se pudo iniciar la OT: ${err?.message||'Error desconocido.'}`);
+  }finally{setIniciandoId(x=>x===o.id?null:x);
+  }};
 
-      {cargandoSesion && <div className="dx-ot-alert">Cargando el contexto de sesión operativa…</div>}
-      {sinSesion && <div className="dx-ot-alert">No hay una sesión operativa válida para consultar Órdenes de trabajo.</div>}
-      {estadoSesion === 'listo' && vistaConsolidada && <div className="dx-ot-alert">Vista consolidada: se muestran las OTs de las sociedades permitidas.</div>}
+ const setKpi=k=>{setPagina(1);
+  setFiltros(x=>({...x,estado:'',kpi:x.kpi===k?'':k}));
+  },limpiar=()=>{setPagina(1);
+  setFiltros({buscar:'',estado:'',tecnicoId:'',retrabajos:false,kpi:''});
+  };
+   const activo=Boolean(filtros.buscar||filtros.estado||filtros.tecnicoId||filtros.retrabajos||filtros.kpi);
+   const states=ESTADOS_OT_BASE.filter(e=>stats.estados[e]||filtros.estado===e);
 
-      {estadoSesion === 'listo' && (
-        <>
-          <div className="dx-ot-tabs" role="group" aria-label="Tipo de Órdenes">
-            <button type="button" className={'dx-ot-tab' + (!filtros.retrabajos ? ' dx-ot-on' : '')} aria-pressed={!filtros.retrabajos} onClick={() => actualizarFiltro('retrabajos', false)}>Todas</button>
-            <button type="button" className={'dx-ot-tab' + (filtros.retrabajos ? ' dx-ot-on' : '')} aria-pressed={filtros.retrabajos} onClick={() => actualizarFiltro('retrabajos', true)}>Retrabajos</button>
-          </div>
+  const raiz=o=>o.contrato
+   ?`Contrato ${o.contrato.numero}`
+   :o.osCliente
+    ?`OS ${o.osCliente.numero}`
+    :o.equipo_id?'Equipo interno':'Sin raíz registrada';
+  const centro=o=>o.centroCosto
+   ?`${o.centroCosto.codigo||'CECO'} · ${o.centroCosto.nombre}`
+   :o.centroBeneficio
+    ?`${o.centroBeneficio.codigo||'CEBE'} · ${o.centroBeneficio.nombre}`
+    :'Sin centro asignado';
 
-          {errorTecnicos && <div className="dx-ot-alert">No se pudo cargar el filtro de técnicos: {errorTecnicos}</div>}
-          {error && <div className="dx-ot-alert dx-ot-alert-error">No se pudo cargar la Bandeja de OTs: {error}</div>}
+ return <section
+        className="dx-otb">
+  <div
+        className="dx-otb-in">
+  <header
+        className="dx-otb-top">
+  <div>
+  <div
+        className="dx-otb-eyebrow">Taller y operaciones</div>
+  <h1
+        className="dx-otb-title">Bandeja de OTs</h1>
+  <p
+        className="dx-otb-sub">{stats.abiertas} abiertas · {stats.total} en total</p>
+  </div>
+  <button
+        className="dx-otb-primary"
+        onClick={()=>onNav?.('crear-ot')}>＋ Nueva OT</button>
+  </header>
+ {cargandoSesion&&<div
+        className="dx-otb-alert">Cargando el contexto de sesión operativa…</div>}{sinSesion&&<div
+        className="dx-otb-alert">No hay una sesión operativa válida para consultar Órdenes de Trabajo.</div>}{vistaConsolidada&&estadoSesion==='listo'&&<div
+        className="dx-otb-alert">Vista consolidada: se muestran las OTs de las sociedades permitidas.</div>}{estadoSesion==='listo'&&<>{errorTec&&<div
+        className="dx-otb-alert">No se pudo cargar el filtro de técnicos: {errorTec}</div>}{error&&<div
+        className="dx-otb-alert is-error">No se pudo cargar la Bandeja de OTs: {error}</div>}
+ <div
+        className="dx-otb-kpis">{[['abiertas','OTs abiertas',stats.abiertas,`${stats.programadas} programadas · ${stats.ejecucion} en ejecución`,'is-cyan',''],
+        ['sintec','Sin técnico',stats.sinTecnico,'Abiertas sin responsable asignado','is-amber',stats.sinTecnico?'is-alert':''],
+        ['valorizar','Por valorizar',stats.valorizar,'Cerradas pendientes de valorización','is-violet',''],
+        ['sobrecosto','Con sobrecosto',stats.sobrecosto,'Costo real mayor al estimado','is-red',stats.sobrecosto?'is-danger':'']].map(([id,l,v,n,c,x])=>
+  <button
+        key={id}
+        className={`dx-otb-kpi ${x} ${filtros.kpi===id?'is-on':''}`} aria-pressed={filtros.kpi===id}
+        onClick={()=>setKpi(id)}>
+  <span
+        className="dx-otb-kpi-top">{l}<span
+        className={`dx-otb-ico ${c}`}>
+  <svg viewBox="0 0 24 24" aria-hidden="true">{id==='abiertas'?<>
+  <rect x="3" y="4" width="18" height="16" rx="2"/>
+  <path d="M3 9h18M8 2v4M16 2v4"/>
+  </>:id==='sintec'?<>
+  <circle cx="12" cy="8" r="4"/>
+  <path d="M4 21a8 8 0 0 1 16 0"/>
+  </>:id==='valorizar'?<>
+  <path d="M6 2h9l5 5v15H6z"/>
+  <path d="M14 2v6h6M9 13h6M9 17h6"/>
+  </>:<>
+  <path d="m3 17 6-6 4 4 8-8"/>
+  <path d="M14 7h7v7"/>
+  </>}</svg>
+  </span>
+  </span>
+  <b
+        className="dx-otb-kpi-val">{v}</b>
+  <span
+        className="dx-otb-kpi-note">{n}</span>
+  </button>)}</div>
+  <section
+        className="dx-otb-card">
+  <div
+        className="dx-otb-bar">
+  <h2>Órdenes de trabajo<span
+        className="dx-otb-count">{total} resultados</span>
+  </h2>
+  <select
+        className="dx-otb-select" aria-label="Filtrar por técnico"
+        value={filtros.tecnicoId}
+        onChange={e=>setFiltro('tecnicoId',e.target.value)}>
+  <option
+        value="">Técnico: todos</option>{tecnicos.map(t=>
+  <option
+        key={t.id}
+        value={t.id}>{t.nombre||t.codigo||t.id}</option>)}</select>
+  <button
+        className={`dx-otb-toggle ${filtros.retrabajos?'is-on':''}`} aria-pressed={filtros.retrabajos}
+        onClick={()=>setFiltro('retrabajos',!filtros.retrabajos)}>↻ Solo retrabajos</button>
+  <label
+        className="dx-otb-search">⌕<input
+        value={filtros.buscar}
+        onChange={e=>setFiltro('buscar',e.target.value)}
+        placeholder="Buscar por OT, cliente, equipo o técnico" aria-label="Buscar Órdenes de trabajo" />
+  </label>
+  </div>
+ <div
+        className="dx-otb-filters">
+  <div
+        className="dx-otb-chips">
+  <button
+        className={`dx-otb-chip ${!filtros.estado?'is-on':''}`}
+        onClick={()=>setFiltros(x=>({...x,estado:'',kpi:''}))}>Todos<b>{stats.total}</b>
+  </button>{states.map(e=>
+  <button
+        key={e}
+        className={`dx-otb-chip ${filtros.estado===e?'is-on':''}`} aria-pressed={filtros.estado===e}
+        onClick={()=>{setPagina(1);
+  setFiltros(x=>({...x,estado:x.estado===e?'':e,kpi:''}));
+  }}>
+  <i
+        className={`is-${e}`} />{LABEL_OT[e]}<b>{stats.estados[e]||0}</b>
+  </button>)}</div>
+  <button
+        className="dx-otb-clear" hidden={!activo}
+        onClick={limpiar}>Limpiar</button>
+  </div>
+ <div
+        className="dx-otb-cols dx-otb-head">
+  <span>OT · Equipo</span>
+  <span>Raíz de costo · CECO</span>
+  <span
+        className="dx-otb-area-tech">Técnico · Ubicación</span>
+  <span>Estado</span>
+  <span>Costo real · Avance</span>
+  <span>Acciones</span>
+  </div>{!cargando&&!error&&!filas.length&&<div
+        className="dx-otb-empty">No hay OTs para los filtros seleccionados.</div>}
+  {filas.map(o=>{
+   const eq=o.equipo
+    ?[o.equipo.codigo,o.equipo.nombre].filter(Boolean).join(' - ')
+    :'Sin equipo';
+   const tec=o.tecnico?.nombre||o.tecnico_responsable_id||'Sin técnico';
+   const ubic=o.sede?.nombre||o.direccion_ejecucion||'Sin ubicación';
+   const estado=LABEL_OT[o.estado]||String(o.estado||'Sin estado').replace(/_/g,' ');
+   const avance=Math.min(100,Math.max(0,Number(o.avance_pct||0)));
+   const over=Number(o.costo_estimado)>0&&Number(o.costo_real)>Number(o.costo_estimado);
+   const title=!permiteEscritura
+    ?'La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.'
+    :!o.tecnico_responsable_id
+     ?'Asigna un técnico responsable antes de iniciar la OT.'
+     :!o.centro_costo_id
+      ?'Asigna un centro de costo antes de iniciar la OT.'
+      :'Iniciar esta OT.';
+  return <article
+        key={o.id}
+        className="dx-otb-cols dx-otb-row"
+        title="El detalle real de OT estará disponible próximamente."
+        onClick={avisoDetalle}>
+  <div
+        className="dx-otb-ot dx-otb-area-ot">
+  <span
+        className="dx-otb-oti">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>
+  </svg>
+  </span>
+  <div>
+  <b
+        className="dx-otb-num">{o.numero}<small>{formatoFechaOT(o.fecha_programada)}</small>
+  </b>
+  <span
+        className="dx-otb-strong">{eq}</span>
+  <span
+        className="dx-otb-muted">{nombreCuentaOT(o.cliente)==='Sin cliente'?'Uso interno':nombreCuentaOT(o.cliente)}</span>
+  </div>
+  </div>
+  <div
+        className="dx-otb-cell dx-otb-area-root">
+  <b
+        className="dx-otb-strong">{raiz(o)}</b>
+  <span
+        className="dx-otb-muted">{centro(o)}</span>
+  <span
+         className={`dx-otb-tag ${o.cargo_financiero==='Reclamo_Rework'?'is-warn':''}`}>
+         {TIPO_TRABAJO_OT[o.tipo_trabajo]||o.tipo_trabajo||'Sin clasificar'}
+         {' · '}{CARGO_OT[o.cargo_financiero]||'Sin cargo financiero'}
+        </span>
+  </div>
+  <div
+        className="dx-otb-cell dx-otb-area-tech">
+  <b
+        className={`dx-otb-strong ${o.tecnico_responsable_id?'':'is-amber'}`}>{tec}</b>
+  <span
+        className="dx-otb-muted">{ubic}</span>
+  </div>
+  <span
+        className={`dx-otb-pill dx-otb-area-status is-${o.estado}`}>
+  <i />{estado}</span>
+  <div
+        className="dx-otb-cost dx-otb-area-cost">
+  <strong
+         className={over?'is-over':''}>
+         {formatoMontoOT(o.costo_real,o.moneda)}
+         <small>
+          est. {Number(o.costo_estimado)>0?formatoMontoOT(o.costo_estimado,o.moneda):'—'}
+         </small>
+  </strong>
+  <div
+        className="dx-otb-bar2">
+  <i
+        style={{width:`${avance}%`}} />
+  </div>
+  <span>{avance}% de avance{over&&<b
+        className="is-over-note"> · sobrecosto</b>}</span>
+  </div>
+  <div
+        className="dx-otb-acts dx-otb-area-actions"
+        onClick={e=>e.stopPropagation()}>{o.estado==='programada'&&<button
+        className="dx-otb-btn"
+        disabled={!permiteEscritura||iniciandoId===o.id||!o.tecnico_responsable_id||!o.centro_costo_id}
+        title={title}
+        onClick={()=>iniciar(o)}>{iniciandoId===o.id?'Iniciando…':<>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="m7 4 13 8-13 8z"/>
+  </svg>Iniciar OT</>}</button>}</div>
+  </article>;
+  })}
+  {cargando&&<div
+        className="dx-otb-loading">Cargando Órdenes de trabajo…</div>}{!error&&total>0&&<footer
+        className="dx-otb-pag">
+  <span>Mostrando {(pagina-1)*OT_PAGE_SIZE +1}–{Math.min(pagina*OT_PAGE_SIZE,total)} de {total}</span>
+  <div>
+  <button
+        disabled={pagina===1||cargando}
+        onClick={()=>setPagina(x=>x-1)}>← Ant.</button>
+  <span>Pág. {pagina} / {paginas}</span>
+  <button
+        disabled={pagina===paginas||cargando}
+        onClick={()=>setPagina(x=>x+1)}>Sig. →</button>
+  </div>
+  </footer>}</section>
+  </>}{aviso&&<div
+        className="dx-otb-toast">{aviso}</div>}<FooterBrand />
+  </div>
+  </section>;
 
-          <section className="dx-ot-card" aria-label="Órdenes de trabajo">
-            <div className="dx-ot-toolbar">
-              <h2>Órdenes de trabajo</h2>
-              <span className="dx-ot-count">{total} resultado{total === 1 ? '' : 's'}</span>
-              <label className="dx-ot-search">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                <input type="search" aria-label="Buscar por número de OT" placeholder="Buscar por número de OT…" value={filtros.numero}
-                  onChange={event => actualizarFiltro('numero', event.target.value)} />
-              </label>
-            </div>
-            <div className="dx-ot-filters" role="group" aria-label="Filtrar por estado">
-              <button type="button" className={'dx-ot-filter' + (!filtros.estado ? ' dx-ot-on' : '')} aria-pressed={!filtros.estado} onClick={() => actualizarFiltro('estado', '')}>Todos</button>
-              {estados.map(estado => <button key={estado} type="button" className={'dx-ot-filter' + (filtros.estado === estado ? ' dx-ot-on' : '')} aria-pressed={filtros.estado === estado} onClick={() => actualizarFiltro('estado', estado)}>{etiquetaEstadoOT(estado)}</button>)}
-              <select className="dx-ot-select" aria-label="Filtrar por técnico" value={filtros.tecnicoId} onChange={event => actualizarFiltro('tecnicoId', event.target.value)}>
-                <option value="">Técnico: Todos</option>
-                {tecnicos.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre || tecnico.codigo || tecnico.id}</option>)}
-              </select>
-            </div>
-            <div className="dx-ot-grid dx-ot-grid-head" aria-hidden="true">
-              <span>OT · Equipo</span><span>Raíz de costo · Cargo</span><span>Técnico · Ubicación</span><span>Estado</span><span>Costo · Avance</span><span className="dx-ot-actions-head">Acciones</span>
-            </div>
-            {!cargando && !error && filas.length === 0 && <div className="dx-ot-empty">No hay OTs para los filtros seleccionados.</div>}
-            {filas.map(ot => {
-              const etiquetaEquipo = ot.equipo
-                ? [ot.equipo.codigo, ot.equipo.nombre].filter(Boolean).join(' - ')
-                : ot.equipo_id || 'Sin equipo';
-              const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${etiquetaEquipo}` : 'Sin raíz registrada';
-              const estaIniciando = iniciandoId === ot.id;
-              const inicioSoloLectura = !permiteEscritura;
-              const tituloInicio = inicioSoloLectura
-                ? 'La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.'
-                : !ot.tecnico_responsable_id
-                  ? 'Asigna un técnico responsable antes de iniciar la OT.'
-                  : !ot.centro_costo_id
-                    ? 'Asigna un centro de costo antes de iniciar la OT.'
-                    : 'Iniciar esta OT.';
-              const avance = Math.max(0, Math.min(100, Number(ot.avance_pct || 0)));
-              return (
-                <article key={ot.id} className="dx-ot-grid dx-ot-row" aria-disabled="true" title="El detalle real estará disponible próximamente." onClick={mostrarAvisoDetalle}>
-                  <div className="dx-ot-main">
-                    <span className="dx-ot-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" /></svg></span>
-                    <div className="dx-ot-main-copy">
-                      <b>{etiquetaEquipo}</b>
-                      <div className="dx-ot-subline"><span>{ot.numero}</span><small>{formatoFechaOT(ot.fecha_programada)}</small></div>
-                      <small>{nombreCuentaOT(ot.cliente)}{ot.horometro_actual != null ? ` · Horóm. ${Number(ot.horometro_actual).toLocaleString()} h` : ''}</small>
-                    </div>
-                  </div>
-                  <div className="dx-ot-cell dx-ot-root"><span className="dx-ot-label">Raíz de costo · Cargo</span><b>{raiz}</b>
-                    {ot.centroCosto && <small>{ot.centroCosto.codigo} · {ot.centroCosto.nombre}</small>}
-                    <small className="dx-ot-type">{ot.tipo_trabajo || 'Sin clasificar'} · {ot.cargo_financiero || 'Sin cargo financiero'}{ot.motivo_rework ? ` · ${ot.motivo_rework}` : ''}</small>
-                  </div>
-                  <div className="dx-ot-cell dx-ot-tech"><span className="dx-ot-label">Técnico · ubicación</span><b>{ot.tecnico?.nombre || ot.tecnico_responsable_id || 'Sin asignar'}</b><small>{ot.sede?.nombre || ot.direccion_ejecucion || 'Sin ubicación'}</small></div>
-                  <div className="dx-ot-cell dx-ot-state"><span className="dx-ot-label">Estado</span><span className={'dx-ot-status' + (ot.estado === 'programada' ? ' dx-ot-status-amber' : ['cerrada', 'valorizada'].includes(ot.estado) ? ' dx-ot-status-green' : '')}><i aria-hidden="true" />{etiquetaEstadoOT(ot.estado)}</span></div>
-                  <div className="dx-ot-cell dx-ot-cost"><span className="dx-ot-label">Costo · avance</span><b>{formatoMontoOT(ot.costo_real)} <small>est. {formatoMontoOT(ot.costo_estimado)}</small></b><div className="dx-ot-progress" role="img" aria-label={`Avance ${avance.toFixed(0)} por ciento`}><i style={{ width: `${avance}%` }} /></div><small>{avance.toFixed(0)}%</small></div>
-                  <div className="dx-ot-actions" onClick={event => event.stopPropagation()}>
-                    {ot.estado === 'programada' && <button type="button" className="dx-btn primary" disabled={inicioSoloLectura || estaIniciando} title={tituloInicio} onClick={() => iniciarOT(ot)}>{estaIniciando ? 'Iniciando…' : 'Iniciar OT'}</button>}
-                    <button type="button" className="dx-btn" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button>
-                  </div>
-                </article>
-              );
-            })}
-            {cargando && <div className="dx-ot-loading" role="status">Cargando Órdenes de trabajo…</div>}
-            {!error && total > 0 && <footer className="dx-ot-pager">
-              <span>Mostrando {(pagina - 1) * OT_PAGE_SIZE + 1}–{Math.min(pagina * OT_PAGE_SIZE, total)} de {total}</span>
-              <div><button type="button" className="dx-btn" disabled={pagina === 1 || cargando} onClick={() => setPagina(actual => actual - 1)}>← Ant.</button>
-                <span>Pág. {pagina} / {totalPaginas}</span>
-                <button type="button" className="dx-btn" disabled={pagina === totalPaginas || cargando} onClick={() => setPagina(actual => actual + 1)}>Sig. →</button></div>
-            </footer>}
-          </section>
-        </>
-      )}
-      {aviso && <div className="dx-ot-toast" role="status">{aviso}</div>}
-      <FooterBrand />
-    </section>
-  );
 };
 
-// ── Shared UI — Partes Diarios ─────────────────────────────────────────────
 
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const fmtFechaCorta = (iso) => {

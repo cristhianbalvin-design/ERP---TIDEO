@@ -118,7 +118,7 @@ export const validateOTForm = (data) => {
   const addIssue = (path, message) => issues.push({ path, message });
   const objetoCostoTipo = data.objetoCostoTipo || 'contrato';
 
-  if (!data.lineaNegocio) addIssue(['lineaNegocio'], 'Seleccione la linea de negocio.');
+  if (!data.lineaNegocio) addIssue(['lineaNegocio'], 'Seleccione la línea de negocio.');
 
   if (objetoCostoTipo !== 'equipo_interno') {
     if (data.lineaNegocio === 'flota_alquileres' && data.tipoCargo === 'Interno_Zahory')
@@ -128,23 +128,23 @@ export const validateOTForm = (data) => {
   }
 
   if (!data.equipo)           addIssue(['equipo'],                'Seleccione un activo / equipo.');
-  if (!data.lugarEjecucion)   addIssue(['lugarEjecucion'],        'Seleccione el lugar de ejecucion.');
+  if (!data.lugarEjecucion)   addIssue(['lugarEjecucion'],        'Seleccione el lugar de ejecución.');
   if (data.lugarEjecucion === 'Campo_Mina' && !String(data.unidadMinera || '').trim())
     addIssue(['unidadMinera'], 'Ingrese la unidad minera.');
   if (!data.tipoTrabajo)      addIssue(['tipoTrabajo'],           'Seleccione el tipo de trabajo.');
   if (!data.tipoCargo)        addIssue(['tipoCargo'],             'Seleccione el cargo financiero.');
   if (!data.fechaProgramadaInicio) addIssue(['fechaProgramadaInicio'], 'Ingrese la fecha programada de inicio.');
-  if (!data.tecnico)          addIssue(['tecnico'],               'Seleccione un tecnico responsable.');
-  if (!data.descripcion)      addIssue(['descripcion'],           'Ingrese la descripcion del trabajo.');
+  if (!data.tecnico)          addIssue(['tecnico'],               'Seleccione un técnico responsable.');
+  if (!data.descripcion)      addIssue(['descripcion'],           'Ingrese la descripción del trabajo.');
 
   const blockedReason = getBlockedCargoReason(data.tipoTrabajo, data.tipoCargo);
   if (blockedReason) addIssue(['tipoCargo'], blockedReason);
 
   if (data.tipoCargo === 'Reclamo_Rework' && !String(data.motivoRetrabajo || '').trim())
-    addIssue(['motivoRetrabajo'], 'La justificacion del retrabajo es obligatoria.');
+    addIssue(['motivoRetrabajo'], 'La justificación del retrabajo es obligatoria.');
 
   if (!data.hasValidSegment)
-    addIssue(['segmentos'], 'Toda OT debe tener al menos 1 segmento con descripcion y 1 operacion.');
+    addIssue(['segmentos'], 'Toda OT debe tener al menos 1 segmento con descripción y 1 operación.');
 
   return {
     success: issues.length === 0,
@@ -197,5 +197,5 @@ export const validateOTForm = (data) => {
 //   if (blockedReason)
 //     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tipoCargo'], message: blockedReason });
 //   if (data.tipoCargo === 'Reclamo_Rework' && !data.motivoRetrabajo?.trim())
-//     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['motivoRetrabajo'], message: 'La justificacion del retrabajo es obligatoria.' });
+//     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['motivoRetrabajo'], message: 'La justificación del retrabajo es obligatoria.' });
 // });

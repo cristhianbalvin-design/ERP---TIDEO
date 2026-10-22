@@ -71,13 +71,14 @@ const CATEGORIAS_NO_FLOTA = new Set([
   'ACTIVO INTANGIBLE', 'INTANGIBLE', 'ACTIVO NO DEPRECIABLE', 'OTRO',
 ]);
 const esActivoDeFlota = (activo) => !CATEGORIAS_NO_FLOTA.has(String(activo?.tipo_categoria || '').trim().toUpperCase());
-const generarNumeroOT = () => `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
 const generarIdOT = () => `ot_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
-const esErrorNumeroDuplicado = (error) =>
-  error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '');
 
 const mensajeErrorGuardadoOT = (error) => {
   const mensaje = String(error?.message || 'No se pudo guardar la OT.');
+  const mensajeRpcEnEspanol = ['22023', 'P0001'].includes(error?.code)
+    || (error?.code === '42501' && /^(No tienes|La sociedad)/i.test(mensaje));
+
+  if (mensajeRpcEnEspanol) return mensaje;
   if (error?.code === '42501' || /row-level security|permission denied|no tienes acceso|membres/i.test(mensaje)) {
     return 'No tienes permiso para crear OTs en la empresa o sociedad activa.';
   }
@@ -1648,18 +1649,16 @@ export const CrearOTPage = ({ onNav }) => {
     setGuardando(true);
     setErrorGuardado(null);
     const totales = calcOTTotals(segmentos);
-    const esOTDesdeOS = objetoCostoTipo === 'os_cliente';
     const payloadBase = {
       id: generarIdOT(),
+      objeto_costo_tipo: objetoCostoTipo,
       empresa_id: sesionOperativa.empresaId,
       sociedad_id: sesionOperativa.sociedadId || null,
-      os_cliente_id: esOTDesdeOS ? form.contratoId : null,
+      os_cliente_id: objetoCostoTipo === 'os_cliente' ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
       equipo_id: ['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
       cuenta_id: form.clienteId || null,
       proyecto_id: form.proyectoId || null,
-      // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
-      // separado: la descripción técnica es el servicio registrado en esta fase.
       servicio: form.descripcion.trim(),
       descripcion: form.descripcion.trim(),
       direccion_ejecucion: form.unidadMinera || form.lugarEjecucion || null,
@@ -1677,103 +1676,52 @@ export const CrearOTPage = ({ onNav }) => {
       linea_negocio: form.lineaNegocio || null,
       tecnico_responsable_id: form.tecnico || null,
       motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
-      horometro_actual: requiereHorometroRaiz
-        ? Number(form.horometroApertura) : null,
+      horometro_actual: requiereHorometroRaiz ? Number(form.horometroApertura) : null,
     };
 
     try {
-      let guardada = null;
-      let ultimoError = null;
-      for (let intento = 0; intento < 5; intento += 1) {
-        const numero = generarNumeroOT();
-        const { data, error } = await getSupabaseClient()
-          .from('ordenes_trabajo')
-          .insert({ ...payloadBase, numero })
-          .select('id, numero')
-          .single();
-        if (!error) {
-          guardada = data || { id: payloadBase.id, numero };
-          break;
-        }
-        ultimoError = error;
-        if (!esErrorNumeroDuplicado(error)) throw error;
-      }
-      if (!guardada) throw ultimoError || new Error('No se pudo reservar un número de OT único.');
-
-      // Las operaciones se persisten solo después de contar con el id real
-      // requerido por la FK ot_tareas.ot_id.
-      const tareas = segmentos.flatMap((segmento) =>
-        segmento.ot_operaciones
-          .filter(operacion => operacion.tipo_servicio_interno_id)
-          .map((operacion) => {
-            const tipoServicio = tiposServicioInterno.find(
-              tipo => tipo.id === operacion.tipo_servicio_interno_id,
-            );
-            const tecnico = tecnicosReales.find(tecnicoItem => tecnicoItem.id === operacion.tecnico_id);
-            return {
-              empresa_id: sesionOperativa.empresaId,
-              ot_id: guardada.id,
-              titulo: [tipoServicio?.codigo, tipoServicio?.nombre].filter(Boolean).join(' - ') || operacion.descripcion,
-              descripcion: segmento.descripcion || null,
-              tecnico_id: tecnico?.id || null,
-              tecnico_nombre: tecnico?.nombre || null,
-              tecnico_tipo: tecnico ? 'operativo' : null,
-              estado: 'pendiente',
-              horas_estimadas: null,
-              horas_reales: 0,
-              avance_pct: 0,
-              completada: false,
-            };
-          }),
-      ).map((tarea, orden) => ({ ...tarea, orden }));
-
-      let errorTareas = null;
-      if (tareas.length > 0) {
-        const { error } = await getSupabaseClient()
-          .from('ot_tareas')
-          .insert(tareas);
-        errorTareas = error;
-      }
-
-      const repuestosEstimados = segmentos.flatMap((segmento) =>
-        segmento.estimacion_repuestos
-          .filter(item => item.material_id)
-          .map(item => ({
-            ot_id: guardada.id,
-            segmento_id: segmento.codigo,
-            material_id: item.material_id,
-            cantidad_estimada: Number(item.cantidad || 0),
-            precio_unitario_estimado: Number(item.precio_unitario || 0),
-            almacen_id: null,
-            solpe_id: null,
-            empresa_id: sesionOperativa.empresaId,
-            sociedad_id: sesionOperativa.sociedadId || null,
-          })),
-      );
-
-      let errorRepuestos = null;
-      if (repuestosEstimados.length > 0) {
-        const { error } = await getSupabaseClient()
-          .from('ot_segmento_repuestos')
-          .insert(repuestosEstimados);
-        errorRepuestos = error;
-      }
+      const tareas = segmentos.flatMap(segmento => segmento.ot_operaciones
+        .filter(operacion => operacion.tipo_servicio_interno_id)
+        .map(operacion => {
+          const tipoServicio = tiposServicioInterno.find(tipo => tipo.id === operacion.tipo_servicio_interno_id);
+          const tecnico = tecnicosReales.find(tecnicoItem => tecnicoItem.id === operacion.tecnico_id);
+          return {
+            titulo: [tipoServicio?.codigo, tipoServicio?.nombre].filter(Boolean).join(' - ') || operacion.descripcion,
+            descripcion: segmento.descripcion || null,
+            tecnico_id: tecnico?.id || null,
+            tecnico_nombre: tecnico?.nombre || null,
+            tecnico_tipo: tecnico ? 'operativo' : null,
+            horas_estimadas: null,
+          };
+        }));
+      const repuestosEstimados = segmentos.flatMap(segmento => segmento.estimacion_repuestos
+        .filter(item => item.material_id)
+        .map(item => ({
+          segmento_id: segmento.codigo,
+          material_id: item.material_id,
+          cantidad_estimada: Number(item.cantidad || 0),
+          precio_unitario_estimado: Number(item.precio_unitario || 0),
+        })));
+      const { data: guardada, error } = await getSupabaseClient().rpc('crear_orden_trabajo', {
+        p_empresa_id: sesionOperativa.empresaId,
+        p_datos: payloadBase,
+        p_tareas: tareas,
+        p_repuestos: repuestosEstimados,
+      });
+      if (error) throw error;
 
       setCreada({
         ...form,
         id: guardada.id,
         numero: guardada.numero,
+        moneda: guardada.moneda,
         backlogs,
         segmentos,
         fechaPrimerLaborReal: null,
         ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
         horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
-        errorRepuestos: errorRepuestos
-          ? `La OT ${guardada.numero} fue creada, pero sus repuestos estimados no pudieron registrarse.`
-          : null,
-        errorTareas: errorTareas
-          ? `La OT ${guardada.numero} fue creada, pero sus tareas no pudieron registrarse. Regístralas manualmente desde Administrativo.`
-          : null,
+        errorRepuestos: null,
+        errorTareas: null,
       });
     } catch (error) {
       setErrorGuardado(mensajeErrorGuardadoOT(error));
