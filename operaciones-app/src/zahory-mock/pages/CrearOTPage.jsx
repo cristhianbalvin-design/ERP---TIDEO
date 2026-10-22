@@ -695,7 +695,7 @@ const CC_DESC = {
   'PROD-SOL': 'Producción / Soldadura — costo de fabricación',
 };
 
-export const CrearOTPage = ({ onNav }) => {
+export const CrearOTPage = ({ onNav, routeParams = {} }) => {
   const sesionOperativa = useSesionOperativa();
   const [pasoActual, setPasoActual] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1472,6 +1472,23 @@ export const CrearOTPage = ({ onNav }) => {
     setBacklogs([]);
   };
 
+  // Llegada desde la ficha de OS Cliente (app principal): ?os=<id>&cliente=<cuenta_id>.
+  // Se preselecciona una sola vez; después el usuario puede cambiar cualquier dato.
+  const prefijoOS = useRef({ os: routeParams?.os || '', cliente: routeParams?.cliente || '', etapa: routeParams?.os && routeParams?.cliente ? 'tipo' : 'listo' });
+  useEffect(() => {
+    const p = prefijoOS.current;
+    if (p.etapa === 'tipo') {
+      p.etapa = 'cliente';
+      changeObjetoCostoTipo('os_cliente');
+    } else if (p.etapa === 'cliente' && objetoCostoTipo === 'os_cliente' && !form.clienteId) {
+      p.etapa = 'os';
+      setCliente(p.cliente);
+    } else if (p.etapa === 'os' && form.clienteId === p.cliente && osClientesReales.some(o => o.id === p.os)) {
+      p.etapa = 'listo';
+      setContrato(p.os);
+    }
+  });
+
   const setContrato = (contratoId) => {
     const next = objetosCostoFiltrados.find(c => c.id === contratoId);
     heredarCC(objetoCostoTipo, contratoId);
@@ -1596,11 +1613,13 @@ export const CrearOTPage = ({ onNav }) => {
     || (objetoCostoTipo === 'os_cliente' && Boolean(form.equipo));
   const horometroRaizEquipoValido = !requiereHorometroRaiz
     || (String(form.horometroApertura || '').trim() !== '' && Number(form.horometroApertura) >= 0);
-  const horometroObligatorio = form.lugarEjecucion === 'Campo_Mina' || requiereHorometroRaiz;
+  const horometroObligatorio = (form.lugarEjecucion === 'Campo_Mina' && Boolean(form.equipo)) || requiereHorometroRaiz;
+  // Sin equipo (OT de servicio con raíz OS Cliente) el lugar se elige igual y no hay horómetro que registrar.
+  const lugarHabilitado = Boolean(form.equipo) || objetoCostoTipo === 'os_cliente';
   const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
     && horometroRaizEquipoValido
     && !(form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
-    && !(form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura);
+    && !(form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura);
 
   const extraErrors = [
     !hasCentroCosto
@@ -1609,7 +1628,7 @@ export const CrearOTPage = ({ onNav }) => {
       && `- Combinación DBS no permitida: ${errorDBS}`,
     (form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
       && '- El motivo del retrabajo es obligatorio.',
-    (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)
+    (form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura)
       && '- El horómetro de apertura es obligatorio para OTs en campo.',
     !horometroRaizEquipoValido
       && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato, sobre equipo interno o desde una OS con equipo asociado.',
@@ -1627,7 +1646,7 @@ export const CrearOTPage = ({ onNav }) => {
       (mensajes || []).forEach(mensaje => pendientes[(pasoPorCampo[campo] || 5) - 1].push(mensaje));
     });
     if (!hasCentroCosto) pendientes[0].push('Seleccione el objeto de costo raíz para heredar o definir el centro de costo.');
-    if (!horometroRaizEquipoValido || (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)) {
+    if (!horometroRaizEquipoValido || (form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura)) {
       pendientes[1].push('Complete el horómetro requerido según el lugar y objeto de costo.');
     }
     if (errorDBS) pendientes[2].push(`Combinación DBS no permitida: ${errorDBS}`);
@@ -1655,7 +1674,7 @@ export const CrearOTPage = ({ onNav }) => {
       sociedad_id: sesionOperativa.sociedadId || null,
       os_cliente_id: esOTDesdeOS ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
-      equipo_id: ['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
+      equipo_id: ['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? (form.equipo || null) : null,
       cuenta_id: form.clienteId || null,
       proyecto_id: form.proyectoId || null,
       // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
@@ -2086,7 +2105,7 @@ export const CrearOTPage = ({ onNav }) => {
                     )}
                     {objetoCostoTipo === 'os_cliente' && (
                       <div className="ot-form-field">
-                        <div className="label" style={{ fontSize: 12 }}>Equipo *</div>
+                        <div className="label" style={{ fontSize: 12 }}>Equipo <span style={{ fontWeight: 400, color: '#64748b' }}>(opcional en servicios sin equipo)</span></div>
                         <div role="radiogroup" aria-label="Propietario del equipo" style={{ display: 'flex', gap: 12, marginTop: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                           {[
                             { value: 'propio', label: 'Propio de la empresa' },
@@ -2236,9 +2255,9 @@ export const CrearOTPage = ({ onNav }) => {
                 <div className="ot-form-field">
                   <div className="label" style={{ fontSize: 12 }}>Lugar de Ejecucion *</div>
                   <select className="input" value={form.lugarEjecucion}
-                    disabled={!form.equipo}
+                    disabled={!lugarHabilitado}
                     onChange={e => setLugarEjecucion(e.target.value)}
-                    style={{ marginTop: 4, background: !form.equipo ? '#ECEFF1' : undefined }}>
+                    style={{ marginTop: 4, background: !lugarHabilitado ? '#ECEFF1' : undefined }}>
                     {LUGAR_EJECUCION.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                   </select>
                 </div>
@@ -2246,16 +2265,16 @@ export const CrearOTPage = ({ onNav }) => {
                   <div className="ot-form-field">
                     <div className="label" style={{ fontSize: 12 }}>Unidad Minera *</div>
                     <select className="input" value={form.unidadMinera}
-                      disabled={!form.equipo || cargandoUnidadesMineras}
+                      disabled={!lugarHabilitado || cargandoUnidadesMineras}
                       onChange={e => set('unidadMinera', e.target.value)}
                       style={{
                         marginTop: 4,
-                        background: !form.equipo || cargandoUnidadesMineras ? '#ECEFF1' : undefined,
+                        background: !lugarHabilitado || cargandoUnidadesMineras ? '#ECEFF1' : undefined,
                         borderColor: fieldErrors.unidadMinera ? '#E53935' : undefined,
                       }}
                     >
                       <option value="">
-                        {!form.equipo
+                        {!lugarHabilitado
                           ? 'Seleccione primero un equipo'
                           : cargandoUnidadesMineras
                             ? 'Cargando unidades mineras...'
@@ -2282,10 +2301,10 @@ export const CrearOTPage = ({ onNav }) => {
                   <div className="ot-form-field">
                     <div className="label" style={{ fontSize: 12 }}>Taller / Cliente</div>
                     <input className="input" value={form.unidadMinera}
-                      disabled={!form.equipo}
+                      disabled={!lugarHabilitado}
                       onChange={e => set('unidadMinera', e.target.value)}
-                      placeholder={form.equipo ? 'Ej. Taller del cliente / sede' : 'Seleccione primero un equipo'}
-                      style={{ marginTop: 4, background: !form.equipo ? '#ECEFF1' : undefined }} />
+                      placeholder={lugarHabilitado ? 'Ej. Taller del cliente / sede' : 'Seleccione primero un equipo'}
+                      style={{ marginTop: 4, background: !lugarHabilitado ? '#ECEFF1' : undefined }} />
                   </div>
                 ) : (
                   <div className="ot-form-field">

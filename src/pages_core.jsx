@@ -5048,6 +5048,12 @@ function OSCliente() {
   const GRUPOS_ESTADO_OS = { activa: ['activa', 'en_ejecucion', 'por_facturar'], en_pausa: ['en_pausa'], cerrada: ['cerrada', 'facturada'], anulada: ['anulada'] };
   const PILL_OS = { activa:'is-green', en_ejecucion:'is-green', por_facturar:'is-green', en_pausa:'is-amber', cerrada:'is-gray', facturada:'is-gray', anulada:'is-red' };
   const fechaOS = valor => (valor ? String(valor).slice(0, 10).split('-').reverse().join('/') : '—');
+  // Las OTs se crean en la app de Operaciones: se abre su Nueva OT con la OS y el cliente ya elegidos.
+  const abrirNuevaOTEnOperaciones = os => {
+    const base = (import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/').replace(/\/?$/, '/');
+    const query = new URLSearchParams({ os: os.id, ...(os.cuenta_id ? { cliente: os.cuenta_id } : {}) });
+    window.location.assign(`${base}#/crear-ot?${query.toString()}`);
+  };
   const normOS = valor =>String(valor ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
   // Buscador inteligente, moneda y fecha de emisión exacta; los chips de estado se aplican aparte para contar.
@@ -5416,7 +5422,7 @@ function OSCliente() {
             {os.cotizacion_especial_id && <button type="button" className="dx-osc-ghost" onClick={() => navigate('cotizaciones', { especial:'detalle', especial_id:os.cotizacion_especial_id })}>{I.file} Ver cotización especial</button>}
             {!cerrada && <button type="button" className="dx-osc-ghost" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button>}
             <button type="button" className="dx-osc-ghost" aria-haspopup="menu" aria-expanded={menuAccionesOS} onClick={() => setMenuAccionesOS(v => !v)}>Más acciones {I.chev}</button>
-            {!cerrada && <button type="button" className="dx-osc-primary" data-local-form="true" onClick={() => navigate('os_cliente', { detail: os.id, crear_ot: true })}>{I.plus} Crear OT</button>}
+            {!cerrada && <button type="button" className="dx-osc-primary" onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Crear OT</button>}
             {menuAccionesOS && <>
               <div className="dx-osc-menu-back" onClick={() => setMenuAccionesOS(false)} />
               <div className="dx-osc-menu" role="menu">
@@ -5564,7 +5570,7 @@ function OSCliente() {
             {activeTab === 'OTs' && <>
               <div className="card-head" style={{justifyContent:'space-between'}}>
                 <h3>Órdenes de Trabajo</h3>
-                {!cerrada && <button className="btn btn-primary os-local-action" style={{fontSize:12}} data-local-form="true" onClick={() => navigate('os_cliente', { detail: os.id, crear_ot: true })}>{I.plus} Nueva OT</button>}
+                {!cerrada && <button className="btn btn-primary os-local-action" style={{fontSize:12}} onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Nueva OT</button>}
               </div>
               <div className="table-wrap">
                 <table className="tbl">

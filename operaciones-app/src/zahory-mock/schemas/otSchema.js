@@ -127,7 +127,8 @@ export const validateOTForm = (data) => {
     if (!data.contratoId) addIssue(['contratoId'], 'Seleccione un contrato / proyecto.');
   }
 
-  if (!data.equipo)           addIssue(['equipo'],                'Seleccione un activo / equipo.');
+  // En OTs de servicio (raíz OS Cliente) el equipo es opcional: p. ej. limpieza mensual.
+  if (!data.equipo && objetoCostoTipo !== 'os_cliente') addIssue(['equipo'], 'Seleccione un activo / equipo.');
   if (!data.lugarEjecucion)   addIssue(['lugarEjecucion'],        'Seleccione el lugar de ejecucion.');
   if (data.lugarEjecucion === 'Campo_Mina' && !String(data.unidadMinera || '').trim())
     addIssue(['unidadMinera'], 'Ingrese la unidad minera.');
