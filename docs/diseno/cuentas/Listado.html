@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuentas y Contactos — mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#E9ECF0;font-family:'DM Sans',sans-serif}
+  .mk-bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#1A2B4A;color:#fff;font-size:13px}
+  .mk-bar button{height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:transparent;color:#fff;cursor:pointer;font:inherit}
+  .mk-bar button.on{background:#00ACC1;border-color:#00ACC1;color:#02161A}
+  .mk-bar span{opacity:.75;margin-right:4px}
+  .mk-frame{display:flex;margin:16px auto;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.12);transition:width .2s}
+  .mk-side{width:240px;flex:none;background:#14213A;color:#B8C3D6;font-size:13px;padding:18px 14px}
+  .mk-side b{display:block;color:#fff;font:700 18px Sora;margin-bottom:18px}
+  .mk-side div{padding:8px 10px;border-radius:8px}
+  .mk-side div.on{background:#22355A;color:#fff}
+  .mk-main{flex:1;min-width:0}
+  .mk-frame.is-mobile .mk-side{display:none}
+  .mk-note{max-width:1100px;margin:0 auto 24px;padding:0 16px;color:#4B5563;font-size:13px}
+
+  /* ====== Pantalla (prefijo dx-cta-) ====== */
+  .dx-cta{--n:#1A2B4A;--cy:#00ACC1;--cyf:#0B4F5A;--cyb:#E0F7FA;--vi:#5B3A8C;--vib:#F0EAFB;--amf:#8A4B00;--amb:#FFF3E0;--amd:#E08A00;--grf:#14633A;--grb:#E3F6EA;--grd:#16A34A;--blf:#1E4E8C;--blb:#E6EFFB;--gr:#6B7280;--grb2:#F1F3F5;--grf2:#4B5563;--ink:#1F2937;--line:#E4E7EB;--line2:#EEF0F3;--bd:#C9CFD8;--bg:#F4F6F8;--hd:#F8F9FA;--card:#fff;--hov:#F6FBFC;
+    container-type:inline-size;box-sizing:border-box;min-height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans',sans-serif}
+  .dark .dx-cta{--n:#F8FAFC;--cy:#22D3EE;--cyf:#67E8F9;--cyb:#0A3038;--vi:#D8B4FE;--vib:#321B3B;--amf:#FDBA74;--amb:#3A2810;--amd:#F59E0B;--grf:#86EFAC;--grb:#12351F;--grd:#4ADE80;--blf:#93C5FD;--blb:#13294B;--gr:#94A3B8;--grb2:#273244;--grf2:#CBD5E1;--ink:#F8FAFC;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.08);--bd:#475569;--bg:#020617;--hd:#0F172A;--card:#0F172A;--hov:#172033}
+  .dx-cta *{box-sizing:border-box}
+  .dx-cta button,.dx-cta input,.dx-cta select{font:inherit}
+  .dx-cta button{cursor:pointer}
+  .dx-cta svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .dx-cta :focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+  .dx-cta-in{padding:28px 32px 56px}
+  .dx-cta-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .dx-cta-eyebrow{color:var(--cyf);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .dx-cta-title{margin:4px 0;color:var(--n);font:700 28px/1.2 Sora,sans-serif}
+  .dx-cta-sub{margin:0;color:var(--gr)}
+  .dx-cta-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .dx-cta-btn{display:inline-flex;height:40px;align-items:center;gap:8px;padding:0 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--n);font-weight:600;white-space:nowrap}
+  .dx-cta-btn:hover{background:var(--hov)}
+  .dx-cta-btn .lbl-short{display:none}
+  .dx-cta-primary{display:inline-flex;height:40px;align-items:center;gap:8px;padding:0 16px;border:0;border-radius:8px;background:#1A2B4A;color:#fff;font-weight:600;white-space:nowrap}
+  .dark .dx-cta-primary{background:#00ACC1;color:#02161A}
+  .dx-cta-tip{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 12px 10px 14px;border:1px solid var(--line);border-left:3px solid var(--cy);border-radius:10px;background:var(--card);color:var(--gr);font-size:13px}
+  .dx-cta-tip strong{color:var(--n)}
+  .dx-cta-tip p{margin:0;flex:1;min-width:0}
+  .dx-cta-link{border:0;background:transparent;color:var(--cyf);font-weight:700;white-space:nowrap;padding:0 4px}
+  .dx-cta-x{display:flex;width:28px;height:28px;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--gr)}
+  .dx-cta-x:hover{background:var(--grb2)}
+  .dx-cta-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}
+  .dx-cta-kpi{display:flex;min-width:0;flex-direction:column;gap:2px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(15,27,48,.04);color:inherit;text-align:left}
+  .dx-cta-kpi:hover{background:var(--hov)}
+  .dx-cta-kpi.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+  .dx-cta-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .dx-cta-ico{display:flex;width:32px;height:32px;flex:none;align-items:center;justify-content:center;border-radius:9px}
+  .is-cyan.dx-cta-ico{background:var(--cyb);color:var(--cyf)} .is-green.dx-cta-ico{background:var(--grb);color:var(--grf)} .is-blue.dx-cta-ico{background:var(--blb);color:var(--blf)} .is-amber.dx-cta-ico{background:var(--amb);color:var(--amf)}
+  .dx-cta-kpi-val{margin-top:6px;color:var(--n);font:700 26px/1.1 Sora,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dx-cta-kpi-note{color:var(--gr);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dx-cta-kpi.is-alert{border-color:color-mix(in srgb,var(--amd) 45%,var(--line))}
+  .dx-cta-kpi.is-alert .dx-cta-kpi-val{color:var(--amf)}
+  .dx-cta-card{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(15,27,48,.04)}
+  .dx-cta-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line)}
+  .dx-cta-bar-title{margin:0 auto 0 0;color:var(--n);font:700 16px/1.4 Sora,sans-serif}
+  .dx-cta-count{margin-left:8px;color:var(--gr);font:500 13px 'DM Sans'}
+  .dx-cta-search{display:flex;width:300px;max-width:100%;height:40px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--gr)}
+  .dx-cta-search:focus-within{border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 15%,transparent)}
+  .dx-cta-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:14px}
+  .dx-cta-filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--hd)}
+  .dx-cta-select{height:40px;width:auto;min-width:150px;max-width:230px;padding:0 30px 0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--ink);font-size:14px}
+  .dx-cta-clear{height:40px;padding:0 12px;border:0;background:transparent;color:var(--cyf);font-weight:600}
+  .dx-cta-cols{display:grid;grid-template-columns:minmax(240px,2.2fr) 112px minmax(150px,1.1fr) minmax(170px,1.3fr) 96px 108px 20px;column-gap:14px;align-items:center;padding-inline:20px}
+  .dx-cta-head{height:40px;border-bottom:1px solid var(--line);background:var(--hd);color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .dx-cta-head span:nth-child(5){text-align:right}
+  .dx-cta-row{min-height:68px;padding-block:12px;border-bottom:1px solid var(--line2);cursor:pointer}
+  .dx-cta-row:last-child{border-bottom:0}
+  .dx-cta-row:hover{background:var(--hov)}
+  .dx-cta-acc{display:flex;min-width:0;align-items:center;gap:12px}
+  .dx-cta-logo{display:flex;width:40px;height:40px;flex:none;align-items:center;justify-content:center;border-radius:10px;background:var(--cyb);color:var(--cyf);font:700 13px Sora}
+  .dx-cta-acc div{display:flex;min-width:0;flex-direction:column}
+  .dx-cta-acc strong{overflow:hidden;color:var(--n);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+  .dx-cta-acc .dx-cta-sub2{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+  .dx-cta-acc .dx-cta-sub2 b{font:500 12px ui-monospace,Menlo,monospace;color:var(--gr)}
+  .dx-cta-pill{display:inline-flex;align-items:center;gap:6px;width:max-content;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+  .dx-cta-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .dx-cta-pill.is-green{background:var(--grb);color:var(--grf)} .dx-cta-pill.is-blue{background:var(--blb);color:var(--blf)} .dx-cta-pill.is-violet{background:var(--vib);color:var(--vi)} .dx-cta-pill.is-gray{background:var(--grb2);color:var(--grf2)}
+  .dx-cta-txt{overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap}
+  .dx-cta-muted{color:var(--gr)}
+  .dx-cta-resp{display:flex;min-width:0;align-items:center;gap:8px}
+  .dx-cta-av{display:flex;width:26px;height:26px;flex:none;align-items:center;justify-content:center;border-radius:50%;background:var(--cyb);color:var(--cyf);font-size:10px;font-weight:700}
+  .dx-cta-av.is-none{background:var(--grb2);color:var(--gr)}
+  .dx-cta-ct{display:flex;min-width:0;flex-direction:column}
+  .dx-cta-ct strong{overflow:hidden;font-size:13px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+  .dx-cta-ct span{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+  .dx-cta-more{margin-left:4px;padding:0 6px;border-radius:999px;background:var(--grb2);color:var(--grf2);font-size:11px;font-weight:700}
+  .dx-cta-money{text-align:right;white-space:nowrap}
+  .dx-cta-money strong{color:var(--n);font:700 14px Sora}
+  .dx-cta-money span{display:block;color:var(--gr);font-size:12px}
+  .dx-cta-comp{display:flex;flex-direction:column;gap:4px}
+  .dx-cta-comp-bar{height:6px;border-radius:999px;background:var(--grb2);overflow:hidden}
+  .dx-cta-comp-bar i{display:block;height:100%;border-radius:999px;background:var(--grd)}
+  .dx-cta-comp.is-mid .dx-cta-comp-bar i{background:var(--amd)}
+  .dx-cta-comp.is-low .dx-cta-comp-bar i{background:#DC2626}
+  .dx-cta-comp span{color:var(--gr);font-size:12px}
+  .dx-cta-go{color:var(--gr)}
+  .dx-cta-empty{display:flex;min-height:180px;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:24px;color:var(--gr);text-align:center}
+  .dx-cta-empty strong{color:var(--n);font:700 16px Sora}
+  @container (max-width:1100px){
+    .dx-cta-kpi .dx-cta-ico{display:none}
+    .dx-cta-cols{grid-template-columns:minmax(200px,2fr) 104px minmax(130px,1fr) minmax(150px,1.2fr) 88px 96px 20px;column-gap:12px}
+  }
+  @container (max-width:900px){
+    .dx-cta-in{padding:22px 20px 40px}
+    .dx-cta-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .dx-cta-bar-title{width:100%}
+    .dx-cta-search{flex:1 1 260px;width:auto}
+    .dx-cta-head{display:none}
+    .dx-cta-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'acc tipo' 'ct money' 'resp comp';gap:10px 14px;padding:14px 16px}
+    .dx-cta-row > .c-acc{grid-area:acc} .dx-cta-row > .c-tipo{grid-area:tipo;justify-self:end} .dx-cta-row > .c-resp{grid-area:resp}
+    .dx-cta-row > .c-ct{grid-area:ct} .dx-cta-row > .c-money{grid-area:money} .dx-cta-row > .c-comp{grid-area:comp}
+    .dx-cta-row > .c-go{display:none}
+  }
+  @container (max-width:600px){
+    .dx-cta-in{padding:18px 14px 32px}
+    .dx-cta-title{font-size:24px}
+    .dx-cta-actions{width:100%}
+    .dx-cta-actions .dx-cta-btn{flex:1;justify-content:center}
+    .dx-cta-actions .dx-cta-btn .lbl-long{display:none}
+    .dx-cta-actions .dx-cta-btn .lbl-short{display:inline}
+    .dx-cta-primary{width:100%;justify-content:center}
+    .dx-cta-kpi{padding:12px 14px}
+    .dx-cta-kpi-val{font-size:22px}
+    .dx-cta-filters .dx-cta-select{flex:1 1 140px;max-width:none}
+    .dx-cta-row{grid-template-areas:'acc acc' 'tipo money' 'ct ct' 'resp comp'}
+    .dx-cta-row > .c-tipo{justify-self:start}
+    .dx-cta-tip{flex-wrap:wrap}
+  }
+</style>
+</head>
+<body>
+<div class="mk-bar">
+  <span>Ancho:</span>
+  <button data-w="1280" class="on">1280</button><button data-w="1000">1000</button><button data-w="800">800</button><button data-w="375">375</button>
+  <span style="margin-left:12px">Tema:</span><button id="mk-theme">Oscuro</button>
+</div>
+<div class="mk-frame" id="mk-frame" style="width:1280px">
+  <aside class="mk-side"><b>OPERA</b><div>Cuentas y Contactos</div><div>Agenda Comercial</div><div>Hoja de Costeo</div><div>Cotizaciones</div></aside>
+  <main class="mk-main" id="mk-main">
+  <div class="dx-cta">
+    <div class="dx-cta-in">
+      <div class="dx-cta-top">
+        <div>
+          <div class="dx-cta-eyebrow">Comercial · CRM</div>
+          <h1 class="dx-cta-title">Cuentas y Contactos</h1>
+          <p class="dx-cta-sub" id="sub">72 cuentas activas</p>
+        </div>
+        <div class="dx-cta-actions">
+          <button class="dx-cta-btn"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg><span class="lbl-long">Descargar plantilla</span><span class="lbl-short">Plantilla</span></button>
+          <button class="dx-cta-btn"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg><span class="lbl-long">Importar Excel</span><span class="lbl-short">Importar</span></button>
+          <button class="dx-cta-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nueva cuenta</button>
+        </div>
+      </div>
+
+      <div class="dx-cta-tip" id="tip">
+        <svg viewBox="0 0 24 24" style="color:var(--cyf)"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+        <p><strong>Consejo:</strong> registra primero un Lead y conviértelo; la cuenta se crea con RUC, razón social e industria ya completos.</p>
+        <button class="dx-cta-link">Ir a Leads</button>
+        <button class="dx-cta-x" aria-label="Cerrar consejo" onclick="document.getElementById('tip').remove()"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+
+      <div class="dx-cta-kpis" id="kpis"></div>
+
+      <section class="dx-cta-card">
+        <div class="dx-cta-bar">
+          <h2 class="dx-cta-bar-title">Cuentas<span class="dx-cta-count" id="count"></span></h2>
+          <label class="dx-cta-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="Buscar por razón social, RUC o contacto" aria-label="Buscar cuentas"></label>
+        </div>
+        <div class="dx-cta-filters">
+          <select class="dx-cta-select" id="fTipo" aria-label="Tipo"><option value="">Todos los tipos</option><option value="cliente">Cliente</option><option value="prospecto">Prospecto</option><option value="partner">Partner</option><option value="proveedor_estrategico">Proveedor estratégico</option></select>
+          <select class="dx-cta-select" id="fInd" aria-label="Industria"><option value="">Todas las industrias</option></select>
+          <select class="dx-cta-select" id="fResp" aria-label="Responsable"><option value="">Todos los responsables</option></select>
+          <select class="dx-cta-select" id="fCond" aria-label="Condiciones"><option value="">Condiciones: todas</option><option value="completas">Condiciones definidas</option><option value="pendientes">Condiciones por definir</option></select>
+          <button class="dx-cta-clear" id="clear" hidden>Limpiar filtros</button>
+        </div>
+        <div class="dx-cta-cols dx-cta-head"><span>Cuenta</span><span>Tipo</span><span>Responsable</span><span>Contacto principal</span><span>CxC</span><span>Completitud</span><span></span></div>
+        <div id="rows"></div>
+      </section>
+    </div>
+  </div>
+  </main>
+</div>
+<div class="mk-note">Mock con las 72 cuentas reales de WHYNCO. CxC y última compra se calculan desde CxC y facturas reales; WHYNCO todavía no tiene ninguna, por eso salen "—". Los KPIs y los filtros funcionan. Al hacer clic en una fila se abre la ficha 360° actual (sin cambios en este PR).</div>
+<script>
+const DATA = [{"rs": "3 D & B SERVICIOS GENERALES", "ruc": "20606288931", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "A.M.B INGENIERIA Y PROYECTOS S.A.C", "ruc": "20520794469", "tipo": "prospecto", "ind": "Industria y manufactura", "resp": "MARILI ANTONIA MARTINEZ MENDEZ", "cp": "Por definir", "ct": {"n": "Julissa Lucero", "t": "960845776", "e": "julissa.lucero@ambgroup.com.pe"}, "nct": 1}, {"rs": "ABENGOA PERÚ S.A.", "ruc": "20253757931", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Mario Diaz", "t": null, "e": null}, "nct": 1}, {"rs": "ALAPAYANA S.A.C", "ruc": "20100108292", "tipo": "cliente", "ind": "Minería", "resp": "EDDISON GRANDEZ MESQUEDA", "cp": "Por definir", "ct": {"n": "Jony Paulino", "t": "940479643", "e": "jpaulino@alpayana.com"}, "nct": 7}, {"rs": "Altamin", "ruc": "20605634371", "tipo": "cliente", "ind": "Minería", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "ZOSIMO CHAMORRO", "t": null, "e": null}, "nct": 1}, {"rs": "Alternativa 4 X 4 Sac", "ruc": "20544016041", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. Luis Castillo.", "t": null, "e": null}, "nct": 1}, {"rs": "AMBIPAR ENVIRONMENT PERU S.A.C.", "ruc": "20526542976", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Angello Arévalo", "t": null, "e": null}, "nct": 1}, {"rs": "ANALÍTICA MINERAL", "ruc": "20508853727", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "ELLIOT AMANZO ARMIJO", "t": null, "e": null}, "nct": 1}, {"rs": "Argoss Hvof Sac", "ruc": "20440199659", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. Mec. César Plasencia", "t": null, "e": null}, "nct": 1}, {"rs": "ASOCIACION ELECTRO LIMBANI", "ruc": "20609801728", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "Biddle Inc Sac", "ruc": "20296637697", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Felipe Cruz", "t": null, "e": null}, "nct": 1}, {"rs": "Ceramicos Peruanos Sa", "ruc": "20100132916", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Claudia Claros Navarro", "t": null, "e": null}, "nct": 1}, {"rs": "Cia Minera Poderosa Sa", "ruc": "20137025354", "tipo": "cliente", "ind": "Minería", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ruth Camavilca", "t": null, "e": null}, "nct": 1}, {"rs": "COMIN S.A.C.", "ruc": "20453668984", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "COMPAÑÍA MINERA CARAVELÍ S.A.C.", "ruc": "20126702737", "tipo": "cliente", "ind": "Minería", "resp": "EDDISON GRANDEZ MESQUEDA", "cp": "Por definir", "ct": {"n": "Mónica Lopez", "t": null, "e": "asistentetaller@cmc.com.pe"}, "nct": 1}, {"rs": "Compañía Nacional de Chocolates del Peru SA", "ruc": "20514584789", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Exar", "t": null, "e": null}, "nct": 1}, {"rs": "Concentra Y Exporta Sac", "ruc": "20514749613", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. Ricardo Rosazza", "t": null, "e": null}, "nct": 1}, {"rs": "Concretera Perumixer Sac", "ruc": "20603008732", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Robert Mamani", "t": null, "e": null}, "nct": 1}, {"rs": "Concretos Cisneros Sac", "ruc": "20600683277", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Bryan Camacho", "t": null, "e": null}, "nct": 1}, {"rs": "CONCYSSA INDUSTRIAL S.A.C", "ruc": "20600011881", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Roger Chipana", "t": null, "e": null}, "nct": 1}, {"rs": "CONSORCIO METAL MECANICO SR", "ruc": "20320142599", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Wilfredo Sanchez", "t": null, "e": null}, "nct": 1}, {"rs": "Continental Global Service Sac", "ruc": "20492895378", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Jhardy Avila", "t": null, "e": null}, "nct": 1}, {"rs": "Contraloria General De La Republica", "ruc": "20131378972", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Alcides Barrios Juares", "t": null, "e": null}, "nct": 1}, {"rs": "Corporacion Pesquera Inca S.a.C.", "ruc": "20512868046", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "ALEX YOVERA SERNAQUE", "t": null, "e": null}, "nct": 1}, {"rs": "Demin", "ruc": "20601241782", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Aquiles Zanelli", "t": null, "e": null}, "nct": 1}, {"rs": "Derco Peru", "ruc": "20344877158", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Juan Carlos Terreros Espinoza", "t": null, "e": null}, "nct": 1}, {"rs": "Ecocentury Sac", "ruc": "20502073401", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "William Valenzuela", "t": null, "e": null}, "nct": 1}, {"rs": "Economix Sac", "ruc": "20525067191", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Melissa Zevallos", "t": null, "e": null}, "nct": 1}, {"rs": "EMPRESA AGRARIA AZUCARERA ANDAHUASI S.A.A.", "ruc": "20118792174", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "ERIKA CHAVEZ", "t": null, "e": null}, "nct": 1}, {"rs": "EMPRESA ANDHUASI KM 41.5 S.A.C.", "ruc": "20610169130", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "Energotec Sac", "ruc": "20218845615", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Nyger Moreno", "t": null, "e": null}, "nct": 1}, {"rs": "Exituno Sa", "ruc": "20153270814", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Richard Galeano", "t": null, "e": null}, "nct": 1}, {"rs": "FABRICACIÓN INDUSTRIAL OROPEZA DEXTRE SRL", "ruc": "20459858572", "tipo": "cliente", "ind": "Industrial", "resp": "EDDISON GRANDEZ MESQUEDA", "cp": "Por definir", "ct": {"n": "ERIC", "t": "979772278", "e": null}, "nct": 1}, {"rs": "Famesa Explosivos Sac", "ruc": "20100112214", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. Juan Carlos Sano", "t": null, "e": null}, "nct": 1}, {"rs": "Felecin Ingenieros Sac", "ruc": "20483436514", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Pablo Choque", "t": null, "e": null}, "nct": 1}, {"rs": "Ferrovias Central Andina", "ruc": "20432347142", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Jorge Mujica", "t": null, "e": null}, "nct": 1}, {"rs": "GATE GOURMET PERU S.R.L.", "ruc": "20341848955", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "GCI CONTRATISTAS S.A.C.", "ruc": "20603826371", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "GESTION MINERO INTEGRAL S.A.C.", "ruc": "20602670130", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "GRUPO INDUSTRIAL RODRAU S.A.C", "ruc": "20609644291", "tipo": "prospecto", "ind": "Maquinaria pesada y talleres de mantenimiento", "resp": "MARILI ANTONIA MARTINEZ MENDEZ", "cp": "Por definir", "ct": {"n": "Jorge Rodriguez vereau", "t": "984580865", "e": "joserodriguez@gmail.com"}, "nct": 1}, {"rs": "Hersil Sa", "ruc": "20100060150", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Silvano Gamarra", "t": null, "e": null}, "nct": 1}, {"rs": "HLC INGENIERIA Y CONSTRUCCION S.A.C.", "ruc": "20467463684", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "HM CROMO OLEOHIDRAULICA S.R.L.", "ruc": "20536430602", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "Industrias Electro Quimicas Sa", "ruc": "20100003512", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. Miguel García Calderón", "t": null, "e": null}, "nct": 1}, {"rs": "INGENIERIA Y PROYECTOS MINEROS MAYO", "ruc": "20555733527", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "INVERSIONES Y PROYECTPS LAEL", "ruc": "20609122464", "tipo": "prospecto", "ind": "Industria y manufactura", "resp": "EDDISON GRANDEZ MESQUEDA", "cp": "Por definir", "ct": {"n": "EDINSON", "t": "999887823", "e": "EDIGRAMO@GMAIL.COM"}, "nct": 1}, {"rs": "J&J Manufacturas Industriales Srl", "ruc": "20601440254", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Carolina Puma Humpiri", "t": null, "e": null}, "nct": 1}, {"rs": "Marco Peruana", "ruc": "20100006538", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Roberto Silupu", "t": null, "e": null}, "nct": 1}, {"rs": "MASTER DRILLING PERU S.A.C.", "ruc": "20329921531", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "MECANICOS DEL PLASTICO S.A.C.", "ruc": "20515302761", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "MEPSA ACEROS CHILCA S.A.C.", "ruc": "20538379302", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Roy Luna", "t": null, "e": null}, "nct": 1}, {"rs": "Minsur Sac", "ruc": "20100136741", "tipo": "cliente", "ind": "Minería", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Joaquín Castillo Silva", "t": null, "e": null}, "nct": 1}, {"rs": "Onlink Sac", "ruc": "20516377047", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. José L. Salazar H.", "t": null, "e": null}, "nct": 1}, {"rs": "Papelera Nacional Sa", "ruc": "20100047641", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Sheila Guillen", "t": null, "e": null}, "nct": 1}, {"rs": "PERU BARRENADOS S.A.C.", "ruc": "20601646375", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "PERUVIAN HYDRAULIC GROUP S.A.C.", "ruc": "20536628038", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "POLIALUMINIO S.A.C", "ruc": "20306379250", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "Polinplast", "ruc": "20505520638", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Hayde Vivanco", "t": null, "e": null}, "nct": 1}, {"rs": "Quimpac Sa", "ruc": "20330791501", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Edson Bedriñana Enciso", "t": null, "e": null}, "nct": 1}, {"rs": "R Y W NAGO S.A.C.", "ruc": "20548820848", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "María Molina", "t": null, "e": null}, "nct": 1}, {"rs": "RC ING. MECÁNICA E.I.R.L.", "ruc": "20455730792", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "Sacos Pisco Sa", "ruc": "20100131430", "tipo": "cliente", "ind": "Otro", "resp": "EDDISON GRANDEZ MESQUEDA", "cp": "Por definir", "ct": {"n": "Eduardo Marcos", "t": "944570309", "e": "emarcos@sacospisco.com.pe"}, "nct": 1}, {"rs": "SANDVIK DEL PERU S A", "ruc": "20100134706", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "SERVICIOS METALÚRGICOS PETROLEROS S.R.L.", "ruc": "20399282218", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Ing. Alain Alemán", "t": null, "e": null}, "nct": 1}, {"rs": "STRONGER ELECTRIC LATAM PERU", "ruc": "20614392623", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "SURPACK S.A.", "ruc": "20122720650", "tipo": "cliente", "ind": null, "resp": null, "cp": null, "ct": null, "nct": 0}, {"rs": "TOWER AND TOWER S.A.", "ruc": "20380618797", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Alvaro Saenz", "t": null, "e": null}, "nct": 1}, {"rs": "TRABAJOS MARÍTIMOS S.A.", "ruc": "20101395031", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Diego Velarde Henriquez", "t": null, "e": null}, "nct": 1}, {"rs": "TRITON TRADING SOCIEDAD ANÓNIMA", "ruc": "20535936669", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Richard Echegoyen", "t": null, "e": null}, "nct": 1}, {"rs": "UNION DE CONCRETERA S.A", "ruc": "20297543653", "tipo": "cliente", "ind": "Otro", "resp": "MARILI ANTONIA MARTINEZ MENDEZ", "cp": "Por definir", "ct": {"n": "Cesar Urquizo", "t": "945155916", "e": null}, "nct": 1}, {"rs": "UPC BACKUS Y JOHNSTON S.A.A", "ruc": "20100113610", "tipo": "cliente", "ind": "Otro", "resp": "Edinson Grandez Mosqueda", "cp": "Por definir", "ct": {"n": "Telmo Espinoza Acuna", "t": null, "e": null}, "nct": 1}, {"rs": "whynco", "ruc": "20513453711", "tipo": "prospecto", "ind": "Manufactura de envases", "resp": "MARILI ANTONIA MARTINEZ MENDEZ", "cp": "Por definir", "ct": {"n": "edinson", "t": "949398178", "e": "administracion@sdbhcds.com"}, "nct": 1}];
+const TIPO = {cliente:['Cliente','is-green'],prospecto:['Prospecto','is-blue'],partner:['Partner','is-violet'],proveedor_estrategico:['Proveedor estratégico','is-gray']};
+const ini = s => (s||'').replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9 ]/g,' ').trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '—';
+const okInd = c => c.ind && c.ind !== 'Por definir';
+const okResp = c => c.resp && c.resp !== 'Sin asignar';
+const okCond = c => c.cp && c.cp !== 'Por definir';
+const checks = c => [!!c.ruc, !!c.ct, okResp(c), okInd(c), okCond(c)];
+const incompleta = c => !c.ct || !okResp(c) || !okInd(c);
+let kpi = '';
+const $ = id => document.getElementById(id);
+[...new Set(DATA.map(c=>c.ind).filter(Boolean))].sort().forEach(v => $('fInd').insertAdjacentHTML('beforeend', `<option>${v}</option>`));
+[...new Set(DATA.map(c=>c.resp).filter(Boolean))].sort().forEach(v => $('fResp').insertAdjacentHTML('beforeend', `<option>${v}</option>`));
+const svgGo = '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>';
+function render(){
+  const q = $('q').value.trim().toLowerCase();
+  const fT=$('fTipo').value,fI=$('fInd').value,fR=$('fResp').value,fC=$('fCond').value;
+  const list = DATA.filter(c => {
+    if (q && ![c.rs,c.ruc,c.ct?.n,c.ct?.e].some(v => (v||'').toLowerCase().includes(q))) return false;
+    if (fT && c.tipo!==fT) return false; if (fI && c.ind!==fI) return false; if (fR && c.resp!==fR) return false;
+    if (fC==='completas' && !okCond(c)) return false; if (fC==='pendientes' && okCond(c)) return false;
+    if (kpi==='cliente' && c.tipo!=='cliente') return false;
+    if (kpi==='cxc') return false;
+    if (kpi==='inc' && !incompleta(c)) return false;
+    return true;
+  });
+  const cli = DATA.filter(c=>c.tipo==='cliente').length, pro = DATA.filter(c=>c.tipo==='prospecto').length, inc = DATA.filter(incompleta).length;
+  const k = (id,label,val,note,ico,cls,extra='') => `<button class="dx-cta-kpi ${extra} ${kpi===id?'is-on':''}" onclick="kpi=kpi==='${id}'?'':'${id}';render()"><div class="dx-cta-kpi-top"><span>${label}</span><span class="dx-cta-ico ${cls}">${ico}</span></div><div class="dx-cta-kpi-val">${val}</div><div class="dx-cta-kpi-note">${note}</div></button>`;
+  $('kpis').innerHTML =
+    k('', 'Cuentas', DATA.length, 'Activas en la empresa', '<svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>', 'is-cyan') +
+    k('cliente', 'Clientes', cli, `${pro} prospectos`, '<svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></svg>', 'is-green') +
+    k('cxc', 'Con CxC pendiente', 0, 'S/ 0.00 por cobrar', '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>', 'is-blue') +
+    k('inc', 'Datos incompletos', inc, 'Sin contacto, responsable o industria', '<svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>', 'is-amber', inc ? 'is-alert' : '');
+  const filtros = q||fT||fI||fR||fC||kpi;
+  $('clear').hidden = !filtros;
+  $('count').textContent = filtros ? `${list.length} de ${DATA.length}` : `${DATA.length}`;
+  $('sub').textContent = filtros ? `${list.length} de ${DATA.length} cuentas` : `${DATA.length} cuentas activas`;
+  if (!list.length) { $('rows').innerHTML = `<div class="dx-cta-empty"><strong>${kpi==='cxc'?'Ninguna cuenta con saldo por cobrar':'Sin resultados'}</strong><span>${kpi==='cxc'?'Cuando se emitan facturas a crédito aparecerán aquí.':'Prueba con otro texto o limpia los filtros.'}</span></div>`; return; }
+  $('rows').innerHTML = list.map(c => {
+    const ch = checks(c), n = ch.filter(Boolean).length, pct = n*20, lvl = n>=4?'':n>=3?'is-mid':'is-low';
+    const [tl,tc] = TIPO[c.tipo] || [c.tipo,'is-gray'];
+    const faltan = ['Documento','Contacto','Responsable','Industria','Condiciones de pago'].filter((_,i)=>!ch[i]);
+    return `<div class="dx-cta-cols dx-cta-row" role="button" tabindex="0" aria-label="Abrir ficha de ${c.rs}">
+      <div class="dx-cta-acc c-acc"><span class="dx-cta-logo">${ini(c.rs)}</span><div><strong title="${c.rs}">${c.rs}</strong><span class="dx-cta-sub2"><b>RUC ${c.ruc}</b> · ${c.ind || 'Sin industria'}</span></div></div>
+      <div class="c-tipo"><span class="dx-cta-pill ${tc}"><i></i>${tl}</span></div>
+      <div class="dx-cta-resp c-resp">${okResp(c)?`<span class="dx-cta-av">${ini(c.resp)}</span><span class="dx-cta-txt" title="${c.resp}">${c.resp}</span>`:`<span class="dx-cta-av is-none">—</span><span class="dx-cta-txt dx-cta-muted">Sin responsable</span>`}</div>
+      <div class="dx-cta-ct c-ct">${c.ct?`<strong>${c.ct.n}${c.nct>1?`<span class="dx-cta-more">+${c.nct-1}</span>`:''}</strong><span>${c.ct.t || c.ct.e || 'Sin teléfono ni correo'}</span>`:`<strong class="dx-cta-muted" style="font-weight:500">Sin contacto</strong><span>Agrégalo desde la ficha</span>`}</div>
+      <div class="dx-cta-money c-money"><strong class="dx-cta-muted" style="font-weight:600">—</strong><span>Sin compras</span></div>
+      <div class="dx-cta-comp c-comp ${lvl}" title="${faltan.length?'Falta: '+faltan.join(', '):'Datos completos'}"><div class="dx-cta-comp-bar"><i style="width:${pct}%"></i></div><span>${n} de 5 datos</span></div>
+      <div class="dx-cta-go c-go">${svgGo}</div>
+    </div>`;
+  }).join('');
+}
+['q','fTipo','fInd','fResp','fCond'].forEach(id => $(id).addEventListener('input', render));
+$('clear').onclick = () => { ['q','fTipo','fInd','fResp','fCond'].forEach(id => $(id).value=''); kpi=''; render(); };
+document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-w]').forEach(x=>x.classList.remove('on')); b.classList.add('on'); const w=+b.dataset.w; $('mk-frame').style.width=w+'px'; $('mk-frame').classList.toggle('is-mobile', w<600); });
+$('mk-theme').onclick = () => { document.documentElement.classList.toggle('dark'); $('mk-theme').classList.toggle('on'); };
+render();
+</script>
+</body>
+</html>
