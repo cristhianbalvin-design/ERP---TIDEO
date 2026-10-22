@@ -1597,8 +1597,14 @@ function Cuentas() {
   );
 }
 
+// Las OTs se operan en la app de Operaciones (montada en /operaciones/ con la misma sesión).
+const abrirEnOperaciones = ruta => {
+  const base = (import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/').replace(/\/?$/, '/');
+  window.location.assign(`${base}#/${ruta}`);
+};
+
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
   const modoVistaSociedadOT = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -1686,9 +1692,6 @@ function OT({ role }) {
   const [tareoAdminForm, setTareoAdminForm] = useState({ personal_id: '', fecha: new Date().toISOString().split('T')[0], horas: 1, descripcion: '' });
   const [showNuevoParte, setShowNuevoParte] = useState(false);
   const [parteEditandoId, setParteEditandoId] = useState(null);
-  const [showCierreForm, setShowCierreForm] = useState(false);
-  const [cierreForm, setCierreForm] = useState({ descripcion_trabajo: '', fecha_inicio_real: '', fecha_fin_real: '', horas_total: '', avance_final: 100, conformidad: 'pendiente', conformidad_archivo: null, observaciones_finales: '', costo_terceros: '', costo_logistica: '' });
-  const [cierreConfirmandoLink, setCierreConfirmandoLink] = useState(null);
   const [parteFormOT, setParteFormOT] = useState({ tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [] });
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [formDatos, setFormDatos] = useState({});
@@ -1961,54 +1964,6 @@ function OT({ role }) {
         avance_supervisor_por: authUser?.nombre || authUser?.email || authUser?.id || 'Supervisor',
       }));
       setAvanceSupervisorForm({ pct: '', nota: '' });
-    }
-  };
-
-  const abrirFormCierre = () => {
-    const partesDeOT = partes.filter(p => p.ot_id === sel?.id);
-    const aprobados = partesDeOT.filter(p => p.estado === 'aprobado').sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
-    const pendientes = partesDeOT.filter(p => !['aprobado', 'rechazado'].includes(p.estado));
-    if (!aprobados.length) { addNotificacion('No puedes cerrar una OT sin partes diarios aprobados.', 'error'); return; }
-    if (pendientes.length) { addNotificacion(`No puedes cerrar esta OT. Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación.`, 'error'); return; }
-    const horasTotal = aprobados.reduce((s, p) => s + (p.horas || 0), 0);
-    const descripcion = [...new Set(aprobados.map(p => p.actividades).filter(Boolean))].join('\n');
-    const costo_terceros_pre = aprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
-    const costo_logistica_pre = aprobados.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
-    setCierreForm({
-      descripcion_trabajo: descripcion,
-      fecha_inicio_real: aprobados[0]?.fecha || sel?.fecha_inicio || '',
-      fecha_fin_real: aprobados[aprobados.length - 1]?.fecha || new Date().toISOString().split('T')[0],
-      horas_total: horasTotal,
-      avance_final: 100,
-      conformidad: 'pendiente',
-      observaciones_finales: '',
-      costo_terceros: costo_terceros_pre > 0 ? String(costo_terceros_pre) : '',
-      costo_logistica: costo_logistica_pre > 0 ? String(costo_logistica_pre) : '',
-    });
-    setShowCierreForm(true);
-  };
-
-  const confirmarCierreOT = async () => {
-    const result = await cerrarTecnicamenteOT(sel.id, {
-      fecha: cierreForm.fecha_fin_real,
-      fecha_fin_real: cierreForm.fecha_fin_real,
-      fecha_inicio_real: cierreForm.fecha_inicio_real,
-      resultado: 'conforme',
-      descripcion_trabajo: cierreForm.descripcion_trabajo,
-      horas_total: Number(cierreForm.horas_total),
-      avance_final: Number(cierreForm.avance_final),
-      conformidad_cliente: { tipo: cierreForm.conformidad },
-      conformidad_archivo: cierreForm.conformidad_archivo,
-      observaciones: cierreForm.observaciones_finales,
-      costo_terceros: Number(cierreForm.costo_terceros || 0),
-      costo_logistica: Number(cierreForm.costo_logistica || 0),
-    });
-    setSel(s => ({ ...s, estado: 'cerrada' }));
-    setShowCierreForm(false);
-    if (result?.tokenConformidad) {
-      const link = `${window.location.origin}${window.location.pathname}#conformidad-ot/${result.tokenConformidad}`;
-      navigator.clipboard?.writeText(link).catch(() => {});
-      setCierreConfirmandoLink(link);
     }
   };
 
@@ -2463,6 +2418,9 @@ function OT({ role }) {
                 {sel.gps && <span className="badge badge-cyan">{I.mapPin}GPS</span>}
               </div>
               <div className="row" style={{gap:8}}>
+                <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => abrirEnOperaciones('ots')}>
+                  Abrir en Operaciones
+                </button>
                 {sel.estado === 'programada' && (
                   <button
                     className="btn btn-primary"
@@ -2488,28 +2446,14 @@ function OT({ role }) {
                       Lista para cierre técnico
                     </span>
                   )}
-                  {(() => {
-                    const aprobados = partesOT.filter(p => p.estado === 'aprobado');
-                    const pendientes = partesOT.filter(p => !['aprobado', 'rechazado'].includes(p.estado));
-                    const bloqueado = aprobados.length === 0 || pendientes.length > 0;
-                    const tooltip = partesOT.length === 0
-                      ? 'Registra al menos un parte diario antes de cerrar la OT'
-                      : pendientes.length > 0
-                        ? `Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación`
-                        : aprobados.length === 0
-                          ? 'Necesitas al menos un parte diario aprobado para cerrar la OT'
-                          : '';
-                    return (
-                      <button
-                        className="btn btn-primary"
-                        style={{fontSize:13, ...(bloqueado ? {opacity:0.45, cursor:'not-allowed'} : {})}}
-                        title={tooltip}
-                        onClick={abrirFormCierre}
-                      >
-                        {I.check} Cerrar OT
-                      </button>
-                    );
-                  })()}
+                  <button
+                    className="btn btn-primary"
+                    style={{fontSize:13}}
+                    title="El cierre técnico se hace con el acta de conformidad en la app de Operaciones."
+                    onClick={() => abrirEnOperaciones('cierre-conformidad')}
+                  >
+                    {I.check} Cerrar en Operaciones
+                  </button>
                 </>}
                 {(sel.estado === 'cerrada' || sel.estado === 'cerrada_tecnica') && (
                   <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => navigate('cierre', { detail: sel.id, tab: 'conformidad' })}>
@@ -4290,197 +4234,6 @@ function OT({ role }) {
             <div className="modal-foot">
               <button className="btn btn-secondary" onClick={() => setConfirmCompletarTarea(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={confirmarCompletarTareaOT}>{I.check} Completar</button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {showCierreForm && sel && (() => {
-        const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
-        const costoHoraTecObj = (tec) => Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
-        const moReal = partesAprobados.reduce((s, p) => { const tech = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === p.tecnico_id); return s + (p.horas || 0) * costoHoraTecObj(tech); }, 0);
-        const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => { const inv = (inventario || []).find(i => i.sku === m.sku); return sm + (m.cantidad || 0) * (inv?.costo_promedio || m.costo_unitario || 0); }, 0), 0);
-        const costoEst = sel.costoEst || 0;
-        const costoReal = moReal + matReal + Number(cierreForm.costo_terceros || 0) + Number(cierreForm.costo_logistica || 0);
-        const margen = costoEst > 0 ? Math.round(((costoEst - costoReal) / costoEst) * 100) : null;
-        const sym = otSym(sel);
-        return (
-          <>
-            <div className="side-panel-backdrop" onClick={() => setShowCierreForm(false)}/>
-            <div className="side-panel" style={{width:'min(680px, 96vw)'}}>
-              <div className="side-panel-head">
-                <div>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>Cierre técnico</div>
-                  <h2 style={{margin:0, fontSize:18}}>{sel.numero}</h2>
-                </div>
-                <button className="icon-btn" onClick={() => setShowCierreForm(false)}>{I.x}</button>
-              </div>
-
-              <div style={{flex:1, overflowY:'auto', minHeight:0}}>
-              {/* ── Sección 1: Resumen de ejecución ── */}
-              <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>1. Resumen de ejecución</div>
-                <div className="input-group" style={{marginBottom:12}}>
-                  <label>Descripción del trabajo ejecutado</label>
-                  <textarea className="input" rows={4} value={cierreForm.descripcion_trabajo} onChange={e => setCierreForm(v => ({...v, descripcion_trabajo: e.target.value}))} placeholder="Resumen de las actividades realizadas..." style={{resize:'vertical'}}/>
-                </div>
-                <div className="grid-2" style={{gap:12, marginBottom:12}}>
-                  <div className="input-group">
-                    <label>Fecha real de inicio</label>
-                    <input className="input" type="date" value={cierreForm.fecha_inicio_real} onChange={e => setCierreForm(v => ({...v, fecha_inicio_real: e.target.value}))}/>
-                  </div>
-                  <div className="input-group">
-                    <label>Fecha real de fin</label>
-                    <input className="input" type="date" value={cierreForm.fecha_fin_real} onChange={e => setCierreForm(v => ({...v, fecha_fin_real: e.target.value}))}/>
-                  </div>
-                </div>
-                <div className="grid-2" style={{gap:12}}>
-                  <div className="input-group">
-                    <label>Total horas trabajadas</label>
-                    <input className="input" type="number" min="0" step="0.5" value={cierreForm.horas_total} onChange={e => setCierreForm(v => ({...v, horas_total: e.target.value}))}/>
-                  </div>
-                  <div className="input-group">
-                    <label>Avance final (%)</label>
-                    <input className="input" type="number" min="0" max="100" value={cierreForm.avance_final} onChange={e => setCierreForm(v => ({...v, avance_final: e.target.value}))}/>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Sección 2: Costos (solo con permiso) ── */}
-              {canCost && (
-                <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                  <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>2. Resumen de costos</div>
-                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
-                    <thead>
-                      <tr style={{borderBottom:'1px solid var(--border)'}}>
-                        <th style={{textAlign:'left', padding:'6px 0', color:'var(--fg-muted)', fontWeight:600}}>Concepto</th>
-                        <th style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)', fontWeight:600}}>Estimado</th>
-                        <th style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)', fontWeight:600}}>Real</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        ['Mano de obra', sel.est_mo ?? null, moReal],
-                        ['Materiales', sel.est_materiales ?? null, matReal],
-                      ].map(([label, est, real]) => (
-                        <tr key={label} style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                          <td style={{padding:'8px 0'}}>{label}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est, sym) : '—'}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400, color:'var(--fg-muted)', fontSize:12}}>{real > 0 ? money(real, sym) : '—'} <span style={{fontSize:10, color:'var(--fg-muted)'}}>auto</span></td>
-                        </tr>
-                      ))}
-                      <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                        <td style={{padding:'6px 0'}}>Servicios terceros</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_terceros != null ? money(sel.est_terceros, sym) : '—'}</td>
-                        <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_terceros} onChange={e => setCierreForm(v => ({...v, costo_terceros: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
-                      </tr>
-                      <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                        <td style={{padding:'6px 0'}}>Logística y viáticos</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_logistica != null ? money(sel.est_logistica, sym) : '—'}</td>
-                        <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_logistica} onChange={e => setCierreForm(v => ({...v, costo_logistica: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
-                      </tr>
-                      <tr style={{borderTop:'2px solid var(--border)'}}>
-                        <td style={{padding:'8px 0', fontWeight:700}}>Total</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst, sym) : '—'}</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color: costoReal > costoEst && costoEst > 0 ? 'var(--danger)' : 'var(--green)'}}>{money(costoReal, sym)}</td>
-                      </tr>
-                      {margen !== null && (
-                        <tr>
-                          <td colSpan={3} style={{textAlign:'right', fontSize:12, padding:'4px 0', color: margen < 0 ? 'var(--danger)' : 'var(--green)'}}>
-                            Margen: <strong>{margen > 0 ? '+' : ''}{margen}%</strong>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* ── Sección 3: Conformidad del cliente ── */}
-              <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>3. Conformidad del cliente</div>
-                <div className="col" style={{gap:10}}>
-                  {[
-                    { val: 'digital', label: 'Sí — firma digital', desc: 'Se genera un link único para que el cliente firme en línea con nombre y DNI.' },
-                    { val: 'fisico', label: 'Sí — documento físico', desc: 'Adjunta el documento de conformidad firmado (PDF o imagen).' },
-                    { val: 'pendiente', label: 'No — pendiente', desc: 'La OT se cierra técnicamente. La conformidad queda pendiente.' },
-                  ].map(opt => (
-                    <label key={opt.val} style={{display:'flex', gap:12, padding:'12px 14px', borderRadius:8, border:`1.5px solid ${cierreForm.conformidad === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: cierreForm.conformidad === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
-                      <input type="radio" name="conformidad" value={opt.val} checked={cierreForm.conformidad === opt.val} onChange={() => setCierreForm(v => ({...v, conformidad: opt.val, conformidad_archivo: null}))} style={{marginTop:2, flexShrink:0}}/>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:600, fontSize:13, display:'flex', alignItems:'center', gap:6}}>
-                          {opt.label}
-                          {opt.val === 'pendiente' && <span className="badge badge-orange" style={{fontSize:10}}>Queda pendiente</span>}
-                        </div>
-                        <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{opt.desc}</div>
-                        {opt.val === 'fisico' && cierreForm.conformidad === 'fisico' && (
-                          <div style={{marginTop:10}}>
-                            <input type="file" accept=".pdf,image/*" style={{display:'none'}} id="conf-archivo-input"
-                              onChange={e => { const f = e.target.files?.[0]; if (f) setCierreForm(v => ({...v, conformidad_archivo: f})); }}
-                            />
-                            {cierreForm.conformidad_archivo ? (
-                              <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'var(--bg-subtle)', borderRadius:6, fontSize:12}}>
-                                <span>📄</span>
-                                <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{cierreForm.conformidad_archivo.name}</span>
-                                <button type="button" className="btn btn-ghost" style={{fontSize:11, padding:'2px 6px'}} onClick={() => setCierreForm(v => ({...v, conformidad_archivo: null}))}>Quitar</button>
-                              </div>
-                            ) : (
-                              <label htmlFor="conf-archivo-input" className="btn btn-secondary" style={{fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6}}>
-                                + Adjuntar documento
-                              </label>
-                            )}
-                          </div>
-                        )}
-                        {opt.val === 'digital' && cierreForm.conformidad === 'digital' && (
-                          <div style={{marginTop:8, padding:'8px 10px', background:'color-mix(in srgb, var(--cyan) 8%, transparent)', borderRadius:6, fontSize:12, color:'var(--fg-muted)'}}>
-                            Al confirmar el cierre se generará un link único. Cópialo y envíaselo al cliente para que firme en línea.
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Sección 4: Observaciones finales ── */}
-              <div style={{padding:'20px 24px'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>4. Observaciones finales</div>
-                <div className="input-group">
-                  <label>Notas del supervisor <span className="text-muted">(lecciones aprendidas, garantías, próximas intervenciones...)</span></label>
-                  <textarea className="input" rows={3} value={cierreForm.observaciones_finales} onChange={e => setCierreForm(v => ({...v, observaciones_finales: e.target.value}))} placeholder="Opcional" style={{resize:'vertical'}}/>
-                </div>
-              </div>
-              </div>{/* fin scroll */}
-
-              {/* ── Pie ── */}
-              <div style={{padding:'16px 24px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0, background:'var(--bg-card)'}}>
-                <button className="btn btn-ghost" onClick={() => setShowCierreForm(false)}>Cancelar</button>
-                <button className="btn btn-primary" disabled={!cierreForm.fecha_fin_real} onClick={confirmarCierreOT}>
-                  {I.check} Confirmar cierre
-                </button>
-              </div>
-            </div>
-          </>
-        );
-      })()}
-
-      {cierreConfirmandoLink && (
-        <>
-          <div className="modal-backdrop" onClick={() => setCierreConfirmandoLink(null)}/>
-          <div className="modal" style={{maxWidth:480}}>
-            <div className="modal-head">
-              <h3 style={{margin:0}}>Link de firma generado</h3>
-              <button className="icon-btn" onClick={() => setCierreConfirmandoLink(null)}>×</button>
-            </div>
-            <div style={{padding:'20px 24px'}}>
-              <p style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>Copia este link y envíaselo al cliente para que firme la conformidad en línea con su nombre y DNI.</p>
-              <div style={{display:'flex', gap:8, alignItems:'center', padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-                <span style={{flex:1, fontSize:12, wordBreak:'break-all', color:'var(--fg-muted)'}}>{cierreConfirmandoLink}</span>
-                <button className="btn btn-secondary" style={{flexShrink:0, fontSize:12}} onClick={() => { navigator.clipboard?.writeText(cierreConfirmandoLink); }}>Copiar</button>
-              </div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-primary" onClick={() => setCierreConfirmandoLink(null)}>Listo</button>
             </div>
           </div>
         </>
@@ -10145,12 +9898,10 @@ function Backlog() {
 
 // ============ CIERRE TÉCNICO ============
 function Cierre() {
-  const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, personalAdmin, searchQuery, role, navigate, activeParams, actualizarCierreTecnico, addNotificacion } = useApp();
+  const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, personalAdmin, searchQuery, role, navigate, activeParams } = useApp();
   const canCost = role?.permisos?.ver_costos || role?.permisos?.todo;
   const [sel, setSel] = useState(null);
   const [tabCierre, setTabCierre] = useState('resumen');
-  const [confForm, setConfForm] = useState({ tipo: 'fisico', nombre_firmante: '', fecha_firma: new Date().toISOString().split('T')[0], referencia: '' });
-  const [guardandoConf, setGuardandoConf] = useState(false);
 
   useEffect(() => {
     if (!activeParams?.detail) return;
@@ -10173,6 +9924,8 @@ function Cierre() {
 
   const conformidadTipo = (ot) => {
     const c = cierresTecnicos.find(ct => ct.ot_id === ot.id);
+    // Cierres con acta móvil (app de Operaciones): la conformidad vive en conformidad_resultado.
+    if (c?.acta_numero) return !c.conformidad_resultado || c.conformidad_resultado === 'pendiente' ? 'pendiente' : 'acta';
     return c?.conformidad_cliente?.tipo || 'pendiente';
   };
   const estadoValorizacion = (ot) => {
@@ -10184,7 +9937,7 @@ function Cierre() {
 
   // KPIs
   const esteMes = otsCerradas.filter(o => { const c = cierreDeOT(o); return (c?.fecha || '').startsWith(mesActual); });
-  const confCompleta = otsCerradas.filter(o => ['digital', 'fisico'].includes(conformidadTipo(o)));
+  const confCompleta = otsCerradas.filter(o => ['digital', 'fisico', 'acta'].includes(conformidadTipo(o)));
   const confPendiente = otsCerradas.filter(o => conformidadTipo(o) === 'pendiente');
   const listasVaLorizar = otsCerradas.filter(o => estadoValorizacion(o) === 'lista');
 
@@ -10211,6 +9964,7 @@ function Cierre() {
   const conformidadBadge = (tipo) => {
     if (tipo === 'digital') return <span className="badge badge-green">{I.check} Digital</span>;
     if (tipo === 'fisico') return <span className="badge badge-green">{I.file} Documento</span>;
+    if (tipo === 'acta') return <span className="badge badge-green">{I.check} Acta</span>;
     return <span className="badge badge-orange">Pendiente</span>;
   };
   const valorizBadge = (ot) => {
@@ -10268,6 +10022,7 @@ function Cierre() {
               <option value="">Todas</option>
               <option value="digital">Firma digital</option>
               <option value="fisico">Documento físico</option>
+              <option value="acta">Acta (Operaciones)</option>
               <option value="pendiente">Pendiente</option>
             </select>
           </div>
@@ -10339,9 +10094,6 @@ function Cierre() {
                     <td onClick={e => e.stopPropagation()}>
                       <div className="row" style={{gap:4}}>
                         <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={() => abrirFicha(o)}>{I.eye} Detalle</button>
-                        {confTipo === 'pendiente' && (
-                          <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => { abrirFicha(o); setTabCierre('conformidad'); }}>{I.edit} Conformidad</button>
-                        )}
                         {confTipo !== 'pendiente' && estadoValorizacion(o) === 'lista' && (
                           <button className="btn btn-primary btn-sm" style={{fontSize:11}} onClick={() => navigate('valorizacion')}>{I.receipt} Valorizar</button>
                         )}
@@ -10496,63 +10248,12 @@ function Cierre() {
                     {confTipo === 'fisico' && (
                       <div style={{fontSize:13, color:'var(--fg-muted)'}}>Documento físico adjunto al momento del cierre.</div>
                     )}
+                    {confTipo === 'acta' && (
+                      <div style={{fontSize:13, color:'var(--fg-muted)'}}>Acta {c?.acta_numero} emitida en la app de Operaciones{c?.conformidad_resultado === 'observaciones' ? ' · conforme con observaciones' : ''}.</div>
+                    )}
                     {confTipo === 'pendiente' && (
-                      <div className="col" style={{gap:12}}>
-                        <div style={{padding:'12px 14px', borderRadius:6, background:'color-mix(in srgb, var(--orange) 10%, transparent)', color:'var(--orange)', fontSize:13}}>
-                          La conformidad del cliente no ha sido registrada. La OT puede ser valorizada cuando se complete.
-                        </div>
-                        <div style={{padding:'16px', border:'1px solid var(--border)', borderRadius:8}}>
-                          <div style={{fontWeight:700, fontSize:13, marginBottom:12}}>Registrar conformidad</div>
-                          <div className="col" style={{gap:8, marginBottom:14}}>
-                            {[
-                              { val: 'fisico', label: 'Documento físico', desc: 'El cliente firmó un documento físico de conformidad.' },
-                              { val: 'digital', label: 'Conformidad digital', desc: 'Se registra nombre, fecha y referencia del documento digital.' },
-                            ].map(opt => (
-                              <label key={opt.val} style={{display:'flex', gap:10, padding:'10px 12px', borderRadius:6, border:`1.5px solid ${confForm.tipo === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: confForm.tipo === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
-                                <input type="radio" name="conf_tipo" value={opt.val} checked={confForm.tipo === opt.val} onChange={() => setConfForm(v => ({...v, tipo: opt.val}))} style={{marginTop:2, flexShrink:0}}/>
-                                <div>
-                                  <div style={{fontWeight:600, fontSize:13}}>{opt.label}</div>
-                                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>{opt.desc}</div>
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                          {confForm.tipo === 'digital' && (
-                            <div className="col" style={{gap:8, marginBottom:14}}>
-                              <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Nombre completo del firmante <span style={{color:'var(--danger)'}}>*</span></label>
-                                <input className="input" style={{fontSize:13}} value={confForm.nombre_firmante} onChange={e => setConfForm(v => ({...v, nombre_firmante: e.target.value}))} placeholder="Nombre y apellido"/>
-                              </div>
-                              <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Fecha de firma <span style={{color:'var(--danger)'}}>*</span></label>
-                                <input className="input" type="date" style={{fontSize:13}} value={confForm.fecha_firma} onChange={e => setConfForm(v => ({...v, fecha_firma: e.target.value}))}/>
-                              </div>
-                              <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Código / referencia del documento <span className="text-muted">(opcional)</span></label>
-                                <input className="input" style={{fontSize:13}} value={confForm.referencia} onChange={e => setConfForm(v => ({...v, referencia: e.target.value}))} placeholder="Ej: DOC-2026-001"/>
-                              </div>
-                            </div>
-                          )}
-                          <button
-                            className="btn btn-primary btn-sm"
-                            disabled={guardandoConf || (confForm.tipo === 'digital' && (!confForm.nombre_firmante.trim() || !confForm.fecha_firma))}
-                            onClick={async () => {
-                              if (!c) return;
-                              setGuardandoConf(true);
-                              const payload = { tipo: confForm.tipo, registrado_at: new Date().toISOString() };
-                              if (confForm.tipo === 'digital') {
-                                payload.nombre_firmante = confForm.nombre_firmante.trim();
-                                payload.fecha_firma = confForm.fecha_firma;
-                                if (confForm.referencia.trim()) payload.referencia = confForm.referencia.trim();
-                              }
-                              await actualizarCierreTecnico(c.id, { conformidad_cliente: payload });
-                              setGuardandoConf(false);
-                              addNotificacion('Conformidad registrada correctamente.');
-                            }}
-                          >
-                            {guardandoConf ? 'Guardando...' : 'Confirmar conformidad'}
-                          </button>
-                        </div>
+                      <div style={{padding:'12px 14px', borderRadius:6, background:'color-mix(in srgb, var(--orange) 10%, transparent)', color:'var(--orange)', fontSize:13}}>
+                        La conformidad del cliente está pendiente. Se registra en la app de Operaciones (Cierre y conformidad) o con el enlace de firma enviado al cliente.
                       </div>
                     )}
                   </div>

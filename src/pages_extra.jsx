@@ -3126,7 +3126,7 @@ function Valorizacion({ role }) {
                   {otsConformidadPend.map(ot => (
                     <div key={ot.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12, marginTop:6}}>
                       <span style={{fontWeight:500}}>{ot.numero} <span style={{color:'var(--fg-muted)', fontWeight:400}}>— {ot.responsable || ''}</span></span>
-                      <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cierre')}>Registrar conformidad</button>
+                      <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cierre', { detail: ot.id, tab: 'conformidad' })}>Ver conformidad</button>
                     </div>
                   ))}
                 </div>
