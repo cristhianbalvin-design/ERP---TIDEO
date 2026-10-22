@@ -3545,6 +3545,33 @@ export function AppProvider({ children }) {
     crmSync(sb => svcActualizarOSCliente(sb, id, datos));
   };
 
+  // Pausa, reactiva, cierra o anula una OS Cliente. Devuelve true si el cambio se aplicó.
+  // Cerrar exige que no queden OTs abiertas; el motivo queda en la auditoría.
+  const ESTADOS_OT_TERMINADOS = ['cerrada', 'cerrada_tecnica', 'valorizada', 'facturada', 'anulada'];
+  const cambiarEstadoOS = async (osId, estado, motivo = '') => {
+    const os = osClientes.find(o => o.id === osId);
+    if (!os || !['activa', 'en_pausa', 'cerrada', 'anulada'].includes(estado)) return false;
+    if (estado === 'cerrada') {
+      const abiertas = ots.filter(ot => (ot.os_cliente_id === osId || (os.ots_asociadas || []).includes(ot.id)) && !ESTADOS_OT_TERMINADOS.includes(ot.estado));
+      if (abiertas.length) {
+        addNotificacion(`No se puede cerrar ${os.numero}: tiene ${abiertas.length} OT${abiertas.length === 1 ? '' : 's'} abierta${abiertas.length === 1 ? '' : 's'} (${abiertas.slice(0, 3).map(ot => ot.numero).join(', ')}${abiertas.length > 3 ? '…' : ''}).`, 'error');
+        return false;
+      }
+    }
+    const datos = { estado };
+    if (estado === 'cerrada') datos.fecha_cierre_real = new Date().toISOString().split('T')[0];
+    try {
+      await actualizarOSCliente(osId, datos);
+    } catch (error) {
+      addNotificacion(`No se pudo cambiar el estado de ${os.numero}: ${error?.message || 'error desconocido'}.`, 'error');
+      return false;
+    }
+    auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: osId, accion: `estado_${estado}`, valor_anterior: { estado: os.estado }, valor_nuevo: { estado, motivo: String(motivo || '').trim() || null } });
+    const etiquetas = { activa: 'reactivada', en_pausa: 'pausada', cerrada: 'cerrada', anulada: 'anulada' };
+    addNotificacion(`OS ${os.numero} ${etiquetas[estado]}.`);
+    return true;
+  };
+
   const vincularCotizacionOS = async (cotizacionId, osId, { origen = 'estandar', cotizacionEspecial = null } = {}) => {
     const esCotizacionEspecial = origen === 'especial';
     let cotizacion = esCotizacionEspecial ? cotizacionEspecial : cotizaciones.find(c => c.id === cotizacionId);
@@ -4744,6 +4771,16 @@ export function AppProvider({ children }) {
     return `Valorización ${numero} aprobada.`;
   };
 
+  // Ajusta y guarda el saldo por valorizar de la OS. Se calcula fuera del actualizador de estado,
+  // porque React lo ejecuta después y el valor no estaría disponible para guardarlo en la base.
+  const ajustarSaldoPorValorizarOS = (osClienteId, delta) => {
+    const osc = osClientes.find(o => o.id === osClienteId);
+    if (!osc) return;
+    const saldo = Math.round(Math.max(0, Number(osc.saldo_por_valorizar || 0) + Number(delta || 0)) * 100) / 100;
+    setOsClientes(prev => prev.map(o => (o.id === osClienteId ? { ...o, saldo_por_valorizar: saldo } : o)));
+    crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldo }));
+  };
+
   const generarValorizacion = (osClienteId, subtotal, igv, total, periodo, meta = {}) => {
     const estadoFinal = meta.estadoFinal || 'aprobada';
     const now = new Date().toISOString().split('T')[0];
@@ -4751,6 +4788,7 @@ export function AppProvider({ children }) {
       id: generateId('val'),
       empresa_id: empresa.id,
       os_cliente_id: osClienteId,
+      sociedad_id: osClientes.find(os => os.id === osClienteId)?.sociedad_id || null,
       numero: `VAL-${new Date().getFullYear()}-${String(valorizaciones.length + 1).padStart(3, '0')}`,
       fecha: now,
       estado: estadoFinal,
@@ -4769,17 +4807,7 @@ export function AppProvider({ children }) {
 
     if (estadoFinal === 'aprobada') {
       // Descontar de OS Cliente solo al aprobar
-      let saldoPorValorizar = null;
-      setOsClientes(prev => prev.map(osc => {
-        if (osc.id === osClienteId) {
-          saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(total || 0));
-          return { ...osc, saldo_por_valorizar: saldoPorValorizar };
-        }
-        return osc;
-      }));
-      if (saldoPorValorizar !== null) {
-        crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
-      }
+      ajustarSaldoPorValorizarOS(osClienteId, -Number(total || 0));
 
       if (meta.otIds?.length) {
         const otsCerradas = ots.filter(o => meta.otIds.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
@@ -4839,17 +4867,7 @@ export function AppProvider({ children }) {
     } : v));
     auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: 'aprobar', valor_nuevo: { ...val, estado: 'aprobada' } });
 
-    let saldoPorValorizar = null;
-    setOsClientes(prev => prev.map(osc => {
-      if (osc.id === osClienteId) {
-        saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - total);
-        return { ...osc, saldo_por_valorizar: saldoPorValorizar };
-      }
-      return osc;
-    }));
-    if (saldoPorValorizar !== null) {
-      crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
-    }
+    ajustarSaldoPorValorizarOS(osClienteId, -total);
 
     if (val.ot_ids?.length) {
       const otsCerradas = ots.filter(o => val.ot_ids.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
@@ -4889,17 +4907,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: 'anular', valor_nuevo: { motivo } });
 
     if (fueAprobada) {
-      let saldoRestaurado = null;
-      setOsClientes(prev => prev.map(osc => {
-        if (osc.id === osClienteId) {
-          saldoRestaurado = Number(osc.saldo_por_valorizar || 0) + total;
-          return { ...osc, saldo_por_valorizar: saldoRestaurado };
-        }
-        return osc;
-      }));
-      if (saldoRestaurado !== null) {
-        crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoRestaurado }));
-      }
+      ajustarSaldoPorValorizarOS(osClienteId, total);
       if (val.ot_ids?.length) {
         const otsARevertir = ots.filter(o => val.ot_ids.includes(o.id) && o.estado === 'valorizada').map(o => o.id);
         if (otsARevertir.length) {
@@ -4943,17 +4951,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: estadoFinal === 'aprobada' ? 'aprobar' : 'editar', valor_nuevo: updated });
 
     if (estadoFinal === 'aprobada') {
-      let saldoPorValorizar = null;
-      setOsClientes(prev => prev.map(osc => {
-        if (osc.id === val.os_cliente_id) {
-          saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(datos.total || 0));
-          return { ...osc, saldo_por_valorizar: saldoPorValorizar };
-        }
-        return osc;
-      }));
-      if (saldoPorValorizar !== null) {
-        crmSync(sb => svcActualizarOSCliente(sb, val.os_cliente_id, { saldo_por_valorizar: saldoPorValorizar }));
-      }
+      ajustarSaldoPorValorizarOS(val.os_cliente_id, -Number(datos.total || 0));
       if (datos.ot_ids?.length) {
         const otsCerradas = ots.filter(o => datos.ot_ids.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
         if (otsCerradas.length) {
@@ -11971,7 +11969,7 @@ export function AppProvider({ children }) {
     agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento, eliminarAgendaEvento,
     hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo,
     cotizaciones, setCotizaciones, actualizarCotizacion,
-    osClientes, setOsClientes, actualizarOSCliente,
+    osClientes, setOsClientes, actualizarOSCliente, cambiarEstadoOS,
     cxp, setCxp,
     cxpDistribucionesCeco, setCxpDistribucionesCeco,
     cxpPagos, setCxpPagos,
