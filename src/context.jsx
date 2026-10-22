@@ -6,6 +6,7 @@ import { normalizeDashboardRoute } from './dashboardsTabs.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, siguienteNumeroOSCliente as siguienteNumeroOSClienteRpc, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { applyNotificacionSistemaEvent, mergeNotificacionesSistema } from './services/notificacionesRealtime.js';
 import { loadOpsFromSupabase, actualizarBacklog, siguienteNumeroOrdenTrabajo as siguienteNumeroOrdenTrabajoRpc, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -1671,29 +1672,48 @@ export function AppProvider({ children }) {
 
   // Carga notificaciones persistentes del sistema al iniciar sesión
   useEffect(() => {
-    if (!isSupabaseConfigured() || !authUser?.id) return;
-    getSupabaseClient().then(sb =>
-      cargarNotificacionesSistema(sb, authUser.id)
-    ).then(rows => {
-      if (!rows?.length) return;
-      setNotificaciones(prev => [
-        ...rows.map(r => ({
-          id: r.id,
-          text: r.mensaje || r.texto,
-          title: r.titulo || '',
-          message: r.mensaje || r.texto,
-          read: r.leida,
-          time: new Date(r.created_at || r.creada_en).toLocaleDateString('es-PE'),
-          tipo: r.tipo,
-          priority: r.prioridad || 'media',
-          referenceType: r.referencia_tipo,
-          referenceId: r.referencia_id,
-          referencePayload: r.referencia_payload || {},
-          _db: true,
-        })),
-        ...prev,
-      ]);
+    const userId = authUser?.id;
+    if (!userId) {
+      setNotificaciones(prev => prev.filter(n => !n._db));
+      return;
+    }
+    if (!isSupabaseConfigured()) return;
+
+    let active = true;
+    let client = null;
+    let channel = null;
+    const sync = async () => {
+      try {
+        const sb = client || await getSupabaseClient();
+        if (!active) return;
+        client = sb;
+        const rows = await cargarNotificacionesSistema(sb, userId);
+        if (active) setNotificaciones(prev => mergeNotificacionesSistema(prev, rows || []));
+      } catch {}
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+
+    sync();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    getSupabaseClient().then(sb => {
+      if (!active) return;
+      client = sb;
+      channel = sb.channel(`notificaciones-sistema-${userId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones_sistema', filter: `user_id=eq.${userId}` }, payload => {
+          if (active && payload.new) setNotificaciones(prev => applyNotificacionSistemaEvent(prev, payload.new));
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notificaciones_sistema', filter: `user_id=eq.${userId}` }, payload => {
+          if (active && payload.new) setNotificaciones(prev => applyNotificacionSistemaEvent(prev, payload.new));
+        })
+        .subscribe(status => { if (status === 'SUBSCRIBED') sync(); });
     }).catch(() => {});
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (channel && client) client.removeChannel(channel).catch(() => {});
+    };
   }, [authUser?.id]);
 
   const crmSync = (fn) => {
