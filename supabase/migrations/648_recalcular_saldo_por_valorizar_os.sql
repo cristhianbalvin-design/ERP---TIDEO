@@ -1,4 +1,4 @@
--- 647: recalcula os_clientes.saldo_por_valorizar en las 12 OS que quedaron desfasadas (aplicada en remoto como 642_recalcular_saldo_por_valorizar_os).
+-- 648: recalcula os_clientes.saldo_por_valorizar en las 12 OS que quedaron desfasadas (aplicada en remoto como 642_recalcular_saldo_por_valorizar_os).
 -- Causa: la app calculaba el saldo dentro del actualizador de estado de React y nunca lo guardaba
 -- (corregido en fix/os-saldos-y-estados). Saldo = monto aprobado - total de valorizaciones
 -- aprobadas o facturadas, con mínimo 0. Afecta los tenants emp_2000000000 (PRUEBA) y emp_20609996464.
