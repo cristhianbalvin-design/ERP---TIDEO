@@ -23,6 +23,16 @@ export async function ejecutarNotificacionesAhora(empresaId) {
   return sb.rpc('notif_ejecutar_ahora', { p_empresa_id: empresaId });
 }
 
+export async function listarTelefonosUsuariosNotificaciones(empresaId) {
+  const sb = await getSupabaseClient();
+  return sb.rpc('notif_telefonos_usuarios', { p_empresa_id: empresaId });
+}
+
+export async function guardarTelefonoUsuarioNotificaciones(empresaId, userId, telefono) {
+  const sb = await getSupabaseClient();
+  return sb.rpc('notif_telefono_usuario_guardar', { p_empresa_id: empresaId, p_user_id: userId, p_telefono: telefono });
+}
+
 export function normalizarDiasAnticipacion(value) {
   const dias = Array.isArray(value) ? value.map(Number) : [];
   if (dias.length > 5) throw new RangeError('Se permiten como máximo 5 avisos.');
@@ -53,13 +63,34 @@ export function normalizarCorreosAdicionales(value) {
   return correos;
 }
 
+export function normalizarTelefonoWhatsApp(value) {
+  const telefonos = Array.isArray(value) ? value : [value];
+  const normalizados = telefonos.map(telefono => {
+    const entrada = String(telefono ?? '').trim();
+    if (!entrada) return '';
+    if (!/^\+?[\d\s().-]+$/.test(entrada)) throw new RangeError('Teléfono no válido. Usa un celular peruano de 9 dígitos que empiece con 9 o el formato internacional con +.');
+    const digitos = entrada.replace(/\D/g, '');
+    if (/^9\d{8}$/.test(digitos)) return `51${digitos}`;
+    if (/^519\d{8}$/.test(digitos)) return digitos;
+    if (entrada.startsWith('+') && digitos.length >= 10 && digitos.length <= 15) return digitos;
+    throw new RangeError('Teléfono no válido. Usa un celular peruano de 9 dígitos que empiece con 9 o el formato internacional con +.');
+  }).filter(Boolean);
+  if (normalizados.length > 10) throw new RangeError('Puedes agregar hasta 10 teléfonos adicionales por evento.');
+  if (new Set(normalizados).size !== normalizados.length) throw new RangeError('Ese teléfono ya está agregado.');
+  return Array.isArray(value) ? normalizados : (normalizados[0] || '');
+}
+
 export function etiquetaRolDestinatario(rol) {
   return ({ rrhh: 'RRHH', jefe: 'Jefe directo', colaborador: 'Colaborador', correo_adicional: 'Correo adicional' })[rol] || String(rol || '');
 }
 
+export function etiquetaCanalEnvio(canal) {
+  return ({ whatsapp: 'WhatsApp', correo: 'Correo', campana: 'Campana' })[canal] || String(canal || '');
+}
+
 export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados = [], canalesSoportados = []) {
   const roles = new Set(rolesSoportados.filter(rol => ['rrhh', 'jefe', 'colaborador'].includes(rol)));
-  const canales = new Set(canalesSoportados.filter(canal => ['campana', 'correo'].includes(canal)));
+  const canales = new Set(canalesSoportados.filter(canal => ['campana', 'correo', 'whatsapp'].includes(canal)));
   const matriz = {};
   for (const [rol, canalesRol] of Object.entries(destinatarios || {})) {
     if (!roles.has(rol) || !canalesRol || typeof canalesRol !== 'object') continue;
@@ -70,6 +101,7 @@ export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados
     if (Object.keys(fila).length) matriz[rol] = fila;
   }
   matriz.correos_adicionales = normalizarCorreosAdicionales(destinatarios?.correos_adicionales);
+  if (canales.has('whatsapp')) matriz.telefonos_adicionales = normalizarTelefonoWhatsApp(destinatarios?.telefonos_adicionales);
   return matriz;
 }
 
@@ -83,6 +115,7 @@ export function reglaTieneCambios(regla) {
 export function etiquetaEstadoEnvio(envio = {}) {
   const estado = envio.estado;
   if (estado === 'enviado') return { etiqueta: 'Enviado', variante: 'on' };
+  if (estado === 'simulado') return { etiqueta: 'Simulado (sin credenciales)', variante: 'off' };
   if (['pendiente', 'enviando'].includes(estado) && Number(envio.intentos) > 0) return { etiqueta: 'Reintentando', variante: 'warn' };
   if (estado === 'pendiente') return { etiqueta: 'Pendiente', variante: 'warn' };
   if (estado === 'enviando') return { etiqueta: 'Enviando', variante: 'warn' };
