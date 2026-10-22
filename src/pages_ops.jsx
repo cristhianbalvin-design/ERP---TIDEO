@@ -1598,7 +1598,7 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
   const modoVistaSociedadOT = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -1628,49 +1628,7 @@ function OT({ role }) {
   const [motivoAccionParteOT, setMotivoAccionParteOT] = useState('');
   const [avanceAprobacionParteOT, setAvanceAprobacionParteOT] = useState(0);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', tipo_servicio_interno_id: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', costo_estimado_ot: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
-  const [panelNuevaOT, setPanelNuevaOT] = useState(false);
-  const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
-  const [errorNuevaOT, setErrorNuevaOT] = useState('');
-  const [savingNuevaOT, setSavingNuevaOT] = useState(false);
-
-  const tiposConOSObligatoria = ['cliente', 'garantia'];
-  const tiposConOSOpcional = ['correctiva'];
-  const permiteOSCliente = tipo => tiposConOSObligatoria.includes(tipo) || tiposConOSOpcional.includes(tipo);
-  const updNuevaOT = (k, v) => setFormNuevaOT(p => {
-    const next = { ...p, [k]: v };
-    if (k === 'tipo' && !permiteOSCliente(v)) next.os_cliente_id = '';
-    if (k === 'os_cliente_id' && v) {
-      next.centro_beneficio_id = '';
-      const os = (osClientes || []).find(o => o.id === v);
-      if (os) {
-        const cot = os.cotizacion_id ? (cotizaciones || []).find(c => c.id === os.cotizacion_id) : null;
-        const hc = cot?.hoja_costeo_id ? (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') : null;
-        if (hc) {
-          next.est_mo = hc.total_mano_obra ?? '';
-          next.est_materiales = hc.total_materiales ?? '';
-          next.est_terceros = hc.total_servicios_terceros ?? '';
-          next.est_logistica = hc.total_logistica ?? '';
-          const otsOs = (ots || []).filter(ot => ot.os_cliente_id === v && ot.estado !== 'anulada');
-          const asignado = otsOs.reduce((s, ot) => s + Number(ot.costo_estimado_ot ?? ot.costoEst ?? ot.costo_estimado ?? 0), 0);
-          const sugerido = Math.max(0, Number(hc.costo_total || 0) - asignado);
-          next.costo_estimado_ot = sugerido || Number(hc.costo_total || 0) || '';
-        } else {
-          const saldo = os.saldo_por_ejecutar ?? os.presupuesto_os ?? 0;
-          if (saldo > 0) {
-            next.est_mo = saldo;
-            next.est_materiales = '';
-            next.est_terceros = '';
-            next.est_logistica = '';
-            next.costo_estimado_ot = saldo;
-          }
-        }
-      }
-    }
-    return next;
-  });
   const sociedadIdEscrituraOT = modoVistaSociedadOT.sociedadIdEscritura;
-  const osClientesEscritura = filtrarOpcionesPorSociedadEscritura(osClientes || [], sociedadIdEscrituraOT);
   const cecosActivos = filtrarOpcionesPorSociedadEscritura(
     (centrosCosto || []).filter(c => c.estado === 'activo'),
     sociedadIdEscrituraOT,
@@ -1716,102 +1674,6 @@ function OT({ role }) {
   const totalHorasEstimadasAdmin = items =>
     (items || []).reduce((s, pa) => s + Number(pa.horas_estimadas || 0), 0);
 
-  const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
-  const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
-  const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientesEscritura.find(o => o.id === formNuevaOT.os_cliente_id) : null;
-  const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
-  const sociedadNuevaOTId = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id)?.sociedad_id
-    || cebeHeredado?.sociedad_id
-    || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id)?.sociedad_id
-    || null;
-  const cecoNuevaOT = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id);
-  const cebeNuevaOT = cebeHeredado || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id);
-  const destinoNuevaOT = resolverSociedadDestino({
-    sociedades: sociedadesDisponibles,
-    origenes: [
-      { seleccionado: Boolean(formNuevaOT.centro_costo_id), sociedadId: cecoNuevaOT?.sociedad_id || null, label: `El CECO ${cecoNuevaOT?.codigo || formNuevaOT.centro_costo_id || ''}`.trim() },
-      { seleccionado: Boolean(formNuevaOT.os_cliente_id), sociedadId: osSeleccionada?.sociedad_id || cebeHeredado?.sociedad_id || null, label: `La OS Cliente ${osSeleccionada?.numero || formNuevaOT.os_cliente_id || ''}`.trim() },
-      { seleccionado: Boolean(formNuevaOT.centro_beneficio_id), sociedadId: cebeNuevaOT?.sociedad_id || null, label: `El CEBE ${cebeNuevaOT?.codigo || formNuevaOT.centro_beneficio_id || ''}`.trim() },
-    ],
-    mensajeSinOrigen: 'Selecciona el origen de la OT para resolver su sociedad destino.',
-  });
-
-  const hcReferencia = (() => {
-    if (!osSeleccionada?.cotizacion_id) return null;
-    const cot = (cotizaciones || []).find(c => c.id === osSeleccionada.cotizacion_id);
-    if (!cot?.hoja_costeo_id) return null;
-    return (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') ?? null;
-  })();
-
-  const itemsCotizacion = (() => {
-    if (!osSeleccionada?.cotizacion_id) return [];
-    const cot = (cotizaciones || []).find(c => c.id === osSeleccionada.cotizacion_id);
-    return (cot?.items || []).map(i => i.descripcion || i.nombre).filter(Boolean);
-  })();
-
-  const totalEstimadoNuevaOT = (
-    (parseFloat(formNuevaOT.est_mo) || 0) +
-    (parseFloat(formNuevaOT.est_materiales) || 0) +
-    (parseFloat(formNuevaOT.est_terceros) || 0) +
-    (parseFloat(formNuevaOT.est_logistica) || 0)
-  );
-  const estimadoPropioNuevaOT = formNuevaOT.costo_estimado_ot !== ''
-    ? Number(formNuevaOT.costo_estimado_ot || 0)
-    : totalEstimadoNuevaOT;
-
-  const cerrarPanelNuevaOT = () => { setPanelNuevaOT(false); setFormNuevaOT(formNuevaOTBase); setErrorNuevaOT(''); };
-
-  const submitNuevaOT = async () => {
-    if (savingNuevaOT) return;
-    if (destinoNuevaOT.conflictMessage) { setErrorNuevaOT(destinoNuevaOT.conflictMessage); return; }
-    if (!formNuevaOT.centro_costo_id) { setErrorNuevaOT('Selecciona un CECO antes de continuar.'); return; }
-    if (debeTenerOSCliente && !formNuevaOT.os_cliente_id) {
-      setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return;
-    }
-    if (formNuevaOT.os_cliente_id) {
-      if (!osSeleccionada?.centro_beneficio_id) { setErrorNuevaOT('La OS Cliente seleccionada no tiene CEBE asignado. Asígnalo desde la ficha de la OS.'); return; }
-    }
-    setSavingNuevaOT(true);
-    setErrorNuevaOT('');
-    try {
-      const datos = {
-        tipo: formNuevaOT.tipo,
-        tipo_servicio_interno_id: formNuevaOT.tipo_servicio_interno_id || null,
-        centro_costo_id: formNuevaOT.centro_costo_id,
-        servicio: formNuevaOT.servicio || (formNuevaOT.tipo === 'garantia' ? 'Garantia' : formNuevaOT.tipo === 'correctiva' ? 'Correctiva' : 'Servicio cliente'),
-        descripcion: formNuevaOT.descripcion,
-        tecnico_responsable_id: formNuevaOT.tecnico_responsable_id,
-        prioridad: formNuevaOT.prioridad,
-        fecha_programada: formNuevaOT.fecha_programada || null,
-        estado: 'programada',
-        participantes_admin: formNuevaOT.participantes_admin || [],
-      };
-      if (formNuevaOT.os_cliente_id) {
-        await crearOTDesdeOS(formNuevaOT.os_cliente_id, {
-          ...datos,
-          est_mo: formNuevaOT.est_mo !== '' ? Number(formNuevaOT.est_mo) : null,
-          est_materiales: formNuevaOT.est_materiales !== '' ? Number(formNuevaOT.est_materiales) : null,
-          est_terceros: formNuevaOT.est_terceros !== '' ? Number(formNuevaOT.est_terceros) : null,
-          est_logistica: formNuevaOT.est_logistica !== '' ? Number(formNuevaOT.est_logistica) : null,
-          costo_estimado: estimadoPropioNuevaOT,
-          costo_estimado_ot: estimadoPropioNuevaOT,
-          estimado_detalle: {
-            mano_obra: Number(formNuevaOT.est_mo || 0),
-            materiales: Number(formNuevaOT.est_materiales || 0),
-            terceros: Number(formNuevaOT.est_terceros || 0),
-            logistica: Number(formNuevaOT.est_logistica || 0),
-          },
-        });
-      } else {
-        await crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id, costoEst: estimadoPropioNuevaOT, costo_estimado_ot: estimadoPropioNuevaOT });
-      }
-      cerrarPanelNuevaOT();
-    } catch (err) {
-      setErrorNuevaOT(err?.message || 'No se pudo crear la OT.');
-    } finally {
-      setSavingNuevaOT(false);
-    }
-  };
   const [showNuevaTarea, setShowNuevaTarea] = useState(false);
   const [nuevaTareaForm, setNuevaTareaForm] = useState({ titulo: '', descripcion: '', responsable_id: '', tecnico_id: '', fecha_limite: '', horas_estimadas: '', orden: 0 });
   const [confirmCompletarTarea, setConfirmCompletarTarea] = useState(null);
@@ -2394,7 +2256,7 @@ function OT({ role }) {
         </div>
         <div className="row">
           <button className="btn btn-secondary">{I.filter} Filtrar</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelNuevaOT(true)}>{I.plus} Nueva OT</button>
+          <span className="text-muted" style={{fontSize:12}}>Las OTs se crean desde la app de Operaciones</span>
         </div>
       </div>
 
@@ -4848,254 +4710,6 @@ function OT({ role }) {
         </>);
       })()}
 
-      {panelNuevaOT && (
-        <>
-          <div className="side-panel-backdrop" onClick={cerrarPanelNuevaOT}/>
-          <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Formulario de registro</div>
-                <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nueva Orden de Trabajo</div>
-              </div>
-              <button className="icon-btn" onClick={cerrarPanelNuevaOT}>×</button>
-            </div>
-            <div className="side-panel-body">
-              {errorNuevaOT && <div className="alert alert-danger" style={{marginBottom:16}}>{errorNuevaOT}</div>}
-
-              <div className="eyebrow" style={{marginBottom:12}}>Clasificación</div>
-              <div className="grid-2" style={{gap:16, marginBottom:20}}>
-                <div className="input-group">
-                  <label>Actividad operativa</label>
-                  <select className="select" value={formNuevaOT.tipo_servicio_interno_id} onChange={e => updNuevaOT('tipo_servicio_interno_id', e.target.value)}>
-                    <option value="">Sin definir</option>
-                    {tiposActivos.map(t => <option key={t.id} value={t.id}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Tipo de OT <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={formNuevaOT.tipo} onChange={e => updNuevaOT('tipo', e.target.value)}>
-                    <option value="cliente">Servicio Cliente</option>
-                    <option value="interna">Interna</option>
-                    <option value="correctiva">Correctiva</option>
-                    <option value="preventiva">Preventiva</option>
-                    <option value="tercerizada">Tercerizada</option>
-                    <option value="garantia">Garantía</option>
-                    <option value="emergencia">Emergencia</option>
-                    <option value="proyecto">Proyecto</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Prioridad</label>
-                  <select className="select" value={formNuevaOT.prioridad} onChange={e => updNuevaOT('prioridad', e.target.value)}>
-                    <option value="normal">Normal</option>
-                    <option value="urgente">Urgente</option>
-                    <option value="critica">Crítica</option>
-                  </select>
-                </div>
-              </div>
-
-              {puedeTenerOSCliente && (
-                <>
-                  <div className="eyebrow" style={{marginBottom:12}}>OS Cliente vinculada</div>
-                  <div className="input-group" style={{marginBottom:20}}>
-                    <label>OS Cliente {debeTenerOSCliente && <span style={{color:'var(--danger)'}}>*</span>}</label>
-                    <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
-                      <option value="">{debeTenerOSCliente ? 'Seleccionar OS Cliente...' : 'Sin OS Cliente vinculada'}</option>
-                      {osClientesEscritura.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
-                        <option key={o.id} value={o.id}>{o.numero} — {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div className="eyebrow" style={{marginBottom:12}}>Vinculación contable</div>
-              <div className="grid-2" style={{gap:16, marginBottom:20}}>
-                <div className="input-group">
-                  <label>CECO <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={formNuevaOT.centro_costo_id} onChange={e => updNuevaOT('centro_costo_id', e.target.value)}>
-                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos — crea uno en Maestros Base'}</option>
-                    {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>CEBE</label>
-                  {formNuevaOT.os_cliente_id ? (
-                    <input className="input" readOnly style={{opacity:0.75}}
-                      value={cebeHeredado ? `${cebeHeredado.codigo ? cebeHeredado.codigo + ' - ' : ''}${cebeHeredado.nombre}` : ''}
-                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS — asígnalo primero' : 'Se hereda de la OS Cliente'}
-                    />
-                  ) : (
-                    <select className="select" value={formNuevaOT.centro_beneficio_id} onChange={e => updNuevaOT('centro_beneficio_id', e.target.value)}>
-                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos — crea uno en Maestros Base'}</option>
-                      {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
-                    </select>
-                  )}
-                </div>
-                <SociedadReadOnlyField sociedadId={sociedadNuevaOTId} conflictMessage={destinoNuevaOT.conflictMessage} emptyMessage={destinoNuevaOT.emptyMessage} />
-              </div>
-
-              <div className="eyebrow" style={{marginBottom:12}}>Detalle del trabajo</div>
-              <div className="grid-2" style={{gap:16, marginBottom:20}}>
-                <div className="input-group">
-                  <label>Servicio / tipo de trabajo</label>
-                  {itemsCotizacion.length > 0 ? (
-                    <>
-                      <input className="input" list="svc-sugerencias-nueva-ot" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Elige de la cotización o escribe..." />
-                      <datalist id="svc-sugerencias-nueva-ot">
-                        {itemsCotizacion.map((s, i) => <option key={i} value={s} />)}
-                      </datalist>
-                    </>
-                  ) : tiposActivos.length > 0 ? (
-                    <select className="select" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)}>
-                      <option value="">Seleccionar servicio...</option>
-                      {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
-                    </select>
-                  ) : (
-                    <input className="input" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Ej. Mantenimiento preventivo" />
-                  )}
-                </div>
-                <div className="input-group">
-                  <label>Responsable técnico</label>
-                  <select className="select" value={formNuevaOT.tecnico_responsable_id} onChange={e => updNuevaOT('tecnico_responsable_id', e.target.value)}>
-                    <option value="">Sin asignar</option>
-                    {responsablesTecnicosOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
-                  </select>
-                  {!responsablesTecnicosOT.length && <div className="text-muted" style={{fontSize:11, marginTop:4}}>No hay operativos con perfil supervisor o superior.</div>}
-                </div>
-                <div className="input-group">
-                  <label>Fecha fin comprometida</label>
-                  <input className="input" type="date" value={formNuevaOT.fecha_programada} onChange={e => updNuevaOT('fecha_programada', e.target.value)} />
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Descripción / alcance</label>
-                  <textarea className="input" rows="3" value={formNuevaOT.descripcion} onChange={e => updNuevaOT('descripcion', e.target.value)} placeholder="Describe el trabajo a realizar..." />
-                </div>
-              </div>
-
-              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>— opcional</span></div>
-              {formNuevaOT.os_cliente_id && !hcReferencia && (
-                <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
-                  Sin hoja de costeo vinculada. El estimado es referencial.
-                </div>
-              )}
-              <div className="input-group" style={{marginBottom:12}}>
-                <label>Estimado de esta OT</label>
-                <input className="input" type="number" min="0" step="0.01" value={formNuevaOT.costo_estimado_ot} onChange={e => updNuevaOT('costo_estimado_ot', e.target.value)} placeholder="0.00" />
-                {formNuevaOT.os_cliente_id && (
-                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>
-                    Este monto es el estimado propio de la OT. La referencia de HC queda solo como baseline informativo.
-                  </div>
-                )}
-              </div>
-              <div className="grid-2" style={{gap:16, marginBottom:8}}>
-                {[
-                  { key: 'est_mo', label: 'Mano de obra', hcVal: hcReferencia?.total_mano_obra ?? null },
-                  { key: 'est_materiales', label: 'Materiales', hcVal: hcReferencia?.total_materiales ?? null },
-                  { key: 'est_terceros', label: 'Servicios terceros', hcVal: hcReferencia?.total_servicios_terceros ?? null },
-                  { key: 'est_logistica', label: 'Logística', hcVal: hcReferencia?.total_logistica ?? null },
-                ].map(({ key, label, hcVal }) => (
-                  <div className="input-group" key={key}>
-                    <label style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
-                      <span>{label}</span>
-                      {hcVal != null && <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Ref. HC: {money(hcVal)}</span>}
-                    </label>
-                    <input className="input" type="number" min="0" step="0.01" value={formNuevaOT[key]} onChange={e => updNuevaOT(key, e.target.value)} placeholder="0.00" />
-                  </div>
-                ))}
-              </div>
-              {totalEstimadoNuevaOT > 0 && (
-                <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:6, marginBottom:20}}>
-                  <span style={{fontSize:12, color:'var(--fg-muted)'}}>Total estimado:</span>
-                  <span style={{fontWeight:700, fontSize:15}}>{money(estimadoPropioNuevaOT || totalEstimadoNuevaOT)}</span>
-                </div>
-              )}
-              {totalEstimadoNuevaOT === 0 && <div style={{marginBottom:20}}/>}
-
-              <div style={{borderTop:'1px solid var(--border)', paddingTop:20, marginBottom:20}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:12}}>
-                  <div>
-                    <div className="eyebrow">Participantes administrativos</div>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Planifica aqui quienes participan y sus horas estimadas. Las horas reales se imputan en Partes &gt; Horas administrativas.</div>
-                  </div>
-                  <div className="row" style={{gap:8, flexShrink:0}}>
-                    {(formNuevaOT.participantes_admin || []).length > 0 && (
-                      <span className="badge badge-cyan">{totalHorasEstimadasAdmin(formNuevaOT.participantes_admin).toFixed(1)}h est.</span>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{fontSize:12}}
-                      onClick={() => updNuevaOT('participantes_admin', [...(formNuevaOT.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }])}
-                    >{I.plus} Agregar</button>
-                  </div>
-                </div>
-                {(formNuevaOT.participantes_admin || []).length > 0 && (
-                  <div className="col" style={{gap:8}}>
-                    {(formNuevaOT.participantes_admin || []).map((pa, idx) => (
-                      <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(220px, 1fr) minmax(140px, 180px) 36px', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border-subtle)', borderRadius:8, background:'var(--bg-subtle)'}}>
-                        <div className="input-group">
-                          <label>Colaborador administrativo</label>
-                          <select
-                          className="select"
-                          value={pa.personal_id}
-                          onChange={e => {
-                            const p = (personalAdmin || []).find(x => x.id === e.target.value);
-                            const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, personal_id: e.target.value, personal_nombre: p?.nombre || '' } : x);
-                            updNuevaOT('participantes_admin', next);
-                          }}
-                        >
-                          <option value="">Seleccionar colaborador...</option>
-                          {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
-                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
-                          ))}
-                          </select>
-                        </div>
-                        <div className="input-group">
-                          <label>Horas estimadas</label>
-                          <div style={{position:'relative'}}>
-                          <input
-                            className="input"
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            placeholder="0.0"
-                            value={pa.horas_estimadas}
-                            style={{textAlign:'right', paddingRight:38, fontWeight:700}}
-                            onChange={e => {
-                              const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, horas_estimadas: e.target.value } : x);
-                              updNuevaOT('participantes_admin', next);
-                            }}
-                          />
-                            <span style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'var(--fg-muted)'}}>h</span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          style={{height:36, width:36, color:'var(--danger)'}}
-                          title="Quitar participante administrativo"
-                          onClick={() => updNuevaOT('participantes_admin', (formNuevaOT.participantes_admin || []).filter((_, i) => i !== idx))}
-                        >{I.x}</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {(formNuevaOT.participantes_admin || []).length === 0 && (
-                  <div style={{border:'1px dashed var(--border)', borderRadius:8, padding:12, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
-                    Sin participantes administrativos planificados.
-                  </div>
-                )}
-              </div>
-
-              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                <button className="btn btn-secondary" onClick={cerrarPanelNuevaOT}>Cancelar</button>
-                <button className="btn btn-primary" disabled={savingNuevaOT} onClick={submitNuevaOT}>{I.check} {savingNuevaOT ? 'Creando...' : 'Crear OT'}</button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 }
@@ -13930,7 +13544,7 @@ function Planner() {
             <button className="icon-btn" onClick={() => setOffsetSemanas(s => s + 1)} title="Siguiente semana">{I.chevronRight}</button>
           </div>
           <button type="button" className="btn btn-ghost" onClick={() => setOffsetSemanas(0)}>{I.refresh} Hoy</button>
-          <button type="button" className="btn btn-primary" data-local-form="true" onClick={() => navigate('ot')}>{I.plus} Nueva OT</button>
+          <span className="text-muted" style={{fontSize:12}}>Las OTs se crean desde la app de Operaciones</span>
         </div>
       </div>
 
