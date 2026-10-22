@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSupabaseServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { construirCorreoNotificacion } from "../_shared/notificacionesCorreo.js";
+import { construirCuerpoWhatsApp } from "../_shared/notificacionesWhatsapp.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -93,5 +94,71 @@ serve(async (req) => {
     else enviados += 1;
   }
 
-  return json({ ok: fallidos === 0, reclamados: reclamados.length, enviados, fallidos });
+  const { data: whatsappRows, error: whatsappClaimError } = await supabase.rpc("notif_reclamar_whatsapp", { p_limite: limit });
+  if (whatsappClaimError) {
+    return json({
+      ok: false, reclamados: reclamados.length, enviados, fallidos,
+      whatsapp: { reclamados: 0, enviados: 0, simulados: 0, fallidos: 0, error: whatsappClaimError.message },
+    }, 500);
+  }
+
+  const whatsappReclamados = Array.isArray(whatsappRows) ? whatsappRows : [];
+  let whatsappEnviados = 0;
+  let whatsappSimulados = 0;
+  let whatsappFallidos = 0;
+  const whatsappToken = Deno.env.get("WHATSAPP_TOKEN");
+  const whatsappPhoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+  const graphVersion = Deno.env.get("WHATSAPP_GRAPH_VERSION") || "v23.0";
+  const template = Deno.env.get("WHATSAPP_TEMPLATE") || "opera_alerta";
+  const templateLang = Deno.env.get("WHATSAPP_TEMPLATE_LANG") || "es";
+
+  for (const row of whatsappReclamados) {
+    let resultado: "enviado" | "simulado" | "fallo" = "simulado";
+    let error = "";
+    let proveedorId: string | null = null;
+    if (whatsappToken && whatsappPhoneNumberId) {
+      try {
+        const response = await fetch(`https://graph.facebook.com/${graphVersion}/${whatsappPhoneNumberId}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${whatsappToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(construirCuerpoWhatsApp({
+            telefono: row.destinatario_telefono,
+            titulo: row.titulo,
+            mensaje: row.mensaje,
+          }, { template, language: templateLang })),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          resultado = "enviado";
+          proveedorId = typeof result?.messages?.[0]?.id === "string" ? result.messages[0].id : null;
+        } else {
+          resultado = "fallo";
+          error = String(result?.error?.message || result?.message || `whatsapp_http_${response.status}`).slice(0, 500);
+        }
+      } catch (err) {
+        resultado = "fallo";
+        error = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+      }
+    }
+
+    let markError: unknown = null;
+    try {
+      const marked = await supabase.rpc("notif_marcar_whatsapp", {
+        p_id: row.id,
+        p_resultado: resultado,
+        p_error: resultado === "fallo" ? error : null,
+        p_proveedor_id: proveedorId,
+      });
+      markError = marked.error;
+    } catch (err) { markError = err; }
+    if (markError || resultado === "fallo") whatsappFallidos += 1;
+    else if (resultado === "simulado") whatsappSimulados += 1;
+    else whatsappEnviados += 1;
+  }
+
+  return json({
+    ok: fallidos === 0 && whatsappFallidos === 0,
+    reclamados: reclamados.length, enviados, fallidos,
+    whatsapp: { reclamados: whatsappReclamados.length, enviados: whatsappEnviados, simulados: whatsappSimulados, fallidos: whatsappFallidos },
+  });
 });

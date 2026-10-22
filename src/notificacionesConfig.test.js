@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, construirMatrizDestinatarios,
-  reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, etiquetaRolDestinatario,
+  reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, normalizarTelefonosAdicionales,
+  etiquetaRolDestinatario, etiquetaCanalEnvio,
 } from './services/notificacionesConfigService.js';
 
 test('normaliza días únicos entre 1 y 180 en orden descendente', () => {
@@ -50,6 +51,20 @@ test('conserva correos adicionales en el payload de destinatarios', () => {
   });
 });
 
+test('normaliza y valida teléfonos adicionales para WhatsApp', () => {
+  assert.deepEqual(normalizarTelefonoWhatsApp(['987 654 321', '+1 2025550123']), ['51987654321', '12025550123']);
+  assert.equal(normalizarTelefonoWhatsApp('+1 (202) 555-0123'), '12025550123');
+  assert.throws(() => normalizarTelefonoWhatsApp('123456789'), /Teléfono no válido/);
+  assert.throws(() => normalizarTelefonoWhatsApp(['987654321', '51987654321']), /ya está agregado/);
+  assert.throws(() => normalizarTelefonoWhatsApp(Array.from({ length: 11 }, (_, i) => `9${String(i).padStart(8, '0')}`)), /hasta 10/);
+});
+
+test('incluye WhatsApp y teléfonos normalizados solo cuando el canal está soportado', () => {
+  assert.deepEqual(construirMatrizDestinatarios({ rrhh: { whatsapp: true }, telefonos_adicionales: ['987654321'] }, ['rrhh'], ['whatsapp']), {
+    rrhh: { whatsapp: true }, correos_adicionales: [], telefonos_adicionales: ['51987654321'],
+  });
+});
+
 test('detecta cambios respecto de la regla original', () => {
   const regla = { activo: true, parametros: { a: 1 }, destinatarios: {}, __original: { activo: true, parametros: { a: 1 }, destinatarios: {} } };
   assert.equal(reglaTieneCambios(regla), false);
@@ -70,4 +85,16 @@ test('etiqueta estados del historial y omisión por falta de correo', () => {
   assert.deepEqual(etiquetaEstadoEnvio({ estado: 'enviando', intentos: 1 }), { etiqueta: 'Reintentando', variante: 'warn' });
   assert.deepEqual(etiquetaEstadoEnvio({ estado: 'error' }), { etiqueta: 'Error', variante: 'err' });
   assert.deepEqual(etiquetaEstadoEnvio({ estado: 'omitido', motivo: 'sin_correo', destinatario_email: null }), { etiqueta: 'Omitido · sin correo', variante: 'off' });
+  assert.deepEqual(etiquetaEstadoEnvio({ estado: 'simulado' }), { etiqueta: 'Simulado (sin credenciales)', variante: 'off' });
+  assert.equal(etiquetaCanalEnvio('whatsapp'), 'WhatsApp');
+});
+
+test('trata los teléfonos adicionales ausentes en reglas antiguas como una lista vacía', () => {
+  const eventoAntiguo = { destinatarios: { rrhh: { whatsapp: true } } };
+  assert.deepEqual(normalizarTelefonosAdicionales(eventoAntiguo.destinatarios?.telefonos_adicionales), []);
+  assert.deepEqual(construirMatrizDestinatarios(eventoAntiguo.destinatarios, ['rrhh'], ['whatsapp']), {
+    rrhh: { whatsapp: true }, correos_adicionales: [], telefonos_adicionales: [],
+  });
+  assert.deepEqual(normalizarTelefonosAdicionales(null), []);
+  assert.deepEqual(normalizarTelefonosAdicionales('987654321'), []);
 });
