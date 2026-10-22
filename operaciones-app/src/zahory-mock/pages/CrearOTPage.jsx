@@ -1393,6 +1393,25 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
     errorCentrosBeneficio,
     form.centro_beneficio_id,
   ]);
+  const resumenCentroCosto = useMemo(() => {
+    if (form.centro_costo) {
+      const centroCosto = centrosCostoReales.find(item => item.id === form.centro_costo);
+      const etiqueta = centroCosto
+        ? [centroCosto.codigo, centroCosto.nombre].filter(Boolean).join(' · ')
+        : '';
+      return `CECO ${etiqueta || 'asignado'}`;
+    }
+    if (form.centro_beneficio_id) {
+      const centroBeneficio = centrosBeneficioReales.find(
+        item => item.id === form.centro_beneficio_id,
+      );
+      const etiqueta = centroBeneficio
+        ? [centroBeneficio.codigo, centroBeneficio.nombre].filter(Boolean).join(' · ')
+        : '';
+      return `CEBE ${etiqueta || 'asignado'}`;
+    }
+    return 'Sin centro de costo';
+  }, [centrosBeneficioReales, centrosCostoReales, form.centro_beneficio_id, form.centro_costo]);
   const equiposFiltrados = useMemo(() => {
     if (objetoCostoTipo === 'contrato') return equiposContratoReales;
     if (
@@ -2506,7 +2525,22 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
             <div className="dx-ot-review">
               <div className="dx-ot-review-title">Resumen de la orden</div>
               {[
-                ['Contexto', `Línea: ${LINEA_NEGOCIO_LABELS[form.lineaNegocio] || 'Pendiente'} · Raíz: ${{ contrato: 'Contrato', os_cliente: 'OS Cliente', equipo_interno: 'Equipo interno' }[objetoCostoTipo]} · ${nombreCliente(cliente) || 'Sin cliente'} · ${contrato?.numero || 'Sin contrato'} · ${equipo?.codigo || equipo?.cod || 'Sin equipo'} · CC ${form.centro_costo || form.centro_beneficio_id || 'sin centro'}`, 1],
+                [
+                  'Contexto',
+                  [
+                    `Línea: ${LINEA_NEGOCIO_LABELS[form.lineaNegocio] || 'Pendiente'}`,
+                    `Raíz: ${{
+                      contrato: 'Contrato',
+                      os_cliente: 'OS Cliente',
+                      equipo_interno: 'Equipo interno',
+                    }[objetoCostoTipo]}`,
+                    nombreCliente(cliente) || 'Sin cliente',
+                    contrato?.numero || 'Sin contrato',
+                    equipo?.codigo || equipo?.cod || 'Sin equipo',
+                    resumenCentroCosto,
+                  ].join(' · '),
+                  1,
+                ],
                 ['Proyecto', proyectoResumen, 1],
                 ['Lugar', `${form.lugarEjecucion || 'Sin definir'} · ${form.unidadMinera || 'Sin unidad minera'} · Horómetro ${form.horometroApertura || 'sin registrar'}`, 2],
                 ['Matriz DBS', `${trabajoLabel(form.tipoTrabajo)} · ${cargoLabel(form.tipoCargo)} · ${segmentos.length} segmento(s): ${segmentos.map(s => s.descripcion || s.codigo).join(', ')} · ${backlogs.length} backlog(s)`, 3],
