@@ -89,6 +89,7 @@ import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.js
 import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
 import './compras_gastos.css';
 import './personal_operativo.css';
+import './cuentas_listado.css';
 import './ficha_personal.css';
 import { FichaHeader, FichaTabs, FichaCard, FichaDL, FichaKV, FichaAlert, FichaStats, FichaEmpty, FichaTable, FichaMenu, FichaDocRow, FichaHabilitacion, FichaModalHead, FichaPill, fichaTonoDeBadge, fichaIniciales } from './components/FichaPersonalKit.jsx';
 
@@ -178,7 +179,7 @@ const habTooltip = (req) => {
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
+  const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones, industrias } = useApp();
   const esPersonaNatural = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_DNI;
   const etiquetaDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : esPersonaNatural(tipoDocumento) ? 'DNI' : 'RUC';
   const placeholderDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
@@ -224,6 +225,10 @@ function Cuentas() {
   const [filtroIndustria, setFiltroIndustria] = useState('');
   const [filtroResponsable, setFiltroResponsable] = useState('');
   const [filtroCondiciones, setFiltroCondiciones] = useState('');
+  const [filtroKpi, setFiltroKpi] = useState('');
+  const [consejoLeadsVisible, setConsejoLeadsVisible] = useState(() => { try { return localStorage.getItem('dx-cta-consejo-leads-cerrado') !== '1'; } catch { return true; } });
+  const [menuCuentaAbierto, setMenuCuentaAbierto] = useState(false);
+  const menuCuentaRef = useRef(null);
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const fileInputCuentasRef = useRef(null);
   const [importCuentasRows, setImportCuentasRows] = useState(null);
@@ -258,6 +263,22 @@ function Cuentas() {
   const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
   const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
   const cuentasPorId = useMemo(() => new Map((cuentas || []).map(cuenta => [cuenta.id, cuenta])), [cuentas]);
+
+  useEffect(() => {
+    if (!menuCuentaAbierto) return undefined;
+    const cerrarFuera = event => {
+      if (!menuCuentaRef.current?.contains(event.target)) setMenuCuentaAbierto(false);
+    };
+    const cerrarEscape = event => {
+      if (event.key === 'Escape') setMenuCuentaAbierto(false);
+    };
+    document.addEventListener('mousedown', cerrarFuera);
+    document.addEventListener('keydown', cerrarEscape);
+    return () => {
+      document.removeEventListener('mousedown', cerrarFuera);
+      document.removeEventListener('keydown', cerrarEscape);
+    };
+  }, [menuCuentaAbierto]);
 
   useEffect(() => {
     let active = true;
@@ -668,7 +689,7 @@ function Cuentas() {
 
 
   const canVerEquipo = role?.permisos?.ver_agenda_equipo || role?.permisos?.todo;
-  const industriasDisponibles = [...new Set(cuentas.map(c => c.industria).filter(Boolean).filter(i => i !== 'Por definir'))].sort();
+  const industriasDisponibles = [...new Set([...(industrias || []).map(i => i.nombre), ...cuentas.map(c => c.industria)].filter(Boolean).filter(i => i !== 'Por definir'))].sort();
   const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(Boolean).filter(r => r !== 'Sin asignar'))].sort();
   const primerContactoPorCuenta = useMemo(() => {
     const contactosPorCuenta = {};
@@ -685,155 +706,129 @@ function Cuentas() {
   }, [contactos]);
 
   const cuentasBase = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
+  const cxcPorCuentaMoneda = useMemo(() => {
+    const mapa = new Map();
+    const facturasPorId = new Map((facturas || []).map(factura => [factura.id, factura]));
+    (cxc || []).forEach(item => {
+      const saldo = Number(item.saldo ?? item.monto_pendiente ?? (Number(item.monto_total ?? item.total ?? 0) - Number(item.monto_pagado || 0)));
+      if (!item.cuenta_id || saldo <= 0 || ['anulada','cancelada','cobrada','pagada'].includes(String(item.estado || '').toLowerCase())) return;
+      const moneda = String(item.moneda || facturasPorId.get(item.factura_id)?.moneda || 'PEN').toUpperCase();
+      const key = `${item.cuenta_id}:${moneda}`;
+      mapa.set(key, (mapa.get(key) || 0) + saldo);
+    });
+    return mapa;
+  }, [cxc, facturas]);
+  const ultimaCompraPorCuenta = useMemo(() => {
+    const mapa = new Map();
+    const noValidas = ['anulada','anulado','borrador','nota_credito','nota_debito','nota de crédito','nota de débito'];
+    (facturas || []).forEach(f => {
+      const estado = String(f.estado || '').toLowerCase();
+      const tipo = String(f.tipo_documento || '').toLowerCase();
+      if (!f.cuenta_id || noValidas.includes(estado) || noValidas.includes(tipo) || tipo.includes('nota_credito') || tipo.includes('nota_debito')) return;
+      const fecha = String(f.fecha_emision || '').slice(0, 10);
+      if (fecha && (!mapa.has(f.cuenta_id) || fecha > mapa.get(f.cuenta_id))) mapa.set(f.cuenta_id, fecha);
+    });
+    return mapa;
+  }, [facturas]);
+  const saldoCuentaMonedas = cuenta => [...cxcPorCuentaMoneda.entries()].filter(([key]) => key.startsWith(`${cuenta.id}:`));
+  const simboloMonedaCuenta = moneda => String(moneda || 'PEN').toUpperCase() === 'USD' ? 'US$' : String(moneda || 'PEN').toUpperCase() === 'EUR' ? '€' : String(moneda || 'PEN').toUpperCase() === 'PEN' ? 'S/' : moneda;
+  const saldoPendienteMonedas = cuentasBase.reduce((totales, cuenta) => {
+    saldoCuentaMonedas(cuenta).forEach(([key, saldo]) => { const moneda = key.split(':').pop(); totales.set(moneda, (totales.get(moneda) || 0) + saldo); });
+    return totales;
+  }, new Map());
+  const notaSaldoPendiente = [...saldoPendienteMonedas.entries()].map(([moneda, saldo]) => moneyD(saldo, simboloMonedaCuenta(moneda))).join(' · ') || moneyD(0);
+  const completitudCuenta = cuenta => {
+    const principal = primerContactoPorCuenta[cuenta.id];
+    const campos = [
+      ['documento', Boolean(String(cuenta.ruc || '').trim())],
+      ['contacto principal', Boolean(principal?.nombre || principal?.email || principal?.telefono)],
+      ['responsable', Boolean(cuenta.responsable_comercial && cuenta.responsable_comercial !== 'Sin asignar')],
+      ['industria', Boolean(cuenta.industria && cuenta.industria !== 'Por definir')],
+      ['condiciones de pago', Boolean(cuenta.condicion_pago && cuenta.condicion_pago !== 'Por definir')],
+    ];
+    return { count: campos.filter(([, ok]) => ok).length, missing: campos.filter(([, ok]) => !ok).map(([name]) => name) };
+  };
+  const tieneDatosEsencialesIncompletos = cuenta => {
+    const contacto = primerContactoPorCuenta[cuenta.id];
+    return !(contacto?.nombre || contacto?.email || contacto?.telefono)
+      || !cuenta.responsable_comercial || cuenta.responsable_comercial === 'Sin asignar'
+      || !cuenta.industria || cuenta.industria === 'Por definir';
+  };
   const cuentasFiltradas = cuentasBase.filter(c => {
     const txt = filtroTexto.trim().toLowerCase();
-    if (txt && ![ c.nombre_comercial, c.razon_social, c.ruc ].some(v => (v||'').toLowerCase().includes(txt))) return false;
+    const cp = primerContactoPorCuenta[c.id];
+    if (txt && ![ c.nombre_comercial, c.razon_social, c.ruc, cp?.nombre, cp?.email ].some(v => String(v || '').toLowerCase().includes(txt))) return false;
     if (filtroTipo && c.tipo !== filtroTipo) return false;
     if (filtroIndustria && c.industria !== filtroIndustria) return false;
     if (filtroResponsable && c.responsable_comercial !== filtroResponsable) return false;
     if (filtroCondiciones === 'completas' && (!c.condicion_pago || c.condicion_pago === 'Por definir')) return false;
     if (filtroCondiciones === 'pendientes' && c.condicion_pago && c.condicion_pago !== 'Por definir') return false;
+    if (filtroKpi === 'clientes' && c.tipo !== 'cliente') return false;
+    if (filtroKpi === 'cxc' && !saldoCuentaMonedas(c).length) return false;
+    if (filtroKpi === 'incompletos' && !tieneDatosEsencialesIncompletos(c)) return false;
     return true;
   });
-  const hayFiltros = filtroTexto || filtroTipo || filtroIndustria || filtroResponsable || filtroCondiciones;
+  const hayFiltros = filtroTexto || filtroTipo || filtroIndustria || filtroResponsable || filtroCondiciones || filtroKpi;
+  const abrirFichaCuenta = cuenta => { setSel({ ...cuenta, logo_url: getCuentaLogo(cuenta) }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); setMenuCuentaAbierto(false); };
+  const limpiarFiltrosListado = () => { setFiltroTexto(''); setFiltroTipo(''); setFiltroIndustria(''); setFiltroResponsable(''); setFiltroCondiciones(''); setFiltroKpi(''); };
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Cuentas y Contactos</h1>
-          <div className="page-sub">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length} cuentas` : `${cuentasBase.length} cuentas activas`}</div>
-        </div>
-        <div className="row" style={{gap:10, alignItems:'center'}}>
-          <input type="file" ref={fileInputCuentasRef} accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFileUploadCuentas}/>
-          <button className="btn btn-secondary" onClick={descargarPlantillaCuentas}>{I.download} Descargar plantilla</button>
-          <button className="btn btn-secondary" onClick={() => fileInputCuentasRef.current?.click()}>{I.download} Importar plantilla</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
-        </div>
-      </div>
-      <div style={{marginBottom:16, padding:'12px 16px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:8, fontSize:13}}>
-        <strong>Recomendación: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el módulo de Leads. Esto pre-completa la cuenta con el RUC, razón social e industria del prospecto.</span>
-        <button className="btn btn-ghost btn-sm" style={{marginLeft:12}} onClick={()=>navigate('leads')}>Ir a Leads</button>
-      </div>
-
-      {/* ── Barra de filtros ── */}
-      <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:16, alignItems:'center'}}>
-        <input
-          className="input"
-          style={{height:34, width:220, fontSize:13}}
-          placeholder="Buscar por nombre, razón social o RUC..."
-          value={filtroTexto}
-          onChange={e => setFiltroTexto(e.target.value)}
-        />
-        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-          <option value="">Todos los tipos</option>
-          <option value="cliente">Cliente</option>
-          <option value="prospecto">Prospecto</option>
-          <option value="partner">Partner</option>
-          <option value="proveedor_estrategico">Proveedor estratégico</option>
-        </select>
-        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroIndustria} onChange={e => setFiltroIndustria(e.target.value)}>
-          <option value="">Todas las industrias</option>
-          {industriasDisponibles.map(i => <option key={i} value={i}>{i}</option>)}
-        </select>
-        {canVerEquipo && (
-          <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:160}} value={filtroResponsable} onChange={e => setFiltroResponsable(e.target.value)}>
-            <option value="">Todos los responsables</option>
-            {responsablesDisponibles.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        )}
-        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:180}} value={filtroCondiciones} onChange={e => setFiltroCondiciones(e.target.value)}>
-          <option value="">Estado de condiciones</option>
-          <option value="completas">Condiciones completas</option>
-          <option value="pendientes">Condiciones pendientes</option>
-        </select>
-        {hayFiltros && (
-          <button className="btn btn-ghost btn-sm" onClick={() => { setFiltroTexto(''); setFiltroTipo(''); setFiltroIndustria(''); setFiltroResponsable(''); setFiltroCondiciones(''); }}>
-            Limpiar filtros
-          </button>
-        )}
-      </div>
-
-      <div className="account-gallery">
-        {cuentasFiltradas.length === 0 && (
-          <div style={{gridColumn:'1/-1', padding:'32px 16px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
-            No hay cuentas que coincidan con los filtros aplicados.
+      <div className="dx-cta">
+        <div className="dx-cta-in">
+          <div className="dx-cta-top">
+            <div><div className="dx-cta-eyebrow">Comercial · CRM</div><h1 className="dx-cta-title">Cuentas y Contactos</h1><p className="dx-cta-sub">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length} cuentas` : `${cuentasBase.length} cuentas activas`}</p></div>
+            <div className="dx-cta-actions">
+              <input type="file" ref={fileInputCuentasRef} accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFileUploadCuentas}/>
+              <button className="dx-cta-btn" onClick={descargarPlantillaCuentas}>{I.download}<span className="lbl-long">Descargar plantilla</span><span className="lbl-short">Plantilla</span></button>
+              <button className="dx-cta-btn" onClick={() => fileInputCuentasRef.current?.click()}>{I.upload}<span className="lbl-long">Importar Excel</span><span className="lbl-short">Importar</span></button>
+              <button className="dx-cta-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
+            </div>
           </div>
-        )}
-        {cuentasFiltradas.map(c => {
-          const logoUrl = getCuentaLogo(c);
-          const primerContacto = primerContactoPorCuenta[c.id];
-          return (
-            <article key={c.id} className="account-card" onClick={() => { setSel({ ...c, logo_url: logoUrl }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); }}>
-              <div className="account-logo-wrap">
-                {logoUrl ? (
-                  <img className="account-logo" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`} />
-                ) : (
-                  <div className="account-logo-empty">
-                    <div className="account-logo-initials">{getInitials(c.razon_social || c.nombre_comercial)}</div>
-                    <span>Subir logotipo</span>
-                  </div>
-                )}
-                <label className="account-logo-upload" onClick={(e) => e.stopPropagation()}>
-                  {logoUploading === c.id ? 'Subiendo...' : logoUrl ? 'Cambiar logo' : 'Subir logo'}
-                  <input type="file" accept="image/*" disabled={logoUploading === c.id} onChange={(e) => handleLogoUpload(c, e.target.files?.[0])} />
-                </label>
-              </div>
-              <div className="account-card-body">
-                <div>
-                  <h2 className="account-title">{c.razon_social || c.nombre_comercial}</h2>
-                  <div className="text-muted" style={{fontSize:12, marginTop:4}}>{c.ruc || `${etiquetaDocumento(c.tipo_documento)} pendiente`}</div>
-                </div>
-                <div className="account-meta">
-                  <div><span>Tipo</span><strong className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</strong></div>
-                  <div><span>Industria</span><strong>{c.industria || 'Por definir'}</strong></div>
-                  <div><span>Responsable</span><strong>{c.responsable_comercial || 'Sin asignar'}</strong></div>
-                  <div><span>Última compra</span><strong>{c.fecha_ultima_compra || '—'}</strong></div>
-                </div>
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
-                  {!primerContacto ? (
-                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', minHeight: 42 }}>Sin contacto registrado</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 42, justifyContent: 'center' }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg)' }}>
-                        <span style={{ width: 14, height: 14, color: 'var(--fg-muted)', display: 'inline-flex' }}>{I.userCheck}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.nombre}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, overflow: 'hidden' }}>
-                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} title={primerContacto.telefono}>
-                          <span style={{ width: 12, height: 12, display: 'inline-flex' }}>{I.phone}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.telefono || 'Sin teléfono'}</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }} title={primerContacto.email}>
-                          <span style={{ width: 12, height: 12, display: 'inline-flex' }}>{I.send}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.email || 'Sin correo'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="account-footer">
-                  <div className="row" style={{gap:8}}>
-                    <span className={'health-dot health-'+getHealthColor(c.health_score)}/>
-                    <span className="text-muted">Health {c.health_score || 'N/A'}</span>
-                  </div>
-                  <div className="row" style={{gap:8, alignItems:'center'}}>
-                    <strong style={{fontSize:11}}>{c.saldo_cxc > 0 ? money(c.saldo_cxc) : 'Sin CxC'}</strong>
-                    <div className="row" style={{gap:2}} onClick={e => e.stopPropagation()}>
-                      <button type="button" className="icon-btn" title="Editar cuenta"
-                        style={{width:26, height:26, color:'var(--fg-muted)', borderRadius:6}}
-                        onClick={e => { e.stopPropagation(); setEditingCuenta(c); setEditCuentaForm({ razon_social:c.razon_social||'', nombre_comercial:c.nombre_comercial||'', ruc:c.ruc||'', tipo_documento:c.tipo_documento||TIPO_DOCUMENTO_RUC, industria:c.industria||'', tipo:c.tipo||'prospecto', responsable_comercial:c.responsable_comercial||'' }); }}>
-                        {I.edit}
-                      </button>
-                      <button type="button" className="icon-btn" title="Eliminar cuenta"
-                        style={{width:26, height:26, color:'var(--danger)', borderRadius:6}}
-                        onClick={e => { e.stopPropagation(); setDeleteCuentaError(''); setConfirmDelCuenta(c); }}>
-                        {I.trash}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+          {consejoLeadsVisible && <div className="dx-cta-tip"><span className="dx-cta-tip-ico">{I.alert}</span><p><strong>Consejo:</strong> registra primero un Lead y conviértelo; la cuenta se crea con RUC, razón social e industria ya completos.</p><button className="dx-cta-link" onClick={() => navigate('leads')}>Ir a Leads</button><button className="dx-cta-x" aria-label="Cerrar consejo" onClick={() => { setConsejoLeadsVisible(false); try { localStorage.setItem('dx-cta-consejo-leads-cerrado', '1'); } catch {} }}>{I.x}</button></div>}
+          <div className="dx-cta-kpis">
+            {[
+              { id:'total', label:'Cuentas', value:cuentasBase.length, note:'Activas en la empresa', icon:I.users, tone:'cyan' },
+              { id:'clientes', label:'Clientes', value:cuentasBase.filter(c => c.tipo === 'cliente').length, note:`${cuentasBase.filter(c => c.tipo === 'prospecto').length} prospectos`, icon:I.check, tone:'green' },
+              { id:'cxc', label:'Con CxC pendiente', value:cuentasBase.filter(c => saldoCuentaMonedas(c).length).length, note:`Saldo pendiente: ${notaSaldoPendiente}`, icon:I.dollar, tone:'blue' },
+              { id:'incompletos', label:'Datos incompletos', value:cuentasBase.filter(tieneDatosEsencialesIncompletos).length, note:'Sin contacto, responsable o industria', icon:I.alert, tone:'amber' },
+            ].map(kpi => <button key={kpi.id} className={`dx-cta-kpi${(kpi.id === 'total' ? !filtroKpi : filtroKpi === kpi.id) ? ' is-on' : ''}${kpi.id === 'incompletos' && kpi.value > 0 ? ' is-alert' : ''}`} onClick={() => setFiltroKpi(actual => kpi.id === 'total' || actual === kpi.id ? '' : kpi.id)} aria-pressed={kpi.id === 'total' ? !filtroKpi : filtroKpi === kpi.id}>
+              <span className="dx-cta-kpi-top">{kpi.label}<i className={`dx-cta-ico is-${kpi.tone}`}>{kpi.icon}</i></span><strong className="dx-cta-kpi-val">{kpi.value}</strong><span className="dx-cta-kpi-note">{kpi.note}</span>
+            </button>)}
+          </div>
+          <section className="dx-cta-card">
+            <div className="dx-cta-bar"><h2 className="dx-cta-bar-title">Cuentas<span className="dx-cta-count">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length}` : cuentasBase.length}</span></h2><label className="dx-cta-search">{I.search}<input aria-label="Buscar cuentas" placeholder="Buscar por razón social, RUC o contacto" value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)}/></label></div>
+            <div className="dx-cta-filters">
+              <select className="dx-cta-select" aria-label="Tipo" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}><option value="">Todos los tipos</option><option value="cliente">Cliente</option><option value="prospecto">Prospecto</option><option value="partner">Partner</option><option value="proveedor_estrategico">Proveedor estratégico</option></select>
+              <select className="dx-cta-select" aria-label="Industria" value={filtroIndustria} onChange={e => setFiltroIndustria(e.target.value)}><option value="">Todas las industrias</option>{industriasDisponibles.map(i => <option key={i} value={i}>{i}</option>)}</select>
+              {canVerEquipo && <select className="dx-cta-select" aria-label="Responsable" value={filtroResponsable} onChange={e => setFiltroResponsable(e.target.value)}><option value="">Todos los responsables</option>{responsablesDisponibles.map(r => <option key={r} value={r}>{r}</option>)}</select>}
+              <select className="dx-cta-select" aria-label="Condiciones" value={filtroCondiciones} onChange={e => setFiltroCondiciones(e.target.value)}><option value="">Condiciones: todas</option><option value="completas">Condiciones definidas</option><option value="pendientes">Condiciones por definir</option></select>
+              {hayFiltros && <button className="dx-cta-clear" onClick={limpiarFiltrosListado}>Limpiar filtros</button>}
+            </div>
+            <div className="dx-cta-cols dx-cta-head"><span>Cuenta</span><span>Tipo</span><span>Responsable</span><span>Contacto principal</span><span>CxC</span><span>Completitud</span><span/></div>
+            {cuentasFiltradas.length === 0 ? <div className="dx-cta-empty"><strong>{filtroKpi === 'cxc' ? 'Ninguna cuenta con saldo por cobrar' : cuentasBase.length ? 'Sin resultados' : 'Aún no hay cuentas'}</strong><span>{filtroKpi === 'cxc' ? 'Cuando se emitan facturas a crédito aparecerán aquí.' : cuentasBase.length ? 'Prueba con otro texto o limpia los filtros.' : 'Crea una cuenta para empezar a organizar tus contactos.'}</span></div> : cuentasFiltradas.map(c => {
+              const logoUrl = getCuentaLogo(c);
+              const principal = primerContactoPorCuenta[c.id];
+              const contactosCuenta = contactos.filter(item => item.cuenta_id === c.id);
+              const completitud = completitudCuenta(c);
+              const tipoLabel = {cliente:'Cliente', prospecto:'Prospecto', partner:'Partner', proveedor_estrategico:'Proveedor estratégico'}[c.tipo] || 'Prospecto';
+              const tipoTone = c.tipo === 'cliente' ? 'green' : c.tipo === 'prospecto' ? 'blue' : c.tipo === 'partner' ? 'violet' : 'gray';
+              const saldos = saldoCuentaMonedas(c);
+              const compra = ultimaCompraPorCuenta.get(c.id);
+              const pct = completitud.count * 20;
+              const abrirConTeclado = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFichaCuenta(c); } };
+              return <div key={c.id} className="dx-cta-cols dx-cta-row" role="button" tabIndex={0} aria-label={`Abrir ficha de ${c.razon_social || c.nombre_comercial}`} onClick={() => abrirFichaCuenta(c)} onKeyDown={abrirConTeclado}>
+                <div className="dx-cta-acc c-acc">{logoUrl ? <img className="dx-cta-logo dx-cta-logo-img" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`}/> : <span className="dx-cta-logo">{getInitials(c.razon_social || c.nombre_comercial)}</span>}<div><strong>{c.razon_social || c.nombre_comercial || 'Sin nombre'}</strong><span className="dx-cta-sub2"><b>{etiquetaDocumento(c.tipo_documento)} · {c.ruc || 'Pendiente'}</b><span> · {c.industria && c.industria !== 'Por definir' ? c.industria : 'Sin industria'}</span></span></div></div>
+                <span className={`dx-cta-pill c-tipo is-${tipoTone}`}><i/>{tipoLabel}</span>
+                <div className="dx-cta-resp c-resp">{c.responsable_comercial && c.responsable_comercial !== 'Sin asignar' ? <><span className="dx-cta-av">{getInitials(c.responsable_comercial)}</span><span className="dx-cta-txt">{c.responsable_comercial}</span></> : <><span className="dx-cta-av is-none">—</span><span className="dx-cta-txt dx-cta-muted">Sin responsable</span></>}</div>
+                <div className="dx-cta-contact c-ct">{principal ? <><span className="dx-cta-ct"><strong>{principal.nombre || principal.email || principal.telefono}</strong><span>{principal.telefono || principal.email || 'Sin teléfono o correo'}</span></span>{contactosCuenta.length > 1 && <span className="dx-cta-more">+{contactosCuenta.length - 1}</span>}</> : <span className="dx-cta-muted">Sin contacto</span>}</div>
+                <div className="dx-cta-money c-money">{saldos.length ? saldos.map(([key, saldo]) => <strong key={key}>{moneyD(saldo, simboloMonedaCuenta(key.split(':').pop()))}</strong>) : <strong>—</strong>}<span>{compra || 'Sin compras'}</span></div>
+                <div className={`dx-cta-comp c-comp${completitud.count < 3 ? ' is-low' : completitud.count < 5 ? ' is-mid' : ''}`} title={completitud.missing.length ? `Falta: ${completitud.missing.join(', ')}` : 'Todos los datos completos'}><div className="dx-cta-comp-bar"><i style={{width:`${pct}%`}}/></div><span>{completitud.count} de 5 datos</span></div>
+                <span className="dx-cta-go c-go"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+              </div>;
+            })}
+          </section>
+        </div>
       </div>
 
       <NuevaCuentaModal
@@ -844,10 +839,11 @@ function Cuentas() {
         onClose={() => setNewOpen(false)}
         onCreated={() => setNewOpen(false)}
         onNotify={addNotificacion}
+        onOpenCuenta={cuenta => { setNewOpen(false); abrirFichaCuenta(cuenta); }}
       />
 
       {sel && <>
-        <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
+        <div className="side-panel-backdrop" onClick={() => { setSel(null); setMenuCuentaAbierto(false); }}/>
         <div className="side-panel account-profile-panel ficha-detail-panel">
           <div className="account-profile-hero">
             <div className="account-profile-logo">
@@ -873,7 +869,12 @@ function Cuentas() {
               <span>{contactoPrincipal?.cargo || 'Cargo pendiente'}</span>
               <span>{contactoPrincipal?.telefono || contactoPrincipal?.email || 'Datos pendientes'}</span>
             </div>
-            <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
+            <div className="dx-cta-profile-actions">
+              <div className="dx-cta-menu-wrap" ref={menuCuentaRef}><button type="button" className="dx-cta-menu-trigger" aria-label="Más acciones" aria-expanded={menuCuentaAbierto} onClick={() => setMenuCuentaAbierto(actual => !actual)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
+                {menuCuentaAbierto && <div className="dx-cta-menu" role="menu"><button role="menuitem" onClick={() => { setEditingCuenta(sel); setEditCuentaForm({ razon_social:sel.razon_social||'', nombre_comercial:sel.nombre_comercial||'', ruc:sel.ruc||'', tipo_documento:sel.tipo_documento||TIPO_DOCUMENTO_RUC, industria:sel.industria||'', tipo:sel.tipo||'prospecto', responsable_comercial:sel.responsable_comercial||'' }); setMenuCuentaAbierto(false); }}>{I.edit} Editar cuenta</button><button role="menuitem" className="is-danger" onClick={() => { setDeleteCuentaError(''); setConfirmDelCuenta(sel); setMenuCuentaAbierto(false); }}>{I.trash} Eliminar cuenta</button></div>}
+              </div>
+              <button aria-label="Cerrar ficha" className="icon-btn" onClick={() => { setSel(null); setMenuCuentaAbierto(false); }}>{I.x}</button>
+            </div>
           </div>
           <div className="account-profile-health" style={{background: cuentaHealthBg}}>
             <div className="row" style={{alignItems:'center', gap:8, marginBottom:10}}>
