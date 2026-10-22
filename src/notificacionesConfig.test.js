@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizarDiasAnticipacion, validarUmbralMinutos, construirMatrizDestinatarios,
+  normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, construirMatrizDestinatarios,
   reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, etiquetaRolDestinatario,
 } from './services/notificacionesConfigService.js';
 
@@ -20,6 +20,14 @@ test('valida umbral entero de 1 a 480 minutos', () => {
   assert.throws(() => validarUmbralMinutos(0), RangeError);
   assert.throws(() => validarUmbralMinutos(481), RangeError);
   assert.throws(() => validarUmbralMinutos(1.5), RangeError);
+});
+
+test('normaliza y valida el rango de contratos vencidos entre 1 y 365 días', () => {
+  assert.equal(normalizarDiasVencidoMax(1), 1);
+  assert.equal(normalizarDiasVencidoMax('365'), 365);
+  assert.throws(() => normalizarDiasVencidoMax(0), /1 y 365 días/);
+  assert.throws(() => normalizarDiasVencidoMax(366), /1 y 365 días/);
+  assert.throws(() => normalizarDiasVencidoMax(1.5), /1 y 365 días/);
 });
 
 test('construye la matriz limitada a roles y canales soportados', () => {

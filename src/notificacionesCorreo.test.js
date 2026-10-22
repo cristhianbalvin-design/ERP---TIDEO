@@ -99,3 +99,52 @@ test('usa la URL pública por defecto', () => {
   assert.ok(correo.html.includes('href="https://erp.tideo.tech"'));
   assert.ok(correo.texto.includes('https://erp.tideo.tech'));
 });
+
+test('arma resumen de documentos por vencer con orden, columnas y escape', () => {
+  const correo = construirCorreoNotificacion({
+    evento_codigo: 'documento_por_vencer', mensaje: 'Revisa los documentos <urgentes>.',
+    payload: {
+      fecha: '2026-10-21', total: 2,
+      items: [
+        { nombre: 'Ana', tipo_documento: 'Licencia', fecha_vencimiento: '2026-10-30', dias_restantes: 9 },
+        { nombre: '<Luis>', tipo_documento: 'DNI & permiso', fecha_vencimiento: '2026-10-25', dias_restantes: 4 },
+      ],
+    },
+  });
+  assert.equal(correo.asunto, 'Documentos por vencer · 2 documentos · 21/10/2026');
+  assert.match(correo.html, /<h1[^>]*>Documentos por vencer<\/h1>/);
+  assert.match(correo.html, /Colaborador<\/th>[\s\S]*Documento<\/th>[\s\S]*Vence<\/th>[\s\S]*Días<\/th>/);
+  assert.ok(correo.html.indexOf('&lt;Luis&gt;') < correo.html.indexOf('Ana'));
+  assert.ok(correo.html.includes('DNI &amp; permiso'));
+  assert.ok(correo.html.includes('&lt;urgentes&gt;'));
+  assert.match(correo.texto, /Colaborador \| Documento \| Vence \| Días\n<Luis> \| DNI & permiso \| 25\/10\/2026 \| 4/);
+  assert.equal((correo.html.match(/color:#9B1C1C;/g) || []).length, 4);
+});
+
+test('arma resumen de contratos vencidos por días descendentes y alerta todas las filas', () => {
+  const correo = construirCorreoNotificacion({
+    evento_codigo: 'contrato_vencido', mensaje: 'Contratos que requieren renovación.',
+    payload: {
+      fecha: '2026-10-21', total: 2,
+      items: [
+        { nombre: 'Ana', tipo_documento: 'Contrato', fecha_vencimiento: '2026-10-10', dias_vencido: 11 },
+        { nombre: 'Luis', tipo_documento: 'Contrato & adenda', fecha_vencimiento: '2026-10-15', dias_vencido: 6 },
+      ],
+    },
+  });
+  assert.equal(correo.asunto, 'Contratos vencidos sin renovar · 2 colaboradores · 21/10/2026');
+  assert.match(correo.html, /<h1[^>]*>Contratos vencidos sin renovar<\/h1>/);
+  assert.match(correo.html, /Colaborador<\/th>[\s\S]*Documento<\/th>[\s\S]*Venció<\/th>[\s\S]*Días vencido<\/th>/);
+  assert.ok(correo.html.indexOf('Ana') < correo.html.indexOf('Luis'));
+  assert.ok(correo.html.includes('Contrato &amp; adenda'));
+  assert.equal((correo.html.match(/color:#9B1C1C;/g) || []).length, 8);
+  assert.match(correo.texto, /11\nLuis \| Contrato & adenda \| 15\/10\/2026 \| 6/);
+});
+
+test('usa singular en el resumen diario de documentos', () => {
+  const correo = construirCorreoNotificacion({
+    evento_codigo: 'documento_por_vencer', mensaje: 'Un documento vence.',
+    payload: { fecha: '2026-11-01', total: 1, items: [{ nombre: 'Eva', tipo_documento: 'Certificado', fecha_vencimiento: '2026-11-08', dias_restantes: 7 }] },
+  });
+  assert.equal(correo.asunto, 'Documentos por vencer · 1 documento · 01/11/2026');
+});

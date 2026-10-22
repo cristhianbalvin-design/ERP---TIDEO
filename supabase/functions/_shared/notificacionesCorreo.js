@@ -18,26 +18,33 @@ function plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl }) {
   return { asunto, html, texto: `${contenidoTexto}\n\nAbrir en el ERP: ${url}` };
 }
 
+function construirResumenVencimiento({ row, payload, appUrl, asuntoBase, titulo, fechaColumna, diasColumna, diasKey, nombrePlural, orden, alertaCompleta = false }) {
+  const fecha = formatearFechaNotificacion(payload.fecha);
+  const items = payload.items.slice().sort((a, b) => orden * (Number(a?.[diasKey] || 0) - Number(b?.[diasKey] || 0)));
+  const total = Number(payload.total ?? items.length) || 0;
+  const noun = total === 1 ? nombrePlural[0] : nombrePlural[1];
+  const asunto = `${asuntoBase} · ${total} ${noun} · ${fecha}`;
+  const mensaje = valor(row.mensaje);
+  const rowsHtml = items.map(item => {
+    const diasNum = Number(item?.[diasKey]);
+    const style = alertaCompleta || diasNum <= 7 ? 'color:#9B1C1C;' : '';
+    return `<tr><td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(item?.nombre)}</td><td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(item?.tipo_documento)}</td><td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(formatearFechaNotificacion(item?.fecha_vencimiento))}</td><td style="padding:9px 10px;text-align:right;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(item?.[diasKey])}</td></tr>`;
+  }).join('');
+  const contenidoHtml = `<h1 style="margin:0 0 16px;color:#1A2B4A;font-size:22px">${escaparHtml(titulo)}</h1><p>${escaparHtml(mensaje)}</p><table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:20px 0"><thead><tr style="background:#1A2B4A;color:#fff"><th align="left" style="padding:10px">Colaborador</th><th align="left" style="padding:10px">Documento</th><th align="left" style="padding:10px">${escaparHtml(fechaColumna)}</th><th align="right" style="padding:10px">${escaparHtml(diasColumna)}</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  const contenidoTexto = `${mensaje}\n\nColaborador | Documento | ${fechaColumna} | ${diasColumna}\n${items.map(item => `${valor(item?.nombre)} | ${valor(item?.tipo_documento)} | ${formatearFechaNotificacion(item?.fecha_vencimiento)} | ${valor(item?.[diasKey])}`).join('\n')}`;
+  return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
+}
+
 export function construirCorreoNotificacion(row = {}, appUrl = APP_URL_DEFAULT) {
   const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
   const evento = valor(row.evento_codigo);
+  if (['contrato_por_vencer', 'documento_por_vencer', 'contrato_vencido'].includes(evento) && Array.isArray(payload.items) && payload.items.length > 0) {
+    if (evento === 'documento_por_vencer') return construirResumenVencimiento({ row, payload, appUrl, asuntoBase: 'Documentos por vencer', titulo: 'Documentos por vencer', fechaColumna: 'Vence', diasColumna: 'Días', diasKey: 'dias_restantes', nombrePlural: ['documento', 'documentos'], orden: 1 });
+    if (evento === 'contrato_vencido') return construirResumenVencimiento({ row, payload, appUrl, asuntoBase: 'Contratos vencidos sin renovar', titulo: 'Contratos vencidos sin renovar', fechaColumna: 'Venció', diasColumna: 'Días vencido', diasKey: 'dias_vencido', nombrePlural: ['colaborador', 'colaboradores'], orden: -1, alertaCompleta: true });
+    return construirResumenVencimiento({ row, payload, appUrl, asuntoBase: 'Contratos por vencer', titulo: 'Contratos por vencer', fechaColumna: 'Vence', diasColumna: 'Días', diasKey: 'dias_restantes', nombrePlural: ['colaborador', 'colaboradores'], orden: 1 });
+  }
+
   if (evento === 'contrato_por_vencer') {
-    if (Array.isArray(payload.items) && payload.items.length > 0) {
-      const fecha = formatearFechaNotificacion(payload.fecha);
-      const items = payload.items.slice().sort((a, b) => Number(a?.dias_restantes || 0) - Number(b?.dias_restantes || 0));
-      const total = Number(payload.total ?? items.length) || 0;
-      const noun = total === 1 ? 'colaborador' : 'colaboradores';
-      const asunto = `Contratos por vencer · ${total} ${noun} · ${fecha}`;
-      const mensaje = valor(row.mensaje);
-      const rowsHtml = items.map(item => {
-        const diasNum = Number(item?.dias_restantes);
-        const style = diasNum <= 7 ? 'color:#9B1C1C;' : '';
-        return `<tr><td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(item?.nombre)}</td><td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(item?.tipo_documento)}</td><td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(formatearFechaNotificacion(item?.fecha_vencimiento))}</td><td style="padding:9px 10px;text-align:right;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(item?.dias_restantes)}</td></tr>`;
-      }).join('');
-      const contenidoHtml = `<h1 style="margin:0 0 16px;color:#1A2B4A;font-size:22px">Contratos por vencer</h1><p>${escaparHtml(mensaje)}</p><table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:20px 0"><thead><tr style="background:#1A2B4A;color:#fff"><th align="left" style="padding:10px">Colaborador</th><th align="left" style="padding:10px">Documento</th><th align="left" style="padding:10px">Vence</th><th align="right" style="padding:10px">Días</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
-      const contenidoTexto = `${mensaje}\n\nColaborador | Documento | Vence | Días\n${items.map(item => `${valor(item?.nombre)} | ${valor(item?.tipo_documento)} | ${formatearFechaNotificacion(item?.fecha_vencimiento)} | ${valor(item?.dias_restantes)}`).join('\n')}`;
-      return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
-    }
     const nombre = valor(payload.nombre) || 'Colaborador';
     const fecha = formatearFechaNotificacion(payload.fecha_vencimiento);
     const dias = valor(payload.dias_restantes);
