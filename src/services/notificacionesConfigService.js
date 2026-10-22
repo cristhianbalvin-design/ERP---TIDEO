@@ -37,6 +37,12 @@ export function validarUmbralMinutos(value) {
   return umbral;
 }
 
+export function normalizarDiasVencidoMax(value) {
+  const dias = Number(value);
+  if (!Number.isInteger(dias) || dias < 1 || dias > 365) throw new RangeError('El rango debe ser un entero entre 1 y 365 días.');
+  return dias;
+}
+
 export function normalizarCorreosAdicionales(value) {
   const correos = Array.isArray(value) ? value.map(correo => String(correo).trim().toLowerCase()).filter(Boolean) : [];
   if (correos.length > 10) throw new RangeError('Puedes agregar hasta 10 correos adicionales por evento.');
