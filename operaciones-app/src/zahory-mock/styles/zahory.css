@@ -5006,3 +5006,62 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 :host([data-work-compact]) .dx-recact-mobile-heading ~ .dx-recact-header,:host([data-work-compact]) .dx-recact-back { display:none; }
 :host([data-work-compact]) .dx-recact-mobile-back { flex:0 0 44px; width:44px; height:44px; min-height:44px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font-size:20px; }
 :host([data-work-compact]) .dx-recact-mobile-heading strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }
+
+/* Mis OTs (operaciones · campo). Base dx-ui; prefijo dx-misots-. */
+.dx-ui.dx-misots { container:misots / inline-size; box-sizing:border-box; margin:0; padding:24px 28px 60px; }
+.dx-misots *,.dx-misots *::before,.dx-misots *::after { box-sizing:border-box; }
+.dx-misots .dx-btn svg { flex:none; margin-right:8px; }
+.dx-misots .dx-misots-chip { color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.dx-misots .dx-misots-chip:hover { background:var(--dx-ui-hover); }
+.dx-misots .dx-misots-chip.is-on { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-misots .dx-misots-chip.is-late b { color:var(--dx-ui-red-fg); }
+.dx-misots .dx-misots-chip:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-misots .dx-misots-cols { --dx-ui-cols:minmax(0,1.4fr) minmax(0,1fr) 140px 116px 96px 150px; }
+.dx-misots .dx-ui-row.dx-misots-cols { cursor:default; }
+.dx-misots .dx-misots-group { display:flex; align-items:center; gap:8px; min-height:36px; padding:0 20px; border-bottom:1px solid var(--dx-ui-line-soft); background:var(--dx-ui-head); color:var(--dx-ui-navy); font:700 13px 'Sora',sans-serif; }
+.dx-misots .dx-misots-group i { width:8px; height:8px; flex:none; border-radius:50%; }
+.dx-misots .dx-misots-group.is-atrasadas i { background:var(--dx-ui-red-dot); }
+.dx-misots .dx-misots-group.is-hoy i { background:var(--dx-ui-cyan); }
+.dx-misots .dx-misots-group.is-proximas i { background:var(--dx-ui-gray-dot); }
+.dx-misots .dx-misots-group small { color:var(--dx-ui-gray); font:500 12px 'DM Sans',sans-serif; }
+.dx-misots .dx-misots-group-empty { padding:14px 20px; border-bottom:1px solid var(--dx-ui-line-soft); color:var(--dx-ui-gray); font-size:13px; }
+.dx-misots .dx-misots-ot { display:flex; align-items:center; gap:10px; min-width:0; }
+.dx-misots .dx-misots-ot > div,.dx-misots .dx-misots-who { min-width:0; }
+.dx-misots .dx-misots-ot b { display:block; color:var(--dx-ui-navy); font:600 14px 'Sora',sans-serif; }
+.dx-misots .dx-misots-ot > div > span,.dx-misots .dx-misots-who span { display:block; overflow:hidden; color:var(--dx-ui-gray); font-size:13px; white-space:nowrap; text-overflow:ellipsis; }
+.dx-misots .dx-misots-who b { display:block; overflow:hidden; color:var(--dx-ui-ink); font-size:14px; font-weight:600; white-space:nowrap; text-overflow:ellipsis; }
+.dx-misots .dx-misots-when { display:flex; flex-direction:column; gap:1px; min-width:0; color:var(--dx-ui-ink); font-size:13px; white-space:nowrap; }
+.dx-misots .dx-misots-when small { color:var(--dx-ui-gray); font-size:12px; }
+.dx-misots .dx-misots-when.is-late small { color:var(--dx-ui-red-fg); font-weight:600; }
+.dx-misots .dx-misots-progress { display:flex; align-items:center; gap:8px; color:var(--dx-ui-navy); font:600 12px 'Sora',sans-serif; }
+.dx-misots .dx-misots-bar { flex:1; min-width:40px; height:6px; border-radius:999px; background:var(--dx-ui-line); }
+.dx-misots .dx-misots-bar i { display:block; height:100%; border-radius:999px; background:var(--dx-ui-cyan); }
+.dx-misots .dx-misots-act { justify-self:end; }
+.dx-misots .dx-misots-act .dx-btn { height:40px; padding:0 14px; white-space:nowrap; }
+.dx-misots .dx-misots-act .dx-btn svg { margin-right:6px; }
+.dx-misots .dx-misots-empty-title { display:block; margin-bottom:4px; color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }
+.dx-misots .dx-misots-error { color:var(--dx-ui-red-fg); }
+@container (max-width:760px) {
+  .dx-misots .dx-misots-cols { --dx-ui-cols:minmax(0,1fr) auto; grid-template-areas:"ot estado" "who who" "when avance" "act act"; }
+  .dx-misots .dx-misots-cols > .dx-misots-ot { grid-area:ot; }
+  .dx-misots .dx-misots-cols > .dx-misots-who { grid-area:who; }
+  .dx-misots .dx-misots-cols > .dx-misots-when { grid-area:when; }
+  .dx-misots .dx-misots-cols > .dx-misots-state { grid-area:estado; justify-self:end; }
+  .dx-misots .dx-misots-cols > .dx-misots-progress { grid-area:avance; justify-self:end; width:120px; }
+  .dx-misots .dx-misots-cols > .dx-misots-act { grid-area:act; justify-self:stretch; }
+  .dx-misots .dx-misots-act .dx-btn { width:100%; min-height:44px; height:44px; }
+  .dx-misots .dx-misots-group,.dx-misots .dx-misots-group-empty { padding-inline:16px; }
+}
+@container (max-width:420px) {
+  .dx-misots .dx-ui-toolbar { padding:12px; }
+  .dx-misots .dx-ui-search { width:100%; }
+}
+/* El contenedor no puede cambiar su propio relleno con su @container: en celular va por ancho de pantalla (sin barra lateral). */
+@media (max-width:600px) { .dx-ui.dx-misots { padding:12px 12px 32px; } }
+@container misots (max-width:600px) {
+  .dx-misots .dx-ui-title { font-size:20px; }
+  .dx-misots .dx-ui-head-page { flex-direction:column; align-items:stretch; }
+  .dx-misots .dx-ui-actions { width:100%; margin-left:0; }
+  .dx-misots .dx-ui-actions .dx-btn { flex:1; min-height:44px; }
+  .dx-misots .dx-ui-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
