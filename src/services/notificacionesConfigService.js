@@ -85,7 +85,21 @@ export function normalizarTelefonosAdicionales(value) {
 }
 
 export function etiquetaRolDestinatario(rol) {
-  return ({ rrhh: 'RRHH', jefe: 'Jefe directo', colaborador: 'Colaborador', correo_adicional: 'Correo adicional' })[rol] || String(rol || '');
+  return ({ rrhh: 'RRHH', jefe: 'Jefe directo', colaborador: 'Colaborador', operaciones: 'Operaciones', correo_adicional: 'Correo adicional' })[rol] || String(rol || '');
+}
+
+export function etiquetaRolConfig(rol, evento) {
+  if (rol === 'operaciones') return ['Operaciones', 'Administradores y roles con acceso a OTs y Partes Diarios'];
+  if (rol === 'jefe' && evento === 'partes_no_llenados') return ['Jefe directo del técnico', 'Solo las OTs de su equipo'];
+  return ({
+    rrhh: ['RRHH y administradores', evento === 'tardanza_resumen_diario' ? 'Resumen de toda la empresa' : 'Todos los usuarios con rol RRHH o administrador'],
+    jefe: ['Jefe directo', evento === 'tardanza_resumen_diario' ? 'Solo las tardanzas de su equipo' : 'Según el organigrama del colaborador'],
+    colaborador: ['Colaborador', 'Solo si tiene usuario en el ERP'],
+  })[rol] || null;
+}
+
+export function etiquetaModuloNotificacion(modulo) {
+  return ({ rrhh: 'RRHH', asistencia: 'Asistencia', operaciones: 'Operaciones' })[modulo] || 'Asistencia';
 }
 
 export function etiquetaCanalEnvio(canal) {
@@ -93,7 +107,7 @@ export function etiquetaCanalEnvio(canal) {
 }
 
 export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados = [], canalesSoportados = []) {
-  const roles = new Set(rolesSoportados.filter(rol => ['rrhh', 'jefe', 'colaborador'].includes(rol)));
+  const roles = new Set(rolesSoportados.filter(rol => ['rrhh', 'jefe', 'colaborador', 'operaciones'].includes(rol)));
   const canales = new Set(canalesSoportados.filter(canal => ['campana', 'correo', 'whatsapp'].includes(canal)));
   const matriz = {};
   for (const [rol, canalesRol] of Object.entries(destinatarios || {})) {

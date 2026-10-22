@@ -148,3 +148,39 @@ test('usa singular en el resumen diario de documentos', () => {
   });
   assert.equal(correo.asunto, 'Documentos por vencer · 1 documento · 01/11/2026');
 });
+
+test('arma el resumen de OTs creadas con columnas, orden y escape', () => {
+  const correo = construirCorreoNotificacion({
+    evento_codigo: 'ot_creadas_resumen', mensaje: 'OTs creadas <ayer>.',
+    payload: {
+      fecha: '2026-10-21', total: 2,
+      items: [
+        { numero: 'OT-10', servicio: 'Mantenimiento', cliente: 'Cliente & Uno', fecha_programada: '2026-10-28', tecnico: 'Luis' },
+        { numero: 'OT-2', servicio: '<Inspección>', cliente: 'Dos', fecha_programada: '2026-10-25', tecnico: 'Ana' },
+      ],
+    },
+  });
+  assert.equal(correo.asunto, 'OTs creadas · 2 OTs · 21/10/2026');
+  assert.match(correo.html, /<h1[^>]*>OTs creadas<\/h1>/);
+  assert.match(correo.html, /OT<\/th>[\s\S]*Servicio<\/th>[\s\S]*Cliente<\/th>[\s\S]*Programada<\/th>[\s\S]*Técnico<\/th>/);
+  assert.ok(correo.html.indexOf('OT-2') < correo.html.indexOf('OT-10'));
+  assert.ok(correo.html.includes('&lt;Inspección&gt;'));
+  assert.ok(correo.html.includes('Cliente &amp; Uno'));
+  assert.ok(correo.html.includes('&lt;ayer&gt;'));
+});
+
+test('arma partes pendientes de equipo con alerta y singular OT', () => {
+  const correo = construirCorreoNotificacion({
+    evento_codigo: 'partes_no_llenados', mensaje: '1 OT sin parte diario.',
+    payload: {
+      fecha: '2026-10-21', total: 1, alcance: 'equipo',
+      items: [{ numero: 'OT-1', servicio: 'Revisión', cliente: 'Acme', tecnico: 'Eva', estado: 'ejecucion' }],
+    },
+  });
+  assert.equal(correo.asunto, 'Partes diarios pendientes · 1 OT · 21/10/2026');
+  assert.match(correo.html, /<h1[^>]*>Partes diarios pendientes<\/h1>/);
+  assert.match(correo.html, /OT<\/th>[\s\S]*Servicio<\/th>[\s\S]*Cliente<\/th>[\s\S]*Técnico<\/th>[\s\S]*Estado<\/th>/);
+  assert.match(correo.html, /de tu equipo/);
+  assert.equal((correo.html.match(/color:#9B1C1C;/g) || []).length, 5);
+  assert.match(correo.texto, /OT \| Servicio \| Cliente \| Técnico \| Estado/);
+});

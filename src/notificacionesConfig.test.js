@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, construirMatrizDestinatarios,
   reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, normalizarTelefonosAdicionales,
-  etiquetaRolDestinatario, etiquetaCanalEnvio,
+  etiquetaRolDestinatario, etiquetaCanalEnvio, etiquetaRolConfig, etiquetaModuloNotificacion,
 } from './services/notificacionesConfigService.js';
 
 test('normaliza días únicos entre 1 y 180 en orden descendente', () => {
@@ -36,6 +36,12 @@ test('construye la matriz limitada a roles y canales soportados', () => {
     rrhh: { correo: true, campana: false, sms: true },
     desconocido: { correo: true },
   }, ['rrhh'], ['correo', 'campana']), { rrhh: { correo: true, campana: false }, correos_adicionales: [] });
+});
+
+test('conserva el nuevo rol operaciones en la matriz de destinatarios', () => {
+  assert.deepEqual(construirMatrizDestinatarios({ operaciones: { campana: true, correo: true } }, ['operaciones'], ['campana', 'correo']), {
+    operaciones: { campana: true, correo: true }, correos_adicionales: [],
+  });
 });
 
 test('normaliza y valida correos adicionales, incluyendo duplicados y máximo', () => {
@@ -77,6 +83,16 @@ test('traduce etiquetas de rol del historial', () => {
   assert.equal(etiquetaRolDestinatario('jefe'), 'Jefe directo');
   assert.equal(etiquetaRolDestinatario('colaborador'), 'Colaborador');
   assert.equal(etiquetaRolDestinatario('correo_adicional'), 'Correo adicional');
+});
+
+test('traduce etiquetas de rol y módulo para operaciones', () => {
+  assert.equal(etiquetaRolDestinatario('operaciones'), 'Operaciones');
+  assert.deepEqual(etiquetaRolConfig('operaciones', 'ot_creadas_resumen'), ['Operaciones', 'Administradores y roles con acceso a OTs y Partes Diarios']);
+  assert.deepEqual(etiquetaRolConfig('jefe', 'partes_no_llenados'), ['Jefe directo del técnico', 'Solo las OTs de su equipo']);
+  assert.deepEqual(etiquetaRolConfig('rrhh', 'tardanza_resumen_diario'), ['RRHH y administradores', 'Resumen de toda la empresa']);
+  assert.equal(etiquetaModuloNotificacion('operaciones'), 'Operaciones');
+  assert.equal(etiquetaModuloNotificacion('asistencia'), 'Asistencia');
+  assert.equal(etiquetaModuloNotificacion('rrhh'), 'RRHH');
 });
 
 test('etiqueta estados del historial y omisión por falta de correo', () => {

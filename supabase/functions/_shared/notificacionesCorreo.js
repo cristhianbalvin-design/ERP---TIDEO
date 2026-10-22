@@ -35,9 +35,39 @@ function construirResumenVencimiento({ row, payload, appUrl, asuntoBase, titulo,
   return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
 }
 
+function construirResumenOperaciones({ row, payload, appUrl, evento }) {
+  const fecha = formatearFechaNotificacion(payload.fecha);
+  const items = payload.items.slice().sort((a, b) => valor(a?.numero).localeCompare(valor(b?.numero), 'es', { numeric: true }));
+  const total = Number(payload.total ?? items.length) || 0;
+  const asuntoBase = evento === 'ot_creadas_resumen' ? 'OTs creadas' : 'Partes diarios pendientes';
+  const titulo = asuntoBase;
+  const asunto = `${asuntoBase} · ${total} ${total === 1 ? 'OT' : 'OTs'} · ${fecha}`;
+  const enEquipo = evento === 'partes_no_llenados' && payload.alcance === 'equipo';
+  const mensajeBase = valor(row.mensaje) || (evento === 'ot_creadas_resumen' ? 'Resumen de las OTs creadas.' : 'OTs en curso sin parte diario.');
+  const mensaje = enEquipo ? `${mensajeBase} · de tu equipo` : mensajeBase;
+  const columnas = evento === 'ot_creadas_resumen'
+    ? ['OT', 'Servicio', 'Cliente', 'Programada', 'Técnico']
+    : ['OT', 'Servicio', 'Cliente', 'Técnico', 'Estado'];
+  const filas = items.map(item => {
+    const valores = evento === 'ot_creadas_resumen'
+      ? [item?.numero, item?.servicio, item?.cliente, formatearFechaNotificacion(item?.fecha_programada), item?.tecnico]
+      : [item?.numero, item?.servicio, item?.cliente, item?.tecnico, item?.estado];
+    const style = evento === 'partes_no_llenados' ? 'color:#9B1C1C;' : '';
+    return `<tr>${valores.map(value => `<td style="padding:9px 10px;border-bottom:1px solid #e8edf1;${style}">${escaparHtml(value)}</td>`).join('')}</tr>`;
+  }).join('');
+  const contenidoHtml = `<h1 style="margin:0 0 16px;color:#1A2B4A;font-size:22px">${escaparHtml(titulo)}</h1><p>${escaparHtml(mensaje)}</p><table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:20px 0"><thead><tr style="background:#1A2B4A;color:#fff">${columnas.map(columna => `<th align="left" style="padding:10px">${escaparHtml(columna)}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table>`;
+  const contenidoTexto = `${mensaje}\n\n${columnas.join(' | ')}\n${items.map(item => (evento === 'ot_creadas_resumen'
+    ? [item?.numero, item?.servicio, item?.cliente, formatearFechaNotificacion(item?.fecha_programada), item?.tecnico]
+    : [item?.numero, item?.servicio, item?.cliente, item?.tecnico, item?.estado]).map(valor).join(' | ')).join('\n')}`;
+  return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
+}
+
 export function construirCorreoNotificacion(row = {}, appUrl = APP_URL_DEFAULT) {
   const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
   const evento = valor(row.evento_codigo);
+  if (['ot_creadas_resumen', 'partes_no_llenados'].includes(evento) && Array.isArray(payload.items) && payload.items.length > 0) {
+    return construirResumenOperaciones({ row, payload, appUrl, evento });
+  }
   if (['contrato_por_vencer', 'documento_por_vencer', 'contrato_vencido'].includes(evento) && Array.isArray(payload.items) && payload.items.length > 0) {
     if (evento === 'documento_por_vencer') return construirResumenVencimiento({ row, payload, appUrl, asuntoBase: 'Documentos por vencer', titulo: 'Documentos por vencer', fechaColumna: 'Vence', diasColumna: 'Días', diasKey: 'dias_restantes', nombrePlural: ['documento', 'documentos'], orden: 1 });
     if (evento === 'contrato_vencido') return construirResumenVencimiento({ row, payload, appUrl, asuntoBase: 'Contratos vencidos sin renovar', titulo: 'Contratos vencidos sin renovar', fechaColumna: 'Venció', diasColumna: 'Días vencido', diasKey: 'dias_vencido', nombrePlural: ['colaborador', 'colaboradores'], orden: -1, alertaCompleta: true });
