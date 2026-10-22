@@ -80,6 +80,10 @@ export function normalizarTelefonoWhatsApp(value) {
   return Array.isArray(value) ? normalizados : (normalizados[0] || '');
 }
 
+export function normalizarTelefonosAdicionales(value) {
+  return normalizarTelefonoWhatsApp(Array.isArray(value) ? value : []);
+}
+
 export function etiquetaRolDestinatario(rol) {
   return ({ rrhh: 'RRHH', jefe: 'Jefe directo', colaborador: 'Colaborador', correo_adicional: 'Correo adicional' })[rol] || String(rol || '');
 }
@@ -101,7 +105,7 @@ export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados
     if (Object.keys(fila).length) matriz[rol] = fila;
   }
   matriz.correos_adicionales = normalizarCorreosAdicionales(destinatarios?.correos_adicionales);
-  if (canales.has('whatsapp')) matriz.telefonos_adicionales = normalizarTelefonoWhatsApp(destinatarios?.telefonos_adicionales);
+  if (canales.has('whatsapp')) matriz.telefonos_adicionales = normalizarTelefonosAdicionales(destinatarios?.telefonos_adicionales);
   return matriz;
 }
 

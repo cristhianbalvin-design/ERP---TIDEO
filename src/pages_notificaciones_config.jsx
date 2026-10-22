@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from './context.jsx';
-import { listarNotificacionesConfig, guardarNotificacionConfig, listarEnviosNotificaciones, ejecutarNotificacionesAhora, listarTelefonosUsuariosNotificaciones, guardarTelefonoUsuarioNotificaciones, normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, construirMatrizDestinatarios, reglaTieneCambios, etiquetaEstadoEnvio, etiquetaRolDestinatario, etiquetaCanalEnvio } from './services/notificacionesConfigService.js';
+import { listarNotificacionesConfig, guardarNotificacionConfig, listarEnviosNotificaciones, ejecutarNotificacionesAhora, listarTelefonosUsuariosNotificaciones, guardarTelefonoUsuarioNotificaciones, normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, normalizarTelefonosAdicionales, construirMatrizDestinatarios, reglaTieneCambios, etiquetaEstadoEnvio, etiquetaRolDestinatario, etiquetaCanalEnvio } from './services/notificacionesConfigService.js';
 import './notificaciones_config.css';
 
 const ROLE_LABELS = {
@@ -153,7 +153,7 @@ export default function NotificacionesConfig() {
     const valorDiasVencido = Number(evento.parametros?.dias_vencido_max);
     const diasVencidoMax = Number.isInteger(valorDiasVencido) && valorDiasVencido >= 1 && valorDiasVencido <= 365 ? valorDiasVencido : 30;
     const correos = normalizarCorreosAdicionales(evento.destinatarios?.correos_adicionales);
-    const telefonos = normalizarTelefonoWhatsApp(evento.destinatarios?.telefonos_adicionales);
+    const telefonos = normalizarTelefonosAdicionales(evento.destinatarios?.telefonos_adicionales);
     const canalesVisibles = ['campana', 'correo', 'whatsapp'].filter(canal => evento.canales_soportados?.includes(canal));
     const sucio = reglaTieneCambios(evento);
     const agregarCorreo = () => {
