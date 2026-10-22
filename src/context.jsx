@@ -3870,16 +3870,20 @@ export function AppProvider({ children }) {
         const result = await opsPersist(sb => crearOTDesdeOSRpc(sb, empresa.id, os.id, ot));
         const data = result?.data || {};
         const localEst = { est_mo: ot.est_mo, est_materiales: ot.est_materiales, est_terceros: ot.est_terceros, est_logistica: ot.est_logistica };
+        const fechaFinLocal = ot.fecha_fin;
         Object.assign(ot, data.orden_trabajo || {});
+        // La RPC no recibe fecha_fin: se conserva la del formulario y se guarda abajo.
+        if (!ot.fecha_fin && fechaFinLocal) ot.fecha_fin = fechaFinLocal;
         // RPC insert doesn't include est breakdown columns — restore locally-computed values
         if (ot.est_mo == null && localEst.est_mo != null) ot.est_mo = localEst.est_mo;
         if (ot.est_materiales == null && localEst.est_materiales != null) ot.est_materiales = localEst.est_materiales;
         if (ot.est_terceros == null && localEst.est_terceros != null) ot.est_terceros = localEst.est_terceros;
         if (ot.est_logistica == null && localEst.est_logistica != null) ot.est_logistica = localEst.est_logistica;
         // Persist est breakdown to DB since the RPC doesn't save these columns
-        if (ot.tipo_servicio_interno_id || [ot.est_mo, ot.est_materiales, ot.est_terceros, ot.est_logistica].some(v => v != null)) {
+        if (ot.tipo_servicio_interno_id || ot.fecha_fin || [ot.est_mo, ot.est_materiales, ot.est_terceros, ot.est_logistica].some(v => v != null)) {
           opsSync(sb => svcActualizarOT(sb, ot.id, {
             tipo_servicio_interno_id: ot.tipo_servicio_interno_id,
+            fecha_fin: ot.fecha_fin,
             costoEst: ot.costoEst,
             costo_estimado_ot: ot.costo_estimado_ot,
             est_mo: ot.est_mo,

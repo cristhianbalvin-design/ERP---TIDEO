@@ -34,6 +34,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     descripcion: ot.descripcion || null,
     direccion_ejecucion: ot.direccion_ejecucion || ot.sede || null,
     fecha_programada: ot.fecha_programada || ot.fecha_inicio || null,
+    fecha_fin: ot.fecha_fin || null,
     tecnico_responsable_id: ot.tecnico_responsable_id || ot.responsable_id || null,
     estado: ot.estado || 'borrador',
     avance_pct: ot.avance || 0,
