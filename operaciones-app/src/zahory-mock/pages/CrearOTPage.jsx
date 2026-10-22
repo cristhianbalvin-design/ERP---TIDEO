@@ -695,7 +695,7 @@ const CC_DESC = {
   'PROD-SOL': 'Producción / Soldadura — costo de fabricación',
 };
 
-export const CrearOTPage = ({ onNav }) => {
+export const CrearOTPage = ({ onNav, routeParams = {} }) => {
   const sesionOperativa = useSesionOperativa();
   const [pasoActual, setPasoActual] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1471,6 +1471,23 @@ export const CrearOTPage = ({ onNav }) => {
     setHorometroSugerido(null);
     setBacklogs([]);
   };
+
+  // Llegada desde la ficha de OS Cliente (app principal): ?os=<id>&cliente=<cuenta_id>.
+  // Se preselecciona una sola vez; después el usuario puede cambiar cualquier dato.
+  const prefijoOS = useRef({ os: routeParams?.os || '', cliente: routeParams?.cliente || '', etapa: routeParams?.os && routeParams?.cliente ? 'tipo' : 'listo' });
+  useEffect(() => {
+    const p = prefijoOS.current;
+    if (p.etapa === 'tipo') {
+      p.etapa = 'cliente';
+      changeObjetoCostoTipo('os_cliente');
+    } else if (p.etapa === 'cliente' && objetoCostoTipo === 'os_cliente' && !form.clienteId) {
+      p.etapa = 'os';
+      setCliente(p.cliente);
+    } else if (p.etapa === 'os' && form.clienteId === p.cliente && osClientesReales.some(o => o.id === p.os)) {
+      p.etapa = 'listo';
+      setContrato(p.os);
+    }
+  });
 
   const setContrato = (contratoId) => {
     const next = objetosCostoFiltrados.find(c => c.id === contratoId);
