@@ -56,7 +56,7 @@
   .dx-cta-acc div{display:flex;min-width:0;flex-direction:column}
   .dx-cta-acc strong{overflow:hidden;color:var(--n);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
   .dx-cta-acc .dx-cta-sub2{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
-  .dx-cta-acc .dx-cta-sub2 b{font:500 12px ui-monospace,Menlo,monospace;color:var(--gr)}
+  .dx-cta-acc .dx-cta-sub2{display:block}
   .dx-cta-pill{display:inline-flex;align-items:center;gap:6px;width:max-content;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
   .dx-cta-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
   .dx-cta-pill.is-green{background:var(--grb);color:var(--grf)} .dx-cta-pill.is-blue{background:var(--blb);color:var(--blf)} .dx-cta-pill.is-violet{background:var(--vib);color:var(--vi)} .dx-cta-pill.is-gray{background:var(--grb2);color:var(--grf2)}
@@ -109,7 +109,9 @@
     .dx-cta-filters .dx-cta-select{flex:1 1 140px;max-width:none}
     .dx-cta-row{grid-template-areas:'acc acc' 'tipo money' 'ct ct' 'resp comp'}
     .dx-cta-row > .c-tipo{justify-self:start}
-    .dx-cta-tip{flex-wrap:wrap}
+    .dx-cta-tip{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
+    .dx-cta-tip-ico{grid-column:1/-1}
+    .dx-cta-tip p{grid-column:1/-1;width:100%}
   }
 .dx-cta-tip-ico{display:flex;flex:none;color:var(--cyf)}
 .dx-cta-logo-img{object-fit:contain;background:var(--card);border:1px solid var(--line);padding:3px}
@@ -127,4 +129,9 @@
 .dx-cta-menu button:hover{background:var(--hov)}
 .dx-cta-menu button.is-danger{color:#B91C1C}
 .dark .dx-cta-menu button.is-danger{color:#FCA5A5}
-.dx-cta-profile-actions .icon-btn{width:36px;height:36px}
+.dx-cta-profile-actions svg,.dx-cta-menu button svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dx-cta-profile-actions .dx-cta-menu-trigger svg{width:18px;height:18px;fill:currentColor;stroke:none}
+.dx-cta-profile-actions .icon-btn,.dx-cta-menu-trigger{width:32px;height:32px}
+.dx-cta-menu{width:180px;padding:4px}
+.dx-cta-menu button{gap:7px;padding:7px 8px}
+.dx-cta-menu button svg{width:16px;height:16px}

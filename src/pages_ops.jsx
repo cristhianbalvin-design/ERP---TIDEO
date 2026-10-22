@@ -182,6 +182,7 @@ function Cuentas() {
   const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones, industrias } = useApp();
   const esPersonaNatural = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_DNI;
   const etiquetaDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : esPersonaNatural(tipoDocumento) ? 'DNI' : 'RUC';
+  const tieneResponsable = valor => !['', 'sin asignar', 'por asignar'].includes(String(valor || '').trim().toLowerCase());
   const placeholderDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
     ? 'Identificador fiscal extranjero'
     : esPersonaNatural(tipoDocumento) ? '12345678' : '20xxxxxxxxx';
@@ -412,7 +413,7 @@ function Cuentas() {
   const cuentaHealthBase = sel ? [
     sel.ruc ? 15 : 0,
     contactoPrincipal ? 20 : 0,
-    sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 15 : 0,
+    tieneResponsable(sel.responsable_comercial) ? 15 : 0,
     sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 15 : 0,
     Number(sel.saldo_cxc || 0) <= 0 && Number(sel.dias_mora || 0) <= 0 ? 15 : 0,
     tlEventos.length > 0 ? 10 : 0,
@@ -426,7 +427,7 @@ function Cuentas() {
   const cuentaHealthCriterios = sel ? [
     { ok: Boolean(sel.ruc), label: sel.ruc ? `${etiquetaDocumento(sel.tipo_documento)} registrado` : `${etiquetaDocumento(sel.tipo_documento)} pendiente` },
     { ok: Boolean(contactoPrincipal), label: contactoPrincipal ? 'Contacto principal asignado' : 'Sin contacto principal' },
-    { ok: Boolean(sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar'), label: sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 'Responsable comercial asignado' : 'Responsable comercial pendiente' },
+    { ok: tieneResponsable(sel.responsable_comercial), label: tieneResponsable(sel.responsable_comercial) ? 'Responsable comercial asignado' : 'Responsable comercial pendiente' },
     { ok: Boolean(sel.condicion_pago && sel.condicion_pago !== 'Por definir'), label: sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 'Condiciones comerciales definidas' : 'Condiciones comerciales pendientes' },
     { ok: Number(sel.saldo_cxc || 0) <= 0 && Number(sel.dias_mora || 0) <= 0, label: Number(sel.dias_mora || 0) > 0 ? 'CxC con mora' : 'CxC sin mora' },
     { ok: tlEventos.length > 0, label: tlEventos.length > 0 ? 'Actividad registrada' : 'Sin actividad reciente' },
@@ -690,7 +691,7 @@ function Cuentas() {
 
   const canVerEquipo = role?.permisos?.ver_agenda_equipo || role?.permisos?.todo;
   const industriasDisponibles = [...new Set([...(industrias || []).map(i => i.nombre), ...cuentas.map(c => c.industria)].filter(Boolean).filter(i => i !== 'Por definir'))].sort();
-  const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(Boolean).filter(r => r !== 'Sin asignar'))].sort();
+  const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(tieneResponsable))].sort();
   const primerContactoPorCuenta = useMemo(() => {
     const contactosPorCuenta = {};
     for (const contacto of contactos) {
@@ -737,12 +738,19 @@ function Cuentas() {
     return totales;
   }, new Map());
   const notaSaldoPendiente = [...saldoPendienteMonedas.entries()].map(([moneda, saldo]) => moneyD(saldo, simboloMonedaCuenta(moneda))).join(' · ') || moneyD(0);
+  const saldoFicha = cuenta => saldoCuentaMonedas(cuenta).map(([key, saldo]) => moneyD(saldo, simboloMonedaCuenta(key.split(':').pop()))).join(' \u00b7 ') || 'S/ 0.00';
+  const formatoFechaCompra = fecha => {
+    const match = String(fecha || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return fecha || '\u2014';
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${Number(match[3])} ${meses[Number(match[2]) - 1]} ${match[1]}`;
+  };
   const completitudCuenta = cuenta => {
     const principal = primerContactoPorCuenta[cuenta.id];
     const campos = [
       ['documento', Boolean(String(cuenta.ruc || '').trim())],
       ['contacto principal', Boolean(principal?.nombre || principal?.email || principal?.telefono)],
-      ['responsable', Boolean(cuenta.responsable_comercial && cuenta.responsable_comercial !== 'Sin asignar')],
+      ['responsable', tieneResponsable(cuenta.responsable_comercial)],
       ['industria', Boolean(cuenta.industria && cuenta.industria !== 'Por definir')],
       ['condiciones de pago', Boolean(cuenta.condicion_pago && cuenta.condicion_pago !== 'Por definir')],
     ];
@@ -751,7 +759,7 @@ function Cuentas() {
   const tieneDatosEsencialesIncompletos = cuenta => {
     const contacto = primerContactoPorCuenta[cuenta.id];
     return !(contacto?.nombre || contacto?.email || contacto?.telefono)
-      || !cuenta.responsable_comercial || cuenta.responsable_comercial === 'Sin asignar'
+      || !tieneResponsable(cuenta.responsable_comercial)
       || !cuenta.industria || cuenta.industria === 'Por definir';
   };
   const cuentasFiltradas = cuentasBase.filter(c => {
@@ -818,11 +826,11 @@ function Cuentas() {
               const pct = completitud.count * 20;
               const abrirConTeclado = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFichaCuenta(c); } };
               return <div key={c.id} className="dx-cta-cols dx-cta-row" role="button" tabIndex={0} aria-label={`Abrir ficha de ${c.razon_social || c.nombre_comercial}`} onClick={() => abrirFichaCuenta(c)} onKeyDown={abrirConTeclado}>
-                <div className="dx-cta-acc c-acc">{logoUrl ? <img className="dx-cta-logo dx-cta-logo-img" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`}/> : <span className="dx-cta-logo">{getInitials(c.razon_social || c.nombre_comercial)}</span>}<div><strong>{c.razon_social || c.nombre_comercial || 'Sin nombre'}</strong><span className="dx-cta-sub2"><b>{etiquetaDocumento(c.tipo_documento)} · {c.ruc || 'Pendiente'}</b><span> · {c.industria && c.industria !== 'Por definir' ? c.industria : 'Sin industria'}</span></span></div></div>
+                <div className="dx-cta-acc c-acc">{logoUrl ? <img className="dx-cta-logo dx-cta-logo-img" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`}/> : <span className="dx-cta-logo">{getInitials(c.razon_social || c.nombre_comercial)}</span>}<div><strong>{c.razon_social || c.nombre_comercial || 'Sin nombre'}</strong><span className="dx-cta-sub2">{etiquetaDocumento(c.tipo_documento)} {c.ruc || 'Pendiente'} {'\u00b7'} {c.industria && c.industria !== 'Por definir' ? c.industria : 'Sin industria'}</span></div></div>
                 <span className={`dx-cta-pill c-tipo is-${tipoTone}`}><i/>{tipoLabel}</span>
-                <div className="dx-cta-resp c-resp">{c.responsable_comercial && c.responsable_comercial !== 'Sin asignar' ? <><span className="dx-cta-av">{getInitials(c.responsable_comercial)}</span><span className="dx-cta-txt">{c.responsable_comercial}</span></> : <><span className="dx-cta-av is-none">—</span><span className="dx-cta-txt dx-cta-muted">Sin responsable</span></>}</div>
+                <div className="dx-cta-resp c-resp">{tieneResponsable(c.responsable_comercial) ? <><span className="dx-cta-av">{getInitials(c.responsable_comercial)}</span><span className="dx-cta-txt">{c.responsable_comercial}</span></> : <><span className="dx-cta-av is-none">—</span><span className="dx-cta-txt dx-cta-muted">Sin responsable</span></>}</div>
                 <div className="dx-cta-contact c-ct">{principal ? <><span className="dx-cta-ct"><strong>{principal.nombre || principal.email || principal.telefono}</strong><span>{principal.telefono || principal.email || 'Sin teléfono o correo'}</span></span>{contactosCuenta.length > 1 && <span className="dx-cta-more">+{contactosCuenta.length - 1}</span>}</> : <span className="dx-cta-muted">Sin contacto</span>}</div>
-                <div className="dx-cta-money c-money">{saldos.length ? saldos.map(([key, saldo]) => <strong key={key}>{moneyD(saldo, simboloMonedaCuenta(key.split(':').pop()))}</strong>) : <strong>—</strong>}<span>{compra || 'Sin compras'}</span></div>
+                <div className="dx-cta-money c-money">{saldos.length ? saldos.map(([key, saldo]) => <strong key={key}>{moneyD(saldo, simboloMonedaCuenta(key.split(':').pop()))}</strong>) : <strong>—</strong>}<span>{compra ? formatoFechaCompra(compra) : 'Sin compras'}</span></div>
                 <div className={`dx-cta-comp c-comp${completitud.count < 3 ? ' is-low' : completitud.count < 5 ? ' is-mid' : ''}`} title={completitud.missing.length ? `Falta: ${completitud.missing.join(', ')}` : 'Todos los datos completos'}><div className="dx-cta-comp-bar"><i style={{width:`${pct}%`}}/></div><span>{completitud.count} de 5 datos</span></div>
                 <span className="dx-cta-go c-go"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
               </div>;
@@ -979,9 +987,9 @@ function Cuentas() {
               <>
                 <div className="account-profile-kpis">
                   <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(cuentaHealthScore)}/>{cuentaHealthScore}</strong></div>
-                  <div><span>Saldo CxC</span><strong>{money(sel.saldo_cxc)}</strong></div>
+                  <div><span>Saldo CxC</span><strong>{saldoFicha(sel)}</strong></div>
                   <div><span>Días mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
-                  <div><span>Última compra</span><strong>{sel.fecha_ultima_compra || '—'}</strong></div>
+                  <div><span>Última compra</span><strong>{formatoFechaCompra(ultimaCompraPorCuenta.get(sel.id))}</strong></div>
                 </div>
                 <div className="account-profile-grid">
                   <div className="account-info-card">
