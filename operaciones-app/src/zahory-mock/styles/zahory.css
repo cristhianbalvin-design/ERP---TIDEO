@@ -4590,7 +4590,7 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-ot-foot-pending { min-width:0; overflow:hidden; color:var(--dx-ui-gray); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .dx-ot-foot-actions { display:flex; justify-content:flex-end; gap:8px; }
 .dx-ot-foot button { min-width:108px; min-height:44px; padding:10px 16px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font-family:inherit; font-size:13px; font-weight:700; line-height:1.2; cursor:pointer; }
-.dx-ot-foot button:disabled { cursor:not-allowed; opacity:.5; }
+.dx-ot-foot button:disabled,.dx-ot-foot button[aria-disabled="true"] { cursor:not-allowed; opacity:.5; }
 .dx-ot-foot .dx-ot-foot-next { border-color:var(--dx-ui-navy); background:var(--dx-ui-navy); color:var(--dx-ui-bg); }
 @container (max-width:640px) {
   .dx-ot-wiz .ot-form-grid.commercial,.dx-ot-wiz .ot-form-grid.execution,.dx-ot-wiz .ot-form-grid.dbs,.dx-ot-wiz .ot-form-grid.operations { grid-template-columns:minmax(0,1fr); }

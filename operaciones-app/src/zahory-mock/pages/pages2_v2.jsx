@@ -845,7 +845,11 @@ export const OTsListadoPage=({onNav})=>{
         className={`dx-otb-toggle ${filtros.retrabajos?'is-on':''}`} aria-pressed={filtros.retrabajos}
         onClick={()=>setFiltro('retrabajos',!filtros.retrabajos)}>↻ Solo retrabajos</button>
   <label
-        className="dx-otb-search">⌕<input
+        className="dx-otb-search"><svg
+        width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.8" stroke="currentColor" strokeWidth="1.8" />
+        <path d="m10.6 10.6 3.2 3.2" stroke="currentColor" strokeWidth="1.8" />
+        </svg><input
         value={filtros.buscar}
         onChange={e=>setFiltro('buscar',e.target.value)}
         placeholder="Buscar por OT, cliente, equipo o técnico" aria-label="Buscar Órdenes de trabajo" />

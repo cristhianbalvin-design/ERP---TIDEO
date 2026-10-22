@@ -120,7 +120,7 @@ const hasValidSegment = (segs) =>
 
 // ── Drawer de backlogs ─────────────────────────────────────────────────────
 
-const ClienteSearchSelect = ({ clientes, value, onChange, error, disabled = false, loading = false }) => {
+const ClienteSearchSelect = ({ clientes, value, onChange, onBlur, error, disabled = false, loading = false }) => {
   const wrapperRef = useRef(null);
   const selected = clientes.find(c => c.id === value);
   const [query, setQuery] = useState(nombreCliente(selected));
@@ -163,9 +163,10 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error, disabled = fals
           className="input"
           value={query}
           onChange={e => handleInput(e.target.value)}
+          onBlur={onBlur}
           onFocus={() => setOpen(true)}
           disabled={disabled}
-          placeholder="Buscar cliente por razon social, RUC o contacto"
+          placeholder="Buscar cliente por razón social, RUC o contacto"
           style={{ borderColor: error ? '#E53935' : undefined }}
           autoComplete="off"
         />
@@ -699,6 +700,9 @@ const CC_DESC = {
 export const CrearOTPage = ({ onNav }) => {
   const sesionOperativa = useSesionOperativa();
   const [pasoActual, setPasoActual] = useState(1);
+  const [camposTocados, setCamposTocados] = useState({});
+  const [pasosIntentados, setPasosIntentados] = useState({});
+  const [intentoGuardado, setIntentoGuardado] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [segmentos, setSegmentos] = useState([makeSegmento()]);
   const [backlogs, setBacklogs] = useState([]);
@@ -1295,6 +1299,16 @@ export const CrearOTPage = ({ onNav }) => {
     if (objetoCostoTipo === 'equipo_interno') return null;
     return objetosCostoFiltrados.find(c => c.id === form.contratoId);
   }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
+  const monedaOT = contrato?.moneda || sesionOperativa.empresa?.moneda_base || 'PEN';
+  const formatoMonedaOT = (monto) => {
+    const locale = monedaOT === 'PEN' ? 'es-PE' : 'en-US';
+    const valor = Number(monto || 0).toLocaleString(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const codigo = monedaOT === 'PEN' ? 'S/' : monedaOT === 'USD' ? 'US$' : monedaOT;
+    return `${codigo} ${valor}`;
+  };
 
   useEffect(() => {
     let vigente = true;
@@ -1438,7 +1452,10 @@ export const CrearOTPage = ({ onNav }) => {
     setErrorDBS(getBlockedCargoReason(tipo, cargo) || null);
 
   // ── Handlers ────────────────────────────────────────────────────────────
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k, v) => {
+    setCamposTocados(prev => ({ ...prev, [k]: true }));
+    setForm(f => ({ ...f, [k]: v }));
+  };
 
   const setCentroCostoManual = (centroCostoId) => {
     const cc = centroCostoId || null;
@@ -1464,6 +1481,7 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const setCliente = (clienteId) => {
+    setCamposTocados(prev => ({ ...prev, clienteId: true }));
     setForm(f => ({
       ...f, clienteId, contratoId: '', equipo: '',
       proyectoId: '',
@@ -1474,6 +1492,7 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const setContrato = (contratoId) => {
+    setCamposTocados(prev => ({ ...prev, contratoId: true }));
     const next = objetosCostoFiltrados.find(c => c.id === contratoId);
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
@@ -1503,6 +1522,7 @@ export const CrearOTPage = ({ onNav }) => {
         : equiposContratoReales.find(e => e.id === cod);
     const suggested = eq?.horometro_actual ?? null;
     setHorometroSugerido(suggested);
+    setCamposTocados(prev => ({ ...prev, equipo: true }));
     const extra = objetoCostoTipo === 'equipo_interno' ? { objeto_costo_id: cod } : {};
     setForm(f => ({
       ...f, equipo: cod,
@@ -1557,14 +1577,17 @@ export const CrearOTPage = ({ onNav }) => {
     );
   };
 
-  const setLugarEjecucion = (lugarEjecucion) =>
+  const setLugarEjecucion = (lugarEjecucion) => {
+    setCamposTocados(prev => ({ ...prev, lugarEjecucion: true }));
     setForm(f => ({
       ...f, lugarEjecucion,
       unidadMinera: '',
     }));
+  };
 
   // C5 — handlers con validación DBS en tiempo real
   const handleTipoChange = (nuevoTipo) => {
+    setCamposTocados(prev => ({ ...prev, tipoTrabajo: true }));
     const cargo = isCargoDisabledForTrabajo(nuevoTipo, form.tipoCargo)
       ? 'Cliente_Contrato' : form.tipoCargo;
     setForm(f => ({ ...f, tipoTrabajo: nuevoTipo, tipoCargo: cargo }));
@@ -1572,6 +1595,7 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const handleCargoChange = (nuevoCargo) => {
+    setCamposTocados(prev => ({ ...prev, tipoCargo: true }));
     const noFact = CARGOS_NO_FACTURABLES_DBS;
     setForm(f => ({
       ...f, tipoCargo: nuevoCargo,
@@ -1591,7 +1615,15 @@ export const CrearOTPage = ({ onNav }) => {
   const validation = validateOTForm({
     ...form, hasValidSegment: hasValidSegment(segmentos), objetoCostoTipo,
   });
-  const fieldErrors = validation.fieldErrors;
+  const pasoPorCampo = {
+    lineaNegocio: 1, clienteId: 1, contratoId: 1, equipo: 1,
+    lugarEjecucion: 2, unidadMinera: 2,
+    tipoTrabajo: 3, tipoCargo: 3, motivoRetrabajo: 3, segmentos: 3,
+    tecnico: 4, fechaProgramadaInicio: 4, descripcion: 5,
+  };
+  const fieldErrors = Object.fromEntries(Object.entries(validation.fieldErrors).filter(([campo]) => (
+    camposTocados[campo] || pasosIntentados[pasoPorCampo[campo] || 5] || intentoGuardado
+  )));
   const hasCentroCosto = Boolean(form.centro_costo || form.centro_beneficio_id);
   const requiereHorometroRaiz = ['contrato', 'equipo_interno'].includes(objetoCostoTipo)
     || (objetoCostoTipo === 'os_cliente' && Boolean(form.equipo));
@@ -1618,13 +1650,7 @@ export const CrearOTPage = ({ onNav }) => {
 
   const pendientesPorPaso = () => {
     const pendientes = [[], [], [], [], []];
-    const pasoPorCampo = {
-      lineaNegocio: 1, clienteId: 1, contratoId: 1, equipo: 1,
-      lugarEjecucion: 2, unidadMinera: 2,
-      tipoTrabajo: 3, tipoCargo: 3, motivoRetrabajo: 3, segmentos: 3,
-      tecnico: 4, fechaProgramadaInicio: 4, descripcion: 5,
-    };
-    Object.entries(fieldErrors).forEach(([campo, mensajes]) => {
+    Object.entries(validation.fieldErrors).forEach(([campo, mensajes]) => {
       (mensajes || []).forEach(mensaje => pendientes[(pasoPorCampo[campo] || 5) - 1].push(mensaje));
     });
     if (!hasCentroCosto) pendientes[0].push('Seleccione el objeto de costo raíz para heredar o definir el centro de costo.');
@@ -1644,6 +1670,7 @@ export const CrearOTPage = ({ onNav }) => {
   ];
 
   const guardarOT = async () => {
+    setIntentoGuardado(true);
     if (guardando || !valid) return;
 
     setGuardando(true);
@@ -1668,7 +1695,7 @@ export const CrearOTPage = ({ onNav }) => {
       costo_estimado: totales.total,
       costo_estimado_ot: totales.total,
       costo_real: 0,
-      moneda: contrato?.moneda || sesionOperativa.empresa?.moneda_base || 'PEN',
+      moneda: monedaOT,
       centro_costo_id: form.centro_costo || null,
       centro_beneficio_id: form.centro_beneficio_id || null,
       tipo_trabajo: form.tipoTrabajo,
@@ -1793,9 +1820,9 @@ export const CrearOTPage = ({ onNav }) => {
             <div><span className="muted">CC:</span>{' '}
               <b style={{ color: '#f59e0b' }}>{etiquetaCentroCostoCreado}</b></div>
             <div><span className="muted">Segmentos:</span> <b>{creada.segmentos.length}</b></div>
-            <div><span className="muted">Costo total estimado:</span> <b className="mono">${t.total.toFixed(0)}</b></div>
+            <div><span className="muted">Costo total estimado:</span> <b className="mono">{formatoMonedaOT(t.total)}</b></div>
             <div><span className="muted">Ingreso facturable:</span>{' '}
-              <b>{noFacturable(creada.tipoCargo) ? '$0.00' : `$${Number(creada.ingreso || 0).toFixed(0)}`}</b></div>
+              <b>{formatoMonedaOT(noFacturable(creada.tipoCargo) ? 0 : creada.ingreso)}</b></div>
             {creada.horometro_apertura != null && (
               <div><span className="muted">Horómetro apertura:</span>{' '}
                 <b className="mono">{Number(creada.horometro_apertura).toLocaleString()} h</b></div>
@@ -1823,7 +1850,7 @@ export const CrearOTPage = ({ onNav }) => {
         <div className="dx-ot-heading">
           <div className="dx-ot-eyebrow">Taller y operaciones</div>
           <h1>Nueva orden de trabajo</h1>
-          <div className="sub">Creacion directa DBS · Tipo de Trabajo × Cargo Financiero</div>
+          <div className="sub">Creación directa DBS · Tipo de Trabajo × Cargo Financiero</div>
         </div>
       </div>
 
@@ -1853,7 +1880,7 @@ export const CrearOTPage = ({ onNav }) => {
         <div className="card dx-ot-form-card" style={{ marginBottom: 12 }}>
           <div className="card-header">
             <h3>Cabecera DBS</h3>
-            <span className="hint">Jerarquia comercial · Matriz Trabajo × Cargo</span>
+            <span className="hint">Jerarquía comercial · Matriz Trabajo × Cargo</span>
           </div>
           <div className="ot-form-body">
 
@@ -1933,6 +1960,7 @@ export const CrearOTPage = ({ onNav }) => {
                         clientes={clientesReales}
                         value={form.clienteId}
                         onChange={setCliente}
+                        onBlur={() => setCamposTocados(prev => ({ ...prev, clienteId: true }))}
                         error={Boolean(fieldErrors.clienteId)}
                         disabled={cargandoClientes || !sesionOperativa.permiteEscritura}
                         loading={cargandoClientes}
@@ -2182,7 +2210,7 @@ export const CrearOTPage = ({ onNav }) => {
               <div className="ot-form-section-title">2. Lugar de ejecución</div>
               <div className="ot-form-grid execution">
                 <div className="ot-form-field">
-                  <div className="label" style={{ fontSize: 12 }}>Lugar de Ejecucion *</div>
+                  <div className="label" style={{ fontSize: 12 }}>Lugar de Ejecución *</div>
                   <select className="input" value={form.lugarEjecucion}
                     disabled={!form.equipo}
                     onChange={e => setLugarEjecucion(e.target.value)}
@@ -2272,6 +2300,7 @@ export const CrearOTPage = ({ onNav }) => {
                       width: 200, fontFamily: 'monospace',
                       background: !form.equipo ? '#ECEFF1' : undefined,
                       borderColor: horometroObligatorio && form.equipo && !form.horometroApertura
+                        && (camposTocados.horometroApertura || pasosIntentados[2] || intentoGuardado)
                         ? '#E53935' : undefined,
                     }}
                   />
@@ -2279,7 +2308,8 @@ export const CrearOTPage = ({ onNav }) => {
                     horas — registrar el horómetro físico al iniciar la OT
                   </span>
                 </div>
-                {horometroObligatorio && form.equipo && !form.horometroApertura && (
+                {horometroObligatorio && form.equipo && !form.horometroApertura
+                  && (camposTocados.horometroApertura || pasosIntentados[2] || intentoGuardado) && (
                   <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
                     El horómetro actual es obligatorio para OTs en campo, bajo contrato o con equipo asociado a la OT.
                   </div>
@@ -2371,9 +2401,12 @@ export const CrearOTPage = ({ onNav }) => {
                     value={form.motivoRetrabajo}
                     onChange={e => set('motivoRetrabajo', e.target.value)}
                     placeholder="ej: Falla en soldadura de mando final realizada en OT-2026-031. Retrabajo por defecto de ejecución del área de taller."
-                    style={{ resize: 'vertical', width: '100%', marginTop: 6, borderColor: !form.motivoRetrabajo ? '#ef4444' : undefined }}
+                    style={{ resize: 'vertical', width: '100%', marginTop: 6,
+                      borderColor: !form.motivoRetrabajo
+                        && (camposTocados.motivoRetrabajo || pasosIntentados[3] || intentoGuardado)
+                        ? '#ef4444' : undefined }}
                   />
-                  {!form.motivoRetrabajo && (
+                  {!form.motivoRetrabajo && (camposTocados.motivoRetrabajo || pasosIntentados[3] || intentoGuardado) && (
                     <div style={{ color: '#ef4444', fontSize: 11, marginTop: 4 }}>
                       El motivo es obligatorio para retrabajos.
                     </div>
@@ -2429,7 +2462,7 @@ export const CrearOTPage = ({ onNav }) => {
                     style={{ marginTop: 4, background: noFacturable(form.tipoCargo) ? '#ECEFF1' : undefined }} />
                 </div>
                 <div className="ot-form-field">
-                  <div className="label" style={{ fontSize: 12 }}>Aprobacion comercial</div>
+                  <div className="label" style={{ fontSize: 12 }}>Aprobación comercial</div>
                   <input type="datetime-local" className="input" value={form.fechaAprobacionComercial}
                     onChange={e => set('fechaAprobacionComercial', e.target.value)}
                     style={{ marginTop: 4 }} />
@@ -2530,16 +2563,25 @@ export const CrearOTPage = ({ onNav }) => {
 
       <div className="dx-ot-bottom-space" />
       <div className="dx-ot-foot">
-        <div className="dx-ot-foot-cost"><span>Costo estimado</span><strong>${calcOTTotals(segmentos).total.toFixed(0)}</strong></div>
+        <div className="dx-ot-foot-cost"><span>Costo estimado</span><strong>{formatoMonedaOT(calcOTTotals(segmentos).total)}</strong></div>
         <div className="dx-ot-foot-pending" aria-live="polite">
           {pendientesPaso[pasoActual - 1].length ? `Falta: ${pendientesPaso[pasoActual - 1][0]}` : 'Paso completo'}
         </div>
         <div className="dx-ot-foot-actions">
           <button type="button" className="dx-ot-foot-back" onClick={() => irAPaso(Math.max(1, pasoActual - 1))} disabled={pasoActual === 1}>Atrás</button>
           {pasoActual < 5 ? (
-            <button type="button" className="dx-ot-foot-next" onClick={() => irAPaso(pasoActual + 1)} disabled={pendientesPaso[pasoActual - 1].length > 0}>Continuar</button>
+            <button type="button" className="dx-ot-foot-next"
+              aria-disabled={pendientesPaso[pasoActual - 1].length > 0}
+              onClick={() => {
+                setPasosIntentados(prev => ({ ...prev, [pasoActual]: true }));
+                if (pendientesPaso[pasoActual - 1].length > 0) return;
+                irAPaso(pasoActual + 1);
+              }}>Continuar</button>
           ) : (
-            <button type="button" className="dx-ot-foot-next" onClick={guardarOT} disabled={!valid || guardando}>{guardando ? 'Guardando…' : 'Crear OT'}</button>
+            <button type="button" className="dx-ot-foot-next" onClick={guardarOT}
+              aria-disabled={!valid || guardando} disabled={guardando}>
+              {guardando ? 'Guardando…' : 'Crear OT'}
+            </button>
           )}
         </div>
       </div>
