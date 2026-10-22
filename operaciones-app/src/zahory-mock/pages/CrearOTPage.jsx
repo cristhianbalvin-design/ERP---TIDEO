@@ -1613,7 +1613,7 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
     || (objetoCostoTipo === 'os_cliente' && Boolean(form.equipo));
   const horometroRaizEquipoValido = !requiereHorometroRaiz
     || (String(form.horometroApertura || '').trim() !== '' && Number(form.horometroApertura) >= 0);
-  const horometroObligatorio = form.lugarEjecucion === 'Campo_Mina' || requiereHorometroRaiz;
+  const horometroObligatorio = (form.lugarEjecucion === 'Campo_Mina' && Boolean(form.equipo)) || requiereHorometroRaiz;
   // Sin equipo (OT de servicio con raíz OS Cliente) el lugar se elige igual y no hay horómetro que registrar.
   const lugarHabilitado = Boolean(form.equipo) || objetoCostoTipo === 'os_cliente';
   const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
