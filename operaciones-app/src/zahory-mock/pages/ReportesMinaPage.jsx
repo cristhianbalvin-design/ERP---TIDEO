@@ -389,6 +389,7 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
     const ultimoAvance = otForm?.ultimo_avance_validado;
     const titulo = form.numero ? `Reporte ${form.numero}` : 'Nuevo reporte de mina';
     const observacionPrevia = reporteForm?.estado === 'observado' ? reporteForm?.datos_mina?.revision?.observacion : null;
+    const pedidoProcesado = new Set((reporteForm?.datos_mina?.pedido_resultado?.lineas || []).map(l => l.material_id));
     return (
       <>
         <div className="dx-ui-head-page">
@@ -488,7 +489,7 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
                   })}
                 </div>
                 {form.estado_equipo === 'retorno' && (
-                  <div className="dx-rmina-note"><b>Retorno a taller.</b> Se avisará al planner para coordinar el traslado mina ↔ taller. Indica el motivo:
+                  <div className="dx-rmina-note"><b>Retorno a taller.</b> Indica el motivo; el supervisor lo verá al revisar el reporte:
                     <div className="dx-rmina-field"><textarea aria-label="Motivo del retorno a taller" placeholder="Falla, programación, falta de repuesto…" value={form.motivo_retorno} disabled={!editable} onChange={e => cambiar('motivo_retorno', e.target.value)} /></div>
                   </div>
                 )}
@@ -524,17 +525,21 @@ export function ReportesMinaPage({ onNav, vistaInicial = 'lista' }) {
               </div>
 
               <div className="dx-rmina-sec">
-                <SeccionCabecera icono="cart" tono="is-violet" titulo="Pedido de repuestos" ayuda="Al enviar el reporte entra a la reserva de la OT: periférico de la mina → central → SOLPE." />
+                <SeccionCabecera icono="cart" tono="is-violet" titulo="Pedido de repuestos" ayuda={pedidoProcesado.size ? 'Lo ya enviado sigue en la reserva de la OT; al reenviar solo entran los materiales nuevos.' : 'Al enviar el reporte entra a la reserva de la OT: periférico de la mina → central → SOLPE.'} />
                 <div className="dx-rmina-lines">
-                  {form.pedido.map((p, i) => (
-                    <div className="dx-rmina-line ped" key={p.material_id}>
-                      <div><b>{p.descripcion}</b><small>{p.codigo}</small></div>
-                      <input inputMode="decimal" aria-label={`Cantidad pedida de ${p.codigo}`} value={p.cantidad} disabled={!editable} onChange={e => cambiarLinea('pedido', i, { cantidad: e.target.value })} />
-                      <span className="u">{p.unidad}</span>
-                      <button type="button" className={`dx-rmina-urg${p.urgente ? ' is-on' : ''}`} aria-pressed={Boolean(p.urgente)} disabled={!editable} onClick={() => cambiarLinea('pedido', i, { urgente: !p.urgente })}>● Urgente</button>
-                      <button type="button" className="dx-rmina-x" aria-label={`Quitar ${p.codigo} del pedido`} disabled={!editable} onClick={() => quitarLinea('pedido', i)}><Icono nombre="x" /></button>
-                    </div>
-                  ))}
+                  {form.pedido.map((p, i) => {
+                    const enReserva = pedidoProcesado.has(p.material_id);
+                    const bloqueada = !editable || enReserva;
+                    return (
+                      <div className="dx-rmina-line ped" key={p.material_id}>
+                        <div><b>{p.descripcion}</b><small>{p.codigo}{enReserva && ' · ya en la reserva de la OT'}</small></div>
+                        <input inputMode="decimal" aria-label={`Cantidad pedida de ${p.codigo}`} value={p.cantidad} disabled={bloqueada} onChange={e => cambiarLinea('pedido', i, { cantidad: e.target.value })} />
+                        <span className="u">{p.unidad}</span>
+                        <button type="button" className={`dx-rmina-urg${p.urgente ? ' is-on' : ''}`} aria-pressed={Boolean(p.urgente)} disabled={bloqueada} onClick={() => cambiarLinea('pedido', i, { urgente: !p.urgente })}>● Urgente</button>
+                        <button type="button" className="dx-rmina-x" aria-label={`Quitar ${p.codigo} del pedido`} disabled={bloqueada} onClick={() => quitarLinea('pedido', i)}><Icono nombre="x" /></button>
+                      </div>
+                    );
+                  })}
                 </div>
                 {editable && <div className="dx-rmina-add"><BuscadorMaterial empresaId={empresaId} sociedadId={sociedadFiltro} etiqueta="Buscar material a pedir" placeholder="Agregar material al pedido" onSelect={m => agregarMaterial('pedido', m)} /></div>}
               </div>
