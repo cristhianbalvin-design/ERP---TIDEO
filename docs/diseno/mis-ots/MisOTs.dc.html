@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis OTs — mock dx</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* ---------- Solo del mock (barra de control y marco) ---------- */
+body { margin:0; background:#D9DEE6; font:14px/1.4 'DM Sans',sans-serif; }
+.mock-bar { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; background:#0F172A; color:#fff; font-size:13px; }
+.mock-bar strong { margin-right:8px; font-family:Sora,sans-serif; }
+.mock-bar button { min-height:32px; padding:0 12px; border:1px solid rgba(255,255,255,.25); border-radius:8px; background:transparent; color:#fff; font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.mock-bar button[aria-pressed=true] { border-color:#00ACC1; background:#00ACC1; }
+.mock-bar .sep { width:1px; height:22px; margin:0 4px; background:rgba(255,255,255,.2); }
+.mock-note { max-width:1280px; margin:12px auto 0; padding:0 16px; color:#374151; font-size:12px; }
+.frame { margin:16px auto 40px; overflow:hidden; border-radius:12px; box-shadow:0 8px 30px rgba(15,27,48,.18); }
+.frame-shell { display:flex; min-height:720px; }
+.frame-side { flex:0 0 240px; background:#1A2B4A; }
+.frame-main { flex:1; min-width:0; background:#F4F6F8; }
+.frame-top { height:64px; background:#1A2B4A; border-left:1px solid rgba(255,255,255,.08); }
+.frame.is-work .frame-side, .frame.is-work .frame-top { display:none; }
+[data-theme='dark'] .frame-main { background:#020617; }
+
+/* ---------- Base dx-ui (copiada tal cual de zahory.css) ---------- */
+.dx-ui {
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',sans-serif;
+}
+[data-theme='dark'] .dx-ui {
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+.dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 1px 2px rgba(15,27,48,.04); }
+.dx-ui-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ui-toolbar h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px/1.4 'Sora',sans-serif; }
+.dx-ui-count { color:var(--dx-ui-gray); font-size:12px; white-space:nowrap; }
+.dx-ui-search { display:flex; align-items:center; gap:8px; width:340px; max-width:100%; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+.dx-ui-search:focus-within { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-ui-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui-search input::placeholder { color:var(--dx-ui-gray); opacity:1; }
+.dx-ui-head,.dx-ui-row { display:grid; grid-template-columns:var(--dx-ui-cols,minmax(0,1fr)); column-gap:16px; align-items:center; padding-inline:20px; }
+.dx-ui-head { min-height:38px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ui-row { min-height:68px; border-bottom:1px solid var(--dx-ui-line-soft); cursor:pointer; transition:background .12s; }
+.dx-ui-row:last-child { border-bottom:0; }
+.dx-ui-row:hover { background:var(--dx-ui-hover); }
+.dx-ui-row:hover .dx-ui-arrow { color:var(--dx-ui-navy); transform:translateX(2px); }
+.dx-ui-row:focus-visible { position:relative; z-index:1; outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-ui-icon { display:flex; flex:none; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; }
+.dx-ui-icon.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-icon.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ui-pill i { width:6px; height:6px; flex:none; border-radius:50%; background:currentColor; }
+.dx-ui-pill.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-ui-pill.is-amber i { background:var(--dx-ui-amber-dot); }
+.dx-ui-pill.is-green { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-ui-pill.is-red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ui-pill.is-red i { background:var(--dx-ui-red-dot); }
+.dx-ui-pill.is-gray { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui-pill.is-gray i { background:var(--dx-ui-gray-dot); }
+.dx-ui-pill.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-pill.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-arrow { color:#9AA3B2; transition:.12s; }
+.dx-ui-empty { padding:48px 20px; color:var(--dx-ui-gray); text-align:center; }
+/* DX-UI: encabezados, botones y pestañas compartidos (solo dentro de .dx-ui). */
+.dx-ui .dx-ui-head-page { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui .dx-ui-eyebrow { color:var(--dx-ui-cyan); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.dx-ui .dx-btn.danger { border-color:var(--dx-ui-red-dot); background:var(--dx-ui-card); color:var(--dx-ui-red-fg); }
+.dx-ui .dx-btn.danger:disabled { border-color:var(--dx-ui-line); background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui .dx-ui-title { margin:2px 0 0; color:var(--dx-ui-navy); font:700 24px/1.2 'Sora',sans-serif; }
+.dx-ui .dx-ui-sub { margin:4px 0 0; color:var(--dx-ui-gray); }
+.dx-ui .dx-ui-actions { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+.dx-ui .dx-btn { display:inline-flex; align-items:center; justify-content:center; min-height:40px; height:40px; padding:0 16px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-navy); font:600 14px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-ui .dx-btn:not(.primary):not(.danger):not(:disabled):hover { background:var(--dx-ui-hover); }
+.dx-ui .dx-btn.primary { border-color:var(--dx-ui-navy); background:var(--dx-ui-navy); color:var(--dx-ui-bg); }
+.dx-ui .dx-btn.primary:not(:disabled):hover,.dx-ui .dx-btn.danger:not(:disabled):hover { opacity:.88; }
+.dx-ui .dx-btn:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-ui .dx-btn:disabled { border-color:var(--dx-ui-line); background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); opacity:.55; cursor:not-allowed; }
+.dx-ui .dx-ui-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui .dx-ui-tab { height:36px; padding:0 14px; border:1px solid var(--dx-ui-line); border-radius:999px; background:var(--dx-ui-card); color:var(--dx-ui-gray); font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-ui .dx-ui-tab.on { border-color:transparent; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui .dx-ui-tab:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+@media (max-width:760px) {
+  .dx-ui .dx-ui-head-page { align-items:flex-start; flex-direction:column; }
+  .dx-ui .dx-ui-actions { width:100%; margin-left:0; }
+}
+@container (max-width:760px) {
+  .dx-ui-head { display:none; }
+  .dx-ui-row { row-gap:8px; padding:14px 16px; }
+}
+
+
+/* ---------- Mis OTs (prefijo dx-misots-, irá en zahory.css) ---------- */
+.dx-ui.dx-misots { box-sizing:border-box; padding:24px 28px 60px; margin:0; }
+.dx-misots *, .dx-misots *::before, .dx-misots *::after { box-sizing:border-box; }
+.dx-misots .dx-misots-menu { display:none; }
+.frame.is-work .dx-misots .dx-ui-head-page { position:relative; min-height:44px; padding-left:52px; }
+.frame.is-work .dx-misots .dx-misots-menu { position:absolute; top:0; left:0; display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:8px; background:transparent; color:var(--dx-ui-ink); font-size:21px; cursor:pointer; }
+.dx-misots .dx-btn svg { margin-right:8px; }
+.dx-misots .dx-misots-chip { cursor:pointer; font:inherit; text-align:left; }
+.dx-misots .dx-misots-chip.is-on { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-misots .dx-misots-chip.is-late b { color:var(--dx-ui-red-fg); }
+.dx-misots .dx-misots-chip:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-misots .dx-misots-cols { --dx-ui-cols:minmax(0,1.4fr) minmax(0,1fr) 140px 116px 96px 150px; }
+.dx-misots .dx-ui-row.dx-misots-cols { cursor:default; }
+.dx-misots .dx-misots-act { justify-self:end; }
+.dx-misots .dx-misots-act .dx-btn { height:40px; padding:0 14px; white-space:nowrap; }
+.dx-misots .dx-misots-act .dx-btn svg { margin-right:6px; }
+.dx-misots .dx-misots-group { display:flex; align-items:center; gap:8px; min-height:36px; padding:0 20px; border-bottom:1px solid var(--dx-ui-line-soft); background:var(--dx-ui-head); color:var(--dx-ui-navy); font:700 13px 'Sora',sans-serif; }
+.dx-misots .dx-misots-group i { width:8px; height:8px; border-radius:50%; }
+.dx-misots .dx-misots-group.is-late i { background:var(--dx-ui-red-dot); }
+.dx-misots .dx-misots-group.is-today i { background:var(--dx-ui-cyan); }
+.dx-misots .dx-misots-group.is-next i { background:var(--dx-ui-gray-dot); }
+.dx-misots .dx-misots-group small { color:var(--dx-ui-gray); font:500 12px 'DM Sans',sans-serif; }
+.dx-misots .dx-misots-group-empty { padding:14px 20px; border-bottom:1px solid var(--dx-ui-line-soft); color:var(--dx-ui-gray); font-size:13px; }
+.dx-misots .dx-misots-ot { display:flex; align-items:center; gap:10px; min-width:0; }
+.dx-misots .dx-misots-ot > div { min-width:0; }
+.dx-misots .dx-misots-ot b { display:block; color:var(--dx-ui-navy); font:600 14px 'Sora',sans-serif; }
+.dx-misots .dx-misots-ot > div > span,.dx-misots .dx-misots-who span { display:block; overflow:hidden; color:var(--dx-ui-gray); font-size:13px; white-space:nowrap; text-overflow:ellipsis; }
+.dx-misots .dx-misots-who { min-width:0; }
+.dx-misots .dx-misots-who b { display:block; overflow:hidden; color:var(--dx-ui-ink); font-size:14px; font-weight:600; white-space:nowrap; text-overflow:ellipsis; }
+.dx-misots .dx-misots-when { display:flex; flex-direction:column; gap:1px; min-width:0; color:var(--dx-ui-ink); font-size:13px; white-space:nowrap; }
+.dx-misots .dx-misots-when small { color:var(--dx-ui-gray); font-size:12px; }
+.dx-misots .dx-misots-when.is-late small { color:var(--dx-ui-red-fg); font-weight:600; }
+.dx-misots .dx-misots-progress { display:flex; align-items:center; gap:8px; color:var(--dx-ui-navy); font:600 12px 'Sora',sans-serif; }
+.dx-misots .dx-misots-bar { flex:1; height:6px; min-width:40px; border-radius:999px; background:var(--dx-ui-line); }
+.dx-misots .dx-misots-bar i { display:block; height:100%; border-radius:999px; background:var(--dx-ui-cyan); }
+.dx-misots .dx-misots-note { margin:12px 0 0; color:var(--dx-ui-gray); font-size:12px; }
+@container (max-width:760px) {
+  .dx-misots .dx-misots-cols { --dx-ui-cols:minmax(0,1fr) auto; grid-template-areas:"ot estado" "who who" "when avance" "act act"; }
+  .dx-misots .dx-misots-cols > .dx-misots-act { grid-area:act; justify-self:stretch; }
+  .dx-misots .dx-misots-act .dx-btn { width:100%; min-height:44px; height:44px; }
+  .dx-misots .dx-misots-cols > .dx-misots-ot { grid-area:ot; }
+  .dx-misots .dx-misots-cols > .dx-misots-who { grid-area:who; }
+  .dx-misots .dx-misots-cols > .dx-misots-when { grid-area:when; }
+  .dx-misots .dx-misots-cols > .dx-misots-state { grid-area:estado; justify-self:end; }
+  .dx-misots .dx-misots-cols > .dx-misots-progress { grid-area:avance; justify-self:end; width:120px; }
+  .dx-misots .dx-misots-group { padding:0 16px; }
+}
+@container (max-width:420px) {
+  .dx-misots .dx-ui-toolbar { padding:12px; }
+  .dx-misots .dx-ui-search { width:100%; }
+}
+@media (max-width:760px) {}
+.frame.is-phone .dx-ui.dx-misots { padding:12px 12px 32px; }
+.frame.is-phone .dx-misots .dx-ui-title { font-size:20px; }
+.frame.is-phone .dx-misots .dx-ui-head-page { flex-direction:column; align-items:stretch; }
+.frame.is-phone .dx-misots .dx-ui-actions { width:100%; margin-left:0; }
+.frame.is-phone .dx-misots .dx-ui-actions .dx-btn { flex:1; min-height:44px; }
+.frame.is-phone .dx-misots .dx-ui-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <strong>Mock · Mis OTs (dx)</strong>
+  <button data-w="375">Celular 375</button><button data-w="834" aria-pressed="true">Tablet 834</button><button data-w="1280">Escritorio 1280</button>
+  <span class="sep"></span>
+  <button id="d-real" aria-pressed="true">Datos reales (Betty)</button><button id="d-ej">Ejemplo con hoy y próximas</button><button id="d-vacio">Sin OTs</button><button id="d-perfil">Sin perfil</button>
+  <span class="sep"></span>
+  <button id="dark">Modo oscuro</button>
+</div>
+<p class="mock-note"><b>Datos reales:</b> OTs programadas de Betty Cardenas en PRUEBA (consultadas el 21/10/2026; las 3 están vencidas). <b>Ejemplo:</b> las mismas OTs con fechas inventadas para ver Hoy y Próximas. Escritorio 1280 muestra la barra lateral (contenedor ~977 px); celular y tablet están en modo trabajo (☰, sin barra superior).</p>
+<div class="frame" id="frame"><div class="frame-shell"><div class="frame-side"></div><div class="frame-main"><div class="frame-top"></div><div id="app"></div></div></div></div>
+<script>
+const I = {
+  wrench:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>',
+  doc:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>',
+  search:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  arrow:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
+};
+const HOY = '2026-10-21';
+const REAL = [
+  { n:'OT-26-0692', s:'prueba', c:'Andrea SAC', l:'Taller', f:'2026-09-14', e:'programada', a:0 },
+  { n:'OT-26-0382', s:'REPARACIÓN', c:'Andrea SAC', l:'Campamento Operativo Mina 1', f:'2026-09-28', e:'programada', a:0 },
+  { n:'OT-26-0641', s:'Prueba UI punto 5: OT con proyecto de mina', c:'Andrea SAC', l:'Taller', f:'2026-10-14', e:'programada', a:0 },
+];
+const EJ = [
+  { n:'OT-26-0692', s:'prueba', c:'Andrea SAC', l:'Taller', f:'2026-10-14', e:'programada', a:0 },
+  { n:'OT-26-0382', s:'REPARACIÓN', c:'Andrea SAC', l:'Campamento Operativo Mina 1', f:'2026-10-21', h:'08:00 – 12:00', e:'ejecucion', a:45 },
+  { n:'OT-26-0641', s:'Prueba UI punto 5: OT con proyecto de mina', c:'Andrea SAC', l:'Taller', f:'2026-10-21', h:'14:00', e:'programada', a:0 },
+  { n:'OT-26-0455', s:'MANTTO', c:'TIDEO', l:'Campamento Operativo Mina 1', f:'2026-10-23', e:'programada', a:0 },
+];
+let modo = 'real', dark = false, width = 834, filtro = 'todas', q = '';
+const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const fmt = d => d.split('-').reverse().join('/');
+const dias = d => Math.round((new Date(HOY) - new Date(d)) / 864e5);
+const grupoDe = o => o.f < HOY ? 'late' : o.f === HOY ? 'today' : 'next';
+function fila(o) {
+  const g = grupoDe(o), run = o.e === 'ejecucion';
+  const cuando = g === 'late' ? `<div class="dx-misots-when is-late"><span>${fmt(o.f)}</span><small>Vencida hace ${dias(o.f)} días</small></div>`
+    : g === 'today' ? `<div class="dx-misots-when"><span>Hoy</span><small>${o.h || 'Sin hora estimada'}</small></div>`
+    : `<div class="dx-misots-when"><span>${fmt(o.f)}</span><small>${o.h || 'Sin hora estimada'}</small></div>`;
+  return `<div class="dx-ui-row dx-misots-cols">
+    <div class="dx-misots-ot"><span class="dx-ui-icon ${run ? 'is-violet' : 'is-cyan'}">${I.wrench}</span><div><b>${o.n}</b><span>${o.s}</span></div></div>
+    <div class="dx-misots-who"><b>${o.c}</b><span>${o.l}</span></div>
+    ${cuando}
+    <div class="dx-misots-state"><span class="dx-ui-pill ${run ? 'is-amber' : 'is-cyan'}"><i></i>${run ? 'En ejecución' : 'Programada'}</span></div>
+    <div class="dx-misots-progress"><div class="dx-misots-bar"><i style="width:${o.a}%"></i></div><span>${o.a}%</span></div>
+    <div class="dx-misots-act"><button class="dx-btn primary" aria-label="Registrar parte de ${o.n}">${I.doc}Registrar parte</button></div></div>`;
+}
+function render() {
+  const fr = document.getElementById('frame');
+  fr.style.width = width + 'px';
+  fr.className = 'frame' + (width <= 1180 ? ' is-work' : '') + (width < 600 ? ' is-phone' : '');
+  fr.toggleAttribute('data-theme', dark); if (dark) fr.setAttribute('data-theme', 'dark');
+  const app = document.getElementById('app');
+  const head = `<header class="dx-ui-head-page"><button class="dx-misots-menu" aria-label="Abrir menú">☰</button>
+      <div><div class="dx-ui-eyebrow">Operaciones · Campo</div><h1 class="dx-ui-title">Mis OTs</h1><p class="dx-ui-sub">${modo === 'perfil' ? 'Órdenes de trabajo asignadas al técnico de la sesión.' : 'Betty Cardenas · Técnico en Mantenimiento Mecánico Industrial'}</p></div>
+      <div class="dx-ui-actions"><button class="dx-btn">${I.doc}Registrar parte sin OT</button></div></header>`;
+  if (modo === 'perfil') {
+    app.innerHTML = `<section class="dx-ui dx-misots">${head}<div class="dx-ui-card"><div class="dx-ui-empty"><b style="display:block;color:var(--dx-ui-navy);font-family:Sora;margin-bottom:4px">Tu usuario no está vinculado a un técnico</b>Pide a RRHH que vincule tu usuario a tu ficha de personal operativo para ver aquí tus OTs.</div></div></section>`;
+    return;
+  }
+  const datos = modo === 'real' ? REAL : modo === 'ej' ? EJ : [];
+  const cuenta = { late: datos.filter(o => grupoDe(o) === 'late').length, today: datos.filter(o => grupoDe(o) === 'today').length, next: datos.filter(o => grupoDe(o) === 'next').length, run: datos.filter(o => o.e === 'ejecucion').length };
+  const visibles = datos.filter(o => (filtro === 'todas' || (filtro === 'run' ? o.e === 'ejecucion' : grupoDe(o) === filtro)) && (!q || norm([o.n, o.s, o.c, o.l].join(' ')).includes(norm(q))));
+  const chip = (id, label, n) => `<button class="dx-ui-chip dx-misots-chip${id === 'late' && n ? ' is-late' : ''}${filtro === id ? ' is-on' : ''}" data-f="${id}" aria-pressed="${filtro === id}"><b>${n}</b><span>${label}</span></button>`;
+  const grupos = [['late', 'Atrasadas', 'programadas antes de hoy', 'No tienes OTs atrasadas.'], ['today', 'Hoy', 'martes 21/10/2026', 'No tienes OTs programadas para hoy.'], ['next', 'Próximas', 'después de hoy', 'No tienes OTs programadas más adelante.']];
+  let cuerpo;
+  if (!datos.length) cuerpo = `<div class="dx-ui-empty">No tienes OTs programadas ni en ejecución.</div>`;
+  else if (!visibles.length) cuerpo = `<div class="dx-ui-empty">Sin resultados para «${q}». Prueba con el número de OT, el cliente o el lugar.</div>`;
+  else cuerpo = `<div class="dx-ui-head dx-misots-cols"><span>OT · Servicio</span><span>Cliente · Lugar</span><span>Programada</span><span>Estado</span><span>Avance</span><span></span></div>` +
+    grupos.map(([id, t, ayuda, vacio]) => {
+      const items = visibles.filter(o => grupoDe(o) === id);
+      if (!items.length && (q || filtro !== 'todas' || (id === 'late'))) return '';
+      return `<div class="dx-misots-group is-${id}"><i></i>${t} <small>${items.length} · ${ayuda}</small></div>` + (items.length ? items.map(fila).join('') : `<div class="dx-misots-group-empty">${vacio}</div>`);
+    }).join('');
+  app.innerHTML = `<section class="dx-ui dx-misots">${head}
+    <div class="dx-ui-summary" role="group" aria-label="Filtrar por grupo">${chip('late', 'Atrasadas', cuenta.late)}${chip('today', 'Hoy', cuenta.today)}${chip('next', 'Próximas', cuenta.next)}${chip('run', 'En ejecución', cuenta.run)}</div>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>OTs asignadas</h2><span class="dx-ui-count">${visibles.length} de ${datos.length}</span>
+        <label class="dx-ui-search">${I.search}<input id="q" value="${q}" placeholder="Buscar por OT, servicio, cliente o lugar" aria-label="Buscar OTs"></label></div>
+      ${cuerpo}
+    </div>
+  </section>`;
+  app.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filtro = filtro === b.dataset.f ? 'todas' : b.dataset.f; render(); });
+  const inp = app.querySelector('#q'); inp.oninput = e => { q = e.target.value; render(); const n = document.getElementById('q'); n.focus(); n.setSelectionRange(q.length, q.length); };
+}
+const press = (sel, on) => document.querySelectorAll(sel).forEach(b => b.setAttribute('aria-pressed', b === on));
+document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { width = +b.dataset.w; press('[data-w]', b); render(); });
+[['d-real', 'real'], ['d-ej', 'ej'], ['d-vacio', 'vacio'], ['d-perfil', 'perfil']].forEach(([id, m]) => document.getElementById(id).onclick = e => { modo = m; filtro = 'todas'; q = ''; press('#d-real,#d-ej,#d-vacio,#d-perfil', e.target); render(); });
+document.getElementById('dark').onclick = e => { dark = !dark; e.target.setAttribute('aria-pressed', dark); render(); };
+render();
+</script>
+</body>
+</html>

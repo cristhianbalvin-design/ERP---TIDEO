@@ -55,13 +55,15 @@ export async function actualizarOpciones(informeId, opciones) {
   return data;
 }
 
-export async function emitirInformeDiagnostico({ informeId, emisorNombre, emisorCargo }) {
+export async function emitirInformeDiagnostico({ informeId, emisorNombre, emisorCargo, firmaAdjuntoId = null }) {
   if (!informeId) throw new Error('Falta el borrador del informe.');
   if (!String(emisorNombre || '').trim()) throw new Error('El nombre del emisor es obligatorio.');
   const { data, error } = await getSupabaseClient().rpc('emitir_informe_diagnostico', {
     p_id: informeId,
     p_emisor_nombre: String(emisorNombre).trim(),
     p_emisor_cargo: String(emisorCargo || '').trim() || null,
+    // La firma usada queda congelada en el informe emitido.
+    ...(firmaAdjuntoId ? { p_firma_adjunto_id: firmaAdjuntoId } : {}),
   });
   if (error?.code === '42501') throw new Error('No tienes permiso para emitir este informe.');
   if (error?.code === '22023') throw new Error(error.message || 'No se pudo emitir el informe.');

@@ -1,0 +1,31 @@
+/* Pie del cajón ☰ en modo trabajo (notificaciones, modo oscuro y sesión).
+   El cajón tiene fondo navy en claro y oscuro, por eso usa blancos translúcidos. */
+.dx-wdf { --dx-wdf-fg:rgba(255,255,255,.92); --dx-wdf-muted:rgba(255,255,255,.62); --dx-wdf-line:rgba(255,255,255,.14); --dx-wdf-fill:rgba(255,255,255,.07); --dx-wdf-hover:rgba(255,255,255,.13); --dx-wdf-cyan:#00ACC1; --dx-wdf-danger:#FCA5A5;
+  position:sticky; bottom:0; z-index:2; display:flex; flex-direction:column; gap:8px; margin-top:auto; padding:10px 4px max(10px, env(safe-area-inset-bottom)); border-top:1px solid var(--dx-wdf-line); background:inherit; color:var(--dx-wdf-fg); font-family:'DM Sans',sans-serif; }
+.dx-wdf button { font:inherit; cursor:pointer; }
+.dx-wdf button:focus-visible { outline:2px solid var(--dx-wdf-cyan); outline-offset:2px; }
+.dx-wdf svg { width:18px; height:18px; flex:none; }
+.dx-wdf-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.dx-wdf-btn { position:relative; display:flex; align-items:center; gap:6px; min-width:0; min-height:44px; padding:0 8px; border:1px solid var(--dx-wdf-line); border-radius:10px; background:var(--dx-wdf-fill); color:var(--dx-wdf-fg); font-size:12.5px; font-weight:600; text-align:left; }
+/* Si el cajón es muy angosto el texto pasa a dos líneas en vez de cortarse. */
+.dx-wdf-btn span { min-width:0; line-height:1.15; overflow-wrap:anywhere; }
+.dx-wdf-btn:hover, .dx-wdf-btn.is-active { background:var(--dx-wdf-hover); }
+.dx-wdf-badge { position:absolute; top:-7px; right:-5px; min-width:20px; box-shadow:0 0 0 2px var(--navy,#1A2B4A); height:20px; padding:0 6px; border-radius:999px; background:#DC2626; color:#fff; font-size:11px; font-weight:700; line-height:20px; text-align:center; }
+.dx-wdf-user { display:flex; align-items:center; gap:10px; min-width:0; padding:6px 4px 0 6px; }
+.dx-wdf-avatar { flex:none; display:grid; place-items:center; width:36px; height:36px; border-radius:50%; background:var(--dx-wdf-cyan); color:#fff; font:700 12px 'Sora',sans-serif; }
+.dx-wdf-user-text { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.dx-wdf-user-text strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; }
+.dx-wdf-user-text small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dx-wdf-muted); font-size:11px; }
+.dx-wdf-logout { flex:none; display:grid; place-items:center; width:44px; height:44px; border:1px solid var(--dx-wdf-line); border-radius:10px; background:var(--dx-wdf-fill); color:var(--dx-wdf-danger); }
+.dx-wdf-logout:hover { background:var(--dx-wdf-hover); }
+.dx-wdf-notis { display:flex; flex-direction:column; min-height:0; max-height:min(42dvh,360px); border:1px solid var(--dx-wdf-line); border-radius:12px; background:var(--dx-wdf-fill); overflow:hidden; }
+.dx-wdf-notis-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--dx-wdf-line); font-size:13px; }
+.dx-wdf-link { min-height:32px; padding:0 8px; border:0; border-radius:8px; background:transparent; color:#7FE3F0; font-size:12px; font-weight:700; }
+.dx-wdf-notis-list { overflow-y:auto; overscroll-behavior:contain; }
+.dx-wdf-empty { margin:0; padding:16px 12px; color:var(--dx-wdf-muted); font-size:13px; text-align:center; }
+.dx-wdf-noti { display:flex; flex-direction:column; gap:3px; width:100%; min-height:44px; padding:10px 12px; border:0; border-bottom:1px solid var(--dx-wdf-line); background:transparent; color:var(--dx-wdf-fg); text-align:left; }
+.dx-wdf-noti:last-child { border-bottom:0; }
+.dx-wdf-noti.is-unread { background:rgba(0,172,193,.14); box-shadow:inset 3px 0 0 var(--dx-wdf-cyan); }
+.dx-wdf-noti-title { color:var(--dx-wdf-muted); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+.dx-wdf-noti-text { font-size:13px; line-height:1.4; overflow-wrap:anywhere; }
+.dx-wdf-noti-time { color:var(--dx-wdf-muted); font-size:11px; }

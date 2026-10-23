@@ -9,6 +9,7 @@ import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from 
 import { puedeVerPantalla } from './access/roleAccess.js';
 import { DASHBOARDS_ACCESS_ANY_OF } from './dashboardsTabs.js';
 import { useAsistenteErp } from './context/AsistenteErpContext.jsx';
+import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
 
 function IconoAria({ size = 20 }) {
   return <svg width={size} height={size} viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2" /></svg>;
@@ -114,6 +115,7 @@ const SIDEBAR = [
     { key: 'roles', label: 'Roles y Permisos', icon: I.shield },
     { key: 'maestros', label: 'Maestros Base', icon: I.settings, accessAnyOf: ['maestros', 'servicios'] },
     { key: 'parametros', label: 'Parametros Generales', icon: I.settings },
+    { key: 'notificaciones_config', label: 'Notificaciones', icon: I.bell, adminOnly: true },
     { key: 'salud_implementacion_tenant', label: 'Salud Implementacion', icon: I.trend, adminOnly: true },
   ]},
 ];
@@ -370,11 +372,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true');
+  const [costeoWorkMode, setCosteoWorkModeState] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxCosteoWorkMode === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 8, bottom: 'auto', maxHeight: 0 });
   const [busquedaModulo, setBusquedaModulo] = useState('');
-  const effectiveCollapsed = collapsed || isMobileNav || diagnosticoWorkMode;
+  // En el modo trabajo de la Hoja de Costeo la barra lateral es un cajón y se muestra completa.
+  const effectiveCollapsed = costeoWorkMode ? false : collapsed || isMobileNav || diagnosticoWorkMode;
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
@@ -387,6 +391,8 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     const visibleItems = group.items
       .filter(it => it.action === 'openAria'
         ? Boolean(app.authUser && app.empresa?.id)
+        : it.adminOnly
+        ? Boolean(role?.permisos?.todo)
         : it.requiereVerCostos
         ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
         : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
@@ -446,6 +452,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   }, []);
 
   useEffect(() => {
+    const onCosteoWorkMode = event => setCosteoWorkModeState(Boolean(event.detail?.active));
+    window.addEventListener('dx-costeo-work-mode', onCosteoWorkMode);
+    if (document.documentElement?.dataset?.dxCosteoWorkMode === 'true') setCosteoWorkModeState(true);
+    return () => window.removeEventListener('dx-costeo-work-mode', onCosteoWorkMode);
+  }, []);
+
+  useEffect(() => {
     if (!activeGroupKey) return;
     setOpenSections(prev => {
       if (prev.has(activeGroupKey)) return prev;
@@ -498,6 +511,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const handleNav = key => {
     setFlyoutKey(null);
     setBusquedaModulo('');
+    if (document.documentElement?.dataset?.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
     onNav(key);
   };
   const handleItem = item => {
@@ -684,6 +698,26 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
         {collapsed ? I.chevRight : I.chevLeft}
         {!collapsed && !isMobileNav && <span>Colapsar</span>}
       </button>
+      {costeoWorkMode && (
+        // En modo trabajo el header está oculto: sus notificaciones, tema y sesión van al pie del cajón.
+        <WorkDrawerFooter
+          empresaNombre={app.empresa?.nombre || app.empresa?.nombre_comercial || 'Empresa'}
+          email={app.dataMode === 'supabase' ? (app.authUser?.email || '') : (role?.nombre || '')}
+          avatarText={app.dataMode === 'supabase' && app.authUser?.email ? app.authUser.email.slice(0, 2).toUpperCase() : 'LM'}
+          notificaciones={app.notificaciones || []}
+          onMarkRead={app.markNotificacionesRead}
+          onNotificacionClick={n => {
+            app.markNotificacionesRead?.(n.id);
+            if (n.referenceType !== 'personal_documento') return;
+            const payload = n.referencePayload || {};
+            if (document.documentElement?.dataset?.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
+            app.navigate?.(payload.personal_tipo === 'administrativo' ? 'rrhh_admin' : 'rrhh_operativo', { detail: payload.personal_id, tab: 'documentos', docTipo: payload.tipo_documento_id });
+          }}
+          dark={Boolean(app.dark)}
+          onToggleDark={() => app.setDark?.(!app.dark)}
+          onSignOut={app.signOut}
+        />
+      )}
     </aside>
   );
 }

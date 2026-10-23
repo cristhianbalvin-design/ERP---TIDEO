@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
+import { fechaLocalISO } from './fechaLocal.js';
+import {
+  GRUPOS_MIS_OTS, diasDeAtraso, fechaCorta, filtrarMisOTs, grupoMisOT, nombreLugar, resumenMisOTs, textoHorario,
+} from './misOTsLogic.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
+import { useCompactWorkMode } from '../../useCompactWorkMode.js';
 
 const ESTADOS_OT_ASIGNADAS = ['programada', 'ejecucion'];
 
@@ -17,6 +23,7 @@ export default function MisOTsPage({ onNavigate }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [sinPerfilOperativo, setSinPerfilOperativo] = useState(false);
+  useCompactWorkMode(true);
 
   useEffect(() => {
     let vigente = true;
@@ -61,7 +68,7 @@ export default function MisOTsPage({ onNavigate }) {
 
         let consulta = getSupabaseClient()
           .from('ordenes_trabajo')
-          .select('id,numero,descripcion,servicio,estado,avance_pct,fecha_programada,sociedad_id')
+          .select('id,numero,descripcion,servicio,estado,avance_pct,fecha_programada,sociedad_id,cuenta_id,direccion_ejecucion,hora_inicio_estimada,hora_fin_estimada')
           .eq('empresa_id', sesionOperativa.empresaId)
           .eq('tecnico_responsable_id', perfil.id)
           .in('estado', ESTADOS_OT_ASIGNADAS)
@@ -81,9 +88,28 @@ export default function MisOTsPage({ onNavigate }) {
         const { data, error: otsError } = await consulta;
         if (otsError) throw otsError;
 
+        // Nombres legibles de cliente y lugar (el lugar puede ser un id de sede).
+        const filas = data || [];
+        const idsCuenta = [...new Set(filas.map(ot => ot.cuenta_id).filter(Boolean))];
+        const idsSede = [...new Set(filas.map(ot => ot.direccion_ejecucion).filter(id => typeof id === 'string' && id.startsWith('sed_')))];
+        const [cuentasR, sedesR] = await Promise.all([
+          idsCuenta.length
+            ? getSupabaseClient().from('cuentas').select('id,nombre_comercial,razon_social').eq('empresa_id', sesionOperativa.empresaId).in('id', idsCuenta)
+            : Promise.resolve({ data: [], error: null }),
+          idsSede.length
+            ? getSupabaseClient().from('sedes').select('id,nombre').eq('empresa_id', sesionOperativa.empresaId).in('id', idsSede)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        const cuentasPorId = Object.fromEntries((cuentasR.data || []).map(c => [c.id, c]));
+        const sedesPorId = Object.fromEntries((sedesR.data || []).map(sd => [sd.id, sd]));
+
         if (vigente) {
           setTecnico(perfil);
-          setOts(data || []);
+          setOts(filas.map(ot => ({
+            ...ot,
+            clienteNombre: cuentasPorId[ot.cuenta_id]?.nombre_comercial || cuentasPorId[ot.cuenta_id]?.razon_social || 'Sin cliente',
+            lugarNombre: nombreLugar(ot.direccion_ejecucion, sedesPorId),
+          })));
         }
       } catch (cargaError) {
         if (vigente) {
@@ -110,76 +136,122 @@ export default function MisOTsPage({ onNavigate }) {
 
   const puedeRegistrarParte = sesionOperativa.permiteEscritura;
   const sesionNoDisponible = !sesionOperativa.cargando && sesionOperativa.estado !== 'listo';
+  const [filtro, setFiltro] = useState('todas');
+  const [consulta, setConsulta] = useState('');
+  const hoyISO = fechaLocalISO();
+  const resumen = useMemo(() => resumenMisOTs(ots, hoyISO), [ots, hoyISO]);
+  const visibles = useMemo(() => filtrarMisOTs(ots, { filtro, consulta }, hoyISO), [ots, filtro, consulta, hoyISO]);
+  const hoyLargo = new Date(`${hoyISO}T00:00:00`).toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const registrar = ot => onNavigate('taller', ot ? { ot: ot.id } : undefined);
+  const tituloPermiso = puedeRegistrarParte ? undefined : 'No tienes permiso de escritura en Operaciones';
+  const listo = !cargando && !sesionNoDisponible && !error && !sinPerfilOperativo;
 
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <div className="breadcrumb">Operaciones <span>/</span> Mis OTs del día</div>
-          <h1>Mis OTs del día</h1>
-          <p>{tecnico?.nombre || 'Órdenes de trabajo asignadas al técnico de la sesión actual.'}</p>
+  const chip = (id, etiqueta, valor) => (
+    <button
+      type="button"
+      className={`dx-ui-chip dx-misots-chip${id === 'atrasadas' && valor ? ' is-late' : ''}${filtro === id ? ' is-on' : ''}`}
+      aria-pressed={filtro === id}
+      onClick={() => setFiltro(actual => (actual === id ? 'todas' : id))}
+    >
+      <b>{valor}</b><span>{etiqueta}</span>
+    </button>
+  );
+
+  const fila = ot => {
+    const grupo = grupoMisOT(ot.fecha_programada, hoyISO);
+    const enEjecucion = ot.estado === 'ejecucion';
+    const servicio = ot.servicio || ot.descripcion || 'Sin descripción';
+    const avance = Math.max(0, Math.min(100, Number(ot.avance_pct || 0)));
+    const horario = textoHorario(ot.hora_inicio_estimada, ot.hora_fin_estimada);
+    return (
+      <div key={ot.id} className="dx-ui-row dx-misots-cols">
+        <div className="dx-misots-ot">
+          <span className={`dx-ui-icon ${enEjecucion ? 'is-violet' : 'is-cyan'}`} aria-hidden="true"><Icon name="workshop" size={17} /></span>
+          <div><b>{ot.numero || ot.id}</b><span title={servicio}>{servicio}</span></div>
         </div>
-        <div className="page-header-actions">
-          <button className="btn btn-secondary" onClick={() => onNavigate('taller')}>
-            <Icon name="report" size={15} /> Registrar parte sin OT preseleccionada
+        <div className="dx-misots-who"><b title={ot.clienteNombre}>{ot.clienteNombre}</b><span title={ot.lugarNombre}>{ot.lugarNombre}</span></div>
+        {grupo === 'atrasadas' ? (
+          <div className="dx-misots-when is-late"><span>{fechaCorta(ot.fecha_programada)}</span><small>Vencida hace {diasDeAtraso(ot.fecha_programada, hoyISO)} {diasDeAtraso(ot.fecha_programada, hoyISO) === 1 ? 'día' : 'días'}</small></div>
+        ) : (
+          <div className="dx-misots-when"><span>{grupo === 'hoy' ? 'Hoy' : fechaCorta(ot.fecha_programada)}</span><small>{horario}</small></div>
+        )}
+        <div className="dx-misots-state"><span className={`dx-ui-pill ${enEjecucion ? 'is-amber' : 'is-cyan'}`}><i />{etiquetaEstado(ot.estado)}</span></div>
+        <div className="dx-misots-progress" aria-label={`Avance ${avance}%`}><div className="dx-misots-bar"><i style={{ width: `${avance}%` }} /></div><span>{avance}%</span></div>
+        <div className="dx-misots-act">
+          <button type="button" className="dx-btn primary" disabled={!puedeRegistrarParte} title={tituloPermiso} aria-label={`Registrar parte de ${ot.numero || ot.id}`} onClick={() => registrar(ot)}>
+            <Icon name="report" size={15} />Registrar parte
           </button>
         </div>
       </div>
+    );
+  };
 
-      <div className="content-grid one-col">
-        {tecnico && (
-          <div className="card" style={{ padding: '14px 18px', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div><span className="eyebrow">Técnico</span><strong>{tecnico.nombre}</strong></div>
-            {tecnico.especialidad && <div><span className="eyebrow">Especialidad</span><span>{tecnico.especialidad}</span></div>}
-            {tecnico.supervisor && <div><span className="eyebrow">Supervisor</span><span>{tecnico.supervisor}</span></div>}
+  let cuerpo;
+  if (cargando) cuerpo = <div className="dx-ui-empty" role="status">Cargando tus OTs asignadas…</div>;
+  else if (sesionNoDisponible) cuerpo = <div className="dx-ui-empty">Inicia sesión operativa para consultar tus OTs asignadas.</div>;
+  else if (error) cuerpo = <div className="dx-ui-empty dx-misots-error" role="alert">{error}</div>;
+  else if (sinPerfilOperativo) cuerpo = <div className="dx-ui-empty"><b className="dx-misots-empty-title">Tu usuario no está vinculado a un técnico</b>Pide a RRHH que vincule tu usuario a tu ficha de personal operativo para ver aquí tus OTs.</div>;
+  else if (!ots.length) cuerpo = <div className="dx-ui-empty">No tienes OTs programadas ni en ejecución.</div>;
+  else if (!visibles.length) cuerpo = <div className="dx-ui-empty">{consulta ? `Sin resultados para «${consulta}». Prueba con el número de OT, el cliente o el lugar.` : 'No hay OTs en este grupo.'}</div>;
+  else {
+    const filtrando = filtro !== 'todas' || Boolean(consulta.trim());
+    cuerpo = (
+      <>
+        <div className="dx-ui-head dx-misots-cols" aria-hidden="true"><span>OT · Servicio</span><span>Cliente · Lugar</span><span>Programada</span><span>Estado</span><span>Avance</span><span /></div>
+        {GRUPOS_MIS_OTS.map(grupo => {
+          const items = visibles.filter(ot => grupoMisOT(ot.fecha_programada, hoyISO) === grupo.id);
+          // Atrasadas solo aparece si hay; al filtrar o buscar se ocultan los grupos vacíos.
+          if (!items.length && (filtrando || grupo.id === 'atrasadas')) return null;
+          return (
+            <section key={grupo.id} aria-label={grupo.titulo}>
+              <div className={`dx-misots-group is-${grupo.id}`}><i aria-hidden="true" />{grupo.titulo}<small>{items.length} · {grupo.id === 'hoy' ? hoyLargo : grupo.ayuda}</small></div>
+              {items.length ? items.map(fila) : <div className="dx-misots-group-empty">{grupo.vacio}</div>}
+            </section>
+          );
+        })}
+      </>
+    );
+  }
+
+  return (
+    <section className="dx-ui dx-misots">
+      <header className="dx-ui-head-page">
+        <WorkMenuButton />
+        <div>
+          <div className="dx-ui-eyebrow">Operaciones · Campo</div>
+          <h1 className="dx-ui-title">Mis OTs</h1>
+          <p className="dx-ui-sub">{tecnico ? [tecnico.nombre, tecnico.especialidad].filter(Boolean).join(' · ') : 'Órdenes de trabajo asignadas al técnico de la sesión.'}</p>
+        </div>
+        <div className="dx-ui-actions">
+          <button type="button" className="dx-btn" disabled={!puedeRegistrarParte} title={tituloPermiso} onClick={() => registrar(null)}>
+            <Icon name="report" size={15} />Registrar parte sin OT
+          </button>
+        </div>
+      </header>
+
+      {listo && ots.length > 0 && (
+        <div className="dx-ui-summary" role="group" aria-label="Filtrar por grupo">
+          {chip('atrasadas', 'Atrasadas', resumen.atrasadas)}
+          {chip('hoy', 'Hoy', resumen.hoy)}
+          {chip('proximas', 'Próximas', resumen.proximas)}
+          {chip('ejecucion', 'En ejecución', resumen.ejecucion)}
+        </div>
+      )}
+
+      <div className="dx-ui-card">
+        {listo && ots.length > 0 && (
+          <div className="dx-ui-toolbar">
+            <h2>OTs asignadas</h2>
+            <span className="dx-ui-count">{visibles.length} de {ots.length}</span>
+            <label className="dx-ui-search">
+              <Icon name="search" size={16} />
+              <input type="search" value={consulta} onChange={event => setConsulta(event.target.value)} placeholder="Buscar por OT, servicio, cliente o lugar" aria-label="Buscar OTs" />
+            </label>
           </div>
         )}
-
-        <div className="card">
-          <div className="card-header">
-            <div><h2>OTs asignadas</h2><span>{ots.length} activas</span></div>
-          </div>
-
-          {cargando && <div className="empty-state">Cargando tus OTs asignadas…</div>}
-          {!cargando && sesionNoDisponible && <div className="empty-state">Inicia sesión operativa para consultar tus OTs asignadas.</div>}
-          {!cargando && !sesionNoDisponible && error && <div className="empty-state danger">{error}</div>}
-          {!cargando && !sesionNoDisponible && !error && sinPerfilOperativo && (
-            <div className="empty-state">No se encontró un perfil de personal operativo vinculado a tu sesión.</div>
-          )}
-          {!cargando && !sesionNoDisponible && !error && !sinPerfilOperativo && ots.length === 0 && (
-            <div className="empty-state">No tienes OTs asignadas para hoy.</div>
-          )}
-          {!cargando && !error && !sinPerfilOperativo && ots.length > 0 && (
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>OT</th><th>Servicio</th><th>Estado</th><th>Avance</th><th>Programada</th><th /></tr></thead>
-                <tbody>
-                  {ots.map(ot => (
-                    <tr key={ot.id}>
-                      <td><strong>{ot.numero || ot.id}</strong></td>
-                      <td>{ot.servicio || ot.descripcion || 'Sin descripción'}</td>
-                      <td><span className={`badge ${ot.estado === 'ejecucion' ? 'cyan' : 'slate'}`}>{etiquetaEstado(ot.estado)}</span></td>
-                      <td>{Number(ot.avance_pct || 0)}%</td>
-                      <td>{ot.fecha_programada ? new Date(`${ot.fecha_programada}T00:00:00`).toLocaleDateString('es-PE') : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          disabled={!puedeRegistrarParte}
-                          title={puedeRegistrarParte ? 'Registrar parte para esta OT' : 'No tienes permiso de escritura en Operaciones'}
-                          onClick={() => onNavigate('taller', { ot: ot.id })}
-                        >
-                          <Icon name="report" size={14} /> Registrar parte
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {cuerpo}
       </div>
       <FooterBrand />
-    </>
+    </section>
   );
 }

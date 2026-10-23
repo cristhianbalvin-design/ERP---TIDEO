@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
+import RenovacionFirmaDigitalModal from './components/RenovacionFirmaDigitalModal.jsx';
+import FirmantesContratoModal from './components/FirmantesContratoModal.jsx';
+import FirmaEmpleadorModal from './components/FirmaEmpleadorModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
@@ -36,9 +39,10 @@ import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { contratoFirmaService } from './contratoFirmaService.js';
 import { CATEGORIA_FIRMA_RUBRICA, obtenerFirmaParaDocumento } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
-import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral, seleccionarContratoPorFecha, seleccionarProximoContrato, tieneRenovacionAprobadaContigua } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { getEquiposClientesConHistorial } from './services/activosService.js';
@@ -73,6 +77,7 @@ import {
   sanitizeRuc,
 } from './lib/formValidators.js';
 import * as XLSX from 'xlsx';
+import { CATEGORIAS_TIPO_DOCUMENTO, normalizarCategoriaTipoDocumento, sugerirCategoriaTipoDocumento } from './services/tiposDocumentoService.js';
 import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster, ajusteAprobadoPosteriorASnapshot, recalcularSnapshotRosterDirigido, esAusenciaAutorizadaRoster } from './services/rosterMineroService.js';
 import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUnidadMineraAsignacion } from './services/unidadMineraService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
@@ -83,6 +88,10 @@ import { RutasPanel } from './components/RutasPanel.jsx';
 import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.jsx';
 import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
 import './compras_gastos.css';
+import './personal_operativo.css';
+import './cuentas_listado.css';
+import './ficha_personal.css';
+import { FichaHeader, FichaTabs, FichaCard, FichaDL, FichaKV, FichaAlert, FichaStats, FichaEmpty, FichaTable, FichaMenu, FichaDocRow, FichaHabilitacion, FichaModalHead, FichaPill, fichaTonoDeBadge, fichaIniciales } from './components/FichaPersonalKit.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -170,9 +179,10 @@ const habTooltip = (req) => {
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
+  const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones, industrias } = useApp();
   const esPersonaNatural = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_DNI;
   const etiquetaDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : esPersonaNatural(tipoDocumento) ? 'DNI' : 'RUC';
+  const tieneResponsable = valor => !['', 'sin asignar', 'por asignar'].includes(String(valor || '').trim().toLowerCase());
   const placeholderDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
     ? 'Identificador fiscal extranjero'
     : esPersonaNatural(tipoDocumento) ? '12345678' : '20xxxxxxxxx';
@@ -216,6 +226,10 @@ function Cuentas() {
   const [filtroIndustria, setFiltroIndustria] = useState('');
   const [filtroResponsable, setFiltroResponsable] = useState('');
   const [filtroCondiciones, setFiltroCondiciones] = useState('');
+  const [filtroKpi, setFiltroKpi] = useState('');
+  const [consejoLeadsVisible, setConsejoLeadsVisible] = useState(() => { try { return localStorage.getItem('dx-cta-consejo-leads-cerrado') !== '1'; } catch { return true; } });
+  const [menuCuentaAbierto, setMenuCuentaAbierto] = useState(false);
+  const menuCuentaRef = useRef(null);
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const fileInputCuentasRef = useRef(null);
   const [importCuentasRows, setImportCuentasRows] = useState(null);
@@ -250,6 +264,22 @@ function Cuentas() {
   const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
   const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
   const cuentasPorId = useMemo(() => new Map((cuentas || []).map(cuenta => [cuenta.id, cuenta])), [cuentas]);
+
+  useEffect(() => {
+    if (!menuCuentaAbierto) return undefined;
+    const cerrarFuera = event => {
+      if (!menuCuentaRef.current?.contains(event.target)) setMenuCuentaAbierto(false);
+    };
+    const cerrarEscape = event => {
+      if (event.key === 'Escape') setMenuCuentaAbierto(false);
+    };
+    document.addEventListener('mousedown', cerrarFuera);
+    document.addEventListener('keydown', cerrarEscape);
+    return () => {
+      document.removeEventListener('mousedown', cerrarFuera);
+      document.removeEventListener('keydown', cerrarEscape);
+    };
+  }, [menuCuentaAbierto]);
 
   useEffect(() => {
     let active = true;
@@ -383,7 +413,7 @@ function Cuentas() {
   const cuentaHealthBase = sel ? [
     sel.ruc ? 15 : 0,
     contactoPrincipal ? 20 : 0,
-    sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 15 : 0,
+    tieneResponsable(sel.responsable_comercial) ? 15 : 0,
     sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 15 : 0,
     Number(sel.saldo_cxc || 0) <= 0 && Number(sel.dias_mora || 0) <= 0 ? 15 : 0,
     tlEventos.length > 0 ? 10 : 0,
@@ -397,7 +427,7 @@ function Cuentas() {
   const cuentaHealthCriterios = sel ? [
     { ok: Boolean(sel.ruc), label: sel.ruc ? `${etiquetaDocumento(sel.tipo_documento)} registrado` : `${etiquetaDocumento(sel.tipo_documento)} pendiente` },
     { ok: Boolean(contactoPrincipal), label: contactoPrincipal ? 'Contacto principal asignado' : 'Sin contacto principal' },
-    { ok: Boolean(sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar'), label: sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 'Responsable comercial asignado' : 'Responsable comercial pendiente' },
+    { ok: tieneResponsable(sel.responsable_comercial), label: tieneResponsable(sel.responsable_comercial) ? 'Responsable comercial asignado' : 'Responsable comercial pendiente' },
     { ok: Boolean(sel.condicion_pago && sel.condicion_pago !== 'Por definir'), label: sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 'Condiciones comerciales definidas' : 'Condiciones comerciales pendientes' },
     { ok: Number(sel.saldo_cxc || 0) <= 0 && Number(sel.dias_mora || 0) <= 0, label: Number(sel.dias_mora || 0) > 0 ? 'CxC con mora' : 'CxC sin mora' },
     { ok: tlEventos.length > 0, label: tlEventos.length > 0 ? 'Actividad registrada' : 'Sin actividad reciente' },
@@ -660,8 +690,8 @@ function Cuentas() {
 
 
   const canVerEquipo = role?.permisos?.ver_agenda_equipo || role?.permisos?.todo;
-  const industriasDisponibles = [...new Set(cuentas.map(c => c.industria).filter(Boolean).filter(i => i !== 'Por definir'))].sort();
-  const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(Boolean).filter(r => r !== 'Sin asignar'))].sort();
+  const industriasDisponibles = [...new Set([...(industrias || []).map(i => i.nombre), ...cuentas.map(c => c.industria)].filter(Boolean).filter(i => i !== 'Por definir'))].sort();
+  const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(tieneResponsable))].sort();
   const primerContactoPorCuenta = useMemo(() => {
     const contactosPorCuenta = {};
     for (const contacto of contactos) {
@@ -677,155 +707,136 @@ function Cuentas() {
   }, [contactos]);
 
   const cuentasBase = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
+  const cxcPorCuentaMoneda = useMemo(() => {
+    const mapa = new Map();
+    const facturasPorId = new Map((facturas || []).map(factura => [factura.id, factura]));
+    (cxc || []).forEach(item => {
+      const saldo = Number(item.saldo ?? item.monto_pendiente ?? (Number(item.monto_total ?? item.total ?? 0) - Number(item.monto_pagado || 0)));
+      if (!item.cuenta_id || saldo <= 0 || ['anulada','cancelada','cobrada','pagada'].includes(String(item.estado || '').toLowerCase())) return;
+      const moneda = String(item.moneda || facturasPorId.get(item.factura_id)?.moneda || 'PEN').toUpperCase();
+      const key = `${item.cuenta_id}:${moneda}`;
+      mapa.set(key, (mapa.get(key) || 0) + saldo);
+    });
+    return mapa;
+  }, [cxc, facturas]);
+  const ultimaCompraPorCuenta = useMemo(() => {
+    const mapa = new Map();
+    const noValidas = ['anulada','anulado','borrador','nota_credito','nota_debito','nota de crédito','nota de débito'];
+    (facturas || []).forEach(f => {
+      const estado = String(f.estado || '').toLowerCase();
+      const tipo = String(f.tipo_documento || '').toLowerCase();
+      if (!f.cuenta_id || noValidas.includes(estado) || noValidas.includes(tipo) || tipo.includes('nota_credito') || tipo.includes('nota_debito')) return;
+      const fecha = String(f.fecha_emision || '').slice(0, 10);
+      if (fecha && (!mapa.has(f.cuenta_id) || fecha > mapa.get(f.cuenta_id))) mapa.set(f.cuenta_id, fecha);
+    });
+    return mapa;
+  }, [facturas]);
+  const saldoCuentaMonedas = cuenta => [...cxcPorCuentaMoneda.entries()].filter(([key]) => key.startsWith(`${cuenta.id}:`));
+  const simboloMonedaCuenta = moneda => String(moneda || 'PEN').toUpperCase() === 'USD' ? 'US$' : String(moneda || 'PEN').toUpperCase() === 'EUR' ? '€' : String(moneda || 'PEN').toUpperCase() === 'PEN' ? 'S/' : moneda;
+  const saldoPendienteMonedas = cuentasBase.reduce((totales, cuenta) => {
+    saldoCuentaMonedas(cuenta).forEach(([key, saldo]) => { const moneda = key.split(':').pop(); totales.set(moneda, (totales.get(moneda) || 0) + saldo); });
+    return totales;
+  }, new Map());
+  const notaSaldoPendiente = [...saldoPendienteMonedas.entries()].map(([moneda, saldo]) => moneyD(saldo, simboloMonedaCuenta(moneda))).join(' · ') || moneyD(0);
+  const saldoFicha = cuenta => saldoCuentaMonedas(cuenta).map(([key, saldo]) => moneyD(saldo, simboloMonedaCuenta(key.split(':').pop()))).join(' \u00b7 ') || 'S/ 0.00';
+  const formatoFechaCompra = fecha => {
+    const match = String(fecha || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return fecha || '\u2014';
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${Number(match[3])} ${meses[Number(match[2]) - 1]} ${match[1]}`;
+  };
+  const completitudCuenta = cuenta => {
+    const principal = primerContactoPorCuenta[cuenta.id];
+    const campos = [
+      ['documento', Boolean(String(cuenta.ruc || '').trim())],
+      ['contacto principal', Boolean(principal?.nombre || principal?.email || principal?.telefono)],
+      ['responsable', tieneResponsable(cuenta.responsable_comercial)],
+      ['industria', Boolean(cuenta.industria && cuenta.industria !== 'Por definir')],
+      ['condiciones de pago', Boolean(cuenta.condicion_pago && cuenta.condicion_pago !== 'Por definir')],
+    ];
+    return { count: campos.filter(([, ok]) => ok).length, missing: campos.filter(([, ok]) => !ok).map(([name]) => name) };
+  };
+  const tieneDatosEsencialesIncompletos = cuenta => {
+    const contacto = primerContactoPorCuenta[cuenta.id];
+    return !(contacto?.nombre || contacto?.email || contacto?.telefono)
+      || !tieneResponsable(cuenta.responsable_comercial)
+      || !cuenta.industria || cuenta.industria === 'Por definir';
+  };
   const cuentasFiltradas = cuentasBase.filter(c => {
     const txt = filtroTexto.trim().toLowerCase();
-    if (txt && ![ c.nombre_comercial, c.razon_social, c.ruc ].some(v => (v||'').toLowerCase().includes(txt))) return false;
+    const cp = primerContactoPorCuenta[c.id];
+    if (txt && ![ c.nombre_comercial, c.razon_social, c.ruc, cp?.nombre, cp?.email ].some(v => String(v || '').toLowerCase().includes(txt))) return false;
     if (filtroTipo && c.tipo !== filtroTipo) return false;
     if (filtroIndustria && c.industria !== filtroIndustria) return false;
     if (filtroResponsable && c.responsable_comercial !== filtroResponsable) return false;
     if (filtroCondiciones === 'completas' && (!c.condicion_pago || c.condicion_pago === 'Por definir')) return false;
     if (filtroCondiciones === 'pendientes' && c.condicion_pago && c.condicion_pago !== 'Por definir') return false;
+    if (filtroKpi === 'clientes' && c.tipo !== 'cliente') return false;
+    if (filtroKpi === 'cxc' && !saldoCuentaMonedas(c).length) return false;
+    if (filtroKpi === 'incompletos' && !tieneDatosEsencialesIncompletos(c)) return false;
     return true;
   });
-  const hayFiltros = filtroTexto || filtroTipo || filtroIndustria || filtroResponsable || filtroCondiciones;
+  const hayFiltros = filtroTexto || filtroTipo || filtroIndustria || filtroResponsable || filtroCondiciones || filtroKpi;
+  const abrirFichaCuenta = cuenta => { setSel({ ...cuenta, logo_url: getCuentaLogo(cuenta) }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); setMenuCuentaAbierto(false); };
+  const limpiarFiltrosListado = () => { setFiltroTexto(''); setFiltroTipo(''); setFiltroIndustria(''); setFiltroResponsable(''); setFiltroCondiciones(''); setFiltroKpi(''); };
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Cuentas y Contactos</h1>
-          <div className="page-sub">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length} cuentas` : `${cuentasBase.length} cuentas activas`}</div>
-        </div>
-        <div className="row" style={{gap:10, alignItems:'center'}}>
-          <input type="file" ref={fileInputCuentasRef} accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFileUploadCuentas}/>
-          <button className="btn btn-secondary" onClick={descargarPlantillaCuentas}>{I.download} Descargar plantilla</button>
-          <button className="btn btn-secondary" onClick={() => fileInputCuentasRef.current?.click()}>{I.download} Importar plantilla</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
-        </div>
-      </div>
-      <div style={{marginBottom:16, padding:'12px 16px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:8, fontSize:13}}>
-        <strong>Recomendación: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el módulo de Leads. Esto pre-completa la cuenta con el RUC, razón social e industria del prospecto.</span>
-        <button className="btn btn-ghost btn-sm" style={{marginLeft:12}} onClick={()=>navigate('leads')}>Ir a Leads</button>
-      </div>
-
-      {/* ── Barra de filtros ── */}
-      <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:16, alignItems:'center'}}>
-        <input
-          className="input"
-          style={{height:34, width:220, fontSize:13}}
-          placeholder="Buscar por nombre, razón social o RUC..."
-          value={filtroTexto}
-          onChange={e => setFiltroTexto(e.target.value)}
-        />
-        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-          <option value="">Todos los tipos</option>
-          <option value="cliente">Cliente</option>
-          <option value="prospecto">Prospecto</option>
-          <option value="partner">Partner</option>
-          <option value="proveedor_estrategico">Proveedor estratégico</option>
-        </select>
-        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroIndustria} onChange={e => setFiltroIndustria(e.target.value)}>
-          <option value="">Todas las industrias</option>
-          {industriasDisponibles.map(i => <option key={i} value={i}>{i}</option>)}
-        </select>
-        {canVerEquipo && (
-          <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:160}} value={filtroResponsable} onChange={e => setFiltroResponsable(e.target.value)}>
-            <option value="">Todos los responsables</option>
-            {responsablesDisponibles.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        )}
-        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:180}} value={filtroCondiciones} onChange={e => setFiltroCondiciones(e.target.value)}>
-          <option value="">Estado de condiciones</option>
-          <option value="completas">Condiciones completas</option>
-          <option value="pendientes">Condiciones pendientes</option>
-        </select>
-        {hayFiltros && (
-          <button className="btn btn-ghost btn-sm" onClick={() => { setFiltroTexto(''); setFiltroTipo(''); setFiltroIndustria(''); setFiltroResponsable(''); setFiltroCondiciones(''); }}>
-            Limpiar filtros
-          </button>
-        )}
-      </div>
-
-      <div className="account-gallery">
-        {cuentasFiltradas.length === 0 && (
-          <div style={{gridColumn:'1/-1', padding:'32px 16px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
-            No hay cuentas que coincidan con los filtros aplicados.
+      <div className="dx-cta">
+        <div className="dx-cta-in">
+          <div className="dx-cta-top">
+            <div><div className="dx-cta-eyebrow">Comercial · CRM</div><h1 className="dx-cta-title">Cuentas y Contactos</h1><p className="dx-cta-sub">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length} cuentas` : `${cuentasBase.length} cuentas activas`}</p></div>
+            <div className="dx-cta-actions">
+              <input type="file" ref={fileInputCuentasRef} accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFileUploadCuentas}/>
+              <button className="dx-cta-btn" onClick={descargarPlantillaCuentas}>{I.download}<span className="lbl-long">Descargar plantilla</span><span className="lbl-short">Plantilla</span></button>
+              <button className="dx-cta-btn" onClick={() => fileInputCuentasRef.current?.click()}>{I.upload}<span className="lbl-long">Importar Excel</span><span className="lbl-short">Importar</span></button>
+              <button className="dx-cta-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
+            </div>
           </div>
-        )}
-        {cuentasFiltradas.map(c => {
-          const logoUrl = getCuentaLogo(c);
-          const primerContacto = primerContactoPorCuenta[c.id];
-          return (
-            <article key={c.id} className="account-card" onClick={() => { setSel({ ...c, logo_url: logoUrl }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); }}>
-              <div className="account-logo-wrap">
-                {logoUrl ? (
-                  <img className="account-logo" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`} />
-                ) : (
-                  <div className="account-logo-empty">
-                    <div className="account-logo-initials">{getInitials(c.razon_social || c.nombre_comercial)}</div>
-                    <span>Subir logotipo</span>
-                  </div>
-                )}
-                <label className="account-logo-upload" onClick={(e) => e.stopPropagation()}>
-                  {logoUploading === c.id ? 'Subiendo...' : logoUrl ? 'Cambiar logo' : 'Subir logo'}
-                  <input type="file" accept="image/*" disabled={logoUploading === c.id} onChange={(e) => handleLogoUpload(c, e.target.files?.[0])} />
-                </label>
-              </div>
-              <div className="account-card-body">
-                <div>
-                  <h2 className="account-title">{c.razon_social || c.nombre_comercial}</h2>
-                  <div className="text-muted" style={{fontSize:12, marginTop:4}}>{c.ruc || `${etiquetaDocumento(c.tipo_documento)} pendiente`}</div>
-                </div>
-                <div className="account-meta">
-                  <div><span>Tipo</span><strong className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</strong></div>
-                  <div><span>Industria</span><strong>{c.industria || 'Por definir'}</strong></div>
-                  <div><span>Responsable</span><strong>{c.responsable_comercial || 'Sin asignar'}</strong></div>
-                  <div><span>Última compra</span><strong>{c.fecha_ultima_compra || '—'}</strong></div>
-                </div>
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
-                  {!primerContacto ? (
-                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', minHeight: 42 }}>Sin contacto registrado</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 42, justifyContent: 'center' }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg)' }}>
-                        <span style={{ width: 14, height: 14, color: 'var(--fg-muted)', display: 'inline-flex' }}>{I.userCheck}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.nombre}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, overflow: 'hidden' }}>
-                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} title={primerContacto.telefono}>
-                          <span style={{ width: 12, height: 12, display: 'inline-flex' }}>{I.phone}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.telefono || 'Sin teléfono'}</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }} title={primerContacto.email}>
-                          <span style={{ width: 12, height: 12, display: 'inline-flex' }}>{I.send}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.email || 'Sin correo'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="account-footer">
-                  <div className="row" style={{gap:8}}>
-                    <span className={'health-dot health-'+getHealthColor(c.health_score)}/>
-                    <span className="text-muted">Health {c.health_score || 'N/A'}</span>
-                  </div>
-                  <div className="row" style={{gap:8, alignItems:'center'}}>
-                    <strong style={{fontSize:11}}>{c.saldo_cxc > 0 ? money(c.saldo_cxc) : 'Sin CxC'}</strong>
-                    <div className="row" style={{gap:2}} onClick={e => e.stopPropagation()}>
-                      <button type="button" className="icon-btn" title="Editar cuenta"
-                        style={{width:26, height:26, color:'var(--fg-muted)', borderRadius:6}}
-                        onClick={e => { e.stopPropagation(); setEditingCuenta(c); setEditCuentaForm({ razon_social:c.razon_social||'', nombre_comercial:c.nombre_comercial||'', ruc:c.ruc||'', tipo_documento:c.tipo_documento||TIPO_DOCUMENTO_RUC, industria:c.industria||'', tipo:c.tipo||'prospecto', responsable_comercial:c.responsable_comercial||'' }); }}>
-                        {I.edit}
-                      </button>
-                      <button type="button" className="icon-btn" title="Eliminar cuenta"
-                        style={{width:26, height:26, color:'var(--danger)', borderRadius:6}}
-                        onClick={e => { e.stopPropagation(); setDeleteCuentaError(''); setConfirmDelCuenta(c); }}>
-                        {I.trash}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+          {consejoLeadsVisible && <div className="dx-cta-tip"><span className="dx-cta-tip-ico">{I.alert}</span><p><strong>Consejo:</strong> registra primero un Lead y conviértelo; la cuenta se crea con RUC, razón social e industria ya completos.</p><button className="dx-cta-link" onClick={() => navigate('leads')}>Ir a Leads</button><button className="dx-cta-x" aria-label="Cerrar consejo" onClick={() => { setConsejoLeadsVisible(false); try { localStorage.setItem('dx-cta-consejo-leads-cerrado', '1'); } catch {} }}>{I.x}</button></div>}
+          <div className="dx-cta-kpis">
+            {[
+              { id:'total', label:'Cuentas', value:cuentasBase.length, note:'Activas en la empresa', icon:I.users, tone:'cyan' },
+              { id:'clientes', label:'Clientes', value:cuentasBase.filter(c => c.tipo === 'cliente').length, note:`${cuentasBase.filter(c => c.tipo === 'prospecto').length} prospectos`, icon:I.check, tone:'green' },
+              { id:'cxc', label:'Con CxC pendiente', value:cuentasBase.filter(c => saldoCuentaMonedas(c).length).length, note:`Saldo pendiente: ${notaSaldoPendiente}`, icon:I.dollar, tone:'blue' },
+              { id:'incompletos', label:'Datos incompletos', value:cuentasBase.filter(tieneDatosEsencialesIncompletos).length, note:'Sin contacto, responsable o industria', icon:I.alert, tone:'amber' },
+            ].map(kpi => <button key={kpi.id} className={`dx-cta-kpi${(kpi.id === 'total' ? !filtroKpi : filtroKpi === kpi.id) ? ' is-on' : ''}${kpi.id === 'incompletos' && kpi.value > 0 ? ' is-alert' : ''}`} onClick={() => setFiltroKpi(actual => kpi.id === 'total' || actual === kpi.id ? '' : kpi.id)} aria-pressed={kpi.id === 'total' ? !filtroKpi : filtroKpi === kpi.id}>
+              <span className="dx-cta-kpi-top">{kpi.label}<i className={`dx-cta-ico is-${kpi.tone}`}>{kpi.icon}</i></span><strong className="dx-cta-kpi-val">{kpi.value}</strong><span className="dx-cta-kpi-note">{kpi.note}</span>
+            </button>)}
+          </div>
+          <section className="dx-cta-card">
+            <div className="dx-cta-bar"><h2 className="dx-cta-bar-title">Cuentas<span className="dx-cta-count">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length}` : cuentasBase.length}</span></h2><label className="dx-cta-search">{I.search}<input aria-label="Buscar cuentas" placeholder="Buscar por razón social, RUC o contacto" value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)}/></label></div>
+            <div className="dx-cta-filters">
+              <select className="dx-cta-select" aria-label="Tipo" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}><option value="">Todos los tipos</option><option value="cliente">Cliente</option><option value="prospecto">Prospecto</option><option value="partner">Partner</option><option value="proveedor_estrategico">Proveedor estratégico</option></select>
+              <select className="dx-cta-select" aria-label="Industria" value={filtroIndustria} onChange={e => setFiltroIndustria(e.target.value)}><option value="">Todas las industrias</option>{industriasDisponibles.map(i => <option key={i} value={i}>{i}</option>)}</select>
+              {canVerEquipo && <select className="dx-cta-select" aria-label="Responsable" value={filtroResponsable} onChange={e => setFiltroResponsable(e.target.value)}><option value="">Todos los responsables</option>{responsablesDisponibles.map(r => <option key={r} value={r}>{r}</option>)}</select>}
+              <select className="dx-cta-select" aria-label="Condiciones" value={filtroCondiciones} onChange={e => setFiltroCondiciones(e.target.value)}><option value="">Condiciones: todas</option><option value="completas">Condiciones definidas</option><option value="pendientes">Condiciones por definir</option></select>
+              {hayFiltros && <button className="dx-cta-clear" onClick={limpiarFiltrosListado}>Limpiar filtros</button>}
+            </div>
+            <div className="dx-cta-cols dx-cta-head"><span>Cuenta</span><span>Tipo</span><span>Responsable</span><span>Contacto principal</span><span>CxC</span><span>Completitud</span><span/></div>
+            {cuentasFiltradas.length === 0 ? <div className="dx-cta-empty"><strong>{filtroKpi === 'cxc' ? 'Ninguna cuenta con saldo por cobrar' : cuentasBase.length ? 'Sin resultados' : 'Aún no hay cuentas'}</strong><span>{filtroKpi === 'cxc' ? 'Cuando se emitan facturas a crédito aparecerán aquí.' : cuentasBase.length ? 'Prueba con otro texto o limpia los filtros.' : 'Crea una cuenta para empezar a organizar tus contactos.'}</span></div> : cuentasFiltradas.map(c => {
+              const logoUrl = getCuentaLogo(c);
+              const principal = primerContactoPorCuenta[c.id];
+              const contactosCuenta = contactos.filter(item => item.cuenta_id === c.id);
+              const completitud = completitudCuenta(c);
+              const tipoLabel = {cliente:'Cliente', prospecto:'Prospecto', partner:'Partner', proveedor_estrategico:'Proveedor estratégico'}[c.tipo] || 'Prospecto';
+              const tipoTone = c.tipo === 'cliente' ? 'green' : c.tipo === 'prospecto' ? 'blue' : c.tipo === 'partner' ? 'violet' : 'gray';
+              const saldos = saldoCuentaMonedas(c);
+              const compra = ultimaCompraPorCuenta.get(c.id);
+              const pct = completitud.count * 20;
+              const abrirConTeclado = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFichaCuenta(c); } };
+              return <div key={c.id} className="dx-cta-cols dx-cta-row" role="button" tabIndex={0} aria-label={`Abrir ficha de ${c.razon_social || c.nombre_comercial}`} onClick={() => abrirFichaCuenta(c)} onKeyDown={abrirConTeclado}>
+                <div className="dx-cta-acc c-acc">{logoUrl ? <img className="dx-cta-logo dx-cta-logo-img" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`}/> : <span className="dx-cta-logo">{getInitials(c.razon_social || c.nombre_comercial)}</span>}<div><strong>{c.razon_social || c.nombre_comercial || 'Sin nombre'}</strong><span className="dx-cta-sub2">{etiquetaDocumento(c.tipo_documento)} {c.ruc || 'Pendiente'} {'\u00b7'} {c.industria && c.industria !== 'Por definir' ? c.industria : 'Sin industria'}</span></div></div>
+                <span className={`dx-cta-pill c-tipo is-${tipoTone}`}><i/>{tipoLabel}</span>
+                <div className="dx-cta-resp c-resp">{tieneResponsable(c.responsable_comercial) ? <><span className="dx-cta-av">{getInitials(c.responsable_comercial)}</span><span className="dx-cta-txt">{c.responsable_comercial}</span></> : <><span className="dx-cta-av is-none">—</span><span className="dx-cta-txt dx-cta-muted">Sin responsable</span></>}</div>
+                <div className="dx-cta-contact c-ct">{principal ? <><span className="dx-cta-ct"><strong>{principal.nombre || principal.email || principal.telefono}</strong><span>{principal.telefono || principal.email || 'Sin teléfono o correo'}</span></span>{contactosCuenta.length > 1 && <span className="dx-cta-more">+{contactosCuenta.length - 1}</span>}</> : <span className="dx-cta-muted">Sin contacto</span>}</div>
+                <div className="dx-cta-money c-money">{saldos.length ? saldos.map(([key, saldo]) => <strong key={key}>{moneyD(saldo, simboloMonedaCuenta(key.split(':').pop()))}</strong>) : <strong>—</strong>}<span>{compra ? formatoFechaCompra(compra) : 'Sin compras'}</span></div>
+                <div className={`dx-cta-comp c-comp${completitud.count < 3 ? ' is-low' : completitud.count < 5 ? ' is-mid' : ''}`} title={completitud.missing.length ? `Falta: ${completitud.missing.join(', ')}` : 'Todos los datos completos'}><div className="dx-cta-comp-bar"><i style={{width:`${pct}%`}}/></div><span>{completitud.count} de 5 datos</span></div>
+                <span className="dx-cta-go c-go"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+              </div>;
+            })}
+          </section>
+        </div>
       </div>
 
       <NuevaCuentaModal
@@ -836,10 +847,11 @@ function Cuentas() {
         onClose={() => setNewOpen(false)}
         onCreated={() => setNewOpen(false)}
         onNotify={addNotificacion}
+        onOpenCuenta={cuenta => { setNewOpen(false); abrirFichaCuenta(cuenta); }}
       />
 
       {sel && <>
-        <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
+        <div className="side-panel-backdrop" onClick={() => { setSel(null); setMenuCuentaAbierto(false); }}/>
         <div className="side-panel account-profile-panel ficha-detail-panel">
           <div className="account-profile-hero">
             <div className="account-profile-logo">
@@ -865,7 +877,12 @@ function Cuentas() {
               <span>{contactoPrincipal?.cargo || 'Cargo pendiente'}</span>
               <span>{contactoPrincipal?.telefono || contactoPrincipal?.email || 'Datos pendientes'}</span>
             </div>
-            <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
+            <div className="dx-cta-profile-actions">
+              <div className="dx-cta-menu-wrap" ref={menuCuentaRef}><button type="button" className="dx-cta-menu-trigger" aria-label="Más acciones" aria-expanded={menuCuentaAbierto} onClick={() => setMenuCuentaAbierto(actual => !actual)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
+                {menuCuentaAbierto && <div className="dx-cta-menu" role="menu"><button role="menuitem" onClick={() => { setEditingCuenta(sel); setEditCuentaForm({ razon_social:sel.razon_social||'', nombre_comercial:sel.nombre_comercial||'', ruc:sel.ruc||'', tipo_documento:sel.tipo_documento||TIPO_DOCUMENTO_RUC, industria:sel.industria||'', tipo:sel.tipo||'prospecto', responsable_comercial:sel.responsable_comercial||'' }); setMenuCuentaAbierto(false); }}>{I.edit} Editar cuenta</button><button role="menuitem" className="is-danger" onClick={() => { setDeleteCuentaError(''); setConfirmDelCuenta(sel); setMenuCuentaAbierto(false); }}>{I.trash} Eliminar cuenta</button></div>}
+              </div>
+              <button aria-label="Cerrar ficha" className="icon-btn" onClick={() => { setSel(null); setMenuCuentaAbierto(false); }}>{I.x}</button>
+            </div>
           </div>
           <div className="account-profile-health" style={{background: cuentaHealthBg}}>
             <div className="row" style={{alignItems:'center', gap:8, marginBottom:10}}>
@@ -970,9 +987,9 @@ function Cuentas() {
               <>
                 <div className="account-profile-kpis">
                   <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(cuentaHealthScore)}/>{cuentaHealthScore}</strong></div>
-                  <div><span>Saldo CxC</span><strong>{money(sel.saldo_cxc)}</strong></div>
+                  <div><span>Saldo CxC</span><strong>{saldoFicha(sel)}</strong></div>
                   <div><span>Días mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
-                  <div><span>Última compra</span><strong>{sel.fecha_ultima_compra || '—'}</strong></div>
+                  <div><span>Última compra</span><strong>{formatoFechaCompra(ultimaCompraPorCuenta.get(sel.id))}</strong></div>
                 </div>
                 <div className="account-profile-grid">
                   <div className="account-info-card">
@@ -1580,8 +1597,14 @@ function Cuentas() {
   );
 }
 
+// Las OTs se operan en la app de Operaciones (montada en /operaciones/ con la misma sesión).
+const abrirEnOperaciones = ruta => {
+  const base = (import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/').replace(/\/?$/, '/');
+  window.location.assign(`${base}#/${ruta}`);
+};
+
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
   const modoVistaSociedadOT = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -1611,49 +1634,7 @@ function OT({ role }) {
   const [motivoAccionParteOT, setMotivoAccionParteOT] = useState('');
   const [avanceAprobacionParteOT, setAvanceAprobacionParteOT] = useState(0);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', tipo_servicio_interno_id: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', costo_estimado_ot: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
-  const [panelNuevaOT, setPanelNuevaOT] = useState(false);
-  const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
-  const [errorNuevaOT, setErrorNuevaOT] = useState('');
-  const [savingNuevaOT, setSavingNuevaOT] = useState(false);
-
-  const tiposConOSObligatoria = ['cliente', 'garantia'];
-  const tiposConOSOpcional = ['correctiva'];
-  const permiteOSCliente = tipo => tiposConOSObligatoria.includes(tipo) || tiposConOSOpcional.includes(tipo);
-  const updNuevaOT = (k, v) => setFormNuevaOT(p => {
-    const next = { ...p, [k]: v };
-    if (k === 'tipo' && !permiteOSCliente(v)) next.os_cliente_id = '';
-    if (k === 'os_cliente_id' && v) {
-      next.centro_beneficio_id = '';
-      const os = (osClientes || []).find(o => o.id === v);
-      if (os) {
-        const cot = os.cotizacion_id ? (cotizaciones || []).find(c => c.id === os.cotizacion_id) : null;
-        const hc = cot?.hoja_costeo_id ? (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') : null;
-        if (hc) {
-          next.est_mo = hc.total_mano_obra ?? '';
-          next.est_materiales = hc.total_materiales ?? '';
-          next.est_terceros = hc.total_servicios_terceros ?? '';
-          next.est_logistica = hc.total_logistica ?? '';
-          const otsOs = (ots || []).filter(ot => ot.os_cliente_id === v && ot.estado !== 'anulada');
-          const asignado = otsOs.reduce((s, ot) => s + Number(ot.costo_estimado_ot ?? ot.costoEst ?? ot.costo_estimado ?? 0), 0);
-          const sugerido = Math.max(0, Number(hc.costo_total || 0) - asignado);
-          next.costo_estimado_ot = sugerido || Number(hc.costo_total || 0) || '';
-        } else {
-          const saldo = os.saldo_por_ejecutar ?? os.presupuesto_os ?? 0;
-          if (saldo > 0) {
-            next.est_mo = saldo;
-            next.est_materiales = '';
-            next.est_terceros = '';
-            next.est_logistica = '';
-            next.costo_estimado_ot = saldo;
-          }
-        }
-      }
-    }
-    return next;
-  });
   const sociedadIdEscrituraOT = modoVistaSociedadOT.sociedadIdEscritura;
-  const osClientesEscritura = filtrarOpcionesPorSociedadEscritura(osClientes || [], sociedadIdEscrituraOT);
   const cecosActivos = filtrarOpcionesPorSociedadEscritura(
     (centrosCosto || []).filter(c => c.estado === 'activo'),
     sociedadIdEscrituraOT,
@@ -1699,102 +1680,6 @@ function OT({ role }) {
   const totalHorasEstimadasAdmin = items =>
     (items || []).reduce((s, pa) => s + Number(pa.horas_estimadas || 0), 0);
 
-  const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
-  const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
-  const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientesEscritura.find(o => o.id === formNuevaOT.os_cliente_id) : null;
-  const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
-  const sociedadNuevaOTId = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id)?.sociedad_id
-    || cebeHeredado?.sociedad_id
-    || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id)?.sociedad_id
-    || null;
-  const cecoNuevaOT = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id);
-  const cebeNuevaOT = cebeHeredado || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id);
-  const destinoNuevaOT = resolverSociedadDestino({
-    sociedades: sociedadesDisponibles,
-    origenes: [
-      { seleccionado: Boolean(formNuevaOT.centro_costo_id), sociedadId: cecoNuevaOT?.sociedad_id || null, label: `El CECO ${cecoNuevaOT?.codigo || formNuevaOT.centro_costo_id || ''}`.trim() },
-      { seleccionado: Boolean(formNuevaOT.os_cliente_id), sociedadId: osSeleccionada?.sociedad_id || cebeHeredado?.sociedad_id || null, label: `La OS Cliente ${osSeleccionada?.numero || formNuevaOT.os_cliente_id || ''}`.trim() },
-      { seleccionado: Boolean(formNuevaOT.centro_beneficio_id), sociedadId: cebeNuevaOT?.sociedad_id || null, label: `El CEBE ${cebeNuevaOT?.codigo || formNuevaOT.centro_beneficio_id || ''}`.trim() },
-    ],
-    mensajeSinOrigen: 'Selecciona el origen de la OT para resolver su sociedad destino.',
-  });
-
-  const hcReferencia = (() => {
-    if (!osSeleccionada?.cotizacion_id) return null;
-    const cot = (cotizaciones || []).find(c => c.id === osSeleccionada.cotizacion_id);
-    if (!cot?.hoja_costeo_id) return null;
-    return (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') ?? null;
-  })();
-
-  const itemsCotizacion = (() => {
-    if (!osSeleccionada?.cotizacion_id) return [];
-    const cot = (cotizaciones || []).find(c => c.id === osSeleccionada.cotizacion_id);
-    return (cot?.items || []).map(i => i.descripcion || i.nombre).filter(Boolean);
-  })();
-
-  const totalEstimadoNuevaOT = (
-    (parseFloat(formNuevaOT.est_mo) || 0) +
-    (parseFloat(formNuevaOT.est_materiales) || 0) +
-    (parseFloat(formNuevaOT.est_terceros) || 0) +
-    (parseFloat(formNuevaOT.est_logistica) || 0)
-  );
-  const estimadoPropioNuevaOT = formNuevaOT.costo_estimado_ot !== ''
-    ? Number(formNuevaOT.costo_estimado_ot || 0)
-    : totalEstimadoNuevaOT;
-
-  const cerrarPanelNuevaOT = () => { setPanelNuevaOT(false); setFormNuevaOT(formNuevaOTBase); setErrorNuevaOT(''); };
-
-  const submitNuevaOT = async () => {
-    if (savingNuevaOT) return;
-    if (destinoNuevaOT.conflictMessage) { setErrorNuevaOT(destinoNuevaOT.conflictMessage); return; }
-    if (!formNuevaOT.centro_costo_id) { setErrorNuevaOT('Selecciona un CECO antes de continuar.'); return; }
-    if (debeTenerOSCliente && !formNuevaOT.os_cliente_id) {
-      setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return;
-    }
-    if (formNuevaOT.os_cliente_id) {
-      if (!osSeleccionada?.centro_beneficio_id) { setErrorNuevaOT('La OS Cliente seleccionada no tiene CEBE asignado. Asígnalo desde la ficha de la OS.'); return; }
-    }
-    setSavingNuevaOT(true);
-    setErrorNuevaOT('');
-    try {
-      const datos = {
-        tipo: formNuevaOT.tipo,
-        tipo_servicio_interno_id: formNuevaOT.tipo_servicio_interno_id || null,
-        centro_costo_id: formNuevaOT.centro_costo_id,
-        servicio: formNuevaOT.servicio || (formNuevaOT.tipo === 'garantia' ? 'Garantia' : formNuevaOT.tipo === 'correctiva' ? 'Correctiva' : 'Servicio cliente'),
-        descripcion: formNuevaOT.descripcion,
-        tecnico_responsable_id: formNuevaOT.tecnico_responsable_id,
-        prioridad: formNuevaOT.prioridad,
-        fecha_programada: formNuevaOT.fecha_programada || null,
-        estado: 'programada',
-        participantes_admin: formNuevaOT.participantes_admin || [],
-      };
-      if (formNuevaOT.os_cliente_id) {
-        await crearOTDesdeOS(formNuevaOT.os_cliente_id, {
-          ...datos,
-          est_mo: formNuevaOT.est_mo !== '' ? Number(formNuevaOT.est_mo) : null,
-          est_materiales: formNuevaOT.est_materiales !== '' ? Number(formNuevaOT.est_materiales) : null,
-          est_terceros: formNuevaOT.est_terceros !== '' ? Number(formNuevaOT.est_terceros) : null,
-          est_logistica: formNuevaOT.est_logistica !== '' ? Number(formNuevaOT.est_logistica) : null,
-          costo_estimado: estimadoPropioNuevaOT,
-          costo_estimado_ot: estimadoPropioNuevaOT,
-          estimado_detalle: {
-            mano_obra: Number(formNuevaOT.est_mo || 0),
-            materiales: Number(formNuevaOT.est_materiales || 0),
-            terceros: Number(formNuevaOT.est_terceros || 0),
-            logistica: Number(formNuevaOT.est_logistica || 0),
-          },
-        });
-      } else {
-        await crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id, costoEst: estimadoPropioNuevaOT, costo_estimado_ot: estimadoPropioNuevaOT });
-      }
-      cerrarPanelNuevaOT();
-    } catch (err) {
-      setErrorNuevaOT(err?.message || 'No se pudo crear la OT.');
-    } finally {
-      setSavingNuevaOT(false);
-    }
-  };
   const [showNuevaTarea, setShowNuevaTarea] = useState(false);
   const [nuevaTareaForm, setNuevaTareaForm] = useState({ titulo: '', descripcion: '', responsable_id: '', tecnico_id: '', fecha_limite: '', horas_estimadas: '', orden: 0 });
   const [confirmCompletarTarea, setConfirmCompletarTarea] = useState(null);
@@ -1807,9 +1692,6 @@ function OT({ role }) {
   const [tareoAdminForm, setTareoAdminForm] = useState({ personal_id: '', fecha: new Date().toISOString().split('T')[0], horas: 1, descripcion: '' });
   const [showNuevoParte, setShowNuevoParte] = useState(false);
   const [parteEditandoId, setParteEditandoId] = useState(null);
-  const [showCierreForm, setShowCierreForm] = useState(false);
-  const [cierreForm, setCierreForm] = useState({ descripcion_trabajo: '', fecha_inicio_real: '', fecha_fin_real: '', horas_total: '', avance_final: 100, conformidad: 'pendiente', conformidad_archivo: null, observaciones_finales: '', costo_terceros: '', costo_logistica: '' });
-  const [cierreConfirmandoLink, setCierreConfirmandoLink] = useState(null);
   const [parteFormOT, setParteFormOT] = useState({ tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [] });
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [formDatos, setFormDatos] = useState({});
@@ -2085,54 +1967,6 @@ function OT({ role }) {
     }
   };
 
-  const abrirFormCierre = () => {
-    const partesDeOT = partes.filter(p => p.ot_id === sel?.id);
-    const aprobados = partesDeOT.filter(p => p.estado === 'aprobado').sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
-    const pendientes = partesDeOT.filter(p => !['aprobado', 'rechazado'].includes(p.estado));
-    if (!aprobados.length) { addNotificacion('No puedes cerrar una OT sin partes diarios aprobados.', 'error'); return; }
-    if (pendientes.length) { addNotificacion(`No puedes cerrar esta OT. Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación.`, 'error'); return; }
-    const horasTotal = aprobados.reduce((s, p) => s + (p.horas || 0), 0);
-    const descripcion = [...new Set(aprobados.map(p => p.actividades).filter(Boolean))].join('\n');
-    const costo_terceros_pre = aprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
-    const costo_logistica_pre = aprobados.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
-    setCierreForm({
-      descripcion_trabajo: descripcion,
-      fecha_inicio_real: aprobados[0]?.fecha || sel?.fecha_inicio || '',
-      fecha_fin_real: aprobados[aprobados.length - 1]?.fecha || new Date().toISOString().split('T')[0],
-      horas_total: horasTotal,
-      avance_final: 100,
-      conformidad: 'pendiente',
-      observaciones_finales: '',
-      costo_terceros: costo_terceros_pre > 0 ? String(costo_terceros_pre) : '',
-      costo_logistica: costo_logistica_pre > 0 ? String(costo_logistica_pre) : '',
-    });
-    setShowCierreForm(true);
-  };
-
-  const confirmarCierreOT = async () => {
-    const result = await cerrarTecnicamenteOT(sel.id, {
-      fecha: cierreForm.fecha_fin_real,
-      fecha_fin_real: cierreForm.fecha_fin_real,
-      fecha_inicio_real: cierreForm.fecha_inicio_real,
-      resultado: 'conforme',
-      descripcion_trabajo: cierreForm.descripcion_trabajo,
-      horas_total: Number(cierreForm.horas_total),
-      avance_final: Number(cierreForm.avance_final),
-      conformidad_cliente: { tipo: cierreForm.conformidad },
-      conformidad_archivo: cierreForm.conformidad_archivo,
-      observaciones: cierreForm.observaciones_finales,
-      costo_terceros: Number(cierreForm.costo_terceros || 0),
-      costo_logistica: Number(cierreForm.costo_logistica || 0),
-    });
-    setSel(s => ({ ...s, estado: 'cerrada' }));
-    setShowCierreForm(false);
-    if (result?.tokenConformidad) {
-      const link = `${window.location.origin}${window.location.pathname}#conformidad-ot/${result.tokenConformidad}`;
-      navigator.clipboard?.writeText(link).catch(() => {});
-      setCierreConfirmandoLink(link);
-    }
-  };
-
   const abrirNuevoParte = () => {
     const hoyStr = new Date().toISOString().split('T')[0];
     const tecAutoId = authUser
@@ -2377,7 +2211,7 @@ function OT({ role }) {
         </div>
         <div className="row">
           <button className="btn btn-secondary">{I.filter} Filtrar</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelNuevaOT(true)}>{I.plus} Nueva OT</button>
+          <span className="text-muted" style={{fontSize:12}}>Las OTs se crean desde la app de Operaciones</span>
         </div>
       </div>
 
@@ -2584,6 +2418,9 @@ function OT({ role }) {
                 {sel.gps && <span className="badge badge-cyan">{I.mapPin}GPS</span>}
               </div>
               <div className="row" style={{gap:8}}>
+                <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => abrirEnOperaciones('ots')}>
+                  Abrir en Operaciones
+                </button>
                 {sel.estado === 'programada' && (
                   <button
                     className="btn btn-primary"
@@ -2609,28 +2446,14 @@ function OT({ role }) {
                       Lista para cierre técnico
                     </span>
                   )}
-                  {(() => {
-                    const aprobados = partesOT.filter(p => p.estado === 'aprobado');
-                    const pendientes = partesOT.filter(p => !['aprobado', 'rechazado'].includes(p.estado));
-                    const bloqueado = aprobados.length === 0 || pendientes.length > 0;
-                    const tooltip = partesOT.length === 0
-                      ? 'Registra al menos un parte diario antes de cerrar la OT'
-                      : pendientes.length > 0
-                        ? `Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación`
-                        : aprobados.length === 0
-                          ? 'Necesitas al menos un parte diario aprobado para cerrar la OT'
-                          : '';
-                    return (
-                      <button
-                        className="btn btn-primary"
-                        style={{fontSize:13, ...(bloqueado ? {opacity:0.45, cursor:'not-allowed'} : {})}}
-                        title={tooltip}
-                        onClick={abrirFormCierre}
-                      >
-                        {I.check} Cerrar OT
-                      </button>
-                    );
-                  })()}
+                  <button
+                    className="btn btn-primary"
+                    style={{fontSize:13}}
+                    title="El cierre técnico se hace con el acta de conformidad en la app de Operaciones."
+                    onClick={() => abrirEnOperaciones('cierre-conformidad')}
+                  >
+                    {I.check} Cerrar en Operaciones
+                  </button>
                 </>}
                 {(sel.estado === 'cerrada' || sel.estado === 'cerrada_tecnica') && (
                   <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => navigate('cierre', { detail: sel.id, tab: 'conformidad' })}>
@@ -4416,197 +4239,6 @@ function OT({ role }) {
         </>
       )}
 
-      {showCierreForm && sel && (() => {
-        const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
-        const costoHoraTecObj = (tec) => Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
-        const moReal = partesAprobados.reduce((s, p) => { const tech = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === p.tecnico_id); return s + (p.horas || 0) * costoHoraTecObj(tech); }, 0);
-        const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => { const inv = (inventario || []).find(i => i.sku === m.sku); return sm + (m.cantidad || 0) * (inv?.costo_promedio || m.costo_unitario || 0); }, 0), 0);
-        const costoEst = sel.costoEst || 0;
-        const costoReal = moReal + matReal + Number(cierreForm.costo_terceros || 0) + Number(cierreForm.costo_logistica || 0);
-        const margen = costoEst > 0 ? Math.round(((costoEst - costoReal) / costoEst) * 100) : null;
-        const sym = otSym(sel);
-        return (
-          <>
-            <div className="side-panel-backdrop" onClick={() => setShowCierreForm(false)}/>
-            <div className="side-panel" style={{width:'min(680px, 96vw)'}}>
-              <div className="side-panel-head">
-                <div>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>Cierre técnico</div>
-                  <h2 style={{margin:0, fontSize:18}}>{sel.numero}</h2>
-                </div>
-                <button className="icon-btn" onClick={() => setShowCierreForm(false)}>{I.x}</button>
-              </div>
-
-              <div style={{flex:1, overflowY:'auto', minHeight:0}}>
-              {/* ── Sección 1: Resumen de ejecución ── */}
-              <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>1. Resumen de ejecución</div>
-                <div className="input-group" style={{marginBottom:12}}>
-                  <label>Descripción del trabajo ejecutado</label>
-                  <textarea className="input" rows={4} value={cierreForm.descripcion_trabajo} onChange={e => setCierreForm(v => ({...v, descripcion_trabajo: e.target.value}))} placeholder="Resumen de las actividades realizadas..." style={{resize:'vertical'}}/>
-                </div>
-                <div className="grid-2" style={{gap:12, marginBottom:12}}>
-                  <div className="input-group">
-                    <label>Fecha real de inicio</label>
-                    <input className="input" type="date" value={cierreForm.fecha_inicio_real} onChange={e => setCierreForm(v => ({...v, fecha_inicio_real: e.target.value}))}/>
-                  </div>
-                  <div className="input-group">
-                    <label>Fecha real de fin</label>
-                    <input className="input" type="date" value={cierreForm.fecha_fin_real} onChange={e => setCierreForm(v => ({...v, fecha_fin_real: e.target.value}))}/>
-                  </div>
-                </div>
-                <div className="grid-2" style={{gap:12}}>
-                  <div className="input-group">
-                    <label>Total horas trabajadas</label>
-                    <input className="input" type="number" min="0" step="0.5" value={cierreForm.horas_total} onChange={e => setCierreForm(v => ({...v, horas_total: e.target.value}))}/>
-                  </div>
-                  <div className="input-group">
-                    <label>Avance final (%)</label>
-                    <input className="input" type="number" min="0" max="100" value={cierreForm.avance_final} onChange={e => setCierreForm(v => ({...v, avance_final: e.target.value}))}/>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Sección 2: Costos (solo con permiso) ── */}
-              {canCost && (
-                <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                  <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>2. Resumen de costos</div>
-                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
-                    <thead>
-                      <tr style={{borderBottom:'1px solid var(--border)'}}>
-                        <th style={{textAlign:'left', padding:'6px 0', color:'var(--fg-muted)', fontWeight:600}}>Concepto</th>
-                        <th style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)', fontWeight:600}}>Estimado</th>
-                        <th style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)', fontWeight:600}}>Real</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        ['Mano de obra', sel.est_mo ?? null, moReal],
-                        ['Materiales', sel.est_materiales ?? null, matReal],
-                      ].map(([label, est, real]) => (
-                        <tr key={label} style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                          <td style={{padding:'8px 0'}}>{label}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est, sym) : '—'}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400, color:'var(--fg-muted)', fontSize:12}}>{real > 0 ? money(real, sym) : '—'} <span style={{fontSize:10, color:'var(--fg-muted)'}}>auto</span></td>
-                        </tr>
-                      ))}
-                      <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                        <td style={{padding:'6px 0'}}>Servicios terceros</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_terceros != null ? money(sel.est_terceros, sym) : '—'}</td>
-                        <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_terceros} onChange={e => setCierreForm(v => ({...v, costo_terceros: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
-                      </tr>
-                      <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                        <td style={{padding:'6px 0'}}>Logística y viáticos</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_logistica != null ? money(sel.est_logistica, sym) : '—'}</td>
-                        <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_logistica} onChange={e => setCierreForm(v => ({...v, costo_logistica: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
-                      </tr>
-                      <tr style={{borderTop:'2px solid var(--border)'}}>
-                        <td style={{padding:'8px 0', fontWeight:700}}>Total</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst, sym) : '—'}</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color: costoReal > costoEst && costoEst > 0 ? 'var(--danger)' : 'var(--green)'}}>{money(costoReal, sym)}</td>
-                      </tr>
-                      {margen !== null && (
-                        <tr>
-                          <td colSpan={3} style={{textAlign:'right', fontSize:12, padding:'4px 0', color: margen < 0 ? 'var(--danger)' : 'var(--green)'}}>
-                            Margen: <strong>{margen > 0 ? '+' : ''}{margen}%</strong>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* ── Sección 3: Conformidad del cliente ── */}
-              <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>3. Conformidad del cliente</div>
-                <div className="col" style={{gap:10}}>
-                  {[
-                    { val: 'digital', label: 'Sí — firma digital', desc: 'Se genera un link único para que el cliente firme en línea con nombre y DNI.' },
-                    { val: 'fisico', label: 'Sí — documento físico', desc: 'Adjunta el documento de conformidad firmado (PDF o imagen).' },
-                    { val: 'pendiente', label: 'No — pendiente', desc: 'La OT se cierra técnicamente. La conformidad queda pendiente.' },
-                  ].map(opt => (
-                    <label key={opt.val} style={{display:'flex', gap:12, padding:'12px 14px', borderRadius:8, border:`1.5px solid ${cierreForm.conformidad === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: cierreForm.conformidad === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
-                      <input type="radio" name="conformidad" value={opt.val} checked={cierreForm.conformidad === opt.val} onChange={() => setCierreForm(v => ({...v, conformidad: opt.val, conformidad_archivo: null}))} style={{marginTop:2, flexShrink:0}}/>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:600, fontSize:13, display:'flex', alignItems:'center', gap:6}}>
-                          {opt.label}
-                          {opt.val === 'pendiente' && <span className="badge badge-orange" style={{fontSize:10}}>Queda pendiente</span>}
-                        </div>
-                        <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{opt.desc}</div>
-                        {opt.val === 'fisico' && cierreForm.conformidad === 'fisico' && (
-                          <div style={{marginTop:10}}>
-                            <input type="file" accept=".pdf,image/*" style={{display:'none'}} id="conf-archivo-input"
-                              onChange={e => { const f = e.target.files?.[0]; if (f) setCierreForm(v => ({...v, conformidad_archivo: f})); }}
-                            />
-                            {cierreForm.conformidad_archivo ? (
-                              <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'var(--bg-subtle)', borderRadius:6, fontSize:12}}>
-                                <span>📄</span>
-                                <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{cierreForm.conformidad_archivo.name}</span>
-                                <button type="button" className="btn btn-ghost" style={{fontSize:11, padding:'2px 6px'}} onClick={() => setCierreForm(v => ({...v, conformidad_archivo: null}))}>Quitar</button>
-                              </div>
-                            ) : (
-                              <label htmlFor="conf-archivo-input" className="btn btn-secondary" style={{fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6}}>
-                                + Adjuntar documento
-                              </label>
-                            )}
-                          </div>
-                        )}
-                        {opt.val === 'digital' && cierreForm.conformidad === 'digital' && (
-                          <div style={{marginTop:8, padding:'8px 10px', background:'color-mix(in srgb, var(--cyan) 8%, transparent)', borderRadius:6, fontSize:12, color:'var(--fg-muted)'}}>
-                            Al confirmar el cierre se generará un link único. Cópialo y envíaselo al cliente para que firme en línea.
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Sección 4: Observaciones finales ── */}
-              <div style={{padding:'20px 24px'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>4. Observaciones finales</div>
-                <div className="input-group">
-                  <label>Notas del supervisor <span className="text-muted">(lecciones aprendidas, garantías, próximas intervenciones...)</span></label>
-                  <textarea className="input" rows={3} value={cierreForm.observaciones_finales} onChange={e => setCierreForm(v => ({...v, observaciones_finales: e.target.value}))} placeholder="Opcional" style={{resize:'vertical'}}/>
-                </div>
-              </div>
-              </div>{/* fin scroll */}
-
-              {/* ── Pie ── */}
-              <div style={{padding:'16px 24px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0, background:'var(--bg-card)'}}>
-                <button className="btn btn-ghost" onClick={() => setShowCierreForm(false)}>Cancelar</button>
-                <button className="btn btn-primary" disabled={!cierreForm.fecha_fin_real} onClick={confirmarCierreOT}>
-                  {I.check} Confirmar cierre
-                </button>
-              </div>
-            </div>
-          </>
-        );
-      })()}
-
-      {cierreConfirmandoLink && (
-        <>
-          <div className="modal-backdrop" onClick={() => setCierreConfirmandoLink(null)}/>
-          <div className="modal" style={{maxWidth:480}}>
-            <div className="modal-head">
-              <h3 style={{margin:0}}>Link de firma generado</h3>
-              <button className="icon-btn" onClick={() => setCierreConfirmandoLink(null)}>×</button>
-            </div>
-            <div style={{padding:'20px 24px'}}>
-              <p style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>Copia este link y envíaselo al cliente para que firme la conformidad en línea con su nombre y DNI.</p>
-              <div style={{display:'flex', gap:8, alignItems:'center', padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-                <span style={{flex:1, fontSize:12, wordBreak:'break-all', color:'var(--fg-muted)'}}>{cierreConfirmandoLink}</span>
-                <button className="btn btn-secondary" style={{flexShrink:0, fontSize:12}} onClick={() => { navigator.clipboard?.writeText(cierreConfirmandoLink); }}>Copiar</button>
-              </div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-primary" onClick={() => setCierreConfirmandoLink(null)}>Listo</button>
-            </div>
-          </div>
-        </>
-      )}
-
       {parteSelOT && (() => {
         const p = parteSelOT;
         const estadoBadge = p.estado === 'aprobado' ? 'badge-green' : p.estado === 'rechazado' ? 'badge-red' : p.estado === 'observado' ? 'badge-orange' : p.estado === 'con_restriccion' ? 'badge-red' : p.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
@@ -4831,254 +4463,6 @@ function OT({ role }) {
         </>);
       })()}
 
-      {panelNuevaOT && (
-        <>
-          <div className="side-panel-backdrop" onClick={cerrarPanelNuevaOT}/>
-          <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Formulario de registro</div>
-                <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nueva Orden de Trabajo</div>
-              </div>
-              <button className="icon-btn" onClick={cerrarPanelNuevaOT}>×</button>
-            </div>
-            <div className="side-panel-body">
-              {errorNuevaOT && <div className="alert alert-danger" style={{marginBottom:16}}>{errorNuevaOT}</div>}
-
-              <div className="eyebrow" style={{marginBottom:12}}>Clasificación</div>
-              <div className="grid-2" style={{gap:16, marginBottom:20}}>
-                <div className="input-group">
-                  <label>Actividad operativa</label>
-                  <select className="select" value={formNuevaOT.tipo_servicio_interno_id} onChange={e => updNuevaOT('tipo_servicio_interno_id', e.target.value)}>
-                    <option value="">Sin definir</option>
-                    {tiposActivos.map(t => <option key={t.id} value={t.id}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Tipo de OT <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={formNuevaOT.tipo} onChange={e => updNuevaOT('tipo', e.target.value)}>
-                    <option value="cliente">Servicio Cliente</option>
-                    <option value="interna">Interna</option>
-                    <option value="correctiva">Correctiva</option>
-                    <option value="preventiva">Preventiva</option>
-                    <option value="tercerizada">Tercerizada</option>
-                    <option value="garantia">Garantía</option>
-                    <option value="emergencia">Emergencia</option>
-                    <option value="proyecto">Proyecto</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Prioridad</label>
-                  <select className="select" value={formNuevaOT.prioridad} onChange={e => updNuevaOT('prioridad', e.target.value)}>
-                    <option value="normal">Normal</option>
-                    <option value="urgente">Urgente</option>
-                    <option value="critica">Crítica</option>
-                  </select>
-                </div>
-              </div>
-
-              {puedeTenerOSCliente && (
-                <>
-                  <div className="eyebrow" style={{marginBottom:12}}>OS Cliente vinculada</div>
-                  <div className="input-group" style={{marginBottom:20}}>
-                    <label>OS Cliente {debeTenerOSCliente && <span style={{color:'var(--danger)'}}>*</span>}</label>
-                    <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
-                      <option value="">{debeTenerOSCliente ? 'Seleccionar OS Cliente...' : 'Sin OS Cliente vinculada'}</option>
-                      {osClientesEscritura.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
-                        <option key={o.id} value={o.id}>{o.numero} — {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div className="eyebrow" style={{marginBottom:12}}>Vinculación contable</div>
-              <div className="grid-2" style={{gap:16, marginBottom:20}}>
-                <div className="input-group">
-                  <label>CECO <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={formNuevaOT.centro_costo_id} onChange={e => updNuevaOT('centro_costo_id', e.target.value)}>
-                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos — crea uno en Maestros Base'}</option>
-                    {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>CEBE</label>
-                  {formNuevaOT.os_cliente_id ? (
-                    <input className="input" readOnly style={{opacity:0.75}}
-                      value={cebeHeredado ? `${cebeHeredado.codigo ? cebeHeredado.codigo + ' - ' : ''}${cebeHeredado.nombre}` : ''}
-                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS — asígnalo primero' : 'Se hereda de la OS Cliente'}
-                    />
-                  ) : (
-                    <select className="select" value={formNuevaOT.centro_beneficio_id} onChange={e => updNuevaOT('centro_beneficio_id', e.target.value)}>
-                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos — crea uno en Maestros Base'}</option>
-                      {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
-                    </select>
-                  )}
-                </div>
-                <SociedadReadOnlyField sociedadId={sociedadNuevaOTId} conflictMessage={destinoNuevaOT.conflictMessage} emptyMessage={destinoNuevaOT.emptyMessage} />
-              </div>
-
-              <div className="eyebrow" style={{marginBottom:12}}>Detalle del trabajo</div>
-              <div className="grid-2" style={{gap:16, marginBottom:20}}>
-                <div className="input-group">
-                  <label>Servicio / tipo de trabajo</label>
-                  {itemsCotizacion.length > 0 ? (
-                    <>
-                      <input className="input" list="svc-sugerencias-nueva-ot" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Elige de la cotización o escribe..." />
-                      <datalist id="svc-sugerencias-nueva-ot">
-                        {itemsCotizacion.map((s, i) => <option key={i} value={s} />)}
-                      </datalist>
-                    </>
-                  ) : tiposActivos.length > 0 ? (
-                    <select className="select" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)}>
-                      <option value="">Seleccionar servicio...</option>
-                      {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
-                    </select>
-                  ) : (
-                    <input className="input" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Ej. Mantenimiento preventivo" />
-                  )}
-                </div>
-                <div className="input-group">
-                  <label>Responsable técnico</label>
-                  <select className="select" value={formNuevaOT.tecnico_responsable_id} onChange={e => updNuevaOT('tecnico_responsable_id', e.target.value)}>
-                    <option value="">Sin asignar</option>
-                    {responsablesTecnicosOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
-                  </select>
-                  {!responsablesTecnicosOT.length && <div className="text-muted" style={{fontSize:11, marginTop:4}}>No hay operativos con perfil supervisor o superior.</div>}
-                </div>
-                <div className="input-group">
-                  <label>Fecha fin comprometida</label>
-                  <input className="input" type="date" value={formNuevaOT.fecha_programada} onChange={e => updNuevaOT('fecha_programada', e.target.value)} />
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Descripción / alcance</label>
-                  <textarea className="input" rows="3" value={formNuevaOT.descripcion} onChange={e => updNuevaOT('descripcion', e.target.value)} placeholder="Describe el trabajo a realizar..." />
-                </div>
-              </div>
-
-              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>— opcional</span></div>
-              {formNuevaOT.os_cliente_id && !hcReferencia && (
-                <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
-                  Sin hoja de costeo vinculada. El estimado es referencial.
-                </div>
-              )}
-              <div className="input-group" style={{marginBottom:12}}>
-                <label>Estimado de esta OT</label>
-                <input className="input" type="number" min="0" step="0.01" value={formNuevaOT.costo_estimado_ot} onChange={e => updNuevaOT('costo_estimado_ot', e.target.value)} placeholder="0.00" />
-                {formNuevaOT.os_cliente_id && (
-                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>
-                    Este monto es el estimado propio de la OT. La referencia de HC queda solo como baseline informativo.
-                  </div>
-                )}
-              </div>
-              <div className="grid-2" style={{gap:16, marginBottom:8}}>
-                {[
-                  { key: 'est_mo', label: 'Mano de obra', hcVal: hcReferencia?.total_mano_obra ?? null },
-                  { key: 'est_materiales', label: 'Materiales', hcVal: hcReferencia?.total_materiales ?? null },
-                  { key: 'est_terceros', label: 'Servicios terceros', hcVal: hcReferencia?.total_servicios_terceros ?? null },
-                  { key: 'est_logistica', label: 'Logística', hcVal: hcReferencia?.total_logistica ?? null },
-                ].map(({ key, label, hcVal }) => (
-                  <div className="input-group" key={key}>
-                    <label style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
-                      <span>{label}</span>
-                      {hcVal != null && <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Ref. HC: {money(hcVal)}</span>}
-                    </label>
-                    <input className="input" type="number" min="0" step="0.01" value={formNuevaOT[key]} onChange={e => updNuevaOT(key, e.target.value)} placeholder="0.00" />
-                  </div>
-                ))}
-              </div>
-              {totalEstimadoNuevaOT > 0 && (
-                <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:6, marginBottom:20}}>
-                  <span style={{fontSize:12, color:'var(--fg-muted)'}}>Total estimado:</span>
-                  <span style={{fontWeight:700, fontSize:15}}>{money(estimadoPropioNuevaOT || totalEstimadoNuevaOT)}</span>
-                </div>
-              )}
-              {totalEstimadoNuevaOT === 0 && <div style={{marginBottom:20}}/>}
-
-              <div style={{borderTop:'1px solid var(--border)', paddingTop:20, marginBottom:20}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:12}}>
-                  <div>
-                    <div className="eyebrow">Participantes administrativos</div>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Planifica aqui quienes participan y sus horas estimadas. Las horas reales se imputan en Partes &gt; Horas administrativas.</div>
-                  </div>
-                  <div className="row" style={{gap:8, flexShrink:0}}>
-                    {(formNuevaOT.participantes_admin || []).length > 0 && (
-                      <span className="badge badge-cyan">{totalHorasEstimadasAdmin(formNuevaOT.participantes_admin).toFixed(1)}h est.</span>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{fontSize:12}}
-                      onClick={() => updNuevaOT('participantes_admin', [...(formNuevaOT.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }])}
-                    >{I.plus} Agregar</button>
-                  </div>
-                </div>
-                {(formNuevaOT.participantes_admin || []).length > 0 && (
-                  <div className="col" style={{gap:8}}>
-                    {(formNuevaOT.participantes_admin || []).map((pa, idx) => (
-                      <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(220px, 1fr) minmax(140px, 180px) 36px', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border-subtle)', borderRadius:8, background:'var(--bg-subtle)'}}>
-                        <div className="input-group">
-                          <label>Colaborador administrativo</label>
-                          <select
-                          className="select"
-                          value={pa.personal_id}
-                          onChange={e => {
-                            const p = (personalAdmin || []).find(x => x.id === e.target.value);
-                            const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, personal_id: e.target.value, personal_nombre: p?.nombre || '' } : x);
-                            updNuevaOT('participantes_admin', next);
-                          }}
-                        >
-                          <option value="">Seleccionar colaborador...</option>
-                          {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
-                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
-                          ))}
-                          </select>
-                        </div>
-                        <div className="input-group">
-                          <label>Horas estimadas</label>
-                          <div style={{position:'relative'}}>
-                          <input
-                            className="input"
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            placeholder="0.0"
-                            value={pa.horas_estimadas}
-                            style={{textAlign:'right', paddingRight:38, fontWeight:700}}
-                            onChange={e => {
-                              const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, horas_estimadas: e.target.value } : x);
-                              updNuevaOT('participantes_admin', next);
-                            }}
-                          />
-                            <span style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'var(--fg-muted)'}}>h</span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          style={{height:36, width:36, color:'var(--danger)'}}
-                          title="Quitar participante administrativo"
-                          onClick={() => updNuevaOT('participantes_admin', (formNuevaOT.participantes_admin || []).filter((_, i) => i !== idx))}
-                        >{I.x}</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {(formNuevaOT.participantes_admin || []).length === 0 && (
-                  <div style={{border:'1px dashed var(--border)', borderRadius:8, padding:12, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
-                    Sin participantes administrativos planificados.
-                  </div>
-                )}
-              </div>
-
-              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                <button className="btn btn-secondary" onClick={cerrarPanelNuevaOT}>Cancelar</button>
-                <button className="btn btn-primary" disabled={savingNuevaOT} onClick={submitNuevaOT}>{I.check} {savingNuevaOT ? 'Creando...' : 'Crear OT'}</button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 }
@@ -10514,12 +9898,10 @@ function Backlog() {
 
 // ============ CIERRE TÉCNICO ============
 function Cierre() {
-  const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, personalAdmin, searchQuery, role, navigate, activeParams, actualizarCierreTecnico, addNotificacion } = useApp();
+  const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, personalAdmin, searchQuery, role, navigate, activeParams } = useApp();
   const canCost = role?.permisos?.ver_costos || role?.permisos?.todo;
   const [sel, setSel] = useState(null);
   const [tabCierre, setTabCierre] = useState('resumen');
-  const [confForm, setConfForm] = useState({ tipo: 'fisico', nombre_firmante: '', fecha_firma: new Date().toISOString().split('T')[0], referencia: '' });
-  const [guardandoConf, setGuardandoConf] = useState(false);
 
   useEffect(() => {
     if (!activeParams?.detail) return;
@@ -10542,6 +9924,8 @@ function Cierre() {
 
   const conformidadTipo = (ot) => {
     const c = cierresTecnicos.find(ct => ct.ot_id === ot.id);
+    // Cierres con acta móvil (app de Operaciones): la conformidad vive en conformidad_resultado.
+    if (c?.acta_numero) return !c.conformidad_resultado || c.conformidad_resultado === 'pendiente' ? 'pendiente' : 'acta';
     return c?.conformidad_cliente?.tipo || 'pendiente';
   };
   const estadoValorizacion = (ot) => {
@@ -10553,7 +9937,7 @@ function Cierre() {
 
   // KPIs
   const esteMes = otsCerradas.filter(o => { const c = cierreDeOT(o); return (c?.fecha || '').startsWith(mesActual); });
-  const confCompleta = otsCerradas.filter(o => ['digital', 'fisico'].includes(conformidadTipo(o)));
+  const confCompleta = otsCerradas.filter(o => ['digital', 'fisico', 'acta'].includes(conformidadTipo(o)));
   const confPendiente = otsCerradas.filter(o => conformidadTipo(o) === 'pendiente');
   const listasVaLorizar = otsCerradas.filter(o => estadoValorizacion(o) === 'lista');
 
@@ -10580,6 +9964,7 @@ function Cierre() {
   const conformidadBadge = (tipo) => {
     if (tipo === 'digital') return <span className="badge badge-green">{I.check} Digital</span>;
     if (tipo === 'fisico') return <span className="badge badge-green">{I.file} Documento</span>;
+    if (tipo === 'acta') return <span className="badge badge-green">{I.check} Acta</span>;
     return <span className="badge badge-orange">Pendiente</span>;
   };
   const valorizBadge = (ot) => {
@@ -10637,6 +10022,7 @@ function Cierre() {
               <option value="">Todas</option>
               <option value="digital">Firma digital</option>
               <option value="fisico">Documento físico</option>
+              <option value="acta">Acta (Operaciones)</option>
               <option value="pendiente">Pendiente</option>
             </select>
           </div>
@@ -10708,9 +10094,6 @@ function Cierre() {
                     <td onClick={e => e.stopPropagation()}>
                       <div className="row" style={{gap:4}}>
                         <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={() => abrirFicha(o)}>{I.eye} Detalle</button>
-                        {confTipo === 'pendiente' && (
-                          <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => { abrirFicha(o); setTabCierre('conformidad'); }}>{I.edit} Conformidad</button>
-                        )}
                         {confTipo !== 'pendiente' && estadoValorizacion(o) === 'lista' && (
                           <button className="btn btn-primary btn-sm" style={{fontSize:11}} onClick={() => navigate('valorizacion')}>{I.receipt} Valorizar</button>
                         )}
@@ -10865,63 +10248,12 @@ function Cierre() {
                     {confTipo === 'fisico' && (
                       <div style={{fontSize:13, color:'var(--fg-muted)'}}>Documento físico adjunto al momento del cierre.</div>
                     )}
+                    {confTipo === 'acta' && (
+                      <div style={{fontSize:13, color:'var(--fg-muted)'}}>Acta {c?.acta_numero} emitida en la app de Operaciones{c?.conformidad_resultado === 'observaciones' ? ' · conforme con observaciones' : ''}.</div>
+                    )}
                     {confTipo === 'pendiente' && (
-                      <div className="col" style={{gap:12}}>
-                        <div style={{padding:'12px 14px', borderRadius:6, background:'color-mix(in srgb, var(--orange) 10%, transparent)', color:'var(--orange)', fontSize:13}}>
-                          La conformidad del cliente no ha sido registrada. La OT puede ser valorizada cuando se complete.
-                        </div>
-                        <div style={{padding:'16px', border:'1px solid var(--border)', borderRadius:8}}>
-                          <div style={{fontWeight:700, fontSize:13, marginBottom:12}}>Registrar conformidad</div>
-                          <div className="col" style={{gap:8, marginBottom:14}}>
-                            {[
-                              { val: 'fisico', label: 'Documento físico', desc: 'El cliente firmó un documento físico de conformidad.' },
-                              { val: 'digital', label: 'Conformidad digital', desc: 'Se registra nombre, fecha y referencia del documento digital.' },
-                            ].map(opt => (
-                              <label key={opt.val} style={{display:'flex', gap:10, padding:'10px 12px', borderRadius:6, border:`1.5px solid ${confForm.tipo === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: confForm.tipo === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
-                                <input type="radio" name="conf_tipo" value={opt.val} checked={confForm.tipo === opt.val} onChange={() => setConfForm(v => ({...v, tipo: opt.val}))} style={{marginTop:2, flexShrink:0}}/>
-                                <div>
-                                  <div style={{fontWeight:600, fontSize:13}}>{opt.label}</div>
-                                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>{opt.desc}</div>
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                          {confForm.tipo === 'digital' && (
-                            <div className="col" style={{gap:8, marginBottom:14}}>
-                              <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Nombre completo del firmante <span style={{color:'var(--danger)'}}>*</span></label>
-                                <input className="input" style={{fontSize:13}} value={confForm.nombre_firmante} onChange={e => setConfForm(v => ({...v, nombre_firmante: e.target.value}))} placeholder="Nombre y apellido"/>
-                              </div>
-                              <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Fecha de firma <span style={{color:'var(--danger)'}}>*</span></label>
-                                <input className="input" type="date" style={{fontSize:13}} value={confForm.fecha_firma} onChange={e => setConfForm(v => ({...v, fecha_firma: e.target.value}))}/>
-                              </div>
-                              <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Código / referencia del documento <span className="text-muted">(opcional)</span></label>
-                                <input className="input" style={{fontSize:13}} value={confForm.referencia} onChange={e => setConfForm(v => ({...v, referencia: e.target.value}))} placeholder="Ej: DOC-2026-001"/>
-                              </div>
-                            </div>
-                          )}
-                          <button
-                            className="btn btn-primary btn-sm"
-                            disabled={guardandoConf || (confForm.tipo === 'digital' && (!confForm.nombre_firmante.trim() || !confForm.fecha_firma))}
-                            onClick={async () => {
-                              if (!c) return;
-                              setGuardandoConf(true);
-                              const payload = { tipo: confForm.tipo, registrado_at: new Date().toISOString() };
-                              if (confForm.tipo === 'digital') {
-                                payload.nombre_firmante = confForm.nombre_firmante.trim();
-                                payload.fecha_firma = confForm.fecha_firma;
-                                if (confForm.referencia.trim()) payload.referencia = confForm.referencia.trim();
-                              }
-                              await actualizarCierreTecnico(c.id, { conformidad_cliente: payload });
-                              setGuardandoConf(false);
-                              addNotificacion('Conformidad registrada correctamente.');
-                            }}
-                          >
-                            {guardandoConf ? 'Guardando...' : 'Confirmar conformidad'}
-                          </button>
-                        </div>
+                      <div style={{padding:'12px 14px', borderRadius:6, background:'color-mix(in srgb, var(--orange) 10%, transparent)', color:'var(--orange)', fontSize:13}}>
+                        La conformidad del cliente está pendiente. Se registra en la app de Operaciones (Cierre y conformidad) o con el enlace de firma enviado al cliente.
                       </div>
                     )}
                   </div>
@@ -13913,7 +13245,7 @@ function Planner() {
             <button className="icon-btn" onClick={() => setOffsetSemanas(s => s + 1)} title="Siguiente semana">{I.chevronRight}</button>
           </div>
           <button type="button" className="btn btn-ghost" onClick={() => setOffsetSemanas(0)}>{I.refresh} Hoy</button>
-          <button type="button" className="btn btn-primary" data-local-form="true" onClick={() => navigate('ot')}>{I.plus} Nueva OT</button>
+          <span className="text-muted" style={{fontSize:12}}>Las OTs se crean desde la app de Operaciones</span>
         </div>
       </div>
 
@@ -19953,7 +19285,7 @@ function Nomina() {
     asignacionesJornada = [],
     portalBoletaAcuses = [],
     solicitudesRRHH = [],
-    personalDocumentos = [], tiposDocumento = [], perfilSociedad, sociedadesIdsAlcance,
+    personalDocumentos = [], contratosArchivados = [], tiposDocumento = [], perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles = [], seleccionarSociedad,
   } = useApp();
   const modoVistaSociedadNomina = resolverFiltroSociedadesVista({
@@ -20283,11 +19615,11 @@ function Nomina() {
   ], [personalOperativo, personalAdmin]);
 
   const contratosNomina = useMemo(() => resolverContratosNominaSociedad({
-    documentos: personalDocumentos,
+    documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
     tiposDocumento,
     sociedadId: periodo?.sociedad_id,
     periodo,
-  }), [personalDocumentos, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
+  }), [personalDocumentos, contratosArchivados, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
 
   const contratosNominaAmbiguosConNombre = useMemo(() => {
     const personasPorId = new Map(personasCompartidas.map(persona => [persona.id, persona]));
@@ -21836,21 +21168,21 @@ function DatosBancariosSection({ cuentas = [], onChange, readOnly = false }) {
   const abrirEditar = (c) => { setForm({ banco:c.banco, numero_cuenta:c.numero_cuenta, cci:c.cci, tipo_cuenta:c.tipo_cuenta, moneda:c.moneda, es_principal:c.es_principal }); setEditId(c.id); setShowForm(true); };
 
   return (
-    <div>
-      <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos bancarios</div>
-      {cuentas.length === 0 && <div style={{color:'var(--fg-muted)', fontSize:13, marginBottom:12}}>Sin cuentas bancarias registradas.</div>}
+    <div className="dx-bank">
+      <div className="dx-bank-h" style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos bancarios</div>
+      {cuentas.length === 0 && <div className="dx-bank-empty" style={{color:'var(--fg-muted)', fontSize:13, marginBottom:12}}>Sin cuentas bancarias registradas.</div>}
       {cuentas.map(c => (
-        <div key={c.id} className="card" style={{padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+        <div key={c.id} className="card dx-bank-row" style={{padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
           <div>
-            <div style={{fontWeight:600, fontSize:13}}>{c.banco} — •••• {String(c.numero_cuenta||'').slice(-4)}</div>
-            <div className="text-muted" style={{fontSize:12}}>{c.tipo_cuenta} · {c.moneda}{c.es_principal && <span className="badge badge-green" style={{marginLeft:6, fontSize:10}}>Principal</span>}</div>
+            <div className="dx-bank-t" style={{fontWeight:600, fontSize:13}}>{c.banco} — •••• {String(c.numero_cuenta||'').slice(-4)}</div>
+            <div className="text-muted" style={{fontSize:12}}>{c.tipo_cuenta} · {c.moneda}{c.es_principal && <span className="badge badge-green dx-bank-main" style={{marginLeft:6, fontSize:10}}>Principal</span>}</div>
           </div>
           {!readOnly && <div style={{display:'flex', gap:4}}><button type="button" className="icon-btn" onClick={() => abrirEditar(c)}>{I.edit}</button><button type="button" className="icon-btn" style={{color:'var(--danger)'}} onClick={() => onChange(cuentas.filter(x => x.id !== c.id))}>{I.trash}</button></div>}
         </div>
       ))}
       {!readOnly && !showForm && <button type="button" className="btn btn-secondary btn-sm" style={{marginTop:4}} onClick={() => setShowForm(true)}>{I.plus} Agregar cuenta</button>}
       {!readOnly && showForm && (
-        <div className="card" style={{padding:16, marginTop:8, border:'1px solid var(--border)'}}>
+        <div className="card dx-bank-form" style={{padding:16, marginTop:8, border:'1px solid var(--border)'}}>
           <div className="grid-2" style={{gap:12}}>
             <div className="input-group"><label>Banco</label><select className="select" value={form.banco} onChange={e=>setForm(v=>({...v,banco:e.target.value}))}>{BANCOS_PERU.map(b=><option key={b}>{b}</option>)}</select></div>
             <div className="input-group"><label>Número de cuenta</label><input className="input" value={form.numero_cuenta} onChange={e=>setForm(v=>({...v,numero_cuenta:e.target.value}))} placeholder="Número de cuenta"/></div>
@@ -21904,7 +21236,7 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
     try {
       const sociedadId = resolverSociedadDocumentoLaboral({
         multisociedadHabilitado: empresa?.multisociedad_habilitado,
-        documentos: personalDocumentos,
+        documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
         tiposDocumento,
         sociedades: sociedadesDisponibles,
         personalId,
@@ -21972,39 +21304,49 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
 
   const activas = rows.filter(a => a.estado === 'activo');
   return (
-    <div className="card-body">
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8}}>
-        <div>
-          <span className="badge badge-red" style={{fontSize:12, marginRight:8}}>{activas.length} activa{activas.length !== 1 ? 's' : ''}</span>
-          <span className="text-muted" style={{fontSize:12}}>{rows.length} total</span>
-        </div>
-        {canRegister && <button className="btn btn-sm btn-secondary" onClick={() => { setForm(formBase); setPanel(true); setErr(''); }}>{I.plus} Registrar</button>}
-      </div>
-      {loading && <div className="text-muted" style={{padding:20}}>Cargando...</div>}
-      {!loading && rows.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:'24px 0'}}>Sin amonestaciones registradas.</div>}
-      {!loading && rows.map(a => (
-        <div key={a.id} className="card" style={{padding:'10px 14px', marginBottom:8, opacity: a.estado === 'anulado' ? 0.6 : 1, borderLeft:`3px solid ${a.estado === 'anulado' ? 'var(--border)' : a.tipo === 'suspension' ? 'var(--danger)' : a.tipo === 'escrita' ? 'var(--orange)' : 'var(--fg-muted)'}` }}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
-            <div style={{flex:1}}>
-              <div style={{display:'flex', gap:6, flexWrap:'wrap', marginBottom:3}}>
-                <span className={`badge ${tipoBadge[a.tipo] || 'badge-gray'}`} style={{fontSize:11}}>{tipoLabel[a.tipo] || a.tipo}</span>
-                {a.estado === 'anulado' && <span className="badge badge-gray" style={{fontSize:10}}>Anulada</span>}
-                <span className="text-muted" style={{fontSize:11}}>{a.fecha}</span>
-              </div>
-              <div style={{fontWeight:600, fontSize:13}}>{a.motivo}</div>
-              {a.descripcion && <div className="text-muted" style={{fontSize:12}}>{a.descripcion}</div>}
-              {a.tipo === 'suspension' && <div style={{fontSize:12, color:'var(--danger)', marginTop:3}}>Suspensión {a.dias_suspension} días · {a.fecha_inicio_suspension} → {a.fecha_fin_suspension}</div>}
-              {a.evidencia_url && <a href={a.evidencia_url} target="_blank" rel="noopener noreferrer" className="text-muted" style={{fontSize:11}}>Evidencia</a>}
-            </div>
-            {canRegister && a.estado === 'activo' && (
-              <div style={{display:'flex', gap:8, alignItems:'center', flexShrink:0}}>
-                <button className="btn btn-sm btn-ghost" onClick={() => descargarAmonestacion(a)}>Descargar PDF</button>
-                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => { setAnularId(a.id); setMotivoAnulacion(''); }}>Anular</button>
-              </div>
-            )}
+      <FichaCard
+        icon={I.alert}
+        title="Amonestaciones"
+        meta={<><FichaPill tone={activas.length ? 'red' : 'gray'}>{activas.length} activa{activas.length !== 1 ? 's' : ''}</FichaPill> <span className="dx-ficha-card-meta">{rows.length} en historial</span></>}
+        extra={canRegister ? <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => { setForm(formBase); setPanel(true); setErr(''); }}>{I.plus} Registrar amonestación</button> : null}
+      >
+        {loading && <div className="dx-ficha-help" style={{padding:20}}>Cargando…</div>}
+        {!loading && rows.length === 0 && (
+          <FichaEmpty icon={I.alert} title="Sin amonestaciones" text="No hay amonestaciones registradas para este colaborador." />
+        )}
+        {!loading && rows.length > 0 && (
+          <div className="dx-ficha-chain">
+            {rows.map(a => {
+              const anulada = a.estado === 'anulado';
+              const tono = anulada ? 'gray' : a.tipo === 'suspension' ? 'red' : a.tipo === 'escrita' ? 'amber' : 'cyan';
+              return (
+                <FichaDocRow
+                  key={a.id}
+                  tone={tono}
+                  icon={I.alert}
+                  historico={anulada}
+                  titulo={a.motivo}
+                  estado={<>
+                    <FichaPill tone={fichaTonoDeBadge(tipoBadge[a.tipo])} dot={false}>{tipoLabel[a.tipo] || a.tipo}</FichaPill>
+                    {anulada && <FichaPill>Anulada</FichaPill>}
+                    {a.tipo === 'suspension' && a.impactar_asistencia && <FichaPill tone="red" dot={false}>Impacto en asistencia</FichaPill>}
+                  </>}
+                  meta={[
+                    a.fecha,
+                    a.tipo === 'suspension' ? <span className="is-err">Suspensión: {a.dias_suspension} días ({a.fecha_inicio_suspension} → {a.fecha_fin_suspension})</span> : null,
+                    a.evidencia_url ? <a href={a.evidencia_url} target="_blank" rel="noopener noreferrer">Ver evidencia</a> : null,
+                  ]}
+                  hint={anulada && a.motivo_anulacion ? `Anulada por ${a.anulado_por}: ${a.motivo_anulacion}` : a.descripcion}
+                  actions={canRegister && a.estado === 'activo' ? <>
+                    <button type="button" className="dx-ficha-btn is-sm" onClick={() => descargarAmonestacion(a)}>{I.download} PDF</button>
+                    <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={() => { setAnularId(a.id); setMotivoAnulacion(''); }}>Anular</button>
+                  </> : null}
+                />
+              );
+            })}
           </div>
-        </div>
-      ))}
+        )}
+
       {panel && <>
         <div className="side-panel-backdrop" onClick={() => setPanel(false)} />
         <div className="side-panel" style={{width:'min(480px,96vw)', zIndex:70}}>
@@ -22041,21 +21383,26 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
           </div>
         </div>
       </>}
-      {anularId && <>
-        <div className="side-panel-backdrop" onClick={() => setAnularId(null)} />
-        <div className="modal" style={{zIndex:80}}>
-          <div className="modal-head"><h3>Anular amonestación</h3><button className="icon-btn" onClick={() => setAnularId(null)}>{I.x}</button></div>
-          <div className="modal-body">
-            <p>La amonestación permanecerá en el historial como anulada.</p>
-            <div className="input-group" style={{marginTop:8}}><label>Motivo *</label><textarea className="input" rows={3} value={motivoAnulacion} onChange={e => setMotivoAnulacion(e.target.value)} /></div>
-            <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>
-              <button className="btn btn-secondary" onClick={() => setAnularId(null)}>Cancelar</button>
-              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={anular} disabled={!motivoAnulacion.trim()}>Confirmar</button>
+
+        {anularId && (
+          <div className="modal-backdrop" onClick={() => setAnularId(null)}>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Anular amonestación" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
+              <FichaModalHead icon={I.alert} tone="red" title="Anular amonestación" sub={personalNombre} onClose={() => setAnularId(null)} />
+              <div className="dx-ficha-mb">
+                <FichaAlert tone="warn">Esta acción no se puede deshacer. La amonestación quedará en el historial como anulada.</FichaAlert>
+                <div className="input-group">
+                  <label>Motivo de anulación *</label>
+                  <textarea className="input" rows={3} value={motivoAnulacion} onChange={e => setMotivoAnulacion(e.target.value)} placeholder="Explica por qué se anula esta amonestación..." />
+                </div>
+              </div>
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" onClick={() => setAnularId(null)}>Cancelar</button>
+                <button type="button" className="dx-ficha-btn is-danger-fill" onClick={anular} disabled={!motivoAnulacion.trim()}>Confirmar anulación</button>
+              </div>
             </div>
           </div>
-        </div>
-      </>}
-    </div>
+        )}
+      </FichaCard>
   );
 }
 
@@ -22068,10 +21415,14 @@ const rrhhEsDocContrato = (doc = {}, tiposDocumento = []) => {
   const tipo = tiposDocumento.find(t => t.id === doc.tipo_documento_id || t.id === doc.tipo_doc);
   return rrhhEsTipoContrato(tipo);
 };
-const rrhhContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) =>
-  (docs || [])
-    .filter(d => d.personal_id === personalId && d.activo !== false && rrhhEsDocContrato(d, tiposDocumento))
-    .sort((a, b) => String(b.fecha_vencimiento || b.fecha_emision || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.fecha_emision || a.created_at || '')))[0] || null;
+const rrhhContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) => {
+  const contratos = (docs || []).filter(d => d.personal_id === personalId && rrhhEsDocContrato(d, tiposDocumento));
+  const hoy = new Date();
+  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  return seleccionarContratoPorFecha(contratos, hoyStr)
+    || contratos.filter(d => d.activo !== false).sort((a, b) => String(b.fecha_vencimiento || b.fecha_emision || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.fecha_emision || a.created_at || '')))[0]
+    || null;
+};
 const rrhhContratoVencimientoInfo = (doc) => {
   if (!doc) return { estado: 'sin_contrato', badge: 'badge-gray', texto: 'Sin contrato digital', dias: null };
   if (!doc.fecha_vencimiento) return { estado: 'sin_vencimiento', badge: 'badge-gray', texto: 'Sin vencimiento', dias: null };
@@ -22109,7 +21460,8 @@ const rrhhSnapshotLaboral = (p = {}, extra = {}) => {
     cargo: extra.cargo ?? p.cargo ?? '',
     cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
     cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
-    remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.monto_mensual ?? 0,
+    // 0 no es una remuneración válida: en honorarios sueldo_base es 0 y el honorario está en monto_mensual.
+    remuneracion_base: Number(extra.remuneracion_base) || Number(p.sueldo_base) || Number(p.monto_mensual) || 0,
     modalidad: extra.modalidad ?? p.modalidad ?? p.modalidad_trabajo ?? '',
     sede: extra.sede ?? p.sede ?? '',
     sede_id: extra.sede_id ?? p.sede_id ?? '',
@@ -22559,8 +21911,41 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
   );
 }
 
+function PersonalOperativoAcciones({ descargarExcel, abrirCargaMasiva, abrirTiposDocumento, abrirRequisitos, visibleCols, setVisibleCols, columnas }) {
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const menuRef = useRef(null);
+  const menuButtonRef = useRef(null);
+  useEffect(() => {
+    if (!menuAbierto) return undefined;
+    const cerrarFuera = e => { if (!menuRef.current?.contains(e.target)) setMenuAbierto(false); };
+    const cerrarEscape = e => { if (e.key === 'Escape') { setMenuAbierto(false); menuButtonRef.current?.focus(); } };
+    document.addEventListener('mousedown', cerrarFuera);
+    document.addEventListener('keydown', cerrarEscape);
+    return () => {
+      document.removeEventListener('mousedown', cerrarFuera);
+      document.removeEventListener('keydown', cerrarEscape);
+    };
+  }, [menuAbierto]);
+  const ejecutar = accion => { setMenuAbierto(false); accion(); };
+  return (
+    <div className="dx-personal-actions">
+      <ColumnFilter columns={columnas} visibleCols={visibleCols} onChange={setVisibleCols} />
+      <div className="dx-personal-menu-wrap" ref={menuRef}>
+        <button ref={menuButtonRef} type="button" className="dx-personal-btn" aria-haspopup="menu" aria-expanded={menuAbierto} onClick={() => setMenuAbierto(v => !v)}>Más acciones <span aria-hidden="true">⌄</span></button>
+        {menuAbierto && <div className="dx-personal-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => ejecutar(descargarExcel)}>Descargar Excel</button>
+          <button type="button" role="menuitem" onClick={() => ejecutar(abrirCargaMasiva)}>Carga masiva</button>
+          <button type="button" role="menuitem" onClick={() => ejecutar(abrirTiposDocumento)}>Tipos de Documento</button>
+          <button type="button" role="menuitem" onClick={() => ejecutar(abrirRequisitos)}>Requisitos por Cargo</button>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, authUser, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], contratosArchivados = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const documentosContratoFecha = [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()];
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonal = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -22591,7 +21976,7 @@ function RRHH_Operativo() {
     }
     const resolucionVista = resolverPersonalConContratosVigentes({
       personal: personalOperativo,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: sociedadesContratosPersonalIds,
       fecha: fechaVigenciaPersonal,
@@ -22608,10 +21993,10 @@ function RRHH_Operativo() {
       };
     }
 
-    const todasLasSociedadesIds = [...new Set(personalDocumentos.map(doc => doc.sociedad_id).filter(Boolean))];
+    const todasLasSociedadesIds = [...new Set(documentosContratoFecha.map(doc => doc.sociedad_id).filter(Boolean))];
     const resolucionGlobal = resolverPersonalConContratosVigentes({
       personal: personalOperativo,
-      documentos: personalDocumentos,
+      documentos: documentosContratoFecha,
       tiposDocumento,
       sociedadIds: todasLasSociedadesIds,
       fecha: fechaVigenciaPersonal,
@@ -22630,7 +22015,7 @@ function RRHH_Operativo() {
       )),
       personalSinContratoVigenteIds,
     };
-  }, [empresa?.multisociedad_habilitado, personalOperativo, personalDocumentos, tiposDocumento, sociedadesContratosPersonalKey, fechaVigenciaPersonal, vistaSociedadConcretaPersonal, mostrarBadgeSociedadPersonal]);
+  }, [empresa?.multisociedad_habilitado, personalOperativo, personalDocumentos, contratosArchivados, tiposDocumento, sociedadesContratosPersonalKey, fechaVigenciaPersonal, vistaSociedadConcretaPersonal, mostrarBadgeSociedadPersonal]);
   
   const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
   const [showRequisitosRRHH, setShowRequisitosRRHH] = useState(false);
@@ -22645,6 +22030,22 @@ function RRHH_Operativo() {
   const [editandoId, setEditandoId] = useState(null);
   const [selTecnico, setSelTecnico] = useState(null);
   const [fichaTab, setFichaTab] = useState('ficha');
+  useEffect(() => {
+    const personaId = selTecnico?.id;
+    if (!personaId || fichaTab !== 'documentos' || typeof recargarPersonalDocumentosPersonaCtx !== 'function') return undefined;
+    let ultimaRecarga = 0;
+    const recargarAlVolver = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - ultimaRecarga < 15000) return;
+      ultimaRecarga = Date.now();
+      Promise.resolve(recargarPersonalDocumentosPersonaCtx(personaId)).catch(() => {});
+    };
+    window.addEventListener('focus', recargarAlVolver);
+    document.addEventListener('visibilitychange', recargarAlVolver);
+    return () => {
+      window.removeEventListener('focus', recargarAlVolver);
+      document.removeEventListener('visibilitychange', recargarAlVolver);
+    };
+  }, [selTecnico?.id, fichaTab, recargarPersonalDocumentosPersonaCtx]);
   const [formDatosBancarios, setFormDatosBancarios] = useState([]);
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
   const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
@@ -22661,6 +22062,7 @@ function RRHH_Operativo() {
   // Estado para subir documentos en ficha
   const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
+  const [fichaDocAdicionalOpen, setFichaDocAdicionalOpen] = useState(false);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
   const [docUploadError, setDocUploadError] = useState('');
@@ -22713,6 +22115,45 @@ function RRHH_Operativo() {
   const [retroWallInline, setRetroWallInline] = useState(null);
   const [retroWallMotivoInline, setRetroWallMotivoInline] = useState('');
   const [modalEnviarFirmaDocOps, setModalEnviarFirmaDocOps] = useState(null);
+  const [renovacionFirmaDigitalOps, setRenovacionFirmaDigitalOps] = useState(null);
+  const [solicitudesFirmaDigitalOps, setSolicitudesFirmaDigitalOps] = useState({});
+  const [firmasEmpresaOps, setFirmasEmpresaOps] = useState({});
+  const [firmaEmpresaActivaOps, setFirmaEmpresaActivaOps] = useState(null);
+  const [mostrarFirmantesOps, setMostrarFirmantesOps] = useState(false);
+  const [accionFirmaDigitalDocOps, setAccionFirmaDigitalDocOps] = useState(null);
+  const cargarSolicitudesFirmaDigitalOps = useCallback(async () => {
+    const todosLosDocumentos = [...new Map([...(personalDocumentos || []), ...(contratosArchivados || [])].map(doc => [doc.id, doc])).values()];
+    const docs = todosLosDocumentos.filter(d => {
+      const tipo = tiposDocumento.find(t => t.id === d.tipo_documento_id || t.id === d.tipo_doc);
+      return rrhhEsTipoContrato(tipo) || (!rrhhEsTipoAdenda(tipo, d.tipo_doc) && String(d.tipo_doc || '').toLowerCase().includes('contrato'));
+    });
+    try {
+      const rows = await contratoFirmaService.listarSolicitudesDocumentos(docs.map(d => d.id));
+      const empresaRows = await contratoFirmaService.listarFirmasEmpleador(docs.map(d => d.id));
+      const agrupadas = {};
+      for (const solicitud of rows) (agrupadas[solicitud.documento_id] ||= []).push(solicitud);
+      setSolicitudesFirmaDigitalOps(agrupadas);
+      const agrupadasEmpresa = {};
+      for (const firma of empresaRows) (agrupadasEmpresa[firma.documento_id] ||= []).push(firma);
+      setFirmasEmpresaOps(agrupadasEmpresa);
+    } catch { setSolicitudesFirmaDigitalOps({}); setFirmasEmpresaOps({}); }
+  }, [personalDocumentos, contratosArchivados, tiposDocumento]);
+  useEffect(() => { cargarSolicitudesFirmaDigitalOps(); }, [cargarSolicitudesFirmaDigitalOps]);
+  const enviarSolicitudFirmaTrabajadorOps = async (documentoId, canales) => {
+    if (accionFirmaDigitalDocOps === documentoId) return;
+    setAccionFirmaDigitalDocOps(documentoId);
+    try {
+      const resultado = await contratoFirmaService.crearSolicitud({ documentoId, empresaId: empresa.id, canales });
+      if (recargarPersonalDocumentosPersonaCtx && selTecnico?.id) await recargarPersonalDocumentosPersonaCtx(selTecnico.id);
+      await cargarSolicitudesFirmaDigitalOps();
+      addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : 'No se pudo enviar el enlace de firma.');
+    } catch (e) {
+      const detalle = e?.canales ? ` Detalle por canal: ${Object.entries(e.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+      addNotificacion((e.message || 'No se pudo enviar a firma del trabajador.') + detalle);
+    } finally {
+      setAccionFirmaDigitalDocOps(null);
+    }
+  };
   const [enviarFirmaMensajeOps, setEnviarFirmaMensajeOps] = useState('');
   const [enviandoFirmaOps, setEnviandoFirmaOps] = useState(false);
   const [documentoAEliminar, setDocumentoAEliminar] = useState(null);
@@ -22833,7 +22274,7 @@ function RRHH_Operativo() {
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', area:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', area:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cuentaUsuarioVinculada = usuariosEmpresa.find(usuario => usuario.id === formAlta.auth_user_id) || null;
   const modulosCuentaVinculada = cuentaUsuarioVinculada?.campo
@@ -22878,6 +22319,16 @@ function RRHH_Operativo() {
     String(formAlta.cargo_id || '') !== String(tecnicoOriginalEdicion.cargo_id || '') ||
     Number(formAlta.sueldo_base || formAlta.monto_mensual || 0) !== Number(tecnicoOriginalEdicion.sueldo_base || tecnicoOriginalEdicion.monto_mensual || 0)
   );
+  // El contrato vigente aprobado es la fuente de verdad del sueldo y el tipo de contrato:
+  // con contrato, esos campos no se editan en la ficha (se cambian por adenda o nuevo contrato).
+  const contratoVigenteEdicion = editandoId ? (personalDocumentos || []).find(d => (
+    d.personal_id === editandoId && d.activo && d.estado_validacion === 'aprobado' && !d.contrato_referencia_id
+    && !['archivado', 'anulado', 'rechazado'].includes(d.periodo_estado || 'vigente')
+    && Number(d.condiciones_laborales?.remuneracion_base) > 0
+  )) : null;
+  const bloqueoContratoFicha = Boolean(contratoVigenteEdicion);
+  const tituloBloqueoContrato = bloqueoContratoFicha ? 'Definido por el contrato vigente. Cámbialo con una adenda o un nuevo contrato.' : undefined;
+  const estiloBloqueoContrato = bloqueoContratoFicha ? { background: 'var(--bg-subtle)', color: 'var(--fg-muted)', cursor: 'not-allowed' } : undefined;
 
   const cargosOperativosOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Administrativa' && c.tipo !== 'Administrativo' && c.nombre)
@@ -23048,6 +22499,7 @@ function RRHH_Operativo() {
       telefono: sanitizePhone(p.telefono || ''),
       email: p.email || '',
       email_personal: p.email_personal || '',
+      direccion: p.direccion || '',
       celular_personal: sanitizePhone(p.celular_personal || ''),
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
@@ -23187,6 +22639,7 @@ function RRHH_Operativo() {
       telefono: formAlta.telefono,
       email: formAlta.email,
       email_personal: formAlta.email_personal || null,
+      direccion: formAlta.direccion || null,
       celular_personal: formAlta.celular_personal || null,
       nombre: formAlta.nombre || 'Nuevo técnico',
       cargo: formAlta.cargo || 'Técnico de Campo',
@@ -23401,7 +22854,16 @@ function RRHH_Operativo() {
       if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
     }
     for (const h of Object.values(mapa)) {
-      for (const d of h.docs) d.doc = docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
+      for (const d of h.docs) {
+        const tipoContrato = /contrato/i.test(String(d.tipo?.nombre || '')) && !/adenda/i.test(String(d.tipo?.nombre || ''));
+        if (tipoContrato) {
+          const docsTipo = documentosContratoFecha.filter(doc => doc.personal_id === h.personal_id
+            && (doc.tipo_documento_id || doc.tipo_doc) === d.tipo_documento_id && !doc.contrato_referencia_id);
+          const hoy = new Date();
+          const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+          d.doc = seleccionarContratoPorFecha(docsTipo, hoyStr) || docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
+        } else d.doc = docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
+      }
     }
     // Calcular estado_global desde los docs habilitantes (es_habilitante=true) — fuente única para el badge
     for (const h of Object.values(mapa)) {
@@ -23413,7 +22875,7 @@ function RRHH_Operativo() {
       if (!mapa[p.id]) mapa[p.id] = { personal_id: p.id, tiene_cargo: !!p.cargo_id, cargo_id: p.cargo_id, estado_global: 'sin_configurar', docs: [] };
     }
     return Object.values(mapa);
-  }, [tiposDocumento, personalDocumentos, personal]);
+  }, [tiposDocumento, personalDocumentos, contratosArchivados, personal]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !isSupabaseConfigured()) {
@@ -23508,6 +22970,7 @@ function RRHH_Operativo() {
   });
 
   const estBadge = e => e==='disponible'?'badge-green':e==='ocupado'?'badge-cyan':'badge-gray';
+  const badgeToPill = badge => ({'badge-green':'is-green','badge-cyan':'is-cyan','badge-orange':'is-amber','badge-red':'is-red','badge-gray':'is-gray'}[badge] || 'is-gray');
   const portalDatosPendientes = portalDatosSolicitudes.filter(s => s.estado === 'pendiente');
   const portalConstanciasPendientes = portalConstanciasTrabajo.filter(c => c.estado === 'solicitada');
   const portalPersonaNombre = id => personal.find(p => p.id === id)?.nombre || id;
@@ -23652,13 +23115,13 @@ function RRHH_Operativo() {
                     setDocValidandoId(null);
                   }
                 }}
-                onCorregir={() => {
+                onCorregir={docPreviewReq?.doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaOps[docPreviewReq?.doc?.id] || []).some(f => f.estado === 'firmado') ? undefined : () => {
                   const req = docPreviewReq;
                   const persona = docPreviewPersona;
                   cerrarPreviewDocumento();
                   handleOpenInlineUpload(req, habIdx[persona?.id]?.docs || [], persona, 'corregir');
                 }}
-                onNuevoContrato={() => {
+                onNuevoContrato={docPreviewReq?.doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaOps[docPreviewReq?.doc?.id] || []).some(f => f.estado === 'firmado') ? undefined : () => {
                   const req = docPreviewReq;
                   const persona = docPreviewPersona;
                   cerrarPreviewDocumento();
@@ -23824,6 +23287,7 @@ function RRHH_Operativo() {
         }
         setDocUploadFile(null);
         setDocUploadForm(docUploadFormBase);
+        setFichaDocAdicionalOpen(false);
         addNotificacion('Documento subido. Pendiente de aprobación por RRHH.');
         if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(p.id);
       } catch (err) {
@@ -23914,475 +23378,387 @@ function RRHH_Operativo() {
       tipo: 'operativo',
     })[0]?.bajaProductividad;
 
+    const habFicha = habIdx[p.id] || { estado_global: 'sin_configurar', docs: [] };
+    const docsProblemaFicha = (habFicha.docs || []).filter(d => ['vencido','rechazado','incompleto','falta','por_vencer','en_revision'].includes(d.estado) && d.es_habilitante);
+    const docsGravesFicha = docsProblemaFicha.filter(d => ['vencido','rechazado','incompleto','falta'].includes(d.estado)).length;
+    const FICHA_TAB_LABELS = { ficha:'Ficha', contrato:'Contrato', jornada:'Jornada', vacaciones:'Vacaciones', licencias:'Licencias', solicitudes:'Solicitudes', documentos:'Documentos', reembolsos:'Reembolsos', disponibilidad:'Disponibilidad', amonestaciones:'Amonestaciones', bancarios:'Bancarios' };
+    const tabsFicha = tabs.map(t => ({
+      key: t,
+      label: FICHA_TAB_LABELS[t] || t,
+      count: t === 'documentos' && docsProblemaFicha.length ? docsProblemaFicha.length : null,
+      countTone: docsGravesFicha ? 'red' : 'amber',
+      countLabel: t === 'documentos' ? `${docsProblemaFicha.length} documentos requieren atención` : undefined,
+    }));
+    const tonoContratoFicha = { green:'green', orange:'amber', cyan:'cyan' }[contratoColor(p.tipo_contrato)] || 'cyan';
+    const cerrarEliminarDoc = () => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); };
+    const cerrarArchivarDoc = () => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); };
+
     return (
-      <>
+      <div className="dx-ficha"><div className="dx-ficha-in">
         {previewDocumentoNode}
+        {renovacionFirmaDigitalOps && <RenovacionFirmaDigitalModal
+          empresa={empresa}
+          persona={selTecnico}
+          documento={renovacionFirmaDigitalOps}
+          onClose={() => setRenovacionFirmaDigitalOps(null)}
+          onComplete={async (renovacion, envio) => {
+            addNotificacion(envio?.aviso || (envio?.ok === false ? `La renovaci\u00f3n se cre\u00f3, pero el env\u00edo fall\u00f3: ${envio.error || 'error desconocido'}. Usa «Enviar a firma digital» en el contrato.` : 'Renovaci\u00f3n creada. El enlace se envi\u00f3 por los canales disponibles.'));
+            if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(selTecnico.id);
+          }}
+        />}
         {documentoAEliminar && (
-          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && (setDocumentoAEliminar(null), setErrorEliminarDocumento(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
-              <div className="modal-head">
-                <h2>Eliminar documento</h2>
-                <button className="icon-btn" onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }} disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)}>{I.x}</button>
+          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && cerrarEliminarDoc()}>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Eliminar documento" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
+              <FichaModalHead icon={I.trash} tone="red" title="Eliminar documento" sub={documentoAEliminar.doc.nombre_archivo || 'este documento'} onClose={cerrarEliminarDoc} closeDisabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} />
+              <div className="dx-ficha-mb">
+                <p style={{margin:0}}>¿Eliminar definitivamente este documento?</p>
+                <FichaAlert tone="warn">Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.</FichaAlert>
+                {errorEliminarDocumento && <FichaAlert tone="danger" title="No se pudo eliminar" role="alert">{errorEliminarDocumento}</FichaAlert>}
               </div>
-              <div className="modal-body">
-                <p>¿Eliminar definitivamente <strong>{documentoAEliminar.doc.nombre_archivo || 'este documento'}</strong>?</p>
-                <div className="alert alert-warning" style={{marginTop:12, fontSize:12}}>
-                  Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.
-                </div>
-                {errorEliminarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorEliminarDocumento}</div>}
-              </div>
-              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
-                <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }}>Cancelar</button>
-                {errorEliminarDocumento && <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento(documentoAEliminar, true)}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar en su lugar'}</button>}
-                <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={cerrarEliminarDoc}>Cancelar</button>
+                {errorEliminarDocumento && <button type="button" className="dx-ficha-btn" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento(documentoAEliminar, true)}>{I.archive} {archivandoDocumentoId ? 'Archivando…' : 'Archivar en su lugar'}</button>}
+                <button type="button" className="dx-ficha-btn is-danger-fill" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando…' : 'Eliminar definitivamente'}</button>
               </div>
             </div>
           </div>
         )}
         {documentoAArchivar && (
-          <div className="modal-backdrop" onClick={() => !archivandoDocumentoId && (setDocumentoAArchivar(null), setErrorArchivarDocumento(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
-              <div className="modal-head">
-                <h2>Archivar documento</h2>
-                <button className="icon-btn" onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }} disabled={Boolean(archivandoDocumentoId)}>{I.x}</button>
+          <div className="modal-backdrop" onClick={() => !archivandoDocumentoId && cerrarArchivarDoc()}>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Archivar documento" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
+              <FichaModalHead icon={I.archive} tone="gray" title="Archivar documento" sub={documentoAArchivar.doc.nombre_archivo || 'este documento'} onClose={cerrarArchivarDoc} closeDisabled={Boolean(archivandoDocumentoId)} />
+              <div className="dx-ficha-mb">
+                <FichaAlert tone="info">El documento se conserva como registro histórico, pero dejará de estar vigente.</FichaAlert>
+                {errorArchivarDocumento && <FichaAlert tone="danger" title="No se pudo archivar" role="alert">{errorArchivarDocumento}</FichaAlert>}
               </div>
-              <div className="modal-body">
-                <p>¿Archivar <strong>{documentoAArchivar.doc.nombre_archivo || 'este documento'}</strong>?</p>
-                <div className="alert alert-info" style={{marginTop:12, fontSize:12}}>
-                  El documento se conserva como registro histórico, pero dejará de estar vigente.
-                </div>
-                {errorArchivarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorArchivarDocumento}</div>}
-              </div>
-              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
-                <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }}>Cancelar</button>
-                <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento()}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar documento'}</button>
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" disabled={Boolean(archivandoDocumentoId)} onClick={cerrarArchivarDoc}>Cancelar</button>
+                <button type="button" className="dx-ficha-btn is-primary" disabled={Boolean(archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento()}>{I.archive} {archivandoDocumentoId ? 'Archivando…' : 'Archivar documento'}</button>
               </div>
             </div>
           </div>
         )}
         {modalEnviarFirmaDocOps && (
           <div className="modal-backdrop" onClick={() => !enviandoFirmaOps && setModalEnviarFirmaDocOps(null)}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
-              <div className="modal-head">
-                <h3>Enviar a firma del trabajador</h3>
-                <button className="icon-btn" onClick={() => setModalEnviarFirmaDocOps(null)} disabled={enviandoFirmaOps}>{I.x}</button>
-              </div>
-              <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:12}}>
-                <div style={{padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>Documento</div>
-                  <div style={{fontWeight:600}}>{modalEnviarFirmaDocOps.nombre}</div>
-                  <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>Colaborador: {selTecnico?.nombre}</div>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Enviar a firma del trabajador" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
+              <FichaModalHead icon={I.send} tone="cyan" title="Enviar a firma del trabajador" sub="Llega a la app del trabajador" onClose={() => setModalEnviarFirmaDocOps(null)} closeDisabled={enviandoFirmaOps} />
+              <div className="dx-ficha-mb">
+                <div className="dx-ficha-cur">
+                  <span className="dx-ficha-dic is-sm is-cyan" aria-hidden="true">{I.file}</span>
+                  <div className="dx-ficha-cur-t"><b>{modalEnviarFirmaDocOps.nombre}</b><span>Colaborador: {selTecnico?.nombre}</span></div>
                 </div>
                 <div className="input-group">
-                  <label>Mensaje para el trabajador <span style={{fontSize:11, color:'var(--fg-muted)'}}>(opcional)</span></label>
+                  <label>Mensaje para el trabajador <span className="dx-ficha-help">(opcional)</span></label>
                   <textarea className="input" rows={3} value={enviarFirmaMensajeOps} onChange={e => setEnviarFirmaMensajeOps(e.target.value)} placeholder="Ej: Tu contrato de renovacion esta listo para firma." />
                 </div>
+                {!selTecnico?.auth_user_id && <FichaAlert dashed>Este colaborador aún no tiene acceso al ERP; necesita una cuenta para firmar desde la app.</FichaAlert>}
               </div>
-              <div style={{display:'flex', justifyContent:'flex-end', gap:8, padding:'12px 20px', borderTop:'1px solid var(--border)'}}>
-                <button className="btn btn-secondary" onClick={() => setModalEnviarFirmaDocOps(null)} disabled={enviandoFirmaOps}>Cancelar</button>
-                <button className="btn btn-primary" disabled={enviandoFirmaOps} onClick={async () => {
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" onClick={() => setModalEnviarFirmaDocOps(null)} disabled={enviandoFirmaOps}>Cancelar</button>
+                <button type="button" className="dx-ficha-btn is-primary" disabled={enviandoFirmaOps} onClick={async () => {
                   setEnviandoFirmaOps(true);
                   try {
                     await enviarDocumentoAFirmaCtx({ documentoId: modalEnviarFirmaDocOps.doc.id, workerAuthUserId: selTecnico?.auth_user_id, mensaje: enviarFirmaMensajeOps });
+                    if (recargarPersonalDocumentosPersonaCtx && selTecnico?.id) await recargarPersonalDocumentosPersonaCtx(selTecnico.id);
                     setModalEnviarFirmaDocOps(null);
-                    addNotificacion('Documento enviado a firma del trabajador.');
+                    addNotificacion('Enlace de firma enviado');
                   } catch (err) {
-                    addNotificacion(err?.message || 'Error al enviar a firma.');
+                    const detalle = err?.canales ? ` Detalle por canal: ${Object.entries(err.canales).map(([canal, resultado]) => `${canal}: ${resultado.motivo || (resultado.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : '';
+                    addNotificacion((err?.message || 'Error al enviar a firma.') + detalle);
                   } finally {
                     setEnviandoFirmaOps(false);
                   }
                 }}>
-                  {enviandoFirmaOps ? 'Enviando...' : 'Enviar'}
+                  {I.send} {enviandoFirmaOps ? 'Enviando…' : 'Enviar'}
                 </button>
               </div>
             </div>
           </div>
         )}
-        <div className="page-header">
-          <div className="row" style={{gap:12}}>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setSelTecnico(null); setFichaTab('ficha'); }}>{I.chev} Volver</button>
-            <div>
-              <h1 className="page-title">{p.nombre}</h1>
-              <div className="page-sub">{p.cargo} · {p.especialidad} · Ingreso: {p.fecha_ingreso || '—'}</div>
-            </div>
-          </div>
-          <div className="row">
-            <span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato)}</span>
-            <span className={'badge ' + (p.estado === 'disponible' ? 'badge-green' : 'badge-gray')}>{p.estado?.toUpperCase()}</span>
-            {bajaProductividadFicha && <span className="badge badge-red">Baja productividad</span>}
-            {p.usuario_bloqueado_en ? (
-              <span className="badge badge-red" title={`Bloqueado el ${p.usuario_bloqueado_en?.slice(0,10)} por ${p.usuario_bloqueado_por || '—'}`}>Acceso bloqueado</span>
-            ) : p.auth_user_id ? (
-              <span className="badge badge-green">Tiene acceso al ERP</span>
-            ) : (
-              <span className="badge badge-gray">Sin acceso al ERP</span>
-            )}
-            <button className="btn btn-ghost btn-sm" title="Editar técnico" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit}</button>
-            <button className="btn btn-ghost btn-sm" title="Eliminar técnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
-          </div>
-        </div>
 
-        <div className="card">
-          <div style={{padding:'0 20px'}}>
-            <div className="tabs">
-              {tabs.map(t => (
-                <div key={t} className={'tab '+(fichaTab===t?'active':'')} onClick={() => setFichaTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
-              ))}
-            </div>
-          </div>
+        <FichaHeader
+          onBack={() => { setSelTecnico(null); setFichaTab('ficha'); }}
+          backLabel="Volver a Personal Operativo"
+          initials={fichaIniciales(p.nombre)}
+          eyebrow={`Ficha${p.codigo ? ` · ${p.codigo}` : ''}`}
+          nombre={p.nombre}
+          subParts={[p.cargo, p.especialidad, p.fecha_ingreso ? `Ingreso ${p.fecha_ingreso}` : 'Ingreso —']}
+          pills={[
+            { tone: tonoContratoFicha, label: labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato) },
+            { tone: p.estado === 'disponible' ? 'green' : 'gray', label: p.estado?.toUpperCase() },
+            bajaProductividadFicha ? { tone: 'red', label: 'Baja productividad' } : null,
+            p.usuario_bloqueado_en
+              ? { tone: 'red', label: 'Acceso bloqueado', title: `Bloqueado el ${p.usuario_bloqueado_en?.slice(0,10)} por ${p.usuario_bloqueado_por || '—'}` }
+              : p.auth_user_id ? { tone: 'green', label: 'Tiene acceso al ERP' } : { tone: 'gray', label: 'Sin acceso al ERP' },
+          ]}
+          actions={<>
+            <button type="button" className="dx-ficha-btn" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit} Editar</button>
+            <button type="button" className="dx-ficha-btn is-danger" aria-label="Eliminar técnico" title="Eliminar técnico" onClick={() => eliminarTecnico(p)}>{I.trash}</button>
+          </>}
+        />
+        <FichaTabs tabs={tabsFicha} active={fichaTab} onChange={setFichaTab} />
 
-          {fichaTab === 'ficha' && (
-            <div className="card-body" style={{display:'flex', flexDirection:'column', gap:24}}>
+          {fichaTab === 'ficha' && (() => {
+            const hoyFicha = new Date().toISOString().slice(0, 10);
+            const asigFicha = asignacionesJornada.find(a => a.personal_id === p.id && a.tipo_tramo === 'normal' && a.fecha_inicio <= hoyFicha && (!a.fecha_fin || a.fecha_fin >= hoyFicha));
+            const jornadaFichaTexto = !asigFicha ? null : (asigFicha.regimen_jornada === 'general' ? labelOr(REGIMEN_JORNADA_LABELS, 'general') : `Minero ${asigFicha.dias_ciclo_trabajo}×${asigFicha.dias_ciclo_descanso}`);
+            const accesoPill = p.usuario_bloqueado_en
+              ? <FichaPill tone="red" title={`Bloqueado el ${p.usuario_bloqueado_en?.slice(0,10)} por ${p.usuario_bloqueado_por || '—'}`}>Acceso bloqueado</FichaPill>
+              : p.auth_user_id ? <FichaPill tone="green">Tiene acceso al ERP</FichaPill> : <FichaPill>Sin acceso al ERP</FichaPill>;
+            return (
+              <div className="dx-ficha-grid">
+                <div className="dx-ficha-col">
+                  <FichaCard icon={I.users} title="Datos personales">
+                    <FichaDL items={[
+                      { label: 'DNI', value: p.documento || p.dni },
+                      { label: 'Teléfono celular', value: p.telefono },
+                      { label: 'Email corporativo', value: p.email },
+                      { label: 'Domicilio', value: p.direccion },
+                      { label: 'Correo personal', value: p.email_personal },
+                      { label: 'Celular / WhatsApp', value: p.celular_personal },
+                      p.especialidad ? { label: 'Especialidad principal', value: p.especialidad } : null,
+                      p.especialidad2 ? { label: 'Especialidad secundaria', value: p.especialidad2 } : null,
+                      p.perfil_campo ? { label: 'Perfil de campo', value: p.perfil_campo } : null,
+                    ]} />
+                  </FichaCard>
 
-              {/* Sección 1 — Datos personales */}
-              <div>
-                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Datos personales</div>
-                <div className="grid-2" style={{gap:12}}>
-                  {[
-                    ['DNI', p.documento || p.dni],
-                    ['Teléfono celular', p.telefono],
-                    ['Email corporativo', p.email],
-                    ['Correo personal', p.email_personal],
-                    ['Celular / WhatsApp', p.celular_personal],
-                    p.especialidad ? ['Especialidad principal', p.especialidad] : null,
-                    p.especialidad2 ? ['Especialidad secundaria', p.especialidad2] : null,
-                    p.perfil_campo ? ['Perfil de campo', p.perfil_campo] : null,
-                  ].filter(Boolean).map(([label, val]) => (
-                    <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                      <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                  <FichaCard icon={I.clipboard} title="Datos laborales">
+                    <FichaDL items={[
+                      { label: 'Código de empleado', value: p.codigo },
+                      { label: 'Estado', value: p.estado ? <FichaPill tone={p.estado === 'disponible' || p.estado === 'activo' ? 'green' : 'gray'}>{p.estado.toUpperCase()}</FichaPill> : null },
+                      { label: 'Cargo', value: p.cargo },
+                      { label: 'Área', value: p.area },
+                      { label: 'Sede base', value: p.sede },
+                      p.supervisor ? { label: 'Supervisor', value: p.supervisor } : null,
+                      { label: 'Centro de costo', value: centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || null },
+                      { label: 'Turno asignado', value: turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} — ${turnoP.hora_salida})` : null },
+                      { label: 'Modalidad', value: labelOr(MODALIDAD_TRABAJO_LABELS, p.modalidad) },
+                      { label: 'Fecha de ingreso', value: p.fecha_ingreso },
+                      { label: 'Tipo de contrato', value: labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato) },
+                      { label: 'Régimen de jornada', value: (
+                        <>
+                          {jornadaFichaTexto || <span className="dx-ficha-help">Sin jornada asignada</span>}
+                          <div className="dx-ficha-pills">
+                            <FichaPill dot={false}>Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(p))}</FichaPill>
+                            <FichaPill dot={false}>Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</FichaPill>
+                          </div>
+                        </>
+                      ) },
+                      p.cargo_confianza ? { label: 'Cargo especial', value: <FichaPill tone="amber">Dirección o confianza</FichaPill> } : null,
+                    ]} />
+                  </FichaCard>
 
-              {/* Sección 2 — Datos laborales */}
-              <div>
-                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Datos laborales</div>
-                <div className="grid-2" style={{gap:12}}>
-                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Código de empleado</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{p.codigo || '—'}</div>
-                  </div>
-                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Estado</div>
-                    <span className={`badge ${p.estado === 'disponible' || p.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{p.estado?.toUpperCase() || '—'}</span>
-                  </div>
-                  {[
-                    ['Cargo', p.cargo],
-                    ['Área', p.area],
-                    ['Sede base', p.sede],
-                    p.supervisor ? ['Supervisor', p.supervisor] : null,
-                    ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || null],
-                    ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} — ${turnoP.hora_salida})` : null],
-                    ['Modalidad', labelOr(MODALIDAD_TRABAJO_LABELS, p.modalidad)],
-                    ['Fecha de ingreso', p.fecha_ingreso],
-                    ['Tipo de contrato', labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato)],
-                  ].filter(Boolean).map(([label, val]) => (
-                    <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                      <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                    </div>
-                  ))}
-                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Régimen de jornada</div>
-                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{(() => {
-                      const asig = asignacionesJornada.find(a => a.personal_id === p.id && a.tipo_tramo === 'normal' && a.fecha_inicio <= new Date().toISOString().slice(0, 10) && (!a.fecha_fin || a.fecha_fin >= new Date().toISOString().slice(0, 10)));
-                      if (!asig) return <span className="text-muted">Sin jornada asignada</span>;
-                      return asig.regimen_jornada === 'general' ? labelOr(REGIMEN_JORNADA_LABELS, 'general') : `Minero ${asig.dias_ciclo_trabajo}×${asig.dias_ciclo_descanso}`;
-                    })()}</div>
-                    <div className="row" style={{gap:6, flexWrap:'wrap'}}>
-                      <span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(p))}</span>
-                      <span className="badge badge-gray">Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</span>
-                    </div>
-                  </div>
-                  {p.cargo_confianza && (
-                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Cargo especial</div>
-                      <span className="badge badge-orange">Dirección o confianza</span>
-                    </div>
+                  {canFinanzas && (
+                    <FichaCard icon={I.dollar} title="Nómina y finanzas" extra={<FichaPill tone="violet" dot={false}>Solo con permiso de finanzas</FichaPill>}>
+                      <FichaDL items={[
+                        ['Sueldo base', (p.sueldo_base != null || p.monto_mensual != null) ? `S/ ${Number(p.sueldo_base ?? p.monto_mensual ?? 0).toLocaleString()}` : null],
+                        ['Horas base del mes', p.horas_base_mes ? `${p.horas_base_mes} h` : null],
+                        ['Tarifa por hora', p.tarifa_hora != null ? `S/ ${Number(p.tarifa_hora).toFixed(2)}/h` : null],
+                        ['Costo hora extra', p.costo_hora_extra != null ? `S/ ${Number(p.costo_hora_extra).toFixed(2)}/h` : null],
+                        ['Sistema pensionario', esHon ? null : p.sistema_pensionario],
+                        ['AFP', esHon ? null : p.afp_nombre],
+                        ['Tipo de comisión AFP', esHon ? null : p.tipo_comision_afp],
+                      ].filter(([, val]) => val != null).map(([label, value]) => ({ label, value }))} />
+                    </FichaCard>
+                  )}
+
+                  {canFinanzas && (
+                    <FichaCard icon={I.bank} title="Datos bancarios" extra={<button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => setFichaTab('bancarios')}>Gestionar</button>}>
+                      <DatosBancariosSection cuentas={p.datos_bancarios ?? []} readOnly />
+                    </FichaCard>
+                  )}
+
+                  {canGestionarDocsRrhh && (
+                    <FichaCard icon={I.edit} title="Firma / Rúbrica" extra={<FichaPill tone="violet" dot={false}>Gestión de documentos RRHH</FichaPill>} className="dx-ficha-firma">
+                      <FileUpload
+                        entidadTipo="personal_operativo"
+                        entidadId={p.id}
+                        empresaId={empresa?.id}
+                        categoria={CATEGORIA_FIRMA_RUBRICA}
+                        multiple={false}
+                        soloImagenes
+                        soloUltimo
+                        subidoPor={role?.id}
+                      />
+                    </FichaCard>
                   )}
                 </div>
-              </div>
 
-              {/* Sección 3 — Nómina y finanzas */}
-              {canFinanzas && (
-                <div>
-                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Nómina y finanzas</div>
-                  <div className="grid-2" style={{gap:12}}>
-                    {[
-                      ['Sueldo base', (p.sueldo_base != null || p.monto_mensual != null) ? `S/ ${Number(p.sueldo_base ?? p.monto_mensual ?? 0).toLocaleString()}` : null],
-                      ['Horas base del mes', p.horas_base_mes ? `${p.horas_base_mes} h` : null],
-                      ['Tarifa por hora', p.tarifa_hora != null ? `S/ ${Number(p.tarifa_hora).toFixed(2)}/h` : null],
-                      ['Costo hora extra', p.costo_hora_extra != null ? `S/ ${Number(p.costo_hora_extra).toFixed(2)}/h` : null],
-                      ['Sistema pensionario', esHon ? null : p.sistema_pensionario],
-                      ['AFP', esHon ? null : p.afp_nombre],
-                      ['Tipo de comisión AFP', esHon ? null : p.tipo_comision_afp],
-                    ].filter(([, val]) => val != null).map(([label, val]) => (
-                      <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                        <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                        <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Sección 4 — Datos bancarios */}
-              {canFinanzas && (
-                <DatosBancariosSection cuentas={p.datos_bancarios ?? []} readOnly />
-              )}
-
-              {/* Sección 4.5 — Firma / Rúbrica */}
-              {canGestionarDocsRrhh && (
-                <div>
-                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Firma / Rúbrica</div>
-                  <FileUpload
-                    entidadTipo="personal_operativo"
-                    entidadId={p.id}
-                    empresaId={empresa?.id}
-                    categoria={CATEGORIA_FIRMA_RUBRICA}
-                    multiple={false}
-                    soloImagenes
-                    soloUltimo
-                    subidoPor={role?.id}
-                  />
-                </div>
-              )}
-
-              {/* Sección 5 — Acceso al sistema */}
-              <div>
-                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Acceso al sistema</div>
-                <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                  <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Cuenta de usuario vinculada</div>
-                  {p.usuario_bloqueado_en ? (
-                    <span className="badge badge-red">Acceso bloqueado</span>
-                  ) : p.auth_user_id ? (
-                    <div className="row" style={{gap:8, alignItems:'center'}}>
-                      <span className="badge badge-green">Tiene acceso al ERP</span>
-                      {p.email && <span className="text-muted" style={{fontSize:12}}>{p.email}</span>}
+                <aside className="dx-ficha-col" aria-label="Resumen del colaborador">
+                  <FichaCard title="Resumen">
+                    <FichaKV items={[
+                      { label: 'Habilitación', value: <FichaPill tone={{ no_habilitado:'red', alerta:'amber', habilitado:'green' }[habFicha.estado_global] || 'gray'}>{HAB_GLOBAL_LABEL[habFicha.estado_global] || 'Sin configurar'}</FichaPill> },
+                      { label: 'Contrato vigente', value: contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || 'Contrato') : 'Sin contrato digital', nil: !contratoDoc },
+                      contratoDoc ? { label: contratoInfo.dias != null && contratoInfo.dias < 0 ? 'Venció' : 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias == null ? '' : contratoInfo.dias < 0 ? ` · hace ${Math.abs(contratoInfo.dias)} ${Math.abs(contratoInfo.dias) === 1 ? 'día' : 'días'}` : contratoInfo.dias === 0 ? ' · hoy' : ` · en ${contratoInfo.dias} ${contratoInfo.dias === 1 ? 'día' : 'días'}`}` : 'Indefinido' } : null,
+                      { label: 'Jornada', value: jornadaFichaTexto || 'Sin asignar', nil: !jornadaFichaTexto },
+                    ]} />
+                    <div className="dx-ficha-aside-acts">
+                      <button type="button" className="dx-ficha-btn is-sm" onClick={() => setFichaTab('documentos')}>{I.clipboard} {docsProblemaFicha.length ? `Ver documentos pendientes (${docsProblemaFicha.length})` : 'Ver documentos'}</button>
+                      <button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => setFichaTab('contrato')}>Ver contrato</button>
+                      {!jornadaFichaTexto && <button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => setFichaTab('jornada')}>Asignar jornada</button>}
                     </div>
-                  ) : (
-                    <span className="badge badge-gray">Sin acceso al ERP</span>
-                  )}
-                </div>
+                  </FichaCard>
+                  <FichaCard title="Acceso al sistema">
+                    <FichaKV items={[
+                      { label: 'Cuenta de usuario', value: accesoPill },
+                      p.auth_user_id && p.email ? { label: 'Correo vinculado', value: p.email } : null,
+                    ]} />
+                  </FichaCard>
+                </aside>
               </div>
+            );
+          })()}
 
-            </div>
-          )}
-
-          {fichaTab === 'contrato' && (
-            <div className="card-body">
-              {!tieneContratoAprobado && (
-                <div style={{marginBottom:16, padding:'14px 16px', background: p.cargo_confianza ? 'var(--bg-subtle)' : 'rgba(229,62,62,0.08)', border:`1px solid ${p.cargo_confianza ? 'var(--border)' : 'rgba(229,62,62,0.3)'}`, borderRadius:8}}>
-                  {p.cargo_confianza ? (
-                    <div style={{fontSize:13, color:'var(--fg-muted)'}}>Este colaborador tiene cargo de dirección o confianza — no requiere contrato digital para el control de asistencia. Se recomienda igualmente registrar el contrato para trazabilidad.</div>
-                  ) : (
-                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
-                      <div>
-                        <div style={{fontWeight:600, fontSize:13, color:'var(--danger)', marginBottom:4}}>Sin contrato digital registrado</div>
-                        <div style={{fontSize:12, color:'var(--fg-muted)'}}>La asistencia está bloqueada hasta que RRHH suba y valide el contrato en la pestaña Documentos.</div>
-                      </div>
-                      <button type="button" className="btn btn-sm btn-primary" onClick={irADocumentoContrato}>Ir a Documentos → Subir contrato</button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="grid-2" style={{gap:16}}>
-                {[
-                  ['Tipo de contrato', condicionesContrato ? labelOr(TIPO_CONTRATO_LABELS, condicionesContrato.tipo_contrato) : null],
-                  ['Fecha de ingreso', p.fecha_ingreso],
-                  ['Cargo vigente', condicionesContrato ? (condicionesContrato.cargo_nombre || condicionesContrato.cargo) : null],
-                  ['Remuneración vigente', condicionesContrato ? (canFinanzas ? `S/ ${Number(condicionesContrato.remuneracion_base || 0).toLocaleString()}` : '***') : null],
-                  ['Modalidad vigente', condicionesContrato ? labelOr(MODALIDAD_TRABAJO_LABELS, condicionesContrato.modalidad || 'presencial') : null],
-                  ['Sede vigente', condicionesContrato ? (condicionesContrato.sede_nombre || condicionesContrato.sede) : null],
-                  ['Área vigente', condicionesContrato ? ((areasEmpresa.find(a => a.id === condicionesContrato.area_id)?.nombre) || condicionesContrato.area_nombre || condicionesContrato.area || null) : null],
-                  ['Contrato digital', contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || contratoDoc.nombre_archivo || 'Contrato') : 'Sin contrato digital'],
-                  ['Fecha inicio contrato', contratoDoc?.fecha_emision || '—'],
-                  ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || '—'],
-                  ['Régimen de jornada', condicionesContrato ? labelOr(REGIMEN_JORNADA_LABELS, condicionesContrato.regimen_jornada) : null],
-                ].map(([label, val]) => (
-                  <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                  </div>
+          {fichaTab === 'contrato' && (() => {
+            const diasContratoVigente = (contratoDoc?.fecha_vencimiento && contratoInfo.dias !== null) ? contratoInfo.dias : null;
+            const textoVencimiento = diasContratoVigente === null ? null
+              : diasContratoVigente < 0 ? `Este contrato venció hace ${Math.abs(diasContratoVigente)} días.`
+              : diasContratoVigente === 0 ? 'Este contrato vence hoy.'
+              : `Este contrato vence en ${diasContratoVigente} días.`;
+            const historialContractual = personalDocumentos.filter(d => d.personal_id === p.id && (esDocContratoLocal(d) || esDocAdendaLocal(d)));
+            const hoy = new Date().toISOString().slice(0, 10);
+            const periodosMap = {};
+            const sinGrupo = [];
+            historialContractual.forEach(d => {
+              if (!d.periodo_grupo_id) {
+                sinGrupo.push(d);
+                return;
+              }
+              if (!periodosMap[d.periodo_grupo_id]) {
+                periodosMap[d.periodo_grupo_id] = {
+                  id: d.periodo_grupo_id,
+                  docs: [],
+                  activo: false,
+                  fechaInicio: d.fecha_emision || 'Sin fecha',
+                  fechaFin: d.fecha_vencimiento || 'Sin fecha'
+                };
+              }
+              periodosMap[d.periodo_grupo_id].docs.push(d);
+              if (d.activo) periodosMap[d.periodo_grupo_id].activo = true;
+              // Mantenemos la fecha del documento representativo
+              if (!periodosMap[d.periodo_grupo_id].docRepresentativo || (d.version > (periodosMap[d.periodo_grupo_id].docRepresentativo.version || 0))) {
+                  periodosMap[d.periodo_grupo_id].docRepresentativo = d;
+                  periodosMap[d.periodo_grupo_id].fechaInicio = d.fecha_emision || periodosMap[d.periodo_grupo_id].fechaInicio;
+                  periodosMap[d.periodo_grupo_id].fechaFin = d.fecha_vencimiento || periodosMap[d.periodo_grupo_id].fechaFin;
+              }
+            });
+            Object.values(periodosMap).forEach(g => {
+              const tieneActivoAprobado = g.docs.some(v => v.activo && v.estado_validacion === 'aprobado');
+              const fVenc = g.fechaFin !== 'Sin fecha' ? g.fechaFin : null;
+              const fIni = g.fechaInicio !== 'Sin fecha' ? g.fechaInicio : null;
+              if (fIni && fIni > hoy) {
+                g.badge_color = 'badge-cyan';
+                g.badge_texto = `Futuro · inicia ${fIni}`;
+              } else if (fVenc && fVenc < hoy && !g.activo) {
+                g.badge_color = 'badge-gray';
+                g.badge_texto = 'Archivado';
+              } else if ((!fVenc || fVenc >= hoy) && tieneActivoAprobado) {
+                g.badge_color = 'badge-green';
+                g.badge_texto = 'Período activo';
+              } else {
+                g.badge_color = 'badge-orange';
+                g.badge_texto = 'Pendiente de activación';
+              }
+            });
+            const periodos = Object.values(periodosMap).sort((a, b) => {
+              if (a.activo && !b.activo) return -1;
+              if (b.activo && !a.activo) return 1;
+              return (b.fechaInicio || '').localeCompare(a.fechaInicio || '');
+            });
+            const verEnDocumentos = (doc) => { setFichaTab('documentos'); setDocHighlightTipo(doc.tipo_documento_id || doc.tipo_doc); };
+            const filaContractual = (doc, anterior = false) => {
+              const tieneSnapshot = Boolean(doc.condiciones_laborales && Object.keys(doc.condiciones_laborales).length > 0);
+              const resumen = tieneSnapshot ? rrhhContratoResumen(doc, null, tiposDocumento) : 'Condiciones no registradas — documento previo al sistema';
+              const esAdenda = esDocAdendaLocal(doc);
+              const badgeStr = esAdenda ? 'Adenda' : `Contrato v${doc.version || 1}${doc.es_correccion ? ' (corrección)' : ''}`;
+              const esFutura = doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio > hoy;
+              return (
+                <FichaDocRow
+                  key={doc.id}
+                  linked
+                  tone={esAdenda ? 'cyan' : anterior ? 'gray' : 'green'}
+                  icon={esAdenda ? I.copy : I.file}
+                  titulo={badgeStr}
+                  estado={<>
+                    <FichaPill tone={anterior ? 'gray' : fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion])}>{labelOr(ESTADO_VALIDACION_LABELS, doc.estado_validacion)}</FichaPill>
+                    {!anterior && doc.activo && <FichaPill tone="green" dot={false}>Activo</FichaPill>}
+                  </>}
+                  meta={[
+                    doc.fecha_emision ? `Emitido ${doc.fecha_emision}` : 'Sin emisión',
+                    <span className={tieneSnapshot ? undefined : 'is-muted'}>{resumen}</span>,
+                    doc.fecha_vigencia_cambio ? <span className={esFutura ? 'is-warn' : undefined}>{esFutura ? `Entra en vigor el ${doc.fecha_vigencia_cambio}` : `Vigente desde ${doc.fecha_vigencia_cambio}`}</span> : null,
+                  ]}
+                  historico={anterior}
+                  actions={<button type="button" className="dx-ficha-btn is-sm" onClick={() => verEnDocumentos(doc)}>Ver</button>}
+                />
+              );
+            };
+            return (
+              <div className="dx-ficha-stack">
+                {!tieneContratoAprobado && (p.cargo_confianza ? (
+                  <FichaAlert dashed>Este colaborador tiene cargo de dirección o confianza — no requiere contrato digital para el control de asistencia. Se recomienda igualmente registrar el contrato para trazabilidad.</FichaAlert>
+                ) : (
+                  <FichaAlert tone="danger" title="Sin contrato digital registrado" actions={<button type="button" className="dx-ficha-btn is-sm is-primary" onClick={irADocumentoContrato}>{I.upload} Subir contrato</button>}>
+                    La asistencia está bloqueada hasta que RRHH suba y valide el contrato en la pestaña Documentos.
+                  </FichaAlert>
                 ))}
-              </div>
-              <div style={{marginTop:16, padding:14, background:'var(--bg-subtle)', border:'1px solid var(--border)', borderRadius:8}} className="row">
-                <span className={`badge ${contratoInfo.badge}`}>{contratoInfo.texto}</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={irADocumentoContrato}>
-                  {contratoDoc ? 'Ver documento' : 'Subir contrato'}
-                </button>
-              </div>
-              {(() => {
-                const diasContratoVigente = (contratoDoc?.fecha_vencimiento && contratoInfo.dias !== null)
-                  ? contratoInfo.dias
-                  : null;
-                if (diasContratoVigente !== null && diasContratoVigente <= 30) {
-                  const texto = diasContratoVigente < 0
-                    ? `Este contrato venció hace ${Math.abs(diasContratoVigente)} días.`
-                    : diasContratoVigente === 0
-                    ? 'Este contrato vence hoy.'
-                    : `Este contrato vence en ${diasContratoVigente} días.`;
-                  return (
-                    <div style={{marginTop:14, padding:'10px 14px', background:'rgba(255,160,0,0.08)', border:'1px solid var(--orange)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
-                      <div style={{fontSize:12, color:'var(--orange)', fontWeight:500}}>⚡ {texto} ¿Deseas preparar la renovación?</div>
-                      <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--orange)', flexShrink:0}} onClick={irADocumentoContrato}>→ Nuevo contrato</button>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              <div style={{marginTop:24}}>
-                <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10}}>Línea de tiempo contractual</div>
-                {(() => {
-                  const historialContractual = personalDocumentos.filter(d => d.personal_id === p.id && (esDocContratoLocal(d) || esDocAdendaLocal(d)));
-                  if (historialContractual.length === 0) {
-                    return (
-                      <div style={{padding:20, textAlign:'center', border:'1px dashed var(--border)', borderRadius:8}}>
-                        <div className="text-muted" style={{fontSize:13, marginBottom:10}}>Sin contrato digital registrado</div>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={irADocumentoContrato}>Subir contrato</button>
-                      </div>
-                    );
-                  }
+                {textoVencimiento && diasContratoVigente <= 30 && (
+                  <FichaAlert tone="warn" icon={I.clock} title={textoVencimiento} actions={<button type="button" className="dx-ficha-btn is-sm is-amber" onClick={irADocumentoContrato}>{I.refresh} Nuevo contrato</button>}>
+                    ¿Deseas preparar la renovación?
+                  </FichaAlert>
+                )}
+                <FichaCard
+                  icon={I.file}
+                  title="Condiciones vigentes"
+                  meta={<FichaPill tone={fichaTonoDeBadge(contratoInfo.badge)}>{contratoInfo.texto}</FichaPill>}
+                  extra={<button type="button" className="dx-ficha-btn is-sm" onClick={irADocumentoContrato}>{contratoDoc ? <>{I.eye} Ver documento</> : <>{I.upload} Subir contrato</>}</button>}
+                >
+                  <FichaDL cols={3} items={[
+                    { label: 'Tipo de contrato', value: condicionesContrato ? labelOr(TIPO_CONTRATO_LABELS, condicionesContrato.tipo_contrato) : null },
+                    { label: 'Fecha de ingreso', value: p.fecha_ingreso },
+                    { label: 'Régimen de jornada', value: condicionesContrato ? labelOr(REGIMEN_JORNADA_LABELS, condicionesContrato.regimen_jornada) : null },
+                    { label: 'Cargo vigente', value: condicionesContrato ? (condicionesContrato.cargo_nombre || condicionesContrato.cargo) : null },
+                    { label: 'Remuneración vigente', value: condicionesContrato ? (canFinanzas ? `S/ ${Number(condicionesContrato.remuneracion_base || 0).toLocaleString()}` : '***') : null },
+                    { label: 'Modalidad vigente', value: condicionesContrato ? labelOr(MODALIDAD_TRABAJO_LABELS, condicionesContrato.modalidad || 'presencial') : null },
+                    { label: 'Sede vigente', value: condicionesContrato ? (condicionesContrato.sede_nombre || condicionesContrato.sede) : null },
+                    { label: 'Área vigente', value: condicionesContrato ? ((areasEmpresa.find(a => a.id === condicionesContrato.area_id)?.nombre) || condicionesContrato.area_nombre || condicionesContrato.area || null) : null },
+                    { label: 'Contrato digital', value: contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || contratoDoc.nombre_archivo || 'Contrato') : 'Sin contrato digital' },
+                    { label: 'Inicio del contrato', value: contratoDoc?.fecha_emision },
+                    { label: 'Vencimiento', value: contratoDoc?.fecha_vencimiento },
+                  ]} />
+                </FichaCard>
 
-                  const hoy = new Date().toISOString().slice(0, 10);
-                  
-                  // Agrupar por periodo_grupo_id
-                  const periodosMap = {};
-                  const sinGrupo = [];
-                  
-                  historialContractual.forEach(d => {
-                    if (!d.periodo_grupo_id) {
-                      sinGrupo.push(d);
-                      return;
-                    }
-                    if (!periodosMap[d.periodo_grupo_id]) {
-                      periodosMap[d.periodo_grupo_id] = {
-                        id: d.periodo_grupo_id,
-                        docs: [],
-                        activo: false,
-                        fechaInicio: d.fecha_emision || 'Sin fecha',
-                        fechaFin: d.fecha_vencimiento || 'Sin fecha'
-                      };
-                    }
-                    periodosMap[d.periodo_grupo_id].docs.push(d);
-                    if (d.activo) periodosMap[d.periodo_grupo_id].activo = true;
-                    // Mantenemos la fecha del documento representativo
-                    if (!periodosMap[d.periodo_grupo_id].docRepresentativo || (d.version > (periodosMap[d.periodo_grupo_id].docRepresentativo.version || 0))) {
-                        periodosMap[d.periodo_grupo_id].docRepresentativo = d;
-                        periodosMap[d.periodo_grupo_id].fechaInicio = d.fecha_emision || periodosMap[d.periodo_grupo_id].fechaInicio;
-                        periodosMap[d.periodo_grupo_id].fechaFin = d.fecha_vencimiento || periodosMap[d.periodo_grupo_id].fechaFin;
-                    }
-                  });
-
-                  const hoyStr = new Date().toISOString().slice(0, 10);
-                  Object.values(periodosMap).forEach(g => {
-                    const tieneActivoAprobado = g.docs.some(v => v.activo && v.estado_validacion === 'aprobado');
-                    const fVenc = g.fechaFin !== 'Sin fecha' ? g.fechaFin : null;
-                    const fIni = g.fechaInicio !== 'Sin fecha' ? g.fechaInicio : null;
-
-                    if (fIni && fIni > hoyStr) {
-                      g.badge_color = 'badge-cyan';
-                      g.badge_texto = `Futuro · inicia ${fIni}`;
-                    } else if (fVenc && fVenc < hoyStr && !g.activo) {
-                      g.badge_color = 'badge-gray';
-                      g.badge_texto = 'Archivado';
-                    } else if ((!fVenc || fVenc >= hoyStr) && tieneActivoAprobado) {
-                      g.badge_color = 'badge-green';
-                      g.badge_texto = 'Período activo';
-                    } else {
-                      g.badge_color = 'badge-orange';
-                      g.badge_texto = 'Pendiente de activación';
-                    }
-                  });
-
-                  const periodos = Object.values(periodosMap).sort((a, b) => {
-                    if (a.activo && !b.activo) return -1;
-                    if (b.activo && !a.activo) return 1;
-                    return (b.fechaInicio || '').localeCompare(a.fechaInicio || '');
-                  });
-
-                  return (
-                    <div style={{display:'flex', flexDirection:'column', gap:12}}>
+                <FichaCard icon={I.activity} title="Línea de tiempo contractual" meta={periodos.length ? `${periodos.length} ${periodos.length === 1 ? 'período' : 'períodos'}` : null}>
+                  {historialContractual.length === 0 ? (
+                    <FichaEmpty icon={I.file} title="Sin contrato digital registrado" action={<button type="button" className="dx-ficha-btn is-primary" onClick={irADocumentoContrato}>{I.upload} Subir contrato</button>} />
+                  ) : (
+                    <div className="dx-ficha-stack" style={{gap:10}}>
                       {periodos.map(periodo => {
-                        const esVigente = periodo.activo;
                         const rangoLabel = [periodo.fechaInicio, periodo.fechaFin].filter(Boolean).join(' → ') || 'Sin fechas';
-                        
                         return (
-                          <details key={periodo.id} open={esVigente} style={{border:'1px solid var(--border)', borderRadius:8, overflow:'hidden'}}>
-                            <summary style={{padding:'10px 14px', cursor:'pointer', display:'flex', alignItems:'center', gap:8, userSelect:'none', background: esVigente ? 'var(--bg-subtle)' : 'transparent'}}>
-                              <span className={`badge ${periodo.badge_color}`}>{periodo.badge_texto}</span>
-                              <span style={{fontSize:12, color:'var(--fg-muted)'}}>{rangoLabel}</span>
+                          <details key={periodo.id} open={periodo.activo} className="dx-ficha-periodo">
+                            <summary>
+                              <span className="dx-ficha-periodo-rango">{rangoLabel}</span>
+                              <FichaPill tone={fichaTonoDeBadge(periodo.badge_color)}>{periodo.badge_texto}</FichaPill>
                             </summary>
-                            <div style={{padding:'0 14px 12px', display:'flex', flexDirection:'column', gap:8}}>
-                              {periodo.docs.sort((a, b) => (b.version || 0) - (a.version || 0)).map(doc => {
-                                const tieneSnapshot = Boolean(doc.condiciones_laborales && Object.keys(doc.condiciones_laborales).length > 0);
-                                const resumen = tieneSnapshot ? rrhhContratoResumen(doc, null, tiposDocumento) : 'Condiciones no registradas — documento previo al sistema';
-                                const esAdenda = esDocAdendaLocal(doc);
-                                const badgeStr = esAdenda ? 'Adenda' : `Contrato v${doc.version || 1}${doc.es_correccion ? ' (corrección)' : ''}`;
-                                
-                                return (
-                                  <div key={doc.id} style={{padding:'10px 12px', border:'1px solid var(--border)', borderRadius:6, display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', background: tieneSnapshot ? 'transparent' : 'var(--bg-subtle)'}}>
-                                    <div>
-                                      <div className="row" style={{gap:6, marginBottom:3}}>
-                                        <span className={`badge ${esAdenda ? 'badge-cyan' : 'badge-green'}`}>{badgeStr}</span>
-                                        <span className="text-muted" style={{fontSize:11}}>{doc.fecha_emision || 'Sin emisión'}</span>
-                                        <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>{doc.estado_validacion}</span>
-                                        {doc.activo && <span className="badge badge-green" style={{fontSize:10}}>Activo</span>}
-                                      </div>
-                                      <div style={{fontSize:12, fontWeight: tieneSnapshot ? 500 : 400, color: tieneSnapshot ? 'var(--fg)' : 'var(--fg-muted)'}}>{resumen}</div>
-                                      {doc.fecha_vigencia_cambio && (() => {
-                                        const esFutura = doc.fecha_vigencia_cambio > hoy;
-                                        return (
-                                          <div style={{fontSize:11, marginTop:3, color: esFutura ? 'var(--orange)' : 'var(--fg-muted)'}}>
-                                            {esFutura ? `Entra en vigor el ${doc.fecha_vigencia_cambio}` : `Vigente desde: ${doc.fecha_vigencia_cambio}`}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => { setFichaTab('documentos'); setDocHighlightTipo(doc.tipo_documento_id || doc.tipo_doc); }}>Ver</button>
-                                  </div>
-                                );
-                              })}
+                            <div className="dx-ficha-periodo-body">
+                              {periodo.docs.sort((a, b) => (b.version || 0) - (a.version || 0)).map(doc => filaContractual(doc))}
                             </div>
                           </details>
                         );
                       })}
-                      
                       {sinGrupo.length > 0 && (
-                        <div style={{marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)'}}>
-                          <div style={{fontSize: 12, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', marginBottom: 12}}>Documentos anteriores</div>
-                          <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                            {sinGrupo.sort((a, b) => String(b.fecha_emision || b.creado_en || '').localeCompare(String(a.fecha_emision || a.creado_en || ''))).map(doc => {
-                                const tieneSnapshot = Boolean(doc.condiciones_laborales && Object.keys(doc.condiciones_laborales).length > 0);
-                                const resumen = tieneSnapshot ? rrhhContratoResumen(doc, null, tiposDocumento) : 'Condiciones no registradas — documento previo al sistema';
-                                const esAdenda = esDocAdendaLocal(doc);
-                                const badgeStr = esAdenda ? 'Adenda' : `Contrato v${doc.version || 1}${doc.es_correccion ? ' (corrección)' : ''}`;
-                                
-                                return (
-                                  <div key={doc.id} style={{padding:'10px 12px', border:'1px solid var(--border)', borderRadius:6, display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', opacity: 0.8, background: 'var(--bg-subtle)'}}>
-                                    <div>
-                                      <div className="row" style={{gap:6, marginBottom:3}}>
-                                        <span className={`badge ${esAdenda ? 'badge-cyan' : 'badge-gray'}`}>{badgeStr}</span>
-                                        <span className="text-muted" style={{fontSize:11}}>{doc.fecha_emision || 'Sin emisión'}</span>
-                                        <span className={'badge badge-gray'}>{doc.estado_validacion}</span>
-                                      </div>
-                                      <div style={{fontSize:12, color: 'var(--fg-muted)'}}>{resumen}</div>
-                                    </div>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => { setFichaTab('documentos'); setDocHighlightTipo(doc.tipo_documento_id || doc.tipo_doc); }}>Ver</button>
-                                  </div>
-                                );
-                            })}
-                          </div>
-                        </div>
+                        <>
+                          <div className="dx-ficha-dcat">Documentos anteriores</div>
+                          {sinGrupo.sort((a, b) => String(b.fecha_emision || b.creado_en || '').localeCompare(String(a.fecha_emision || a.creado_en || ''))).map(doc => filaContractual(doc, true))}
+                        </>
                       )}
                     </div>
-                  );
-                })()}
+                  )}
+                </FichaCard>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {fichaTab === 'jornada' && (() => {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
@@ -24524,37 +23900,43 @@ function RRHH_Operativo() {
               }
               finally { setSavingAsig(false); }
             };
+            const abrirNuevaAsignacion = () => {
+              setShowFormAsig(v => !v);
+              setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError('');
+              setFormAsig(f => {
+                if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
+                const esCicloFicha = esRegimenMinero(p.regimen_jornada);
+                return {
+                  ...f,
+                  fecha_inicio: fechaInicioSugerida,
+                  fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '',
+                  regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
+                  fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
+                };
+              });
+            };
             return (
-              <div className="card-body">
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-                  <div>
-                    <div style={{fontWeight:600, marginBottom:4}}>Asignación vigente</div>
-                    {asigActiva
-                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{presetJornada[presetDeAsignacion(asigActiva)]?.label || 'Régimen inválido'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
-                      : <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
-                    }
-                  </div>
-                  <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => {
-                    setShowFormAsig(v => !v);
-                    setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError('');
-                    setFormAsig(f => {
-                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
-                      const esCicloFicha = esRegimenMinero(p.regimen_jornada);
-                      return {
-                        ...f,
-                        fecha_inicio: fechaInicioSugerida,
-                        fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '',
-                        regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
-                        fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
-                      };
-                    });
-                  }}>+ Nueva asignación</button>
-                </div>
+              <div className="dx-ficha-stack">
+                <FichaCard
+                  icon={I.clock}
+                  title="Asignación vigente"
+                  extra={<button type="button" className="dx-ficha-btn is-sm is-primary" data-local-form="true" aria-expanded={showFormAsig} onClick={abrirNuevaAsignacion}>{I.plus} Nueva asignación</button>}
+                >
+                  {asigActiva ? (
+                    <div className="dx-ficha-pills">
+                      <FichaPill tone="green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</FichaPill>
+                      <FichaPill tone="cyan" dot={false}>{presetJornada[presetDeAsignacion(asigActiva)]?.label || 'Régimen inválido'}</FichaPill>
+                      <span className="dx-ficha-help">desde {asigActiva.fecha_inicio}</span>
+                      {asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="dx-ficha-help">Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}
+                    </div>
+                  ) : (
+                    <FichaAlert dashed title="Sin jornada asignada">Asigna el régimen para que asistencia y nómina calculen sus días.</FichaAlert>
+                  )}
+                </FichaCard>
 
                 {showFormAsig && (
-                  <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
-                    <div style={{fontWeight:600, marginBottom:12}}>Nueva asignación</div>
-                    <div className="grid-2" style={{gap:12}}>
+                  <FichaCard icon={I.calendar} title="Nueva asignación">
+                    <div className="dx-ficha-fg">
                       <div className="input-group"><label>Tipo de tramo</label>
                         <select className="select" value={formAsig.tipo_tramo} onChange={e => setFormAsig(f => ({ ...f, tipo_tramo: e.target.value }))}>
                           <option value="normal">Normal</option>
@@ -24583,199 +23965,159 @@ function RRHH_Operativo() {
                       </>}
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Motivo (opcional)</label><input className="input" type="text" value={formAsig.motivo} onChange={e => setFormAsig(f => ({ ...f, motivo: e.target.value }))} placeholder="Ej. Fin de proyecto en mina, baja a Lima en espera de nuevo destino"/></div>
                     </div>
-                    {formAsigError && <div className="alert alert-danger" style={{fontSize:12, marginTop:12}}>{formAsigError}</div>}
-                    {formAsig.tipo_tramo === 'suspension_perfecta' && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</div>}
-
+                    {formAsigError && <div className="dx-ficha-error" role="alert" style={{marginTop:12}}>{formAsigError}</div>}
+                    {formAsig.tipo_tramo === 'suspension_perfecta' && <div style={{marginTop:8}}><FichaAlert tone="warn">Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</FichaAlert></div>}
                     {retroWallAsig && (
-                      <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8, marginTop:8}}>
-                        <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
-                        <div>{retroWallAsig}</div>
-                        <div className="input-group">
-                          <label>Justificación para forzar el cambio (obligatoria)</label>
-                          <textarea className="input" rows={2} value={retroWallMotivoAsig} onChange={e=>setRetroWallMotivoAsig(e.target.value)} />
-                        </div>
-                        <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                          <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            disabled={savingAsig || !retroWallMotivoAsig.trim()}
-                            onClick={() => guardarAsig({ forzarOverride: true, motivoOverride: retroWallMotivoAsig.trim() })}
-                          >
-                            Forzar cambio (requiere autorización)
-                          </button>
-                        </div>
+                      <div style={{marginTop:12}}>
+                        <FichaAlert tone="danger" title="Cambio bloqueado por nómina ya procesada" role="alert">
+                          <div className="dx-ficha-retro">
+                            <div>{retroWallAsig}</div>
+                            <div className="input-group">
+                              <label>Justificación para forzar el cambio (obligatoria)</label>
+                              <textarea className="input" rows={2} value={retroWallMotivoAsig} onChange={e=>setRetroWallMotivoAsig(e.target.value)} />
+                            </div>
+                            <div className="dx-ficha-form-acts" style={{marginTop:0}}>
+                              <button type="button" className="dx-ficha-btn is-sm" onClick={() => { setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
+                              <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={savingAsig || !retroWallMotivoAsig.trim()} onClick={() => guardarAsig({ forzarOverride: true, motivoOverride: retroWallMotivoAsig.trim() })}>Forzar cambio (requiere autorización)</button>
+                            </div>
+                          </div>
+                        </FichaAlert>
                       </div>
                     )}
-
-                    <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError(''); }}>Cancelar</button>
-                      <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => guardarAsig()} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignación'}</button>
+                    <div className="dx-ficha-form-acts">
+                      <button type="button" className="dx-ficha-btn" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError(''); }}>Cancelar</button>
+                      <button type="button" className="dx-ficha-btn is-primary" data-local-form="true" onClick={() => guardarAsig()} disabled={savingAsig}>{savingAsig ? 'Guardando…' : 'Guardar asignación'}</button>
                     </div>
-                  </div>
+                  </FichaCard>
                 )}
 
                 {retroWallDeleteAsig && (
-                  <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8, marginBottom:16}}>
-                    <div style={{color:'var(--danger)', fontWeight:600}}>Eliminación bloqueada por nómina ya procesada</div>
-                    <div>{retroWallDeleteAsig}</div>
-                    <div className="input-group">
-                      <label>Justificación para forzar la eliminación (obligatoria)</label>
-                      <textarea className="input" rows={2} value={retroWallMotivoDeleteAsig} onChange={e=>setRetroWallMotivoDeleteAsig(e.target.value)} />
+                  <FichaAlert tone="danger" title="Eliminación bloqueada por nómina ya procesada" role="alert">
+                    <div className="dx-ficha-retro">
+                      <div>{retroWallDeleteAsig}</div>
+                      <div className="input-group">
+                        <label>Justificación para forzar la eliminación (obligatoria)</label>
+                        <textarea className="input" rows={2} value={retroWallMotivoDeleteAsig} onChange={e=>setRetroWallMotivoDeleteAsig(e.target.value)} />
+                      </div>
+                      <div className="dx-ficha-form-acts" style={{marginTop:0}}>
+                        <button type="button" className="dx-ficha-btn is-sm" onClick={() => { setRetroWallDeleteAsig(null); setRetroWallMotivoDeleteAsig(''); setDeletingAsigId(null); }}>Cancelar</button>
+                        <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={!deletingAsigId || !retroWallMotivoDeleteAsig.trim()} onClick={() => eliminarAsig(deletingAsigId, { forzarOverride: true, motivoOverride: retroWallMotivoDeleteAsig.trim() })}>Forzar eliminación (requiere autorización)</button>
+                      </div>
                     </div>
-                    <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                      <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallDeleteAsig(null); setRetroWallMotivoDeleteAsig(''); setDeletingAsigId(null); }}>Cancelar</button>
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        disabled={!deletingAsigId || !retroWallMotivoDeleteAsig.trim()}
-                        onClick={() => eliminarAsig(deletingAsigId, { forzarOverride: true, motivoOverride: retroWallMotivoDeleteAsig.trim() })}
-                      >
-                        Forzar eliminación (requiere autorización)
-                      </button>
-                    </div>
-                  </div>
+                  </FichaAlert>
                 )}
 
-                <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
-                {asigsTrabajador.length === 0
-                  ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
-                  : <div className="table-wrap" style={{margin:'0 -16px'}}><table className="tbl" style={{fontSize:12, width:'100%'}}>
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th><th>Acciones</th></tr></thead>
-                      <tbody>
-                        {asigsTrabajador.map((a, i) => {
-                          const isVigente = i === 0;
-                          return (
-                            <tr key={a.id}>
-                              <td>{a.fecha_inicio}</td>
-                              <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
-                              <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">Suspensión</span> : <span className="badge badge-gray">Normal</span>}</td>
-                              <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
-                              <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
-                              <td className="text-muted">{a.motivo || '—'}</td>
-                              <td>
-                                {isVigente && (
-                                  <button
-                                    className="btn btn-danger btn-sm"
-                                    onClick={() => eliminarAsig(a.id)}
-                                    disabled={deletingAsigId === a.id}
-                                    style={{padding:'2px 8px', fontSize:11}}
-                                  >
-                                    {deletingAsigId === a.id ? 'Eliminando...' : 'Eliminar'}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table></div>
-                }
-                <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || '—'}) nunca se modifica al crear asignaciones de jornada.</div>
+                <FichaCard flush icon={I.list} title="Historial" meta={asigsTrabajador.length ? asigsTrabajador.length : null}>
+                  {asigsTrabajador.length === 0 ? (
+                    <FichaEmpty compact text="Sin jornada asignada." />
+                  ) : (
+                    <FichaTable columns={['Desde', 'Hasta', 'Tipo', 'Régimen', 'Ciclo', 'Motivo', '']}>
+                      {asigsTrabajador.map((a, i) => {
+                        const isVigente = i === 0;
+                        return (
+                          <tr key={a.id}>
+                            <td className="is-strong">{a.fecha_inicio}</td>
+                            <td>{a.fecha_fin || <FichaPill tone="green">Vigente</FichaPill>}</td>
+                            <td>{a.tipo_tramo === 'suspension_perfecta' ? <FichaPill tone="amber" dot={false}>Suspensión</FichaPill> : <FichaPill dot={false}>Normal</FichaPill>}</td>
+                            <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
+                            <td className="is-muted">{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
+                            <td className="is-muted">{a.motivo || '—'}</td>
+                            <td className="is-acts">
+                              {isVigente && (
+                                <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={() => eliminarAsig(a.id)} disabled={deletingAsigId === a.id}>
+                                  {I.trash} {deletingAsigId === a.id ? 'Eliminando…' : 'Eliminar'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </FichaTable>
+                  )}
+                </FichaCard>
+                <FichaAlert tone="info">La fecha de ingreso del trabajador ({p.fecha_ingreso || '—'}) nunca se modifica al crear asignaciones de jornada.</FichaAlert>
               </div>
             );
           })()}
 
           {fichaTab === 'vacaciones' && (
-            <>
-              {esHon ? (
-                <div className="card-body">
-                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
-                    Los trabajadores bajo modalidad de honorarios no tienen derecho a vacaciones remuneradas.
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="card-body" style={{paddingBottom:0}}>
-                    <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16}}>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días disponibles</div><div className="kpi-value" style={{color:'var(--green)'}}>{solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, vacPersona).saldo}</div></div>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días usados</div><div className="kpi-value">{vacPersona.filter(s => solicitudesRrhhService.ESTADOS_VACACIONES_DESCUENTA.includes(s.estado)).reduce((acc,s) => acc + (s.dias_habiles||0), 0)}</div></div>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Solicitudes</div><div className="kpi-value">{vacPersona.length}</div></div>
-                    </div>
-                  </div>
-                  <div className="table-wrap">
-                    <table className="tbl">
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Días calendario</th><th>Motivo</th><th>Estado</th></tr></thead>
-                      <tbody>
-                        {vacPersona.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes de vacaciones.</td></tr>}
-                        {vacPersona.map(v => (
-                          <tr key={v.id}>
-                            <td>{v.fecha_inicio}</td>
-                            <td>{v.fecha_fin}</td>
-                            <td className="num">{v.dias_habiles}</td>
-                            <td className="text-muted">{v.motivo}</td>
-                            <td><span className={'badge badge-'+(v.estado==='confirmada_rrhh'||v.estado==='activa'?'green':v.estado==='enviada'||v.estado==='aprobada_jefe'?'orange':'red')}>{v.estado?.replace(/_/g,' ')}</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </>
+            esHon ? (
+              <FichaAlert tone="neutral" dashed>Los trabajadores bajo modalidad de honorarios no tienen derecho a vacaciones remuneradas.</FichaAlert>
+            ) : (
+              <div className="dx-ficha-stack">
+                <FichaStats items={[
+                  { label: 'Días disponibles', value: solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, vacPersona).saldo, tone: 'green', note: 'acumulados a hoy' },
+                  { label: 'Días usados', value: vacPersona.filter(s => solicitudesRrhhService.ESTADOS_VACACIONES_DESCUENTA.includes(s.estado)).reduce((acc,s) => acc + (s.dias_habiles||0), 0), note: 'en el período' },
+                  { label: 'Solicitudes', value: vacPersona.length, note: 'registradas' },
+                ]} />
+                <FichaCard flush icon={I.calendar} title="Solicitudes de vacaciones" meta={vacPersona.length}>
+                  {vacPersona.length === 0 ? (
+                    <FichaEmpty icon={I.calendar} title="Sin solicitudes de vacaciones" text="Cuando el colaborador pida vacaciones aparecerán aquí con sus fechas y estado." />
+                  ) : (
+                    <FichaTable columns={['Desde', 'Hasta', { label: 'Días calendario', num: true }, 'Motivo', 'Estado']}>
+                      {vacPersona.map(v => (
+                        <tr key={v.id}>
+                          <td>{v.fecha_inicio}</td>
+                          <td>{v.fecha_fin}</td>
+                          <td className="is-num">{v.dias_habiles}</td>
+                          <td className="is-muted">{v.motivo}</td>
+                          <td><FichaPill tone={v.estado==='confirmada_rrhh'||v.estado==='activa'?'green':v.estado==='enviada'||v.estado==='aprobada_jefe'?'amber':'red'}>{v.estado?.replace(/_/g,' ')}</FichaPill></td>
+                        </tr>
+                      ))}
+                    </FichaTable>
+                  )}
+                </FichaCard>
+              </div>
+            )
           )}
-
           {fichaTab === 'licencias' && (
-            <>
-              {esHon ? (
-                <div className="card-body">
-                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
-                    Los trabajadores bajo modalidad de honorarios no tienen derecho a licencias laborales remuneradas.
-                  </div>
-                </div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {licPersona.length === 0 && <tr><td colSpan={6} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin licencias registradas.</td></tr>}
-                      {licPersona.map(l => (
-                        <tr key={l.id}>
-                          <td style={{textTransform:'capitalize'}}>{l.tipo?.replace(/_/g,' ')}</td>
-                          <td>{l.fecha_inicio}</td>
-                          <td>{l.fecha_fin}</td>
-                          <td className="num">{l.dias_habiles}</td>
-                          <td className="text-muted">{l.motivo}</td>
-                          <td><span className={'badge badge-'+(l.estado==='confirmada_rrhh'||l.estado==='activa'?'green':l.estado==='enviada'?'orange':'red')}>{l.estado?.replace(/_/g,' ')}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
+            esHon ? (
+              <FichaAlert tone="neutral" dashed>Los trabajadores bajo modalidad de honorarios no tienen derecho a licencias laborales remuneradas.</FichaAlert>
+            ) : (
+              <FichaCard flush icon={I.activity} title="Licencias" meta={licPersona.length}>
+                {licPersona.length === 0 ? (
+                  <FichaEmpty icon={I.activity} title="Sin licencias registradas" text="Descansos médicos, maternidad y paternidad aparecerán aquí." />
+                ) : (
+                  <FichaTable columns={['Tipo', 'Desde', 'Hasta', { label: 'Días', num: true }, 'Motivo', 'Estado']}>
+                    {licPersona.map(l => (
+                      <tr key={l.id}>
+                        <td className="is-strong is-cap">{l.tipo?.replace(/_/g,' ')}</td>
+                        <td>{l.fecha_inicio}</td>
+                        <td>{l.fecha_fin}</td>
+                        <td className="is-num">{l.dias_habiles}</td>
+                        <td className="is-muted">{l.motivo}</td>
+                        <td><FichaPill tone={l.estado==='confirmada_rrhh'||l.estado==='activa'?'green':l.estado==='enviada'?'amber':'red'}>{l.estado?.replace(/_/g,' ')}</FichaPill></td>
+                      </tr>
+                    ))}
+                  </FichaTable>
+                )}
+              </FichaCard>
+            )
           )}
-
           {fichaTab === 'solicitudes' && (
-            <>
-              {esHon ? (
-                <div className="card-body">
-                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
-                    Los trabajadores bajo modalidad de honorarios no tienen acceso a permisos laborales remunerados.
-                  </div>
-                </div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Impacto nómina</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {permPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
-                      {permPersona.map(s => (
-                        <tr key={s.id}>
-                          <td style={{textTransform:'capitalize'}}>{s.tipo?.replace(/_/g,' ')}</td>
-                          <td>{s.fecha_inicio}</td>
-                          <td>{s.fecha_fin}</td>
-                          <td className="num">{s.dias_habiles}</td>
-                          <td className="text-muted">{s.motivo}</td>
-                          <td><span className={'badge '+(s.impacto_nomina==='sin_descuento'?'badge-green':s.impacto_nomina==='descuento_total'?'badge-red':'badge-orange')}>{s.impacto_nomina?.replace(/_/g,' ')}</span></td>
-                          <td><span className={'badge badge-'+(s.estado==='confirmada_rrhh'||s.estado==='activa'?'green':s.estado==='enviada'||s.estado==='aprobada_jefe'?'orange':'red')}>{s.estado?.replace(/_/g,' ')}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
+            esHon ? (
+              <FichaAlert tone="neutral" dashed>Los trabajadores bajo modalidad de honorarios no tienen acceso a permisos laborales remunerados.</FichaAlert>
+            ) : (
+              <FichaCard flush icon={I.clipboard} title="Permisos y solicitudes" meta={permPersona.length}>
+                {permPersona.length === 0 ? (
+                  <FichaEmpty icon={I.clipboard} title="Sin solicitudes registradas" text="Permisos con o sin goce y compensaciones de horas aparecerán aquí con su impacto en nómina." />
+                ) : (
+                  <FichaTable columns={['Tipo', 'Desde', 'Hasta', { label: 'Días', num: true }, 'Motivo', 'Impacto en nómina', 'Estado']}>
+                    {permPersona.map(s => (
+                      <tr key={s.id}>
+                        <td className="is-strong is-cap">{s.tipo?.replace(/_/g,' ')}</td>
+                        <td>{s.fecha_inicio}</td>
+                        <td>{s.fecha_fin}</td>
+                        <td className="is-num">{s.dias_habiles}</td>
+                        <td className="is-muted">{s.motivo}</td>
+                        <td><FichaPill dot={false} tone={s.impacto_nomina==='sin_descuento'?'green':s.impacto_nomina==='descuento_total'?'red':'amber'}>{s.impacto_nomina?.replace(/_/g,' ')}</FichaPill></td>
+                        <td><FichaPill tone={s.estado==='confirmada_rrhh'||s.estado==='activa'?'green':s.estado==='enviada'||s.estado==='aprobada_jefe'?'amber':'red'}>{s.estado?.replace(/_/g,' ')}</FichaPill></td>
+                      </tr>
+                    ))}
+                  </FichaTable>
+                )}
+              </FichaCard>
+            )
           )}
 
           {fichaTab === 'documentos' && (() => {
@@ -24935,320 +24277,255 @@ function RRHH_Operativo() {
               finally { setInlineUploading(false); }
             };
 
-            return (
-              <div className="card-body">
+            const DOC_TONO = { vigente:'green', por_vencer:'amber', vencido:'red', en_revision:'cyan', rechazado:'red', falta:'gray', incompleto:'amber', historico:'gray', anulado:'gray' };
+            const docEstadoLabel = (req) => {
+              const base = req.estado === 'historico' ? 'Histórico' : (DOC_LBL[req.estado] || req.estado);
+              return req.estado === 'por_vencer' && req.dias_restantes != null ? `${base} (${req.dias_restantes} d)` : base;
+            };
+            const docsAdicionales = docsPersona.filter(doc => !docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc]);
+            const cerrarInline = () => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); };
+            const accionesEliminarArchivar = (doc) => {
+              const firmado = doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaOps[doc?.id] || []).some(f => f.estado === 'firmado') || (solicitudesFirmaDigitalOps[doc?.id] || []).some(s => s.estado === 'firmado');
+              return puedeEliminarDocumentosRrhh && !firmado ? [
+              { label: 'Archivar', icon: I.archive, onClick: () => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc, persona: p }); } },
+              'sep',
+              { label: 'Eliminar', icon: I.trash, danger: true, onClick: () => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc, persona: p }); } },
+              ] : [];
+            };
+            const pieRechazo = (doc, onConfirm) => ({ tone: 'rej', content: (
+              <>
+                <strong>Rechazar:</strong>
+                <input className="input" aria-label="Motivo de rechazo" placeholder="Motivo de rechazo…" value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
+                <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={!motivoRechazo.trim() || docValidandoId === doc.id} onClick={onConfirm}>Confirmar rechazo</button>
+                <button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
+              </>
+            ) });
+            const pieValidacion = (doc, etiquetaAprobar = 'Validar') => ({ tone: 'val', content: (
+              <>
+                <strong>Pendiente de validación por RRHH</strong>
+                <span className="dx-ficha-sp" />
+                <button type="button" className="dx-ficha-btn is-sm is-primary" disabled={docValidandoId === doc.id} onClick={() => handleValidar(doc.id, 'aprobado')}>{docValidandoId === doc.id ? 'Validando…' : etiquetaAprobar}</button>
+                <button type="button" className="dx-ficha-btn is-sm is-danger-text" disabled={docValidandoId === doc.id} onClick={() => setShowRechazoInput(doc.id)}>Rechazar</button>
+              </>
+            ) });
 
-                {/* ── Badge habilitacional ── */}
-                <div style={{marginBottom:20, display:'flex', alignItems:'center', gap:12, padding:'14px 18px', background:'var(--bg-subtle)', borderRadius:10, border:'1px solid var(--border-subtle)'}}>
-                  <span className={'badge ' + cfgBadge.cls} style={{fontSize:12, padding:'5px 16px', flexShrink:0, letterSpacing:'0.02em'}}
-                    title={tooltipBadge || undefined}>
-                    {cfgBadge.txt}
-                  </span>
-                  {tooltipBadge && (
-                    <span style={{fontSize:12, color:'var(--fg-muted)', flex:1}}>
-                      {docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id).join(' · ')}
-                    </span>
+            const renderRequisito = (req, chain) => {
+              const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
+              const tPredecesor = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
+              const hasAprobadoPredecesor = tPredecesor ? docsPersona.some(d => (d.tipo_documento_id === tPredecesor.id || d.tipo_doc === tPredecesor.id || d.tipo_doc === tPredecesor.codigo || d.tipo_doc === tPredecesor.nombre) && d.estado_validacion === 'aprobado' && d.activo) : true;
+              const tooltipPredecesor = tPredecesor && !hasAprobadoPredecesor ? `Primero debes cargar el ${tPredecesor.nombre} aprobado para este colaborador.` : null;
+              const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
+              const fechaHoy = new Date();
+              const hoy = `${fechaHoy.getFullYear()}-${String(fechaHoy.getMonth() + 1).padStart(2, '0')}-${String(fechaHoy.getDate()).padStart(2, '0')}`;
+              const isHistorico = req.estado === 'historico';
+              const nombreTipo = req.tipo?.nombre || req.tipo_documento_id;
+              const tono = DOC_TONO[req.estado] || 'gray';
+              const enRechazo = req.doc && showRechazoInput === req.doc.id;
+              const puedeValidar = req.doc?.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion && canGestionarDocsRrhh;
+              const esContratoReq = rrhhEsTipoContrato(req.tipo);
+              const docsTipoContrato = esContratoReq ? documentosContratoFecha.filter(d => d.personal_id === p.id && (d.tipo_documento_id || d.tipo_doc) === req.tipo_documento_id && !d.contrato_referencia_id) : [];
+              const proximoContrato = esContratoReq ? seleccionarProximoContrato(docsTipoContrato, hoy) : null;
+              const solicitudesDoc = req.doc ? (solicitudesFirmaDigitalOps[req.doc.id] || []) : [];
+              const solicitudActivaDoc = solicitudesDoc.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
+              const firmaEmpresaDoc = req.doc ? (firmasEmpresaOps[req.doc.id] || []).find(f => f.estado !== 'anulado') : null;
+              const firmaEnCurso = Boolean(solicitudActivaDoc || (firmaEmpresaDoc && ['pendiente', 'otp_enviado'].includes(firmaEmpresaDoc.estado)));
+              const docFirmado = req.doc?.estado_firma === 'firmado_trabajador' || firmaEmpresaDoc?.estado === 'firmado' || solicitudesDoc.some(s => s.estado === 'firmado');
+              const tipoSucesor = req.tipo?.tipo_sucesor_id ? tiposDocumento.find(t => t.id === req.tipo.tipo_sucesor_id) : null;
+              const sucesorAprobado = tipoSucesor && docsPersona.some(d => (d.tipo_documento_id === tipoSucesor.id || d.tipo_doc === tipoSucesor.id || d.tipo_doc === tipoSucesor.codigo || d.tipo_doc === tipoSucesor.nombre) && d.estado_validacion === 'aprobado');
+              const puedeRenovarFirmaDigital = esContratoReq && !firmaEnCurso && !isHistorico && !sucesorAprobado && !req.tipo?.documento_padre_tipo_id;
+              const hayDatosFirmaContrato = (doc) => (firmasEmpresaOps[doc.id] || []).some(f => f.estado !== 'anulado') || (solicitudesFirmaDigitalOps[doc.id] || []).length > 0;
+              const panelFirmaContrato = (doc) => {
+                const solicitudes = solicitudesFirmaDigitalOps[doc.id] || [];
+                const solActiva = solicitudes.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
+                const sol = solActiva || solicitudes[0];
+                const firma = (firmasEmpresaOps[doc.id] || []).find(f => f.estado !== 'anulado');
+                const trabajadorFirmo = sol?.estado === 'firmado' || doc.estado_firma === 'firmado_trabajador';
+                if (!firma && !sol) return null;
+                return <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                  {firma && <FichaPill tone={firma.estado === 'firmado' ? 'green' : 'amber'}>{firma.estado === 'firmado' ? `Firmado por la empresa · ${new Date(firma.firmado_en).toLocaleDateString('es-PE')}` : `Pendiente firma de la empresa · ${firma.firmante_nombre || ''}`}</FichaPill>}
+                  {firma?.estado !== 'firmado' && firma?.firmante_usuario_id === authUser?.id && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setFirmaEmpresaActivaOps(firma.id)}>Firmar como empresa</button>}
+                  {firma && firma.estado !== 'firmado' && <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firma.id); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>}
+                  {firma?.estado === 'firmado' && !solActiva && !trabajadorFirmo && <button type="button" className="dx-ficha-btn is-sm is-primary" disabled={accionFirmaDigitalDocOps === doc.id} onClick={() => enviarSolicitudFirmaTrabajadorOps(doc.id, firma.canales_trabajador || [])}>Enviar a firma del trabajador</button>}
+                  {sol && <FichaPill tone={trabajadorFirmo ? 'green' : solActiva ? 'amber' : 'gray'}>{trabajadorFirmo ? `Firmado por el trabajador${sol.firmado_en ? ` · ${new Date(sol.firmado_en).toLocaleDateString('es-PE')}` : ''}` : solActiva ? 'Pendiente de firma del trabajador' : `Solicitud ${sol.estado}`}</FichaPill>}
+                  {solActiva && <><button type="button" className="dx-ficha-btn is-sm" disabled={accionFirmaDigitalDocOps === doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: doc.id, empresaId: empresa.id, canales: sol.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalOps(); addNotificacion('Enlace de firma enviado'); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Reenviar enlace</button><button type="button" className="dx-ficha-btn is-sm is-danger-text" disabled={accionFirmaDigitalDocOps === doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(doc.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: sol.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalOps(); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Anular solicitud</button></>}
+                  {trabajadorFirmo && firma?.estado === 'firmado' && <FichaPill tone="green">Firmado por empresa y trabajador{sol?.firmado_en ? ` · ${new Date(sol.firmado_en).toLocaleDateString('es-PE')}` : ''}</FichaPill>}
+                  {trabajadorFirmo && sol?.pdf_firmado_path && <button type="button" className="dx-ficha-btn is-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(sol.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
+                </div>;
+              };
+              const meta = [
+                <>{!req.obligatorio ? 'Opcional' : 'Obligatorio'}{req.es_habilitante ? ' · Habilitante' : ''}</>,
+                req.doc?.version ? `v${req.doc.version}` : null,
+                req.doc?.fecha_emision ? <>Emitido <b>{req.doc.fecha_emision}</b></> : null,
+                req.doc?.fecha_vencimiento ? <>Vence <b>{req.doc.fecha_vencimiento}</b></> : null,
+                req.doc?.dias_restantes != null ? <span className={req.doc.dias_restantes <= 0 ? 'is-err' : req.doc.dias_restantes <= 30 ? 'is-warn' : undefined}>{req.doc.dias_restantes <= 0 ? 'Vencido' : `Faltan ${req.doc.dias_restantes} días`}</span> : null,
+                !req.doc && req.tipo?.renovable ? 'Renovable' : null,
+                !req.doc && req.tipo?.permite_firma_trabajador ? 'Se envía a firma del trabajador' : null,
+              ];
+
+              // Estado de firma (solo documentos con snapshot laboral que admiten firma)
+              let pillFirma = null; let pieFirma = null; let botonFirma = null;
+              if (req.doc && canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false) {
+                const ef = req.doc?.estado_firma || 'no_requiere';
+                if (ef === 'pendiente_trabajador') {
+                  pieFirma = { tone: 'sig', content: (
+                    <>
+                      <strong>Esperando firma del trabajador</strong>
+                      <span className="dx-ficha-sp" />
+                      <button type="button" className="dx-ficha-btn is-sm is-ghost" title="Reenviar notificación al trabajador" onClick={async () => { await reenviarNotificacionFirmaCtx({ documentoId: req.doc.id, workerAuthUserId: p.auth_user_id }); addNotificacion('Notificacion reenviada.'); }}>Reenviar aviso</button>
+                      <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={async () => { await cancelarEnvioFirmaCtx({ documentoId: req.doc.id }); addNotificacion('Envio a firma cancelado.'); }}>Cancelar envío</button>
+                    </>
+                  ) };
+                } else if (ef === 'firmado_trabajador') {
+                  pillFirma = <FichaPill tone="cyan">Firmado por el trabajador</FichaPill>;
+                } else {
+                  const yaSubioFirmado = personalDocumentos.some(pd =>
+                    pd.personal_id === p.id &&
+                    (pd.tipo_documento_id === req.doc.tipo_documento_id || pd.tipo_doc === req.doc.tipo_doc) &&
+                    pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
+                  );
+                  if (yaSubioFirmado) pillFirma = <FichaPill tone="amber">Firmado · Por validar</FichaPill>;
+                  else botonFirma = <button type="button" className="dx-ficha-btn is-sm is-cyan" onClick={() => { setModalEnviarFirmaDocOps({ doc: req.doc, nombre: nombreTipo }); setEnviarFirmaMensajeOps(''); }}>{I.send} Enviar a firma</button>;
+                }
+              }
+
+              const acciones = req.doc ? (
+                <>
+                  {req.doc.archivo_url && <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento(req, p)}>{I.eye} Ver</button>}
+                  {!docFirmado && <button type="button" className={'dx-ficha-btn is-sm' + (req.estado === 'rechazado' ? ' is-primary' : '')} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>}
+                  {!docFirmado && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
+                    <button type="button" className="dx-ficha-btn is-sm is-amber" onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>{I.refresh} Renovar</button>
                   )}
+                  {puedeRenovarFirmaDigital && <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => setRenovacionFirmaDigitalOps({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'operativo' })}>Renovar con firma digital</button>}
+                  {botonFirma}
+                  {!docFirmado && <FichaMenu label={`M\u00e1s acciones de ${nombreTipo}`} items={accionesEliminarArchivar(req.doc)} />}
+                </>
+              ) : (
+                <button type="button" className="dx-ficha-btn is-sm is-primary" title={tooltipPredecesor || undefined} aria-label={`Subir ${nombreTipo}`} disabled={!hasAprobadoPredecesor} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>{I.upload} Subir documento</button>
+              );
+
+              const pies = [];
+              if (req.doc?.estado_validacion === 'rechazado' && req.doc.comentarios_validacion) pies.push({ tone: 'rej', content: <><strong>Rechazado:</strong> <span>{req.doc.comentarios_validacion}</span></> });
+              if (puedeValidar) pies.push(enRechazo ? pieRechazo(req.doc, () => handleValidar(req.doc.id, 'rechazado')) : pieValidacion(req.doc));
+              if (pieFirma) pies.push(pieFirma);
+
+              return (
+                <div key={req.tipo_documento_id} className="dx-ficha-crow">
+                  {chain.length > 1 && <div className="dx-ficha-node" style={{'--c': isHistorico ? 'var(--dx-ficha-border)' : `var(--dx-ficha-${tono === 'gray' ? 'border' : tono})`}}><i /></div>}
+                  <div className="dx-ficha-crow-main">
+                    <FichaDocRow
+                      tone={tono}
+                      titulo={nombreTipo}
+                      estado={<><FichaPill tone={tono}>{docEstadoLabel(req)}</FichaPill>{pillFirma}</>}
+                      meta={meta}
+                      archivo={req.doc?.nombre_archivo}
+                      hint={!req.doc ? (tooltipPredecesor || (tPredecesor ? `Requiere el ${tPredecesor.nombre} aprobado · cumplido` : null)) : null}
+                      hintTone={tooltipPredecesor ? 'warn' : 'ok'}
+                      actions={acciones}
+                      footers={[...pies, ...(req.doc && esContratoReq && hayDatosFirmaContrato(req.doc) ? [{ tone: 'sig', content: panelFirmaContrato(req.doc) }] : [])]}
+                      missing={!req.doc}
+                      highlight={destacado}
+                      historico={isHistorico}
+                    />
+                    {proximoContrato && <FichaDocRow linked icon={I.clock} tone="cyan" titulo={'Pr\u00f3ximo contrato'} estado={<FichaPill tone="cyan">{'Pr\u00f3ximo \u00b7 desde ' + (proximoContrato.periodo_fecha_inicio || proximoContrato.fecha_emision || '').split('-').reverse().join('/')}</FichaPill>} meta={[proximoContrato.nombre_archivo || 'Contrato programado']} actions={proximoContrato.archivo_url ? <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ ...req, doc: proximoContrato }, p)}>{I.eye} Ver</button> : null} footers={hayDatosFirmaContrato(proximoContrato) ? [{ tone: 'sig', content: panelFirmaContrato(proximoContrato) }] : []} />}
+                    {docsVinculados.map(dv => {
+                      const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
+                      const dvCambios = [
+                        dv.cambio_cargo && 'Cargo',
+                        dv.cambio_remuneracion && 'Remuneración',
+                        dv.cambio_modalidad && 'Modalidad',
+                        dv.cambio_sede && 'Sede',
+                        dv.cambio_otro && 'Otro'
+                      ].filter(Boolean);
+                      let dvCond = {};
+                      try { dvCond = typeof dv.condiciones_json === 'string' ? JSON.parse(dv.condiciones_json) : (dv.condiciones_json || {}); } catch(e){}
+                      const dvResumen = [
+                        dvCambios.includes('Cargo') ? `Cargo: ${dvCond.cargo || '-'}` : '',
+                        dvCambios.includes('Remuneración') ? `Sueldo: S/ ${Number(dvCond.remuneracion_base || 0).toLocaleString()}` : '',
+                        dvCambios.includes('Modalidad') ? `Modalidad: ${dvCond.modalidad || '-'}` : '',
+                        dvCambios.includes('Sede') ? `Sede: ${dvCond.sede || '-'}` : '',
+                        dvCambios.includes('Otro') && dvCond.descripcion_cambio ? dvCond.descripcion_cambio : '',
+                      ].filter(Boolean).join(' · ') || 'Documento vinculado';
+                      const dvVigenciaFutura = dv.fecha_vigencia_cambio && dv.fecha_vigencia_cambio > hoy;
+                      return (
+                        <FichaDocRow
+                          key={dv.id}
+                          linked
+                          tone={fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion])}
+                          icon={I.copy}
+                          titulo={dvTipo?.nombre || dv.tipo_doc}
+                          estado={<FichaPill tone={fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion])}>{labelOr(ESTADO_VALIDACION_LABELS, dv.estado_validacion)}</FichaPill>}
+                          meta={[
+                            dvResumen,
+                            dv.fecha_emision ? `Emitido ${dv.fecha_emision}` : null,
+                            dvVigenciaFutura ? <span className="is-info">Vigente desde {dv.fecha_vigencia_cambio}</span> : null,
+                            dv.fecha_vencimiento ? `Vence ${dv.fecha_vencimiento}` : null,
+                          ]}
+                          actions={dv.archivo_url ? <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ doc: dv, tipo: dvTipo, tipo_documento_id: dv.tipo_documento_id, estado: dv.estado_validacion }, p)}>{I.eye} Ver</button> : null}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
+              );
+            };
 
-                {/* Documentos requeridos por cargo */}
-                {(!p.cargo_id) ? (
-                  <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
-                    <div style={{fontWeight:600, marginBottom:8}}>Este colaborador no tiene cargo asignado</div>
-                    <div className="text-muted" style={{fontSize:13, marginBottom:16}}>Asigna un cargo para determinar sus requisitos documentales.</div>
-                    <button className="btn btn-primary btn-sm" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>Editar ficha</button>
-                  </div>
-                ) : (!hab.docs || hab.docs.length === 0) ? (
-                  <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
-                    <div style={{fontWeight:600, marginBottom:8}}>El cargo "{p.cargo}" aún no tiene requisitos documentales</div>
-                    <div className="text-muted" style={{fontSize:13}}>Ve a Maestros Base para configurar la matriz de requisitos.</div>
-                  </div>
-                ) : (
-                  <div style={{marginBottom:20}}>
-                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
-                      <div style={{fontWeight:700, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.07em'}}>Requisitos del cargo</div>
-                      {hab.docs.length > 0 && <span style={{fontSize:11, color:'var(--fg-muted)'}}>{hab.docs.filter(d => d.doc).length} / {hab.docs.length}</span>}
-                    </div>
-                    <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                      {(() => {
-
-                        const groupedDocs = {};
-                        hab.docs.forEach(req => {
-                          const cat = req.tipo?.categoria || 'Otros';
-                          if (!groupedDocs[cat]) groupedDocs[cat] = [];
-                          groupedDocs[cat].push(req);
-                        });
-                        Object.entries(groupedDocs).forEach(([cat, catDocs]) => {
-                          const chains = [];
-                          const added = new Set();
-                          const buildChain = (doc, currentChain = []) => {
-                            if (added.has(doc.tipo_documento_id)) return currentChain;
-                            currentChain.push(doc);
-                            added.add(doc.tipo_documento_id);
-                            const tHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === doc.tipo_documento_id);
-                            for (const th of tHijos) {
-                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id);
-                              if (docHijo) return buildChain(docHijo, currentChain);
-                            }
-                            return currentChain;
-                          };
-                          const heads = catDocs.filter(d => !d.tipo?.documento_padre_tipo_id);
-                          heads.forEach(head => {
-                            const chain = buildChain(head);
-                            if (chain.length > 0) chains.push(chain);
-                          });
-                          catDocs.forEach(doc => {
-                            if (!added.has(doc.tipo_documento_id)) {
-                              if (doc.tipo?.documento_padre_tipo_id && hab.docs.some(d => d.tipo_documento_id === doc.tipo.documento_padre_tipo_id)) return;
-                              const chain = buildChain(doc);
-                              if (chain.length > 0) chains.push(chain);
-                            }
-                          });
-                                                                              chains.sort((a, b) => {
-                            const reqA = a[0];
-                            const reqB = b[0];
-                            const nA = (reqA.tipo?.nombre || reqA.tipo_documento_id || '').toLowerCase();
-                            const nB = (reqB.tipo?.nombre || reqB.tipo_documento_id || '').toLowerCase();
-                            
-                            const getW = (n) => {
-                              if (n.includes('primigenio')) return 1;
-                              if (n.includes('laboral')) return 2;
-                              if (n.includes('adenda')) return 3;
-                              return 99;
-                            };
-                            
-                            const wA = getW(nA);
-                            const wB = getW(nB);
-                            
-                            if (wA !== wB) return wA - wB;
-                            return nA.localeCompare(nB);
-                          });
-                          groupedDocs[cat] = chains;
-                        });
-
-                        return (
-                          <div style={{display:'flex', flexDirection:'column', gap:24}}>
-                            {Object.entries(groupedDocs).map(([catName, chains]) => (
-                              <div key={catName} style={{display:'flex', flexDirection:'column', gap:10}}>
-                                <div style={{fontSize: 13, fontWeight: 700, color: 'var(--fg)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 6, marginBottom: 4, textTransform:'uppercase', letterSpacing:'0.05em'}}>{catName}</div>
-                                {chains.map((chain, chainIdx) => (
-                                  <div key={'chain-'+chainIdx} style={{ display: 'flex', flexDirection: 'column', position: 'relative', gap: 12 }}>
-                                    {chain.length > 1 && (
-                                      <div style={{ position: 'absolute', top: 30, bottom: 30, left: 15, width: 2, background: 'var(--border)', zIndex: 0 }} />
-                                    )}
-                                    {chain.map((req, idx) => {
-                                      const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
-                                      const tPredecesor = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
-                                      const hasAprobadoPredecesor = tPredecesor ? docsPersona.some(d => (d.tipo_documento_id === tPredecesor.id || d.tipo_doc === tPredecesor.id || d.tipo_doc === tPredecesor.codigo || d.tipo_doc === tPredecesor.nombre) && d.estado_validacion === 'aprobado' && d.activo) : true;
-                                      const tooltipPredecesor = tPredecesor && !hasAprobadoPredecesor ? `Primero debes cargar el ${tPredecesor.nombre} aprobado para este colaborador.` : null;
-                                      const tiposHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === req.tipo_documento_id && t.estado === 'activo');
-                                      const docPadreValidado = req.doc?.estado_validacion === 'aprobado';
-                                      const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
-                                                                            const hoy = new Date().toISOString().slice(0, 10);
-                                      const _borderColor = {vigente:'#22c55e',por_vencer:'#f97316',vencido:'#ef4444',en_revision:'#06b6d4',rechazado:'#ef4444',falta:'#d1d5db',incompleto:'#f97316'}[req.estado] || '#d1d5db';
-                                      const isHistorico = req.estado === 'historico';
-                                      const opacityStyle = isHistorico ? 0.65 : 1;
-
-                                      return (
-                                        <div key={req.tipo_documento_id} style={{ display: 'flex', gap: 12, position: 'relative', zIndex: 1 }}>
-                                          {chain.length > 1 && (
-                                            <div style={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16 }}>
-                                              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isHistorico ? 'var(--border)' : 'var(--primary)', border: '2px solid var(--bg)' }} />
-                                            </div>
-                                          )}
-                                          <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{background:destacado ? 'rgba(251,191,36,0.12)' : 'var(--bg-subtle)', borderRadius:10, border:destacado ? '1px solid var(--orange)' : '1px solid var(--border-subtle)', borderLeft:destacado ? '4px solid var(--orange)' : `4px solid ${_borderColor}`, opacity: opacityStyle}}>
-                                              <div style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'12px 16px', gap:12, flexWrap:'wrap'}}>
-                                              <div style={{flex:1, minWidth:0}}>
-                                                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap'}}>
-                                                  <span style={{fontWeight:700, fontSize:14}}>{req.tipo?.nombre || req.tipo_documento_id}</span>
-                                                  <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10}}>{DOC_LBL[req.estado] || req.estado}{req.estado === 'por_vencer' && req.dias_restantes != null ? ` (${req.dias_restantes}d)` : ''}</span>
-                                                </div>
-                                                <div style={{fontSize:11, color:'var(--fg-muted)', display:'flex', gap:10, flexWrap:'wrap'}}>
-                                                  <span style={{fontWeight:500}}>{!req.obligatorio ? 'Opcional' : 'Obligatorio'}</span>
-                                                  {req.doc?.version && <span>v{req.doc.version}</span>}
-                                                  {req.doc?.fecha_vencimiento && <span>Vence: {req.doc.fecha_vencimiento}</span>}
-                                                  {req.doc?.dias_restantes != null && <span style={{color: req.doc.dias_restantes <= 0 ? 'var(--red)' : req.doc.dias_restantes <= 30 ? 'var(--orange)' : 'inherit'}}>{req.doc.dias_restantes <= 0 ? 'Vencido' : `Faltan ${req.doc.dias_restantes} días`}</span>}
-                                                </div>
-                                                {req.doc && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:6}}>{req.doc.nombre_archivo}</div>}
-                                              </div>
-                                              
-                                              {req.doc ? (
-                                                <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                                  {req.doc.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion && canGestionarDocsRrhh && (
-                                                    showRechazoInput === req.doc.id ? (
-                                                      <>
-                                                        <input className="input" style={{fontSize:12, padding:'4px 8px', minWidth:160}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
-                                                        <button className="btn btn-sm btn-danger" disabled={!motivoRechazo.trim() || docValidandoId === req.doc.id} onClick={() => handleValidar(req.doc.id, 'rechazado')}>Confirmar</button>
-                                                        <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
-                                                      </>
-                                                    ) : (
-                                                      <>
-                                                        <button className="btn btn-sm btn-primary" disabled={docValidandoId === req.doc.id} onClick={() => handleValidar(req.doc.id, 'aprobado')}>
-                                                          {docValidandoId === req.doc.id ? '...' : 'Validar'}
-                                                        </button>
-                                                        <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} disabled={docValidandoId === req.doc.id} onClick={() => setShowRechazoInput(req.doc.id)}>Rechazar</button>
-                                                      </>
-                                                    )
-                                                  )}
-                                                   {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento(req, p)}>Ver</button>}
-                                                   <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
-                                                   {puedeEliminarDocumentosRrhh && <>
-                                                     <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc: req.doc, persona: p }); }}>{I.trash} Eliminar</button>
-                                                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc: req.doc, persona: p }); }}>{I.archive} Archivar</button>
-                                                   </>}
-                                                   {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
-                                                    <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>Renovar</button>
-                                                  )}
-                                                  {canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false && (() => {
-                                                    const ef = req.doc?.estado_firma || 'no_requiere';
-                                                    if (ef === 'pendiente_trabajador') return (
-                                                      <>
-                                                        <span className="badge badge-orange" style={{fontSize:10, flexShrink:0}}>Esperando firma</span>
-                                                        <button className="btn btn-sm btn-ghost" style={{fontSize:11}} title="Reenviar notificacion al trabajador" onClick={async () => { await reenviarNotificacionFirmaCtx({ documentoId: req.doc.id, workerAuthUserId: p.auth_user_id }); addNotificacion('Notificacion reenviada.'); }}>Reenviar</button>
-                                                        <button className="btn btn-sm btn-ghost" style={{fontSize:11, color:'var(--danger)'}} onClick={async () => { await cancelarEnvioFirmaCtx({ documentoId: req.doc.id }); addNotificacion('Envio a firma cancelado.'); }}>Cancelar</button>
-                                                      </>
-                                                    );
-                                                    if (ef === 'firmado_trabajador') return (
-                                                      <span className="badge badge-cyan" style={{fontSize:10, flexShrink:0}}>Firmado por trabajador</span>
-                                                    );
-                                                    const yaSubioFirmado = personalDocumentos.some(pd =>
-                                                      pd.personal_id === p.id &&
-                                                      (pd.tipo_documento_id === req.doc.tipo_documento_id || pd.tipo_doc === req.doc.tipo_doc) &&
-                                                      pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
-                                                    );
-                                                    if (yaSubioFirmado) return (
-                                                      <span className="badge badge-orange" style={{fontSize:10, flexShrink:0}}>Firmado · Por validar</span>
-                                                    );
-                                                    return (
-                                                      <button className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', borderColor:'rgba(0,178,198,0.4)', fontSize:11}} onClick={() => { setModalEnviarFirmaDocOps({ doc: req.doc, nombre: req.tipo?.nombre || req.tipo_documento_id }); setEnviarFirmaMensajeOps(''); }}>
-                                                        Enviar a firma
-                                                      </button>
-                                                    );
-                                                  })()}
-                                                </div>
-                                              ) : (
-                                                <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                                  <button className="btn btn-sm btn-primary" title={tooltipPredecesor || undefined} disabled={!hasAprobadoPredecesor} style={{opacity: hasAprobadoPredecesor ? 1 : 0.5}} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Subir {req.tipo?.nombre || req.tipo_documento_id}</button>
-                                                </div>
-                                              )}
-                                              </div>
-                                              
-                                              {req.doc?.estado_validacion === 'rechazado' && req.doc.comentarios_validacion && (
-                                                <div style={{padding:'8px 16px', background:'rgba(239,68,68,0.08)', borderTop:'1px solid rgba(239,68,68,0.2)', fontSize:12, color:'var(--red)'}}>
-                                                  <strong>Rechazado:</strong> {req.doc.comentarios_validacion}
-                                                </div>
-                                              )}
-
-                                            </div>
-
-                                            {docsVinculados.map(dv => {
-                                              const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
-                                              const dvCambios = [
-                                                dv.cambio_cargo && 'Cargo',
-                                                dv.cambio_remuneracion && 'Remuneración',
-                                                dv.cambio_modalidad && 'Modalidad',
-                                                dv.cambio_sede && 'Sede',
-                                                dv.cambio_otro && 'Otro'
-                                              ].filter(Boolean);
-                                              let dvCond = {};
-                                              try { dvCond = typeof dv.condiciones_json === 'string' ? JSON.parse(dv.condiciones_json) : (dv.condiciones_json || {}); } catch(e){}
-                                              const dvResumen = [
-                                                dvCambios.includes('Cargo') ? `Cargo: ${dvCond.cargo || '-'}` : '',
-                                                dvCambios.includes('Remuneración') ? `Sueldo: S/ ${Number(dvCond.remuneracion_base || 0).toLocaleString()}` : '',
-                                                dvCambios.includes('Modalidad') ? `Modalidad: ${dvCond.modalidad || '-'}` : '',
-                                                dvCambios.includes('Sede') ? `Sede: ${dvCond.sede || '-'}` : '',
-                                                dvCambios.includes('Otro') && dvCond.descripcion_cambio ? dvCond.descripcion_cambio : '',
-                                              ].filter(Boolean).join(' · ') || 'Documento vinculado';
-                                              const dvVigenciaFutura = dv.fecha_vigencia_cambio && dv.fecha_vigencia_cambio > hoy;
-                                              return (
-                                                <div key={dv.id} style={{marginTop:8, marginLeft: chain.length > 1 ? 52 : 20, border:'1px solid var(--border)', borderLeft:'3px solid #06b6d4', borderRadius:10, overflow:'hidden', opacity: opacityStyle}}>
-                                                  <div style={{padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
-                                                  <div style={{flex:1, minWidth:0}}>
-                                                    <div style={{display:'flex', gap:6, alignItems:'center', marginBottom:4, flexWrap:'wrap'}}>
-                                                      <span style={{fontWeight:700, fontSize:13}}>{dvTipo?.nombre || dv.tipo_doc}</span>
-                                                      <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion] || 'badge-gray')} style={{fontSize:10}}>{labelOr(ESTADO_VALIDACION_LABELS, dv.estado_validacion)}</span>
-                                                      {dv.fecha_emision && <span className="text-muted" style={{fontSize:11}}>Emitido: {dv.fecha_emision}</span>}
-                                                    </div>
-                                                    <div style={{fontSize:12, color:'var(--fg-muted)'}}>{dvResumen}</div>
-                                                    {dvVigenciaFutura && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>Vigente desde {dv.fecha_vigencia_cambio}</div>}
-                                                    {dv.fecha_vencimiento && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Vence: {dv.fecha_vencimiento}</div>}
-                                                  </div>
-                                                  <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                                    {dv.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ doc: dv, tipo: dvTipo, tipo_documento_id: dv.tipo_documento_id, estado: dv.estado_validacion }, p)}>Ver</button>}
-                                                  </div>
-                                                  </div>
-                                                </div>
-                                              );
-                                            })}
-
-                                            
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+            return (
+              <>
+                {inlineUploadReq && (
+                  <div className="modal-backdrop" onClick={cerrarInline}>
+                    <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label={`Subir ${inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}`} onClick={e => e.stopPropagation()} style={{maxWidth:640}}>
+                      <FichaModalHead
+                        icon={inlineUploadReq.doc ? I.file : I.upload}
+                        tone={inlineUploadReq.doc ? 'green' : 'cyan'}
+                        eyebrow={`Requisito del cargo · ${p.nombre}`}
+                        title={`${inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Nuevo período de' : inlineUploadReq.doc ? 'Actualizar' : 'Subir'} ${inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}`}
+                        sub={inlineUploadReq.doc ? `Documento actual: versión ${inlineUploadReq.doc?.version || 1}` : 'Nuevo documento · versión 1'}
+                        onClose={cerrarInline}
+                      />
+                      <form onSubmit={handleSubirInline} className="dx-ficha-modal-form">
+                        <div className="dx-ficha-mb">
+                          {visorUrl && (
+                            <div className="dx-ficha-cur">
+                              <span className="dx-ficha-dic is-sm is-green" aria-hidden="true">{I.file}</span>
+                              <div className="dx-ficha-cur-t"><b>Documento actual · v{inlineUploadReq.doc?.version}</b><span>{inlineUploadReq.doc?.nombre_archivo}</span></div>
+                              <button type="button" className="dx-ficha-btn is-sm" onClick={async () => {
+                                try {
+                                  const ref = inlineUploadReq.doc?.storage_path || inlineUploadReq.doc?.archivo_url;
+                                  if (ref && isSupabaseConfigured && isSupabaseConfigured()) {
+                                    const svc = await import('./services/personalDocumentosService.js');
+                                    const freshUrl = await svc.renovarUrlDocumento(ref);
+                                    window.open(freshUrl, '_blank');
+                                  } else {
+                                    window.open(visorUrl, '_blank');
+                                  }
+                                } catch { window.open(visorUrl, '_blank'); }
+                              }}>{I.eye} Ver archivo</button>
+                            </div>
+                          )}
+                          {inlineUploadReq.tipo?.renovable && inlineUploadReq.tipo?.permite_firma_trabajador && (
+                            <FichaAlert tone="ok" icon={I.send}>Renovación de contrato. El trabajador recibirá una notificación para firmarlo desde su app.</FichaAlert>
+                          )}
+                          {inlineUploadReq.tipo?.nombre === 'Contrato Primigenio' && (
+                            <FichaAlert tone="info">Este es el contrato original histórico. No requiere firma digital ni renovación. Se capturará el cargo y remuneración actual del trabajador.</FichaAlert>
+                          )}
+                          {inlineUploadReq.tipo?.requiere_validacion && (
+                            <FichaAlert tone="warn" icon={I.clock}>Al subir este documento quedará «En revisión» hasta que RRHH lo valide.</FichaAlert>
+                          )}
+                          {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (rrhhEsTipoContrato(inlineUploadReq.tipo) || rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
+                            <div className="input-group">
+                              <label id="dxf-modo-op">¿Qué quieres hacer?</label>
+                              <div className="dx-ficha-seg" role="radiogroup" aria-labelledby="dxf-modo-op">
+                                {[['nueva_version','Subir nueva versión'],['corregir','Corregir este documento']].map(([v,l])=>(
+                                  <button key={v} type="button" role="radio" aria-checked={inlineUploadForm.modoSubida===v} onClick={()=>setInlineUploadForm(f=>({...f,modoSubida:v}))}>{l}</button>
                                 ))}
                               </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-
-                    </div>
-                  </div>
-                )}
-
-                {/* Modal inline upload */}
-                {inlineUploadReq && (
-                  <div className="modal-backdrop" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:500}}>
-                      <div className="modal-head">
-                        <h3>Subir {inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}</h3>
-                        <button className="icon-btn" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>{I.x}</button>
-                      </div>
-                      <div className="modal-body">
-                        {/* Documento actual con URL fresca al descargar/ver */}
-                        {visorUrl && (
-                          <div style={{marginBottom:16, padding:12, background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                            <div>
-                              <div style={{fontWeight:500, fontSize:13}}>Documento actual (v{inlineUploadReq.doc?.version})</div>
-                              <div className="text-muted" style={{fontSize:11}}>{inlineUploadReq.doc?.nombre_archivo}</div>
-                            </div>
-                            <button className="btn btn-sm btn-ghost" onClick={async () => {
-                              try {
-                                const ref = inlineUploadReq.doc?.storage_path || inlineUploadReq.doc?.archivo_url;
-                                if (ref && isSupabaseConfigured && isSupabaseConfigured()) {
-                                  const svc = await import('./services/personalDocumentosService.js');
-                                  const freshUrl = await svc.renovarUrlDocumento(ref);
-                                  window.open(freshUrl, '_blank');
-                                } else {
-                                  window.open(visorUrl, '_blank');
-                                }
-                              } catch { window.open(visorUrl, '_blank'); }
-                            }}>{I.file} Ver archivo</button>
-                          </div>
-                        )}
-                        <form onSubmit={handleSubirInline} style={{display:'grid', gap:14}}>
-                          {inlineUploadReq.tipo?.requiere_validacion && (
-                            <div style={{fontSize:12, color:'var(--orange)', padding:'8px 12px', background:'rgba(255,160,0,0.1)', borderRadius:6, border:'1px solid rgba(255,160,0,0.3)'}}>
-                              Al subir este documento, quedará "En revisión" hasta que sea validado por RRHH.
+                              <div className="dx-ficha-help" style={{marginTop:6}}>{inlineUploadForm.modoSubida==='corregir' ? 'Se actualiza este documento sin crear una nueva versión. Si no adjuntas un archivo nuevo, se mantiene el actual.' : 'Se crea una nueva versión y la anterior queda en el historial.'}</div>
                             </div>
                           )}
                           <div className="input-group">
                             <label>Tipo de documento</label>
                             <input className="input" type="text" value={inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id} disabled />
                           </div>
-                          {inlineUploadReq.tipo?.nombre === 'Contrato Primigenio' && (
-                            <div style={{fontSize:12, color:'var(--blue)', padding:'8px 12px', background:'rgba(0,112,243,0.1)', borderRadius:6, border:'1px solid rgba(0,112,243,0.3)'}}>
-                              Este es el contrato original histórico. No requiere firma digital ni renovación. Se capturará el cargo y remuneración actual del trabajador.
-                            </div>
-                          )}
-                          {inlineUploadReq.tipo?.renovable && inlineUploadReq.tipo?.permite_firma_trabajador && (
-                            <div style={{fontSize:12, color:'var(--green)', padding:'8px 12px', background:'rgba(16,185,129,0.1)', borderRadius:6, border:'1px solid rgba(16,185,129,0.3)'}}>
-                              Renovación de contrato. El trabajador recibirá una notificación para firmarlo desde su app.
-                            </div>
-                          )}
                           <div className="input-group">
                             <label>Archivo {inlineUploadForm.modoSubida !== 'corregir' ? '*' : ''}</label>
                             <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required={inlineUploadForm.modoSubida !== 'corregir'} />
@@ -25282,28 +24559,13 @@ function RRHH_Operativo() {
                             </div>
                           )}
                           {(rrhhEsTipoContrato(inlineUploadReq.tipo) || rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
-                            <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                            <div className="dx-ficha-group">
+                              <div className="dx-ficha-group-h">Condiciones laborales<small>Se guardan como foto del momento del documento</small></div>
                               {rrhhEsTipoContrato(inlineUploadReq.tipo) && (
                                 <SociedadFormField label="Sociedad empleadora" value={inlineUploadForm.sociedadId} onChange={sociedadId=>setInlineUploadForm(f=>({...f,sociedadId}))} />
                               )}
-                              {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (
-                                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                                  <label>Modo de guardado</label>
-                                  <div className="row" style={{gap:8}}>
-                                    {[['nueva_version','Subir nueva versión'],['corregir','Corregir este documento']].map(([v,l])=>(
-                                      <label key={v} className="row" style={{gap:6, cursor:'pointer'}}>
-                                        <input type="radio" name="modoSubida" value={v} checked={inlineUploadForm.modoSubida===v} onChange={()=>setInlineUploadForm(f=>({...f,modoSubida:v}))}/>
-                                        <span style={{fontSize:13}}>{l}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                  {inlineUploadForm.modoSubida==='corregir' && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Se actualiza este documento sin crear una nueva versión. Si no adjuntas un archivo nuevo, se mantiene el actual.</div>}
-                                </div>
-                              )}
                               {inlineUploadForm.modoSubida === 'nuevo_contrato' && (
-                                <div style={{gridColumn:'1/-1', padding:'10px 12px', background:'rgba(255,160,0,0.08)', border:'1px solid var(--orange)', borderRadius:8, fontSize:12, color:'var(--orange)'}}>
-                                  Nuevo período contractual · versión 1. El período anterior quedará archivado al guardar.
-                                </div>
+                                <FichaAlert tone="warn">Nuevo período contractual · versión 1. El período anterior quedará archivado al guardar.</FichaAlert>
                               )}
                               {rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && <>
                                 <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={inlineUploadForm.contratoReferenciaId||''} onChange={e=>setInlineUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
@@ -25340,54 +24602,46 @@ function RRHH_Operativo() {
                             <label>Notas (opcional)</label>
                             <input className="input" type="text" placeholder="Alguna observación sobre este documento..." value={inlineUploadForm.notas} onChange={e=>setInlineUploadForm(f=>({...f,notas:e.target.value}))} />
                           </div>
-
-                          {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
-
+                          {inlineUploadError && <div className="dx-ficha-error" role="alert">{inlineUploadError}</div>}
                           {retroWallInline && (
-                            <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8}}>
-                              <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
-                              <div>{retroWallInline}</div>
-                              <div className="input-group">
-                                <label>Justificación para forzar el cambio (obligatoria)</label>
-                                <textarea className="input" rows={2} value={retroWallMotivoInline} onChange={e=>setRetroWallMotivoInline(e.target.value)} />
+                            <FichaAlert tone="danger" title="Cambio bloqueado por nómina ya procesada" role="alert">
+                              <div className="dx-ficha-retro">
+                                <div>{retroWallInline}</div>
+                                <div className="input-group">
+                                  <label>Justificación para forzar el cambio (obligatoria)</label>
+                                  <textarea className="input" rows={2} value={retroWallMotivoInline} onChange={e=>setRetroWallMotivoInline(e.target.value)} />
+                                </div>
+                                <div className="dx-ficha-form-acts" style={{marginTop:0}}>
+                                  <button type="button" className="dx-ficha-btn is-sm" onClick={() => { setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
+                                  <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={inlineUploading || !retroWallMotivoInline.trim()} onClick={() => handleSubirInline(null, { forzarOverride: true, motivoOverride: retroWallMotivoInline.trim() })}>Forzar cambio (requiere autorización)</button>
+                                </div>
                               </div>
-                              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                                <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
-                                <button
-                                  type="button"
-                                  className="btn btn-danger"
-                                  disabled={inlineUploading || !retroWallMotivoInline.trim()}
-                                  onClick={() => handleSubirInline(null, { forzarOverride: true, motivoOverride: retroWallMotivoInline.trim() })}
-                                >
-                                  Forzar cambio (requiere autorización)
-                                </button>
-                              </div>
-                            </div>
+                            </FichaAlert>
                           )}
-
-                          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
-                            <button type="button" className="btn btn-secondary" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
-                            <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
-                              {inlineUploading ? 'Guardando...' : (inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Crear nuevo contrato' : inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
-                            </button>
-                          </div>
-                        </form>
-                      </div>
+                        </div>
+                        <div className="dx-ficha-mf">
+                          <button type="button" className="dx-ficha-btn" onClick={cerrarInline}>Cancelar</button>
+                          <button type="submit" className="dx-ficha-btn is-primary" disabled={inlineUploading}>
+                            {inlineUploading ? 'Guardando…' : (inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Crear nuevo contrato' : inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
+                          </button>
+                        </div>
+                      </form>
                     </div>
                   </div>
                 )}
 
-                <div style={{marginTop:40, borderTop:'1px solid var(--border)', paddingTop:24}}>
-                  <details>
-                    <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0', userSelect:'none'}}>
-                      + Subir documento adicional (fuera de los requisitos del cargo)
-                    </summary>
-                    {tiposRestantes.length === 0 ? (
-                      <div className="text-muted" style={{fontSize:12, padding:'12px 0'}}>
-                        No hay más tipos de documentos aplicables fuera de los requeridos.
-                      </div>
-                    ) : (
-                      <form onSubmit={handleSubirDoc} style={{display:'grid', gap:12, marginTop:12, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+                {fichaDocAdicionalOpen && (
+                  <div className="modal-backdrop" onClick={() => !docUploading && setFichaDocAdicionalOpen(false)}>
+                    <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Documento adicional" onClick={e => e.stopPropagation()} style={{maxWidth:640}}>
+                      <FichaModalHead icon={I.plus} tone="cyan" eyebrow="Fuera de los requisitos del cargo" title="Documento adicional" sub={p.nombre} onClose={() => setFichaDocAdicionalOpen(false)} closeDisabled={docUploading} />
+                      {tiposRestantes.length === 0 ? (
+                        <>
+                          <div className="dx-ficha-mb"><FichaEmpty compact text="No hay más tipos de documentos aplicables fuera de los requeridos por el cargo." /></div>
+                          <div className="dx-ficha-mf"><button type="button" className="dx-ficha-btn" onClick={() => setFichaDocAdicionalOpen(false)}>Cerrar</button></div>
+                        </>
+                      ) : (
+                        <form onSubmit={handleSubirDoc} className="dx-ficha-modal-form">
+                          <div className="dx-ficha-mb">
                         <div className="grid-2" style={{gap:12}}>
                           <div className="input-group">
                             <label>Tipo de documento *</label>
@@ -25476,155 +24730,208 @@ function RRHH_Operativo() {
                       <label>Notas</label>
                       <input className="input" type="text" placeholder="Observaciones opcionales" value={docUploadForm.notas} onChange={e => setDocUploadForm(f => ({...f, notas: e.target.value}))} />
                     </div>
-                    {docUploadError && <div className="text-danger" style={{fontSize:12}}>{docUploadError}</div>}
-                    <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading ? 'Subiendo...' : 'Subir documento'}</button>
-                  </form>
-                )}
-                </details>
-              </div>
-
-                {(() => {
-                  const docsAdicionales = docsPersona.filter(doc => !docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc]);
-                  if (docsAdicionales.length === 0) return null;
-                  return (<>
-                    <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Documentos adicionales</div>
-                    <div style={{display:'flex', flexDirection:'column', gap:10}}>
-                    {docsAdicionales.map(doc => {
-                      const tipoInfo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc)) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
-                      const reqDoc = docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] || { tipo_documento_id: doc.tipo_documento_id || doc.tipo_doc, tipo: tipoInfo, doc, estado: doc.estado_validacion === 'rechazado' ? 'rechazado' : 'vigente', fecha_vencimiento: doc.fecha_vencimiento };
-                      const estadoMotor = reqDoc?.estado;
-                      return (
-                        <div key={doc.id} style={{padding:'14px 16px', border:'1px solid var(--border)', borderRadius:8, display:'flex', flexDirection:'column', gap:8}}>
-                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8}}>
-                            <div>
-                              <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}</div>
-                              <div className="text-muted" style={{fontSize:11}}>
-                                {doc.nombre_archivo || '—'} · v{doc.version}
-                                {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
-                                {doc.es_indefinido ? ' · Indefinido' : (doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`)}
-                              </div>
-                            </div>
-                            <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
-                              {estadoMotor && (
-                                <span className={'badge ' + (DOC_BDG[estadoMotor] || 'badge-gray')} style={{fontSize:11}}>
-                                  {DOC_LBL[estadoMotor] || estadoMotor}
-                                </span>
-                              )}
-                               <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>
-                                 {doc.estado_validacion}
-                               </span>
-                               <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
-                               {puedeEliminarDocumentosRrhh && <>
-                                 <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc, persona: p }); }}>{I.trash} Eliminar</button>
-                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc, persona: p }); }}>{I.archive} Archivar</button>
-                               </>}
-                             </div>
+                            {docUploadError && <div className="dx-ficha-error" role="alert">{docUploadError}</div>}
                           </div>
-                          {doc.motivo_rechazo && (
-                            <div style={{fontSize:12, color:'var(--danger)', padding:'6px 10px', background:'rgba(229,62,62,0.08)', borderRadius:4}}>
-                              Motivo de rechazo: {doc.motivo_rechazo}
-                            </div>
-                          )}
-                          {doc.notas && <div className="text-muted" style={{fontSize:12}}>Nota: {doc.notas}</div>}
-                          {doc.estado_validacion === 'pendiente' && tipoInfo?.requiere_validacion && canGestionarDocsRrhh && (
-                            <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap'}}>
-                              <button className="btn btn-sm btn-primary" disabled={docValidandoId === doc.id} onClick={() => handleValidar(doc.id, 'aprobado')}>
-                                {docValidandoId === doc.id ? '...' : 'Aprobar'}
-                              </button>
-                              {showRechazoInput === doc.id ? (
-                                <div style={{display:'flex', gap:6, flex:1, minWidth:200}}>
-                                  <input className="input" style={{flex:1, fontSize:12, padding:'4px 8px'}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
-                                  <button className="btn btn-sm btn-danger" onClick={() => handleValidar(doc.id, 'rechazado')}>Confirmar rechazo</button>
-                                  <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
-                                </div>
-                              ) : (
-                                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => setShowRechazoInput(doc.id)}>Rechazar</button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          <div className="dx-ficha-mf">
+                            <button type="button" className="dx-ficha-btn" onClick={() => setFichaDocAdicionalOpen(false)} disabled={docUploading}>Cancelar</button>
+                            <button className="dx-ficha-btn is-primary" type="submit" disabled={docUploading}>{docUploading ? 'Subiendo…' : 'Subir documento'}</button>
+                          </div>
+                        </form>
+                      )}
                     </div>
-                  </>);
-                })()}
-              </div>
+                  </div>
+                )}
+
+                <div className="dx-ficha-stack">
+                  <FichaHabilitacion
+                    estadoGlobal={hab.estado_global}
+                    etiqueta={cfgBadge.txt}
+                    docs={p.cargo_id ? (hab.docs || []) : []}
+                    problemas={docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id)}
+                  />
+
+                  <FichaCard
+                    icon={I.clipboard}
+                    title="Requisitos del cargo"
+                    meta={p.cargo ? p.cargo : null}
+                    extra={<button type="button" className="dx-ficha-btn is-sm" onClick={() => { setDocUploadError(''); setFichaDocAdicionalOpen(true); }}>{I.plus} Documento adicional</button>}
+                  >
+                    {(!p.cargo_id) ? (
+                      <FichaEmpty icon={I.users} title="Este colaborador no tiene cargo asignado" text="Asigna un cargo para determinar sus requisitos documentales." action={<button type="button" className="dx-ficha-btn is-primary" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit} Editar ficha</button>} />
+                    ) : (!hab.docs || hab.docs.length === 0) ? (
+                      <FichaEmpty icon={I.clipboard} title={`El cargo "${p.cargo}" aún no tiene requisitos documentales`} text="Ve a Maestros Base para configurar la matriz de requisitos." />
+                    ) : (() => {
+                        const groupedDocs = {};
+                        hab.docs.forEach(req => {
+                          const cat = req.tipo?.categoria || 'Otros';
+                          if (!groupedDocs[cat]) groupedDocs[cat] = [];
+                          groupedDocs[cat].push(req);
+                        });
+                        Object.entries(groupedDocs).forEach(([cat, catDocs]) => {
+                          const chains = [];
+                          const added = new Set();
+                          const buildChain = (doc, currentChain = []) => {
+                            if (added.has(doc.tipo_documento_id)) return currentChain;
+                            currentChain.push(doc);
+                            added.add(doc.tipo_documento_id);
+                            const tHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === doc.tipo_documento_id);
+                            for (const th of tHijos) {
+                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id);
+                              if (docHijo) return buildChain(docHijo, currentChain);
+                            }
+                            return currentChain;
+                          };
+                          const heads = catDocs.filter(d => !d.tipo?.documento_padre_tipo_id);
+                          heads.forEach(head => {
+                            const chain = buildChain(head);
+                            if (chain.length > 0) chains.push(chain);
+                          });
+                          catDocs.forEach(doc => {
+                            if (!added.has(doc.tipo_documento_id)) {
+                              if (doc.tipo?.documento_padre_tipo_id && hab.docs.some(d => d.tipo_documento_id === doc.tipo.documento_padre_tipo_id)) return;
+                              const chain = buildChain(doc);
+                              if (chain.length > 0) chains.push(chain);
+                            }
+                          });
+                                                                              chains.sort((a, b) => {
+                            const reqA = a[0];
+                            const reqB = b[0];
+                            const nA = (reqA.tipo?.nombre || reqA.tipo_documento_id || '').toLowerCase();
+                            const nB = (reqB.tipo?.nombre || reqB.tipo_documento_id || '').toLowerCase();
+                            
+                            const getW = (n) => {
+                              if (n.includes('primigenio')) return 1;
+                              if (n.includes('laboral')) return 2;
+                              if (n.includes('adenda')) return 3;
+                              return 99;
+                            };
+                            
+                            const wA = getW(nA);
+                            const wB = getW(nB);
+                            
+                            if (wA !== wB) return wA - wB;
+                            return nA.localeCompare(nB);
+                          });
+                          groupedDocs[cat] = chains;
+                        });
+                      return Object.entries(groupedDocs).map(([catName, chains]) => {
+                        const reqsCat = chains.flat();
+                        return (
+                          <div key={catName}>
+                            <div className="dx-ficha-dcat">{catName} <span className="dx-ficha-ct">{reqsCat.filter(r => r.doc).length} / {reqsCat.length}</span></div>
+                            {chains.map((chain, chainIdx) => (
+                              <div key={'chain-'+chainIdx} className={'dx-ficha-chain' + (chain.length > 1 ? ' is-linked' : '')}>
+                                {chain.map(req => renderRequisito(req, chain))}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </FichaCard>
+
+                  <FichaCard icon={I.list} title="Documentos adicionales" meta={docsAdicionales.length ? docsAdicionales.length : 'Fuera de los requisitos del cargo'}>
+                    {docsAdicionales.length === 0 ? (
+                      <FichaEmpty compact text="Aún no hay documentos adicionales. Usa «Documento adicional» para cargar, por ejemplo, el CV o un certificado." />
+                    ) : (
+                      <div className="dx-ficha-chain">
+                        {docsAdicionales.map(doc => {
+                          const tipoInfo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc)) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
+                          const reqDoc = docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] || { tipo_documento_id: doc.tipo_documento_id || doc.tipo_doc, tipo: tipoInfo, doc, estado: doc.estado_validacion === 'rechazado' ? 'rechazado' : 'vigente', fecha_vencimiento: doc.fecha_vencimiento };
+                          const estadoMotor = reqDoc?.estado;
+                          const tono = DOC_TONO[estadoMotor] || 'gray';
+                          const tonoVal = fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion]);
+                          const pies = [];
+                          if (doc.motivo_rechazo) pies.push({ tone: 'rej', content: <><strong>Motivo de rechazo:</strong> <span>{doc.motivo_rechazo}</span></> });
+                          if (doc.estado_validacion === 'pendiente' && tipoInfo?.requiere_validacion && canGestionarDocsRrhh) {
+                            pies.push(showRechazoInput === doc.id ? pieRechazo(doc, () => handleValidar(doc.id, 'rechazado')) : pieValidacion(doc, 'Aprobar'));
+                          }
+                          return (
+                            <FichaDocRow
+                              key={doc.id}
+                              tone={tono}
+                              titulo={tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}
+                              estado={<>
+                                {estadoMotor && <FichaPill tone={tono}>{DOC_LBL[estadoMotor] || estadoMotor}</FichaPill>}
+                                {doc.estado_validacion !== 'aprobado' && <FichaPill tone={tonoVal}>{labelOr(ESTADO_VALIDACION_LABELS, doc.estado_validacion)}</FichaPill>}
+                              </>}
+                              meta={[
+                                `v${doc.version}`,
+                                doc.fecha_emision ? <>Emitido <b>{doc.fecha_emision}</b></> : null,
+                                doc.es_indefinido ? 'Indefinido' : (doc.fecha_vencimiento ? <>Vence <b>{doc.fecha_vencimiento}</b></> : 'Sin vencimiento'),
+                              ]}
+                              archivo={doc.nombre_archivo}
+                              hint={doc.notas ? `Nota: ${doc.notas}` : null}
+                              actions={<>
+                                <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.eye} Ver</button>
+                                <FichaMenu label={`Más acciones de ${tipoInfo?.nombre || doc.tipo_doc}`} items={accionesEliminarArchivar(doc)} />
+                              </>}
+                              footers={pies}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </FichaCard>
+                </div>
+              </>
             );
           })()}
 
           {fichaTab === 'reembolsos' && (
-            <div className="card-body">
-              <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:20}}>
-                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total reembolsos</div>
-                  <div style={{fontWeight:700, fontSize:18}}>{reembolsosPersona.length}</div>
-                </div>
-                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Pendiente de pago</div>
-                  <div style={{fontWeight:700, fontSize:18, color:totalReembolsoPend > 0 ? 'var(--orange)' : 'var(--fg)'}}>{money(totalReembolsoPend)}</div>
-                </div>
-              </div>
-              {reembolsosPersona.length === 0 ? (
-                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>No hay reembolsos de viáticos registrados para este técnico.</div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Fecha</th><th>Concepto</th><th>OT</th><th>Monto</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {reembolsosPersona.map(r => {
-                        const pagos = (cxpPagos || []).filter(pg => pg.cxp_id === r.id);
-                        const ultimoPago = pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''))[0];
-                        return (
-                          <tr key={r.id}>
-                            <td>{r.fecha_emision}</td>
-                            <td style={{fontSize:12}}>{r.concepto}</td>
-                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || '—'}</td>
-                            <td className="num"><strong>{money(r.monto_total)}</strong></td>
-                            <td>
-                              <span className={'badge ' + (r.estado === 'pagada' ? 'badge-green' : r.estado === 'anulada' ? 'badge-gray' : 'badge-orange')}>
-                                {r.estado === 'pagada' ? 'Pagado' : r.estado === 'anulada' ? 'Anulado' : 'Pendiente'}
-                              </span>
-                              {ultimoPago && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>{ultimoPago.fecha_pago}</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className="dx-ficha-stack">
+              <FichaStats cols={2} items={[
+                { label: 'Total reembolsos', value: reembolsosPersona.length, note: reembolsosPersona.length === 1 ? 'solicitud registrada' : 'solicitudes registradas' },
+                { label: 'Pendiente de pago', value: money(totalReembolsoPend), tone: totalReembolsoPend > 0 ? 'amber' : undefined, note: 'aprobado sin pagar' },
+              ]} />
+              <FichaCard flush icon={I.receipt} title="Reembolsos de viáticos" meta={reembolsosPersona.length}>
+                {reembolsosPersona.length === 0 ? (
+                  <FichaEmpty icon={I.receipt} title="Sin reembolsos registrados" text="No hay reembolsos de viáticos registrados para este técnico." />
+                ) : (
+                  <FichaTable columns={['Fecha', 'Concepto', 'OT', { label: 'Monto', num: true }, 'Estado']}>
+                    {reembolsosPersona.map(r => {
+                      const pagos = (cxpPagos || []).filter(pg => pg.cxp_id === r.id);
+                      const ultimoPago = pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''))[0];
+                      return (
+                        <tr key={r.id}>
+                          <td>{r.fecha_emision}</td>
+                          <td className="is-strong">{r.concepto}</td>
+                          <td className="is-muted">{r.ot_vinc_id || '—'}</td>
+                          <td className="is-num">{money(r.monto_total)}</td>
+                          <td>
+                            <FichaPill tone={r.estado === 'pagada' ? 'green' : r.estado === 'anulada' ? 'gray' : 'amber'}>{r.estado === 'pagada' ? 'Pagado' : r.estado === 'anulada' ? 'Anulado' : 'Pendiente'}</FichaPill>
+                            {ultimoPago && <span className="dx-ficha-help" style={{marginLeft:8}}>{ultimoPago.fecha_pago}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </FichaTable>
+                )}
+              </FichaCard>
             </div>
           )}
 
           {fichaTab === 'disponibilidad' && (
-            <div className="card-body">
-              <div style={{fontWeight:600, fontSize:13, marginBottom:12}}>Asignaciones recientes en el Planner</div>
+            <FichaCard flush icon={I.calendar} title="Asignaciones recientes en el Planner" meta={asigRecientes.length}>
               {asigRecientes.length === 0 ? (
-                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', fontSize:13}}>
-                  Sin asignaciones registradas en el Planner para este técnico.
-                </div>
+                <FichaEmpty icon={I.calendar} title="Sin asignaciones en el Planner" text="Cuando se programe a este técnico en una OT aparecerá aquí con las horas asignadas." />
               ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Fecha</th><th>OT</th><th>Horas</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {asigRecientes.map(a => (
-                        <tr key={a.id}>
-                          <td>{a.fecha}</td>
-                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || '—'}</td>
-                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : '—'}</td>
-                          <td><span className={'badge badge-' + (a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan')}>{a.estado || 'asignado'}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <FichaTable columns={['Fecha', 'OT', { label: 'Horas', num: true }, 'Estado']}>
+                  {asigRecientes.map(a => (
+                    <tr key={a.id}>
+                      <td>{a.fecha}</td>
+                      <td className="is-strong">{a.ot_id || '—'}</td>
+                      <td className="is-num">{a.horas_programadas != null ? `${a.horas_programadas} h` : '—'}</td>
+                      <td><FichaPill tone={a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan'}>{a.estado || 'asignado'}</FichaPill></td>
+                    </tr>
+                  ))}
+                </FichaTable>
               )}
-            </div>
+            </FichaCard>
           )}
 
           {fichaTab === 'bancarios' && canFinanzas && (
-            <div className="card-body">
+            <FichaCard icon={I.bank} title="Datos bancarios" extra={<FichaPill tone="violet" dot={false}>Requiere permiso de finanzas</FichaPill>}>
               <DatosBancariosSection
                 cuentas={p.datos_bancarios ?? []}
                 onChange={async (nuevas) => {
@@ -25634,7 +24941,7 @@ function RRHH_Operativo() {
                   } catch (e) { addNotificacion('Error al guardar datos bancarios.', 'error'); }
                 }}
               />
-            </div>
+            </FichaCard>
           )}
 
           {fichaTab === 'amonestaciones' && (
@@ -25647,19 +24954,21 @@ function RRHH_Operativo() {
               addNotificacion={addNotificacion}
             />
           )}
-        </div>
-      </>
+        </div></div>
     );
   }
 
   const operativosActivos = personal.filter(p => p.estado !== 'inactivo').length;
+  const hoyContratosFecha = new Date();
+  const hoyContratosFechaStr = `${hoyContratosFecha.getFullYear()}-${String(hoyContratosFecha.getMonth() + 1).padStart(2, '0')}-${String(hoyContratosFecha.getDate()).padStart(2, '0')}`;
   const contratosVencerOp = personal
     .map(p => {
-      const contratoDoc = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
+      const contratoDoc = rrhhContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
       const contratoInfo = rrhhContratoVencimientoInfo(contratoDoc);
-      return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias };
+      return { ...p, contratoDoc, contratoInfo, dias_restantes: contratoInfo.dias,
+        renovacionContigua: tieneRenovacionAprobadaContigua(documentosContratoFecha, contratoDoc, hoyContratosFechaStr) };
     })
-    .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30);
+    .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30 && !p.renovacionContigua);
   const docsVencidosPorVencerOp = alertasDocumentales.filter(a => a.estado === 'vencido' || a.estado === 'por_vencer' || a.estado === 'rechazado').length;
 
   const descargarPersonalOperativoExcel = () => {
@@ -25674,7 +24983,7 @@ function RRHH_Operativo() {
     const idsPersonal = new Set(personal.map(p => p.id));
     const filasPersonal = personal.map(p => {
       const esHonorarios = esModalidadHonorarios(p);
-      const contrato = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
+      const contrato = rrhhContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
       const sociedades = (resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || [])
         .map(id => sociedadesPorId.get(id) || id)
         .join(', ');
@@ -25744,230 +25053,130 @@ function RRHH_Operativo() {
   return (
     <>
       {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => { setShowRequisitosRRHH(false); setShowTiposDocumentoRRHH(true); }} />}
+      {mostrarFirmantesOps && <FirmantesContratoModal onClose={() => setMostrarFirmantesOps(false)} />}
+      {firmaEmpresaActivaOps && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaOps} onClose={() => { setFirmaEmpresaActivaOps(null); cargarSolicitudesFirmaDigitalOps(); }} onComplete={async resultado => { const detalle = resultado?.canales ? ` Detalle por canal: ${Object.entries(resultado.canales).map(([canal, detalleCanal]) => `${canal}: ${detalleCanal.motivo || (detalleCanal.enviado ? 'enviado' : 'sin detalle')}`).join('; ')}` : ''; addNotificacion(resultado?.ok ? 'Enlace de firma enviado' : (resultado?.aviso || 'La empresa firm\u00f3, pero no se pudo enviar al trabajador.') + detalle); if (recargarPersonalDocumentosPersonaCtx && selTecnico?.id) await recargarPersonalDocumentosPersonaCtx(selTecnico.id); await cargarSolicitudesFirmaDigitalOps(); }} />}
       {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
       {showCargaMasivaOp && <CargaMasivaOpPanel onClose={() => setShowCargaMasivaOp(false)} turnosOptions={turnosOptions} cargosOperativosOptions={cargosOperativosOptions} especialidadesOptions={especialidadesOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearTecnicoCtx={crearTecnicoCtx} addNotificacion={addNotificacion} personalOperativo={personalOperativo} />}
 
-      <div className="page-header">
-        <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{operativosActivos} técnicos activos</div></div>
-        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
-          <div style={{display:'flex', gap:8}}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowTiposDocumentoRRHH(true)} title="Gestionar catálogo de tipos de documento">📄 Tipos de Documento</button>
-            <button className="btn btn-secondary btn-sm" onClick={descargarPersonalOperativoExcel} title="Descargar todos los registros de personal operativo en Excel">{I.download} Descargar Excel</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRequisitosRRHH(true)} title="Configurar documentos requeridos por cargo">{I.shield} Requisitos por Cargo</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowCargaMasivaOp(true)} title="Carga masiva de técnicos">{I.upload} Carga masiva</button>
-            <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
-          </div>
-          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
-        </div>
-      </div>
-
-      <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Técnicos activos</div><div className="kpi-value">{operativosActivos}</div><div className="kpi-icon cyan">{I.users}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Habilitación crítica</div><div className="kpi-value" style={{color:kpiDocumental.vencidos>0?'var(--danger)':kpiDocumental.faltan>0?'var(--orange)':'inherit'}}>{kpiDocumental.vencidos + kpiDocumental.faltan}</div><div className={'kpi-icon '+(kpiDocumental.vencidos+kpiDocumental.faltan>0?'red':'green')}>{I.shield}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>{contratosVencerOp.length}</div><div className="kpi-icon orange">{I.alert}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Docs vencidos / por vencer</div><div className="kpi-value" style={{color:'var(--danger)'}}>{docsVencidosPorVencerOp}</div><div className="kpi-icon red">{I.shield}</div></div>
-      </div>
-
-      <div className="tabs" style={{marginTop: 24}}>
-        <div className={'tab '+(tab==='personal'?'active':'')} onClick={()=>setTab('personal')}>Personal</div>
-        <div className={'tab '+(tab==='reportes'?'active':'')} onClick={()=>setTab('reportes')}>Reportes</div>
-      </div>
-
-      {tab === 'personal' && (
-        <div className="card">
-          <div className="card-head row" style={{gap:12}}>
-            <input className="input" placeholder="Buscar personal..." value={filtroPersonal} onChange={e=>setFiltroPersonal(e.target.value)} style={{flex:'1 1 200px'}} />
-            <select className="input" value={filtroEstado} onChange={e=>setFiltroEstado(e.target.value)} style={{flex:'1 1 140px'}}>
-              <option value="">Todos los estados</option>
-              <option value="activo">Activo (Disponible)</option>
-              <option value="no_disponible">No Disponible</option>
-              <option value="bloqueado">Bloqueado</option>
-              <option value="inactivo">Inactivo / Cesado</option>
-            </select>
-            <select className="input" value={filtroModalidad} onChange={e=>setFiltroModalidad(e.target.value)} style={{flex:'1 1 140px'}}>
-              <option value="">Todas las modalidades</option>
-              <option value="planilla">Planilla</option>
-              <option value="honorarios">Honorarios</option>
-            </select>
-            <ColumnFilter columns={COLUMNAS_DEFAULT_OPS} visibleCols={visibleCols} onChange={setVisibleCols} />
-          </div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead><tr>
-                {visibleCols.includes('codigo') && <th>Código</th>}
-                {visibleCols.includes('tecnico') && <th>Técnico</th>}
-                {mostrarBadgeSociedadPersonal && <th>Sociedad</th>}
-                {visibleCols.includes('cargo') && <th>Cargo</th>}
-                {visibleCols.includes('unidad') && <th>Unidad organizacional</th>}
-                {visibleCols.includes('sede') && <th>Sede</th>}
-                {visibleCols.includes('turno') && <th>Turno</th>}
-                {visibleCols.includes('jornada') && <th>Jornada</th>}
-                {visibleCols.includes('contrato') && <th>Contrato</th>}
-                {visibleCols.includes('modalidad') && <th>Modalidad</th>}
-                {visibleCols.includes('vacaciones') && <th>Vacaciones Disp.</th>}
-                {visibleCols.includes('estado') && <th>Estado</th>}
-                {visibleCols.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
-              </tr></thead>
-              <tbody>
-                {personal.length === 0 && <tr><td colSpan={12 + (mostrarBadgeSociedadPersonal ? 1 : 0)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
-                {personal.filter(p => {
-                  if (filtroEstado && p.estado !== filtroEstado) return false;
-                  if (filtroModalidad) {
-                    const esHon = esModalidadHonorarios(p);
-                    if (filtroModalidad === 'honorarios' && !esHon) return false;
-                    if (filtroModalidad === 'planilla' && esHon) return false;
-                  }
-                  if (filtroPersonal) {
-                    const q = filtroPersonal.toLowerCase();
-                    if (!p.nombre?.toLowerCase().includes(q) && !p.cargo?.toLowerCase().includes(q)) return false;
-                  }
-                  return true;
-                }).map(p => {
-                  const esHon = esModalidadHonorarios(p);
-                  const turnoNombre = workerTurno(turnosOptions, p).nombre;
-                  const contratoDocFila = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
-                  const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
-                  return (
-                    <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
-                      {visibleCols.includes('codigo') && <td className="mono text-muted">{p.codigo || '—'}</td>}
-                      {visibleCols.includes('tecnico') && <td>
-                        <div className="row">
-                          <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                          <div>
-                            <strong>{p.nombre}</strong>
-                            <div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div>
-                            {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && (
-                              <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
-                            )}
-                          </div>
-                        </div>
-                      </td>}
-                      {mostrarBadgeSociedadPersonal && <td>
-                        <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
-                          {(resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => (
-                            <SociedadBadge key={sociedadId} sociedadId={sociedadId} />
-                          ))}
-                          {resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="badge badge-orange">Sin contrato vigente</span>}
-                        </div>
-                      </td>}
-                      {visibleCols.includes('cargo') && <td>{p.cargo}</td>}
-                      {visibleCols.includes('unidad') && <td>{resolverUnidadOrganizacional(p) || <span className="text-subtle">Sin posición</span>}</td>}
-                      {visibleCols.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
-                      {visibleCols.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>}
-                      {visibleCols.includes('jornada') && <td><span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></td>}
-                      {visibleCols.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`} style={{fontSize:11}}>{contratoInfoFila.texto}</span>}</td>}
-                      {visibleCols.includes('modalidad') && <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>}
-                      {visibleCols.includes('vacaciones') && <td className="num">{esHon ? <span className="text-subtle">—</span> : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</td>}
-                      {visibleCols.includes('estado') && <td>
-                        <span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span>
-                        {!esHon && !p.sede && !p.turno_id && <span className="badge badge-gray" style={{fontSize:10, marginLeft:4}}>Ficha incompleta</span>}
-                      </td>}
-                      {visibleCols.includes('acciones') && <td>
-                        <div style={{display:'flex', gap:4, justifyContent:'flex-end'}} onClick={e => e.stopPropagation()}>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>Ver ficha</button>
-                          <button className="icon-btn" title="Editar colaborador" style={{color:'var(--cyan)'}} onClick={() => abrirEditarTecnico(p)}>{I.edit}</button>
-                          <button className="icon-btn" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
-                        </div>
-                      </td>}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-
-      {tab === 'reportes' && (
-        <div style={{display:'grid', gap:24}}>
-          <div className="card">
-            <div className="card-head"><h3>Headcount por Especialidad</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personal.length} técnicos</span></div>
-            {Object.keys(porEspecialidad).length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos.</div>
-            ) : (
-              <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:12}}>
-                {Object.entries(porEspecialidad).sort((a,b)=>b[1]-a[1]).map(([esp, cnt]) => (
-                  <div key={esp} style={{display:'grid', gridTemplateColumns:'160px 1fr 40px', gap:12, alignItems:'center'}}>
-                    <span style={{fontSize:13, fontWeight:500}}>{esp}</span>
-                    <div style={{background:'var(--bg-subtle)', borderRadius:4, height:10}}>
-                      <div style={{width:Math.round(cnt/maxEsp*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:4}}/>
-                    </div>
-                    <span style={{fontSize:13, fontWeight:700, textAlign:'right'}}>{cnt}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{padding:'0 20px 16px', display:'flex', gap:24, fontSize:12, color:'var(--fg-subtle)'}}>
-              <span>Planilla: <strong>{countPlanilla}</strong></span>
-              <span>Honorarios: <strong>{countHonorarios}</strong></span>
+      <div className="dx-personal">
+        <div className="dx-personal-in">
+          <header className="dx-personal-top">
+            <div><div className="dx-personal-eyebrow">RRHH</div><h1 className="dx-personal-title">Personal Operativo</h1><p className="dx-personal-sub">{operativosActivos} técnicos activos</p></div>
+            <div className="dx-personal-head-actions">
+              <PersonalOperativoAcciones columnas={COLUMNAS_DEFAULT_OPS} visibleCols={visibleCols} setVisibleCols={setVisibleCols} descargarExcel={descargarPersonalOperativoExcel} abrirCargaMasiva={() => setShowCargaMasivaOp(true)} abrirTiposDocumento={() => setShowTiposDocumentoRRHH(true)} abrirRequisitos={() => setShowRequisitosRRHH(true)} />
+              {Boolean(role?.es_admin_empresa || role?.permisos?.todo) && <button type="button" className="dx-personal-btn" onClick={() => setMostrarFirmantesOps(true)}>Firmantes de contratos</button>}
+              <button type="button" className="dx-personal-btn is-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
             </div>
+          </header>
+          {!turnosOptions.length && <p className="dx-personal-warn">Crea un turno en Turnos y Horarios para habilitar esta opción.</p>}
+
+          <section className="dx-personal-kpis" aria-label="Resumen de personal operativo">
+            <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Técnicos activos</span><span className="dx-personal-ico is-cyan">{I.users}</span></div><strong className="dx-personal-kpi-val">{operativosActivos}</strong><span className="dx-personal-kpi-note">de {personal.length} registrados</span></div>
+            <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Habilitación crítica</span><span className={'dx-personal-ico '+(kpiDocumental.vencidos + kpiDocumental.faltan > 0 ? (kpiDocumental.vencidos > 0 ? 'is-red' : 'is-amber') : 'is-green')}>{I.shield}</span></div><strong className={'dx-personal-kpi-val '+(kpiDocumental.vencidos > 0 ? 'is-red' : kpiDocumental.faltan > 0 ? 'is-amber' : '')}>{kpiDocumental.vencidos + kpiDocumental.faltan}</strong><span className="dx-personal-kpi-note">Documentos vencidos o faltantes</span></div>
+            <div className="dx-personal-kpi is-amber"><div className="dx-personal-kpi-top"><span>Contratos por vencer</span><span className="dx-personal-ico is-amber">{I.alert}</span></div><strong className="dx-personal-kpi-val">{contratosVencerOp.length}</strong><span className="dx-personal-kpi-note">Próximos 30 días</span></div>
+            <div className="dx-personal-kpi is-red"><div className="dx-personal-kpi-top"><span>Docs vencidos / por vencer</span><span className="dx-personal-ico is-red">{I.shield}</span></div><strong className="dx-personal-kpi-val">{docsVencidosPorVencerOp}</strong><span className="dx-personal-kpi-note">Vencidos, por vencer o rechazados</span></div>
+          </section>
+
+          <div className="dx-personal-tabs" role="tablist" aria-label="Secciones de personal operativo">
+            <button type="button" role="tab" aria-selected={tab === 'personal'} className={'dx-personal-tab'+(tab === 'personal' ? ' is-on' : '')} onClick={() => setTab('personal')}>Personal</button>
+            <button type="button" role="tab" aria-selected={tab === 'reportes'} className={'dx-personal-tab'+(tab === 'reportes' ? ' is-on' : '')} onClick={() => setTab('reportes')}>Reportes</button>
           </div>
 
-          <div className="card">
-            <div className="card-head"><h3>Técnicos sin Turno Asignado</h3>{sinTurno.length > 0 && <span className="badge badge-orange">{sinTurno.length}</span>}</div>
-            {sinTurno.length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Todos los técnicos tienen turno asignado.</div>
-            ) : (
-              <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Cargo</th><th>Especialidad</th><th>Modalidad</th></tr></thead>
-                <tbody>
-                  {sinTurno.map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:600}}>{p.nombre}</td>
-                      <td>{p.cargo}</td>
-                      <td>{p.especialidad}</td>
-                      <td><span className={'badge '+(esModalidadHonorarios(p)?'badge-gray':'badge-green')}>{esModalidadHonorarios(p)?'Honorarios':'Planilla'}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {tab === 'personal' && <section className="dx-personal-card" aria-label="Listado de personal">
+            <div className="dx-personal-toolbar">
+              <h2>Personal</h2><span className="dx-personal-count">{personal.length} registros</span>
+              <label className="dx-personal-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar por nombre o cargo…" value={filtroPersonal} onChange={e => setFiltroPersonal(e.target.value)} aria-label="Buscar personal por nombre o cargo" /></label>
+              <select className="dx-personal-select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado"><option value="">Todos los estados</option><option value="activo">Activo (Disponible)</option><option value="no_disponible">No Disponible</option><option value="bloqueado">Bloqueado</option><option value="inactivo">Inactivo / Cesado</option></select>
+              <select className="dx-personal-select" value={filtroModalidad} onChange={e => setFiltroModalidad(e.target.value)} aria-label="Filtrar por modalidad"><option value="">Todas las modalidades</option><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select>
+            </div>
+            {(() => {
+              const bloquesVisibles = [
+                {id:'tecnico', title:'Técnico', keys:['tecnico'], width:'minmax(174px, 2.1fr)', compact:'minmax(174px, 2.1fr)'},
+                {id:'cargo', title:'Cargo / unidad', keys:['cargo','unidad','sede'], width:'minmax(150px, 1.4fr)', compact:'minmax(150px, 1.4fr)'},
+                {id:'turno', title:'Turno / jornada', keys:['turno','jornada'], width:'minmax(120px, 1.3fr)', compact:null},
+                {id:'contrato', title:'Contrato', keys:['contrato'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'vacaciones', title:'Vacaciones / modalidad', keys:['vacaciones','modalidad'], width:'minmax(150px, .9fr)', compact:'minmax(150px, .9fr)'},
+                {id:'estado', title:'Estado', keys:['estado'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'acciones', title:'Acciones', keys:['acciones'], width:'112px', compact:'112px'}
+              ].filter(b => b.id === 'tecnico' || b.keys.some(key => visibleCols.includes(key)));
+              const colsDesktop = bloquesVisibles.map(b => b.width).join(' ');
+              const colsCompact = bloquesVisibles.filter(b => b.id !== 'turno').map(b => b.compact || b.width).join(' ');
+              return <>
+            <div className="dx-personal-table-head" style={{'--dx-personal-cols':colsDesktop, '--dx-personal-cols-compact':colsCompact}}>
+              {bloquesVisibles.map(b => <span key={b.id} className={'dx-personal-head-'+b.id}>{b.title}</span>)}
+            </div>
+            {personal.length === 0 ? <div className="dx-personal-empty">Sin personal operativo registrado.</div> : personal.filter(p => {
+              if (filtroEstado && p.estado !== filtroEstado) return false;
+              if (filtroModalidad) { const esHon = esModalidadHonorarios(p); if (filtroModalidad === 'honorarios' && !esHon) return false; if (filtroModalidad === 'planilla' && esHon) return false; }
+              if (filtroPersonal) { const q = filtroPersonal.toLowerCase(); if (!p.nombre?.toLowerCase().includes(q) && !p.cargo?.toLowerCase().includes(q)) return false; }
+              return true;
+            }).map(p => {
+              const esHon = esModalidadHonorarios(p);
+              const turnoNombre = workerTurno(turnosOptions, p).nombre;
+              const contratoDocFila = rrhhContratoActivoPersonal(documentosContratoFecha, p.id, tiposDocumento);
+              const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
+              const abrirFicha = () => { setSelTecnico(p); setFichaTab('ficha'); };
+              const bloquesVisibles = [
+                {id:'tecnico', keys:['tecnico'], width:'minmax(174px, 2.1fr)', compact:'minmax(174px, 2.1fr)'},
+                {id:'cargo', keys:['cargo','unidad','sede'], width:'minmax(150px, 1.4fr)', compact:'minmax(150px, 1.4fr)'},
+                {id:'turno', keys:['turno','jornada'], width:'minmax(120px, 1.3fr)', compact:null},
+                {id:'contrato', keys:['contrato'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'vacaciones', keys:['vacaciones','modalidad'], width:'minmax(150px, .9fr)', compact:'minmax(150px, .9fr)'},
+                {id:'estado', keys:['estado'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'acciones', keys:['acciones'], width:'112px', compact:'112px'}
+              ].filter(b => b.id === 'tecnico' || b.keys.some(key => visibleCols.includes(key)));
+              const colsDesktop = bloquesVisibles.map(b => b.width).join(' ');
+              const colsCompact = bloquesVisibles.filter(b => b.id !== 'turno').map(b => b.compact || b.width).join(' ');
+              const mobileAreas = [`'tecnico ${bloquesVisibles.some(b => b.id === 'acciones') ? 'acciones' : '.'}'`, ...bloquesVisibles.filter(b => !['tecnico','turno','acciones'].includes(b.id)).map(b => `'${b.id} ${b.id}'`)].join(' ');
+              return <div key={p.id} className="dx-personal-row" style={{'--dx-personal-cols':colsDesktop, '--dx-personal-cols-compact':colsCompact, '--dx-personal-areas':mobileAreas}} role="group" tabIndex={0} aria-label={`Abrir ficha de ${p.nombre}`} onClick={abrirFicha} onKeyDown={e => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFicha(); } }}>
+                <div className="dx-personal-cell dx-personal-who"><span className="dx-personal-avatar">{p.nombre.split(' ').map(x => x[0]).slice(0, 2).join('')}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">DNI {p.dni || p.documento || '—'}{visibleCols.includes('codigo') && <> · <span className="dx-personal-mono">{p.codigo || '—'}</span></>}</span>
+                  {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="dx-personal-pill is-amber">Sin contrato vigente</span>}
+                  {mostrarBadgeSociedadPersonal && <span className="dx-personal-pills">{(resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => <SociedadBadge key={sociedadId} sociedadId={sociedadId} />)}{resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="dx-personal-pill is-amber">Sin contrato vigente</span>}</span>}
+                </div></div>
+                {visibleCols.some(key => ['cargo','unidad','sede'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-cargo">
+                  {visibleCols.includes('cargo') && <div className="dx-personal-fragment"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo || '—'}</span></div>}
+                  {visibleCols.includes('unidad') && <div className="dx-personal-fragment"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{resolverUnidadOrganizacional(p) || <span className="dx-personal-muted">Sin posición</span>}</span></div>}
+                  {visibleCols.includes('sede') && <div className={'dx-personal-fragment'+(!p.sede ? ' dx-personal-fragment-sede-vacia' : '')}><span className="dx-personal-label">Sede</span>{p.sede ? <span className="dx-personal-pill is-gray" title={p.sede}>{p.sede}</span> : <span className="dx-personal-muted">—</span>}</div>}
+                </div>}
+                {visibleCols.some(key => ['turno','jornada'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-turno">
+                  {visibleCols.includes('turno') && <div className="dx-personal-fragment"><span className="dx-personal-label">Turno</span><span className="dx-personal-t1">{esHon ? '—' : turnoNombre || 'Sin turno'}</span></div>}
+                  {visibleCols.includes('jornada') && <div className="dx-personal-fragment"><span className="dx-personal-label">Jornada</span><span className="dx-personal-t2">{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></div>}
+                </div>}
+                {visibleCols.includes('contrato') && <div className="dx-personal-cell dx-personal-block dx-personal-block-contrato"><div className="dx-personal-fragment"><span className="dx-personal-label">Contrato</span>{esHon ? <span className="dx-personal-muted">—</span> : <span className={'dx-personal-pill '+(contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'is-red' : badgeToPill(contratoInfoFila.badge))} title={contratoInfoFila.texto}>{contratoInfoFila.texto}</span>}</div></div>}
+                {visibleCols.some(key => ['vacaciones','modalidad'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-vacaciones">
+                  {visibleCols.includes('vacaciones') && <div className="dx-personal-fragment"><span className="dx-personal-label">Vacaciones</span><span className="dx-personal-t1">{esHon ? '—' : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso || null, p.dias_vacaciones_total ?? 30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</span></div>}
+                  {visibleCols.includes('modalidad') && <div className="dx-personal-fragment"><span className="dx-personal-label">Modalidad</span><span className={'dx-personal-pill '+(esHon ? 'is-gray' : 'is-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></div>}
+                </div>}
+                {visibleCols.includes('estado') && <div className="dx-personal-cell dx-personal-block dx-personal-block-estado"><div className="dx-personal-fragment"><span className="dx-personal-label">Estado</span><span className="dx-personal-pills"><span className={'dx-personal-pill '+(badgeToPill(estBadge(p.estado)))}><i />{p.estado.toUpperCase()}</span>{!esHon && !p.sede && !p.turno_id && <span className="dx-personal-pill is-gray">Ficha incompleta</span>}</span></div></div>}
+                {visibleCols.includes('acciones') && <div className="dx-personal-cell dx-personal-block dx-personal-block-acciones dx-personal-row-actions" onClick={e => e.stopPropagation()}>
+                  <button type="button" className="dx-personal-icon-btn" aria-label={`Ver ficha de ${p.nombre}`} title="Ver ficha" onClick={abrirFicha}><span aria-hidden="true">{I.eye}</span></button>
+                  <button type="button" className="dx-personal-icon-btn" aria-label={`Editar a ${p.nombre}`} title="Editar colaborador" onClick={() => abrirEditarTecnico(p)}><span aria-hidden="true">{I.edit}</span></button>
+                  <button type="button" className="dx-personal-icon-btn is-delete" aria-label={`Eliminar a ${p.nombre}`} title="Eliminar colaborador" onClick={() => eliminarTecnico(p)}><span aria-hidden="true">{I.trash}</span></button>
+                </div>}
+              </div>;
+            })}
+              </>;
+            })()}
+          </section>}
 
-          <div className="card">
-            <div className="card-head"><h3>Documentos por Vencer (≤30 días)</h3>{docsPorVencer.length > 0 && <span className="badge badge-orange">{docsPorVencer.length} docs</span>}</div>
-            {docsPorVencer.length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin documentos por vencer próximamente.</div>
-            ) : (
-              <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Documento</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {docsPorVencer.map((d, i) => (
-                    <tr key={i}>
-                      <td style={{fontWeight:600}}>{d.tecnico}</td>
-                      <td style={{textTransform:'capitalize'}}>{d.doc}</td>
-                      <td><span className="badge badge-orange">Por vencer</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-head"><h3>Ranking por Costo/Hora — Top técnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en módulo Partes</span></div>
-            {personal.filter(p=>p.estado!=='inactivo').length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos de personal activo.</div>
-            ) : (
-              <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Especialidad</th><th>Costo/Hora</th><th>Modalidad</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {[...personal].filter(p=>p.estado!=='inactivo').sort((a,b)=>Number(b.tarifa_hora??b.costo??b.costo_hora_real??0)-Number(a.tarifa_hora??a.costo??a.costo_hora_real??0)).slice(0,10).map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:600}}>{p.nombre}</td>
-                      <td>{p.especialidad}</td>
-                      <td className="num" style={{fontWeight:700}}>{money(p.tarifa_hora??p.costo??p.costo_hora_real??0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
-                      <td><span className={'badge '+(esModalidadHonorarios(p)?'badge-gray':'badge-green')}>{esModalidadHonorarios(p)?'Honorarios':'Planilla'}</span></td>
-                      <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {tab === 'reportes' && <div className="dx-personal-reports">
+            <section className="dx-personal-card" aria-label="Headcount por especialidad">
+              <div className="dx-personal-report-head"><h2>Headcount por Especialidad</h2><span className="dx-personal-count">Total: {personal.length} técnicos</span></div>
+              {Object.keys(porEspecialidad).length === 0 ? <div className="dx-personal-report-empty">Sin datos.</div> : <div className="dx-personal-bars">{Object.entries(porEspecialidad).sort((a, b) => b[1] - a[1]).map(([esp, cnt]) => <div key={esp} className="dx-personal-bar-row"><span>{esp}</span><div className="dx-personal-track"><div className="dx-personal-fill" style={{width:Math.round(cnt / maxEsp * 100) + '%'}} /></div><b>{cnt}</b></div>)}</div>}
+              <div className="dx-personal-report-foot"><span>Planilla: <b>{countPlanilla}</b></span><span>Honorarios: <b>{countHonorarios}</b></span></div>
+            </section>
+            <section className="dx-personal-card" aria-label="Técnicos sin turno asignado"><div className="dx-personal-report-head"><h2>Técnicos sin Turno Asignado</h2>{sinTurno.length > 0 && <span className="dx-personal-pill is-amber">{sinTurno.length}</span>}</div>
+              {sinTurno.length === 0 ? <div className="dx-personal-report-empty">Todos los técnicos tienen turno asignado.</div> : sinTurno.map(p => <div className="dx-personal-list-row" key={p.id}><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">{[p.cargo, p.especialidad].filter(Boolean).join(' · ')}</span></div><span className={'dx-personal-pill '+(esModalidadHonorarios(p) ? 'is-gray' : 'is-green')}>{esModalidadHonorarios(p) ? 'Honorarios' : 'Planilla'}</span></div>)}
+            </section>
+            <section className="dx-personal-card" aria-label="Documentos por vencer"><div className="dx-personal-report-head"><h2>Documentos por Vencer (≤30 días)</h2>{docsPorVencer.length > 0 && <span className="dx-personal-pill is-amber">{docsPorVencer.length} docs</span>}</div>
+              {docsPorVencer.length === 0 ? <div className="dx-personal-report-empty">Sin documentos por vencer próximamente.</div> : docsPorVencer.map((d, i) => <div className="dx-personal-list-row" key={i}><div className="dx-personal-name"><strong className="dx-personal-report-doc">{d.doc}</strong><span className="dx-personal-meta">{d.tecnico}</span></div><span className="dx-personal-pill is-amber"><i />Por vencer</span></div>)}
+            </section>
+            <section className="dx-personal-card" aria-label="Ranking por costo por hora"><div className="dx-personal-report-head"><h2>Ranking por Costo/Hora — Top técnicos activos</h2><span className="dx-personal-count">Partes diarios disponibles en módulo Partes</span></div>
+              {personal.filter(p => p.estado !== 'inactivo').length === 0 ? <div className="dx-personal-report-empty">Sin datos de personal activo.</div> : [...personal].filter(p => p.estado !== 'inactivo').sort((a, b) => Number(b.tarifa_hora ?? b.costo ?? b.costo_hora_real ?? 0) - Number(a.tarifa_hora ?? a.costo ?? a.costo_hora_real ?? 0)).slice(0, 10).map((p, idx) => <div className="dx-personal-list-row" key={p.id}><div className="dx-personal-rank"><span className="dx-personal-rank-n">{idx + 1}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">{p.especialidad} · <span className={'dx-personal-status-text '+(badgeToPill(estBadge(p.estado)))}>{p.estado.toUpperCase()}</span></span></div></div><div className="dx-personal-cost">{money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr<span className={'dx-personal-pill '+(esModalidadHonorarios(p) ? 'is-gray' : 'is-green')}>{esModalidadHonorarios(p) ? 'Honorarios' : 'Planilla'}</span></div></div>)}
+            </section>
+          </div>}
         </div>
-      )}
+      </div>
 
       {panelAlta && <>
         <div className="side-panel-backdrop" onClick={cerrarPanelTecnico}/>
@@ -25981,7 +25190,8 @@ function RRHH_Operativo() {
           </div>
           <form className="side-panel-body" onSubmit={guardarTecnico}>
             {altaError && <div className="alert alert-danger" style={{marginBottom:16}}>{altaError}</div>}
-            {advAdendaManual && <div className="alert alert-warning" style={{marginBottom:16}}>Estás modificando el sueldo/cargo directamente en la ficha. Recuerda que este cambio requiere una adenda al contrato para tener respaldo legal ante SUNAFIL. Puedes subir la adenda en la pestaña Documentos.</div>}
+            {bloqueoContratoFicha && <div className="alert alert-info" style={{marginBottom:16}}>El sueldo y el tipo de contrato los define el contrato vigente aprobado. Para cambiarlos, registra una adenda o un nuevo contrato en la pestaña Documentos; al aprobarse, la ficha se actualiza sola.</div>}
+            {advAdendaManual && !bloqueoContratoFicha && <div className="alert alert-warning" style={{marginBottom:16}}>Estás modificando el sueldo/cargo directamente en la ficha. Recuerda que este cambio requiere una adenda al contrato para tener respaldo legal ante SUNAFIL. Puedes subir la adenda en la pestaña Documentos.</div>}
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
@@ -25992,6 +25202,7 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Correo personal</label><input className="input" type="email" value={formAlta.email_personal} onChange={e=>setFormAlta(v=>({...v,email_personal:e.target.value}))} placeholder="correo@personal.com"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado como canal de verificación para firma electrónica y notificaciones. Debe ser un correo de uso personal, no corporativo.</div></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Domicilio</label><input className="input" value={formAlta.direccion} onChange={e=>setFormAlta(v=>({...v,direccion:e.target.value}))} placeholder="Domicilio del trabajador"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Celular personal (WhatsApp)</label><input className="input" type="text" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.celular_personal} onChange={e=>setFormAlta(v=>({...v,celular_personal:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado para notificaciones por WhatsApp y verificación. Debe ser un número personal, no asignado por la empresa.</div></div>
               {esHonorarios && (
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
@@ -26006,8 +25217,8 @@ function RRHH_Operativo() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personalOperativo.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios || bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorarios ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorarios} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               {usaOrganigramaV2 ? <>
                 <div style={{gridColumn:'1/-1'}}>
@@ -26081,7 +25292,7 @@ function RRHH_Operativo() {
               {esHonorarios ? <>
                 <div className="input-group">
                   <label>Honorario pactado ({tarifaSym})</label>
-                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Tarifa hora referencial ({tarifaSym})</label>
@@ -26091,7 +25302,7 @@ function RRHH_Operativo() {
               </> : <>
                 <div className="input-group">
                   <label>Monto mensual ({tarifaSym})</label>
-                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:e.target.value}))} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:e.target.value}))} placeholder="0"/>
                 </div>
                 <div className="input-group">
                   <label>Horas base del mes</label>
@@ -26143,7 +25354,7 @@ function RRHH_Operativo() {
               ) : (
                 <>
                   <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/></div>
+                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} disabled={bloqueoContratoFicha} title={tituloBloqueoContrato} style={estiloBloqueoContrato} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/></div>
                     <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
                     <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ {asignacionFamiliar.toFixed(2)})</label>
                     <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
@@ -28754,6 +27965,9 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
   const handleEdit = (tipo) => {
     setForm({
       nombre: tipo.nombre,
+      categoria: normalizarCategoriaTipoDocumento(tipo.categoria),
+      categoriaOriginal: tipo.categoria && !CATEGORIAS_TIPO_DOCUMENTO.includes(tipo.categoria) ? tipo.categoria : '',
+      categoriaTocada: false,
       ambito: tipo.ambito || 'Ambos',
       exige_vencimiento: Boolean(tipo.exige_vencimiento),
       dias_alerta: tipo.dias_alerta ?? 30,
@@ -28771,6 +27985,9 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
   const handleNew = () => {
     setForm({
       nombre: '',
+      categoria: 'Otros',
+      categoriaOriginal: '',
+      categoriaTocada: false,
       ambito: 'Ambos',
       exige_vencimiento: true,
       dias_alerta: 30,
@@ -28793,6 +28010,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
     try {
       const payload = {
         ...form,
+        categoria: form.categoriaOriginal && !form.categoriaTocada ? form.categoriaOriginal : form.categoria,
         codigo: editando ? editando.codigo : `DOC${String(allTipos.length + 1).padStart(3, '0')}`,
         dias_alerta: form.exige_vencimiento ? (form.dias_alerta || 0) : 0,
         documento_padre_tipo_id: form.documento_padre_tipo_id || null,
@@ -28906,7 +28124,11 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
                 <div className="input-group" style={{ gridColumn: 'span 2' }}>
                   <label>Nombre *</label>
-                  <input className="input" required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Ej: Certificado Médico" />
+                  <input className="input" required value={form.nombre} onChange={e => {
+                    const nombre = e.target.value;
+                    const categoriaSugerida = !editando && !form.categoriaTocada ? sugerirCategoriaTipoDocumento(nombre) : null;
+                    setForm({ ...form, nombre, ...(categoriaSugerida ? { categoria: categoriaSugerida } : {}) });
+                  }} autoFocus placeholder="Ej: Certificado Médico" />
                 </div>
                 <div className="input-group">
                   <label>Ámbito *</label>
@@ -28921,6 +28143,13 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
                   <select className="select" value={form.estado} onChange={e => setForm({ ...form, estado: e.target.value })}>
                     <option value="activo">Activo</option>
                     <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Categoría *</label>
+                  <select className="select" required value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value, categoriaTocada: true })}>
+                    {CATEGORIAS_TIPO_DOCUMENTO.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
+                    {form.categoriaOriginal && <option value={form.categoriaOriginal}>{form.categoriaOriginal}</option>}
                   </select>
                 </div>
                 
@@ -29014,6 +28243,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
                         <th>Código</th>
                         <th>Nombre</th>
                         <th>Ámbito</th>
+                        <th>Categoría</th>
                         <th style={{ textAlign: 'center' }}>Venc.</th>
                         <th style={{ textAlign: 'center' }}>Habilitante</th>
                         <th style={{ textAlign: 'center' }}>Validación</th>
@@ -29029,6 +28259,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
                           <td className="mono text-muted" style={{ fontSize: 12 }}>{t.codigo}</td>
                           <td><strong>{t.nombre}</strong></td>
                           <td><span className="badge badge-cyan" style={{ fontSize: 11 }}>{t.ambito || 'Ambos'}</span></td>
+                          <td><span className="badge badge-gray" style={{ fontSize: 11 }}>{t.categoria || 'Otros'}</span></td>
                           <td style={{ textAlign: 'center' }}>
                             {t.exige_vencimiento ? <span className="badge badge-orange" style={{ fontSize: 10 }}>Sí ({t.dias_alerta}d)</span> : <span className="badge badge-gray" style={{ fontSize: 10 }}>No</span>}
                           </td>

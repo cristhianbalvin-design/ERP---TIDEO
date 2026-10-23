@@ -93,6 +93,11 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     let active = true;
     const emisorSnapshot = seleccionVersion?.estado === 'emitido' ? seleccionVersion.snapshot?.emisor : null;
     setFirmaEmitidaUrl(emisorSnapshot?.firma_url || null);
+    // Informe emitido con firma congelada: se usa ese archivo, no la firma actual de la persona.
+    if (emisorSnapshot?.firma_bucket && emisorSnapshot?.firma_storage_path) {
+      obtenerFirmaPersonaParaVista(emisorSnapshot).then(url => { if (active && url) setFirmaEmitidaUrl(url); }).catch(() => {});
+      return () => { active = false; };
+    }
     if (!emisorSnapshot?.persona_id) return () => { active = false; };
     const persona = emisoresPersona.find(item => String(item.id) === String(emisorSnapshot.persona_id));
     if (!persona) return () => { active = false; };
@@ -260,7 +265,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           }
         },
         emitirDiagnostico: () => onEmitirDiagnostico(),
-        emitirInforme: () => emitirInformeDiagnostico({ informeId: informe.id, emisorNombre: nombreFinal, emisorCargo: cargoFinal }),
+        emitirInforme: () => emitirInformeDiagnostico({ informeId: informe.id, emisorNombre: nombreFinal, emisorCargo: cargoFinal, firmaAdjuntoId: emisor.fuente === 'persona' ? emisor.persona?.firma_adjunto_id || null : null }),
       });
       const current = await obtenerInformeVigente(diagnostico.recepcion_id);
       const selectedRow = (current.emitidos || []).find(row => row.id === issued?.id) || issued;
@@ -379,7 +384,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
               ? <p>No hay personas activas con firma cargada. Se usará el firmante configurado para la sociedad.</p>
               : <><label>Nombre del emisor<input value={emisorNombre} onChange={event => setEmisorNombre(event.target.value)} required maxLength={200} disabled={emitiendo} /></label><label>Cargo<input value={emisorCargo} onChange={event => setEmisorCargo(event.target.value)} maxLength={200} disabled={emitiendo} /></label><p>No hay personas activas con firma ni firmante configurado en la sociedad. Ingresa los datos manualmente.</p></>}
             {diagnostico.estado === 'borrador'
-              ? <p>Se emitir\u00e1 el diagn\u00f3stico y luego el informe. Ninguno podr\u00e1 editarse y el diagn\u00f3stico pasar\u00e1 a costeo.</p>
+              ? <p>Se emitir\u00e1 el diagn\u00f3stico y luego el informe. Ninguno podr\u00e1 editarse. Despu\u00e9s podr\u00e1s generar una Hoja de Costeo desde el diagn\u00f3stico.</p>
               : <p>Al emitir, el informe queda congelado y no podr\u00e1 editarse; para cambios se emite una nueva versi\u00f3n.</p>}
             {cambiosSinGuardar && <p>Los cambios pendientes se guardar\u00e1n antes de emitir.</p>}
             <div className="dx-informe-emitir-actions"><button type="button" onClick={emitir} disabled={emitiendo || guardando || (emisoresPersona.length > 0 && (!emisorPersonaId || !firmaPersonaUrl)) || (!emisoresPersona.length && !String(identidadEmpresa?.firmante || '').trim() && !String(emisorNombre || '').trim()) || emisionBloqueada || !permisoAprobar || (diagnostico.estado === 'borrador' && !puedeEmitirDiagnostico)}>{emitiendo ? 'Emitiendo\u2026' : 'Confirmar emisi\u00f3n'}</button><button type="button" onClick={() => setConfirmarEmision(false)} disabled={emitiendo}>Cancelar</button></div>

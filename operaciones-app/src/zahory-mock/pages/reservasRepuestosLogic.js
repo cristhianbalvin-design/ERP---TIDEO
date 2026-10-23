@@ -12,6 +12,14 @@ export function etiquetaEstadoLinea(estado, linea) {
   return ESTADOS_LINEA[estado]?.[0] || 'Sin estado';
 }
 export function tonoEstadoLinea(estado) { return ESTADOS_LINEA[estado]?.[1] || 'is-gray'; }
+export function cantidadPorTrasladar(ot, linea) {
+  if (!ot?.mina_id) return 0;
+  return (linea?.origenes || []).reduce((total, origen) => {
+    if (origen?.almacen_clase !== 'central') return total;
+    const pendiente = Number(origen.pendiente);
+    return Number.isFinite(pendiente) && pendiente > 0 ? total + pendiente : total;
+  }, 0);
+}
 export function estadoAgregadoOT(ot) {
   const lineas = ot?.lineas || [];
   if (!lineas.length) return { texto: 'Sin repuestos', tono: 'is-gray' };

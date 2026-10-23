@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
-import { despacharReservaOT, liberarReservaOT, listarReservasOT, revertirDespachoOT } from '../../services/reservasRepuestosService.js';
+import { despacharReservaOT, liberarReservaOT, listarReservasOT, revertirDespachoOT, trasladarReservaOT } from '../../services/reservasRepuestosService.js';
 import { DespachoPanel } from './DespachoPanel.jsx';
 import { LiberarReservaPanel } from './LiberarReservaPanel.jsx';
 import { RevertirDespachoPanel } from './RevertirDespachoPanel.jsx';
-import { estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoLinea, etiquetaEstadoOT, mapearErrorReserva, puedeOperarLinea, textoUbicacionOrigen, tonoEstadoLinea } from './reservasRepuestosLogic.js';
+import { cantidadPorTrasladar, estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoLinea, etiquetaEstadoOT, mapearErrorReserva, puedeOperarLinea, textoUbicacionOrigen, tonoEstadoLinea } from './reservasRepuestosLogic.js';
 
 const num = valor => Number(valor || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 const fecha = valor => valor ? new Date(valor).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -24,6 +24,7 @@ export function ReservaRepuestosPage() {
   const [panel, setPanel] = useState(null);
   const [errorAccion, setErrorAccion] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [trasladando, setTrasladando] = useState(false);
   const envioRef = useRef(false);
   const controlQueAbre = useRef(null);
   const ordenSeleccionada = ordenes.find(ot => ot.id === seleccionadaId) || null;
@@ -72,6 +73,16 @@ export function ReservaRepuestosPage() {
     } catch (fallo) { setErrorAccion(mapearErrorReserva(fallo)); }
     finally { envioRef.current = false; setEnviando(false); }
   };
+  const trasladarReserva = async () => {
+    if (!ordenSeleccionada || permisos?.despachar !== true || trasladando) return;
+    setTrasladando(true); setErrorAccion('');
+    try {
+      await trasladarReservaOT({ empresa_id: empresaId, ot_id: ordenSeleccionada.id });
+      setAviso(`Reserva trasladada a ${ordenSeleccionada.mina_nombre}.`);
+      await recargar(ordenSeleccionada.id);
+    } catch (fallo) { setErrorAccion(mapearErrorReserva(fallo)); }
+    finally { setTrasladando(false); }
+  };
   if (cargandoSesion || sesion.estado === 'cargando') return <section className="dx-ui dx-desp"><div className="dx-ui-empty" role="status">Cargando sesión operativa…</div></section>;
   if (!empresaId || ['sin_empresa', 'sin_sesion'].includes(sesion.estado)) return <section className="dx-ui dx-desp"><div className="dx-ui-empty">Selecciona o solicita acceso a una empresa para ver las reservas.</div></section>;
   const canOperate = (ot, linea, accion) => puedeOperarLinea(permisos, accion, ot, linea);
@@ -95,7 +106,8 @@ export function ReservaRepuestosPage() {
       <button type="button" className="dx-desp-back" onClick={() => setSeleccionadaId('')}>← Volver a la lista</button>
       <div className="dx-ui-summary"><div className="dx-ui-chip"><b>{num(ordenSeleccionada.lineas?.length || 0)}</b><span>{ordenSeleccionada.lineas?.length === 1 ? 'Línea' : 'Líneas'}</span></div><div className="dx-ui-chip"><b>{num((ordenSeleccionada.lineas || []).reduce((s, linea) => s + Number(linea.reservado || 0), 0))}</b><span>Reservado</span></div><div className="dx-ui-chip"><b>{num((ordenSeleccionada.lineas || []).reduce((s, linea) => s + Number(linea.despachado || 0), 0))}</b><span>Despachado</span></div><div className="dx-ui-chip"><b>{num((ordenSeleccionada.lineas || []).reduce((s, linea) => s + Number(linea.liberado || 0), 0))}</b><span>Liberado</span></div></div>
       <div className="dx-desp-notice">Al cerrar técnicamente la OT, el consumo heredado solo descontará lo que todavía no se haya despachado a taller.</div>
-      <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Repuestos reservados</h2><span className="dx-ui-count">{etiquetaConteoLineas(ordenSeleccionada.lineas?.length || 0)} · {ordenSeleccionada.estado}</span></div>
+      <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Repuestos reservados</h2><span className="dx-ui-count">{etiquetaConteoLineas(ordenSeleccionada.lineas?.length || 0)} · {ordenSeleccionada.estado}</span>{permisos?.despachar === true && (ordenSeleccionada.lineas || []).some(linea => cantidadPorTrasladar(ordenSeleccionada, linea) > 0) && <button type="button" className="dx-btn primary" onClick={trasladarReserva} disabled={trasladando}>{trasladando ? 'Trasladando…' : `Trasladar a ${ordenSeleccionada.mina_nombre}`}</button>}</div>
+        {!panel && errorAccion && <div className="dx-desp-alert" role="alert">{errorAccion}</div>}
         <div className="dx-desp-line-head" aria-hidden="true"><span>Material</span><span>Estimado</span><span>Reservado</span><span>Despachado</span><span>Pendiente</span><span>Estado</span><span>Acciones</span></div>
         {(ordenSeleccionada.lineas || []).length === 0 ? <div className="dx-ui-empty">Esta OT no tiene líneas de repuesto.</div> : ordenSeleccionada.lineas.map(linea => {
           const despacho = canOperate(ordenSeleccionada, linea, 'despachar'); const liberar = canOperate(ordenSeleccionada, linea, 'liberar'); const revertir = canOperate(ordenSeleccionada, linea, 'revertir');
@@ -103,8 +115,9 @@ export function ReservaRepuestosPage() {
           const motivoReversa = sinPermisoDespacho ? 'Sin permiso para revertir' : Number(linea.despachado || 0) <= 0 ? 'Nada despachado' : !['programada', 'ejecucion'].includes(ordenSeleccionada.estado) ? 'OT cerrada' : '';
           const origenes = linea.origenes || [];
           const origenTexto = origenes.map(textoUbicacionOrigen).join(' · ') || 'Sin ubicación (sin stock reservado)';
+          const porTrasladar = cantidadPorTrasladar(ordenSeleccionada, linea);
           return <div className="dx-desp-line-row" key={linea.id}>
-            <div className="dx-desp-material"><b>{linea.descripcion}</b><small>{linea.codigo || '—'} · {linea.unidad || 'und'} · {origenTexto}</small></div>
+            <div className="dx-desp-material"><b>{linea.descripcion}</b><small>{linea.codigo || '—'} · {linea.unidad || 'und'} · {origenTexto}</small>{porTrasladar > 0 && <span className="dx-ui-pill is-amber"><i />Por trasladar a {ordenSeleccionada.mina_nombre}: {num(porTrasladar)} {linea.unidad || 'und'}</span>}</div>
             <div className="dx-desp-n"><small>Estimado</small>{num(linea.cantidad_estimada)} {linea.unidad}</div><div className="dx-desp-n"><small>Reservado</small>{num(linea.reservado)} {linea.unidad}</div><div className="dx-desp-n"><small>Despachado</small>{num(linea.despachado)} {linea.unidad}</div><div className="dx-desp-n"><small>Pendiente</small>{num(linea.pendiente)} {linea.unidad}</div>
             <span className="dx-desp-state"><i className={`dx-ui-pill ${tonoEstadoLinea(linea.estado)}`}><i />{etiquetaEstadoLinea(linea.estado, linea)}</i></span>
             <div className="dx-desp-actions">

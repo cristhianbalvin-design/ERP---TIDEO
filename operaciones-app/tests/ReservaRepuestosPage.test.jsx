@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'empresa-1', estado: 'listo', cargando: false },
-  listar: vi.fn(), despachar: vi.fn(), liberar: vi.fn(), revertir: vi.fn(),
+  listar: vi.fn(), despachar: vi.fn(), liberar: vi.fn(), revertir: vi.fn(), trasladar: vi.fn(),
 }));
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.sesion }));
-vi.mock('../src/services/reservasRepuestosService.js', () => ({ listarReservasOT: mocks.listar, despacharReservaOT: mocks.despachar, liberarReservaOT: mocks.liberar, revertirDespachoOT: mocks.revertir }));
+vi.mock('../src/services/reservasRepuestosService.js', () => ({ listarReservasOT: mocks.listar, despacharReservaOT: mocks.despachar, liberarReservaOT: mocks.liberar, revertirDespachoOT: mocks.revertir, trasladarReservaOT: mocks.trasladar }));
 import { ReservaRepuestosPage } from '../src/zahory-mock/pages/ReservaRepuestosPage.jsx';
 
 const lineaBase = { id: 'segmento-1', descripcion: 'Filtro hidráulico', codigo: 'FIL-01', unidad: 'und', cantidad_estimada: 3, reservado: 3, despachado: 0, liberado: 0, pendiente: 3, estado: 'reservado', origenes: [] };
@@ -29,6 +29,7 @@ describe('ReservaRepuestosPage', () => {
     mocks.despachar.mockReset().mockResolvedValue({});
     mocks.liberar.mockReset().mockResolvedValue({});
     mocks.revertir.mockReset().mockResolvedValue({});
+    mocks.trasladar.mockReset().mockResolvedValue({});
     vi.stubGlobal('requestAnimationFrame', callback => callback());
     vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn(), querySelector: vi.fn(() => null) });
   });
@@ -48,6 +49,70 @@ describe('ReservaRepuestosPage', () => {
     expect(button(root, 'Despachar').props.disabled).not.toBe(true);
     expect(button(root, 'Liberar').props.disabled).not.toBe(true);
     expect(root.root.findAll(node => node.children?.join('') === 'SOLPE en curso')).toHaveLength(0);
+  });
+
+  it('marca cantidad central por trasladar a la mina y omite periferia o OT sin mina', async () => {
+    const lineaConCentral = { ...lineaBase, origenes: [{ almacen_clase: 'central', pendiente: 2 }] };
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }));
+    const conMina = await renderPage(); await openDetail(conMina);
+    expect(conMina.root.findAll(node => node.props.className === 'dx-ui-pill is-amber' && node.children.join('').includes('Por trasladar a Mina Norte: 2 und'))).toHaveLength(1);
+    conMina.unmount();
+
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: null, mina_nombre: null, lineas: [lineaConCentral] }));
+    const sinMina = await renderPage(); await openDetail(sinMina);
+    expect(sinMina.root.findAll(node => node.children?.join('').includes('Por trasladar a'))).toHaveLength(0);
+    sinMina.unmount();
+
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [{ ...lineaBase, origenes: [{ almacen_clase: 'periferico', almacen_mina_id: 'mina-1', pendiente: 2 }] }] }));
+    const periferico = await renderPage(); await openDetail(periferico);
+    expect(periferico.root.findAll(node => node.children?.join('').includes('Por trasladar a'))).toHaveLength(0);
+  });
+
+  it('muestra el botón de traslado solo con cantidad central pendiente y permiso de despacho', async () => {
+    const lineaConCentral = { ...lineaBase, origenes: [{ almacen_clase: 'central', pendiente: 2 }] };
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }));
+    const conPermiso = await renderPage(); await openDetail(conPermiso);
+    expect(button(conPermiso, 'Trasladar a Mina Norte')).toBeTruthy();
+    conPermiso.unmount();
+
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }, { despachar: false, liberar: true }));
+    const sinPermiso = await renderPage(); await openDetail(sinPermiso);
+    expect(button(sinPermiso, 'Trasladar a Mina Norte')).toBeUndefined();
+    sinPermiso.unmount();
+
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte' }));
+    const sinCantidad = await renderPage(); await openDetail(sinCantidad);
+    expect(button(sinCantidad, 'Trasladar a Mina Norte')).toBeUndefined();
+  });
+
+  it('traslada la reserva de la OT, muestra aviso y recarga el detalle', async () => {
+    const lineaConCentral = { ...lineaBase, origenes: [{ almacen_clase: 'central', pendiente: 2 }] };
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }));
+    const root = await renderPage(); await openDetail(root);
+    await act(async () => button(root, 'Trasladar a Mina Norte').props.onClick());
+    expect(mocks.trasladar).toHaveBeenCalledWith({ empresa_id: 'empresa-1', ot_id: 'ot-1' });
+    expect(root.root.findAllByProps({ role: 'status' }).some(node => node.children.join('').includes('Reserva trasladada a Mina Norte.'))).toBe(true);
+    expect(mocks.listar).toHaveBeenLastCalledWith({ empresa_id: 'empresa-1', ot_id: 'ot-1' });
+  });
+
+  it('deshabilita el botón mientras se ejecuta el traslado', async () => {
+    const lineaConCentral = { ...lineaBase, origenes: [{ almacen_clase: 'central', pendiente: 2 }] };
+    let completarTraslado;
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }));
+    mocks.trasladar.mockReturnValue(new Promise(resolve => { completarTraslado = resolve; }));
+    const root = await renderPage(); await openDetail(root);
+    await act(async () => { button(root, 'Trasladar a Mina Norte').props.onClick(); await Promise.resolve(); });
+    expect(button(root, 'Trasladando…').props.disabled).toBe(true);
+    await act(async () => completarTraslado({}));
+  });
+
+  it('muestra el error del RPC de traslado', async () => {
+    const lineaConCentral = { ...lineaBase, origenes: [{ almacen_clase: 'central', pendiente: 2 }] };
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }));
+    mocks.trasladar.mockRejectedValueOnce(new Error('Fallo del RPC de traslado'));
+    const root = await renderPage(); await openDetail(root);
+    await act(async () => button(root, 'Trasladar a Mina Norte').props.onClick());
+    expect(root.root.findByProps({ role: 'alert' }).children.join('')).toBe('Fallo del RPC de traslado');
   });
 
   it('muestra solo la etiqueta de líneas en el chip y conserva el conteo del encabezado', async () => {

@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import './hoja_costeo_listado.css';
+import './cotizaciones_listado.css';
+import './valorizaciones.css';
+import './cotizacion_detalle.css';
+import './cotizacion_editor.css';
+import { maestrosService } from './services/maestrosService.js';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
@@ -19,6 +24,7 @@ import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { obtenerRecepcionActivoCliente } from './services/recepcionesActivosClienteService.js';
+import { conformidadValorizable, esCobroMensual, partidaTarifaMensual, periodoMensualISO } from './utils/cobroMensual.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -334,6 +340,51 @@ const cargarLineasRelacionalesDetalleHC = async (hc) => {
 
 // ============ COTIZACIONES ============
 
+// ── Listado de Cotizaciones (dx-cot) ──────────────────────────────────
+const FILTROS_COT_VACIOS = { q:'', tipo:'', moneda:'', periodo:'', desde:'', hasta:'', estado:'todas', soloConvertir:false };
+const COT_ESTADOS_DX = {
+  borrador:{ label:'Borrador', clase:'is-amber' },
+  enviada:{ label:'Enviada', clase:'is-blue' },
+  pendiente_aprobacion:{ label:'Pend. aprobación', clase:'is-violet' },
+  en_negociacion:{ label:'En negociación', clase:'is-violet' },
+  emitido:{ label:'Emitida', clase:'is-blue' },
+  aprobada:{ label:'Aprobada', clase:'is-cyan' },
+  ganada:{ label:'Ganada', clase:'is-green' },
+  aceptada:{ label:'Aceptada', clase:'is-green' },
+  convertida:{ label:'Convertida', clase:'is-gray' },
+  perdida:{ label:'Perdida', clase:'is-red' },
+  anulado:{ label:'Anulada', clase:'is-red' },
+};
+const COT_CHIPS_DX = [
+  ['todas', 'Todas', 'var(--dx-cot-navy)'],
+  ['borrador', 'Borrador', 'var(--dx-cot-amber-dot)'],
+  ['enviadas', 'Enviada / emitida', 'var(--dx-cot-blue-dot)'],
+  ['aprobada', 'Aprobada', 'var(--dx-cot-cyan)'],
+  ['aceptada', 'Aceptada', 'var(--dx-cot-green-dot)'],
+  ['convertida', 'Convertida', '#9CA3AF'],
+  ['cerradas', 'Perdida / anulada', 'var(--dx-cot-red-fg)'],
+];
+const COT_ESTADOS_ABIERTOS_DX = ['borrador', 'enviada', 'emitido', 'pendiente_aprobacion', 'en_negociacion'];
+const cotEnGrupoDx = (estado, grupo) => {
+  if (grupo === 'todas') return true;
+  if (grupo === 'enviadas') return ['enviada', 'emitido', 'pendiente_aprobacion', 'en_negociacion'].includes(estado);
+  if (grupo === 'aceptada') return estado === 'aceptada' || estado === 'ganada';
+  if (grupo === 'cerradas') return estado === 'perdida' || estado === 'anulado';
+  return estado === grupo;
+};
+const cotNormDx = valor => String(valor || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const COT_MESES_DX = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const cotFechaDx = fecha => {
+  const [y, m, d] = String(fecha || '').slice(0, 10).split('-');
+  return y && m && d ? `${d} ${COT_MESES_DX[Number(m) - 1] || m} ${y}` : '—';
+};
+const cotDiasDesdeDx = (fecha, hoy) => {
+  if (!fecha) return null;
+  const dias = Math.round((new Date(`${hoy}T00:00:00`) - new Date(`${String(fecha).slice(0, 10)}T00:00:00`)) / 86400000);
+  return Number.isFinite(dias) ? dias : null;
+};
+const cotInicialesDx = nombre => String(nombre || '').split(' ').filter(Boolean).slice(0, 2).map(parte => parte[0]).join('').toUpperCase();
+
 const COT_BADGE = e =>
   e === 'aprobada' || e === 'ganada' ? 'badge-green' :
   e === 'enviada' ? 'badge-cyan' :
@@ -359,7 +410,7 @@ function CotizacionesInner() {
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
-  const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
+  const [filtros, setFiltros] = useState(FILTROS_COT_VACIOS);
   const [cotizacionesEspeciales, setCotizacionesEspeciales] = useState([]);
   const [cotizacionesEspecialesError, setCotizacionesEspecialesError] = useState('');
   const [partidasHCPorId, setPartidasHCPorId] = useState({});
@@ -431,7 +482,7 @@ function CotizacionesInner() {
         const sb = await getSupabaseClient();
         let request = sb
           .from('cotizaciones_especiales')
-          .select('id,empresa_id,sociedad_id,tipo_documento_id,plantilla_documento_id,cuenta_id,oportunidad_id,hoja_costeo_id,numero,moneda,items,subtotal,igv,total,estado,emitida_at,created_at')
+          .select('id,empresa_id,sociedad_id,tipo_documento_id,plantilla_documento_id,cuenta_id,oportunidad_id,hoja_costeo_id,numero,moneda,items,subtotal,igv,total,estado,emitida_at,created_at,created_by')
           .eq('empresa_id', empresa.id);
         if (!modoVistaSociedadCotizaciones.sinFiltro) {
           const sociedades = modoVistaSociedadCotizaciones.sociedadesIds.filter(Boolean);
@@ -763,6 +814,8 @@ function CotizacionesInner() {
           onAprobar={() => { aprobarCotizacion(cot.id); setOsModal(cot); }}
           onAprobacionManual={async (datos) => { await registrarAprobacionManual(cot.id, datos); }}
           onGenerarOS={() => setOsModal(cot)}
+          osVinculada={(osClientes || []).find(os => os.id === cot.os_cliente_id) || (osClientes || []).find(os => os.cotizacion_id === cot.id) || null}
+          onVerOS={osId => navigate('os_cliente', { detail: osId })}
           onDescargarPDF={handleDescargarPDF}
           generandoPDF={generandoPDF}
         />
@@ -802,31 +855,74 @@ function CotizacionesInner() {
     })),
   ].sort((a, b) => (b.fecha_orden || '').localeCompare(a.fecha_orden || ''));
 
-  const filtered = cotizacionesBandeja.filter(c => {
+  const hoyCot = new Date().toLocaleDateString('en-CA');
+  const osClientesLista = osClientes || [];
+  const nombreUsuarioCot = id => (id ? usuarios?.find(u => u.id === id)?.nombre : null) || null;
+  const filasCot = cotizacionesBandeja.filter(c => {
     const opp = getOpp(c.oportunidad_id);
     const ownerUserId = c.responsable_id || opp?.responsable_id || null;
     const ownerName = opp?.responsable || null;
-    if (!canUserSeeOwner({ viewer: authUser, ownerUserId, ownerName, users: usuarios, roles })) return false;
-    const cliente = getCuentaNombre(c.cuenta_id || opp?.cuenta_id);
-    if (query && !c.numero.toLowerCase().includes(query) && !cliente.toLowerCase().includes(query) && !(opp?.nombre || '').toLowerCase().includes(query)) return false;
-    if (filtros.cliente && !cliente.toLowerCase().includes(filtros.cliente.toLowerCase())) return false;
-    if (filtros.oportunidad && !(opp?.nombre || '').toLowerCase().includes(filtros.oportunidad.toLowerCase())) return false;
-    if (filtros.estado && c.estado !== filtros.estado) return false;
-    if (filtros.fechaDesde && (c.fecha || '') < filtros.fechaDesde) return false;
-    if (filtros.fechaHasta && (c.fecha || '') > filtros.fechaHasta) return false;
+    return canUserSeeOwner({ viewer: authUser, ownerUserId, ownerName, users: usuarios, roles });
+  }).map(c => {
+    const opp = getOpp(c.oportunidad_id);
+    const esEspecial = c.origen === 'especial';
+    const moneda = normalizeCurrencyCode(c.moneda);
+    const conOS = Boolean(c.os_cliente_id) || osClientesLista.some(os => (esEspecial ? os.cotizacion_especial_id : os.cotizacion_id) === c.id);
+    return {
+      cot: c,
+      opp,
+      esEspecial,
+      moneda,
+      conOS,
+      cliente: getCuentaNombre(c.cuenta_id || opp?.cuenta_id),
+      oportunidad: opp?.nombre || '',
+      responsable: esEspecial ? nombreUsuarioCot(c.created_by) : (nombreUsuarioCot(c.responsable_id || opp?.responsable_id) || opp?.responsable || null),
+      total: Number(esEspecial ? c.total : (c.total_impl || c.total)) || 0,
+      recurrente: esEspecial ? 0 : Number(c.total_rec) || 0,
+      porConvertir: ['aprobada', 'aceptada', 'ganada'].includes(c.estado) && !conOS,
+      dias: cotDiasDesdeDx(c.fecha, hoyCot),
+    };
+  });
+  const qCot = cotNormDx(filtros.q.trim());
+  const qGlobalCot = cotNormDx(query);
+  const filasFiltradasCot = filasCot.filter(f => {
+    const texto = cotNormDx([f.cot.numero, f.cliente, f.oportunidad, f.responsable, COT_ESTADOS_DX[f.cot.estado]?.label, f.esEspecial ? 'especial' : 'estandar'].join(' '));
+    if (qGlobalCot && !texto.includes(qGlobalCot)) return false;
+    if (qCot && !texto.includes(qCot)) return false;
+    if (filtros.tipo === 'estandar' && f.esEspecial) return false;
+    if (filtros.tipo === 'especial' && !f.esEspecial) return false;
+    if (filtros.moneda && f.moneda !== filtros.moneda) return false;
+    const fecha = String(f.cot.fecha || '').slice(0, 10);
+    if (filtros.periodo === 'mes' && fecha.slice(0, 7) !== hoyCot.slice(0, 7)) return false;
+    if ((filtros.periodo === '30' || filtros.periodo === '90') && (f.dias === null || f.dias > Number(filtros.periodo))) return false;
+    if (filtros.periodo === 'exacta' && filtros.desde && fecha !== filtros.desde) return false;
+    if (filtros.periodo === 'rango' && ((filtros.desde && fecha < filtros.desde) || (filtros.hasta && fecha > filtros.hasta))) return false;
+    if (filtros.soloConvertir && !f.porConvertir) return false;
     return true;
   });
-  const filtrosActivos = Object.values(filtros).some(v => v !== '');
+  const listaCot = filasFiltradasCot.filter(f => cotEnGrupoDx(f.cot.estado, filtros.estado));
+  const contarGrupoCot = grupo => filasCot.filter(f => cotEnGrupoDx(f.cot.estado, grupo)).length;
+  const especialesCot = filasCot.filter(f => f.esEspecial).length;
+  const abiertasCot = filasCot.filter(f => COT_ESTADOS_ABIERTOS_DX.includes(f.cot.estado));
+  const sumaMonedaCot = moneda => abiertasCot.filter(f => f.moneda === moneda).reduce((acc, f) => acc + f.total, 0);
+  const pipelinePenCot = sumaMonedaCot('PEN');
+  const pipelineUsdCot = sumaMonedaCot('USD');
+  const porConvertirCot = filasCot.filter(f => f.porConvertir).length;
+  const filtrosActivos = Boolean(filtros.q || filtros.tipo || filtros.moneda || filtros.periodo || filtros.estado !== 'todas' || filtros.soloConvertir);
+  const setFiltroCot = (campo, valor) => setFiltros(actual => ({ ...actual, [campo]: valor }));
+  const abrirCot = c => (c.origen === 'especial' ? navigate('cotizaciones', { especial:'detalle', especial_id:c.id }) : navigate('cotizaciones', { detail:c.id }));
 
   return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Cotizaciones</h1>
-          <div className="page-sub">{cotizacionesBandeja.length} cotizaciones registradas</div>
-        </div>
-        <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización.' : undefined} onClick={() => setSelectorNuevaCotizacion(true)}>+ Nueva Cotización</button>
-      </div>
+    <div className="dx-cot">
+      <div className="dx-cot-in">
+        <header className="dx-cot-top">
+          <div>
+            <div className="dx-cot-eyebrow">Comercial</div>
+            <h1 className="dx-cot-title">Cotizaciones</h1>
+            <p className="dx-cot-sub">{filasCot.length} cotizaciones · {filasCot.length - especialesCot} estándar y {especialesCot} especiales</p>
+          </div>
+          <button type="button" className="dx-cot-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización.' : undefined} onClick={() => setSelectorNuevaCotizacion(true)}>{I.plus}Nueva cotización</button>
+        </header>
 
       {selectorNuevaCotizacion && <SelectorTipoCotizacion empresaId={empresa?.id} crearCuenta={crearCuenta} comercialesAsignables={comercialesAsignables} onHojaCosteo={lineaNegocio => abrirEntradaDirecta('hoja_costeo', lineaNegocio)} onEstandar={(lineaNegocio, tarifarioContexto) => abrirEntradaDirecta('estandar', lineaNegocio, tarifarioContexto)} onEspecial={(_plantilla, lineaNegocio, tarifarioContexto) => { setSelectorNuevaCotizacion(false); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:_plantilla.id, tipo_documento_id:_plantilla.tipo_documento_id, cuenta_id:tarifarioContexto?.cuenta_id || null, proyecto_id:tarifarioContexto?.proyecto_id || null, contrato_alquiler_id:tarifarioContexto?.contrato_alquiler_id || null, tarifario_contexto:tarifarioContexto || null, linea_negocio: tarifarioContexto ? 'flota_alquileres' : (lineaNegocio || null) }); }} onCancel={() => setSelectorNuevaCotizacion(false)} onError={mensaje => addNotificacion(mensaje)} />}
       {entradaDirecta && <div className="modal-backdrop"><form className="modal" style={{ maxWidth:520 }} onSubmit={confirmarEntradaDirecta}><div className="modal-head"><div><h2>{entradaDirecta.tipo === 'hoja_costeo' ? 'Nueva Hoja de Costeo' : 'Nueva Cotización Estándar'}</h2><div className="text-muted" style={{ fontSize:12 }}>Selecciona el cliente para continuar.</div></div><button type="button" className="icon-btn" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>{I.x}</button></div><div className="modal-body"><div className="input-group"><label>Cuenta *</label><select className="select" required value={entradaDirecta.cuenta_id} disabled={entradaDirecta.saving} onChange={event => setEntradaDirecta(actual => ({ ...actual, cuenta_id:event.target.value, error:'' }))}><option value="">Selecciona una cuenta…</option>{cuentas.filter(cuenta => cuenta.empresa_id === empresa?.id).map(cuenta => <option key={cuenta.id} value={cuenta.id}>{cuenta.razon_social || cuenta.nombre_comercial}</option>)}</select></div>{entradaDirecta.error && <div className="alert alert-danger" style={{ marginTop:14 }}>{entradaDirecta.error}</div>}</div><div className="modal-foot"><button type="button" className="btn btn-secondary" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={entradaDirecta.saving}>{entradaDirecta.saving ? 'Creando…' : 'Continuar'}</button></div></form></div>}
@@ -845,71 +941,112 @@ function CotizacionesInner() {
         }}
       />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, marginBottom: 16 }}>
-        <input className="input" placeholder="Buscar por cliente…" value={filtros.cliente} onChange={e => setFiltros(f => ({...f, cliente: e.target.value}))} />
-        <input className="input" placeholder="Buscar por oportunidad…" value={filtros.oportunidad} onChange={e => setFiltros(f => ({...f, oportunidad: e.target.value}))} />
-        <select className="select" value={filtros.estado} onChange={e => setFiltros(f => ({...f, estado: e.target.value}))}>
-          <option value="">Todos los estados</option>
-          <option value="borrador">Borrador</option>
-          <option value="enviada">Enviada</option>
-          <option value="pendiente_aprobacion">Pendiente aprobación</option>
-          <option value="aprobada">Aprobada</option>
-          <option value="aceptada">Aceptada</option>
-          <option value="convertida">Convertida</option>
-          <option value="perdida">Perdida</option>
-          <option value="emitido">Emitido</option>
-          <option value="anulado">Anulado</option>
-        </select>
-        <input type="date" className="input" value={filtros.fechaDesde} onChange={e => setFiltros(f => ({...f, fechaDesde: e.target.value}))} />
-        <input type="date" className="input" value={filtros.fechaHasta} onChange={e => setFiltros(f => ({...f, fechaHasta: e.target.value}))} />
-        {filtrosActivos && (
-          <button className="btn btn-secondary" onClick={() => setFiltros({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' })}>Limpiar</button>
-        )}
-      </div>
+        <section className="dx-cot-kpis" aria-label="Resumen de cotizaciones">
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>Total</span><span className="dx-cot-ico is-cyan">{I.file}</span></div>
+            <strong className="dx-cot-kpi-val">{filasCot.length}</strong>
+            <span className="dx-cot-kpi-note">{contarGrupoCot('convertida')} convertidas en OS</span>
+          </div>
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>En borrador</span><span className="dx-cot-ico is-amber">{I.edit}</span></div>
+            <strong className="dx-cot-kpi-val">{contarGrupoCot('borrador')}</strong>
+            <span className="dx-cot-kpi-note">Por terminar y enviar</span>
+          </div>
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>Esperando cliente</span><span className="dx-cot-ico is-blue">{I.send}</span></div>
+            <strong className="dx-cot-kpi-val">{contarGrupoCot('enviadas')}</strong>
+            <span className="dx-cot-kpi-note">Enviadas o emitidas</span>
+          </div>
+          <div className="dx-cot-kpi">
+            <div className="dx-cot-kpi-top"><span>Pipeline abierto</span><span className="dx-cot-ico is-green">{I.trend}</span></div>
+            <strong className="dx-cot-kpi-val is-money">{moneyD(pipelinePenCot, 'S/')}</strong>
+            <span className="dx-cot-kpi-note">+ {moneyD(pipelineUsdCot, 'US$')}</span>
+          </div>
+          <button type="button" className={`dx-cot-kpi is-alert${filtros.soloConvertir ? ' is-on' : ''}`} aria-pressed={filtros.soloConvertir} aria-label="Filtrar cotizaciones por convertir" onClick={() => setFiltroCot('soloConvertir', !filtros.soloConvertir)}>
+            <div className="dx-cot-kpi-top"><span>Por convertir</span><span className="dx-cot-ico is-amber">{I.alert}</span></div>
+            <strong className="dx-cot-kpi-val">{porConvertirCot}</strong>
+            <span className="dx-cot-kpi-note">Aprobadas sin OS · pulsa para filtrar</span>
+          </button>
+        </section>
 
-      <div className="card">
-        {cotizacionesEspecialesError && <div className="alert alert-warning" style={{margin:12}}>No se pudieron cargar las Cotizaciones Especiales: {cotizacionesEspecialesError}</div>}
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr><th>Número</th>{mostrarBadgeSociedadCotizaciones && <th>Sociedad</th>}<th>Cliente</th><th>Oportunidad</th><th>Implementación</th><th>Recurrente/mes</th><th>Fecha</th><th>Estado</th></tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => {
-                const opp = getOpp(r.oportunidad_id);
-                const cliente = getCuentaNombre(r.cuenta_id || opp?.cuenta_id);
-                const esEspecial = r.origen === 'especial';
-                const impl = esEspecial ? null : (r.total_impl || r.total || 0);
-                const rec  = esEspecial ? null : (r.total_rec || 0);
-                const badgeEstado = esEspecial ? COT_ESPECIAL_BADGE(r.estado) : COT_BADGE(r.estado);
-                return (
-                  <tr key={`${r.origen}-${r.id}`} onClick={() => esEspecial ? navigate('cotizaciones', { especial:'detalle', especial_id:r.id }) : navigate('cotizaciones', { detail:r.id })} className="hover-row" style={{cursor:'pointer'}}>
-                    <td className="mono" style={{fontWeight:600}}>
-                      {r.numero}
-                      {esEspecial
-                        ? <span className="badge badge-purple" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>Especial</span>
-                        : r.version > 1 && <span className="badge badge-gray" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>v{r.version}</span>}
-                    </td>
-                    {mostrarBadgeSociedadCotizaciones && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
-                    <td><strong>{cliente}</strong></td>
-                    <td className="text-muted">{opp?.nombre || '—'}</td>
-                    <td className="num"><strong>{esEspecial ? '—' : money(impl, currencySymbol(r.moneda))}</strong></td>
-                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? money(rec, currencySymbol(r.moneda)) : '—')}</td>
-                    <td className="text-muted">{r.fecha}</td>
-                    <td><span className={'badge ' + badgeEstado}>{r.estado?.replace('_', ' ')}</span></td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={mostrarBadgeSociedadCotizaciones ? 8 : 7} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
-                  {query ? `No se encontraron resultados para "${query}"` : 'No hay cotizaciones registradas.'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <section className="dx-cot-card" aria-label="Listado de cotizaciones">
+          {cotizacionesEspecialesError && <div className="dx-cot-warn" role="alert">No se pudieron cargar las Cotizaciones Especiales: {cotizacionesEspecialesError}</div>}
+          <div className="dx-cot-bar">
+            <h2 className="dx-cot-bar-title">Cotizaciones<span className="dx-cot-count">{listaCot.length} de {filasCot.length}</span></h2>
+            <label className="dx-cot-search"><span className="dx-cot-search-ico">{I.search}</span><input type="search" value={filtros.q} onChange={event => setFiltroCot('q', event.target.value)} placeholder="Buscar número, cliente, oportunidad…" aria-label="Buscar cotizaciones" /></label>
+            <select className="dx-cot-select" value={filtros.tipo} onChange={event => setFiltroCot('tipo', event.target.value)} aria-label="Filtrar por tipo">
+              <option value="">Todos los tipos</option>
+              <option value="estandar">Estándar</option>
+              <option value="especial">Especial</option>
+            </select>
+            <select className="dx-cot-select" value={filtros.moneda} onChange={event => setFiltroCot('moneda', event.target.value)} aria-label="Filtrar por moneda">
+              <option value="">Toda moneda</option>
+              <option value="PEN">Soles (S/)</option>
+              <option value="USD">Dólares (US$)</option>
+            </select>
+            <select className="dx-cot-select dx-cot-periodo" value={filtros.periodo} onChange={event => setFiltros(actual => ({ ...actual, periodo: event.target.value, desde: '', hasta: '' }))} aria-label="Filtrar por fecha">
+              <option value="">Cualquier fecha</option>
+              <option value="mes">Este mes</option>
+              <option value="30">Últimos 30 días</option>
+              <option value="90">Últimos 90 días</option>
+              <option value="exacta">Fecha exacta…</option>
+              <option value="rango">Rango…</option>
+            </select>
+            {(filtros.periodo === 'exacta' || filtros.periodo === 'rango') && (
+              <div className="dx-cot-range">
+                <input type="date" className="dx-cot-date" value={filtros.desde} onChange={event => setFiltroCot('desde', event.target.value)} aria-label={filtros.periodo === 'exacta' ? 'Fecha exacta' : 'Desde'} />
+                {filtros.periodo === 'rango' && <><span>a</span><input type="date" className="dx-cot-date" value={filtros.hasta} onChange={event => setFiltroCot('hasta', event.target.value)} aria-label="Hasta" /></>}
+              </div>
+            )}
+            {filtrosActivos && <button type="button" className="dx-cot-clear" onClick={() => setFiltros(FILTROS_COT_VACIOS)}>Limpiar</button>}
+          </div>
+          <div className="dx-cot-chips" role="group" aria-label="Filtrar por estado">
+            {COT_CHIPS_DX.map(([grupo, etiqueta, punto]) => {
+              const cantidad = filasFiltradasCot.filter(f => cotEnGrupoDx(f.cot.estado, grupo)).length;
+              return <button type="button" key={grupo} className={`dx-cot-chip${filtros.estado === grupo ? ' is-on' : ''}${cantidad === 0 && grupo !== 'todas' ? ' is-zero' : ''}`} style={{'--dx-cot-dot': punto}} aria-pressed={filtros.estado === grupo} onClick={() => setFiltroCot('estado', grupo)}><i />{etiqueta}<b>{cantidad}</b></button>;
+            })}
+          </div>
+          <div className="dx-cot-cols dx-cot-head" role="row"><span>Cotización</span><span>Cliente y oportunidad</span><span>Estado</span><span>Total</span><span>Responsable</span><span>Fecha</span><span /></div>
+          {listaCot.map(f => {
+            const c = f.cot;
+            const estado = COT_ESTADOS_DX[c.estado] || { label: String(c.estado || '—').replace('_', ' '), clase: 'is-gray' };
+            const simbolo = currencySymbol(f.moneda);
+            const sinMonto = !f.total;
+            const nota = f.recurrente > 0 ? `+ ${moneyD(f.recurrente, simbolo)}/mes` : (f.esEspecial ? 'Total con IGV' : 'Implementación con IGV');
+            const fechaTexto = cotFechaDx(c.fecha);
+            const abrir = () => abrirCot(c);
+            return (
+              <div key={`${c.origen}-${c.id}`} className="dx-cot-cols dx-cot-row" role="button" tabIndex={0} aria-label={`Abrir cotización ${c.numero}, ${f.cliente}, ${estado.label}`} onClick={abrir} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrir(); } }}>
+                <div className="dx-cot-num">
+                  <span className="dx-cot-mono" data-fecha={fechaTexto}>{c.numero}</span>
+                  <div className="dx-cot-tags">
+                    <span className={`dx-cot-tag ${f.esEspecial ? 'is-esp' : 'is-std'}`}>{f.esEspecial ? 'Especial' : 'Estándar'}</span>
+                    {!f.esEspecial && c.version > 1 && <span className="dx-cot-tag is-ver">v{c.version}</span>}
+                    {mostrarBadgeSociedadCotizaciones && <SociedadBadge sociedadId={c.sociedad_id} />}
+                  </div>
+                </div>
+                <div className="dx-cot-client"><strong>{f.cliente}</strong><span>{f.oportunidad || 'Sin oportunidad'}</span></div>
+                <div className="dx-cot-states">
+                  <span className={`dx-cot-pill ${estado.clase}`}><i />{estado.label}</span>
+                  {f.conOS ? <span className="dx-cot-pill is-cyan">Con OS</span> : f.porConvertir ? <span className="dx-cot-pill is-amber">Por convertir</span> : (c.estado === 'borrador' && f.dias > 30 ? <span className="dx-cot-pill is-gray">{f.dias} días sin enviar</span> : null)}
+                </div>
+                <div className={`dx-cot-money${sinMonto ? ' is-empty' : ''}`}><strong>{sinMonto ? '—' : moneyD(f.total, simbolo)}</strong><span>{sinMonto ? 'Sin ítems' : nota}</span></div>
+                <div className={`dx-cot-resp${f.responsable ? '' : ' is-none'}`} data-fecha={fechaTexto}><span className={`dx-cot-avatar${f.responsable ? '' : ' is-none'}`}>{f.responsable ? cotInicialesDx(f.responsable) : '—'}</span><strong>{f.responsable || 'Sin responsable'}</strong></div>
+                <div className="dx-cot-date-cell">{fechaTexto}<span>{f.dias === null ? '' : f.dias <= 0 ? 'hoy' : `hace ${f.dias} d`}</span></div>
+                <span className="dx-cot-go" aria-hidden="true">{I.chevRight}</span>
+              </div>
+            );
+          })}
+          {listaCot.length === 0 && (
+            <div className="dx-cot-empty">
+              {filasCot.length === 0
+                ? <><strong>Aún no hay cotizaciones</strong><span>Créalas con “Nueva cotización” o desde el Pipeline.</span></>
+                : <><strong>Sin resultados</strong><span>Ninguna cotización coincide con los filtros.</span><button type="button" className="dx-cot-btn" onClick={() => setFiltros(FILTROS_COT_VACIOS)}>Limpiar filtros</button></>}
+            </div>
+          )}
+        </section>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1086,13 +1223,16 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
 }
 
 // ── Detalle (lectura) ──────────────────────────────────────────────────
-function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onSolicitarAprobacion, onCancelarSolicitud, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
+function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onSolicitarAprobacion, onCancelarSolicitud, onAprobacionManual, onGenerarOS, onVerOS, osVinculada, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
-  const toggleSeccion = k => setSeccionesOpen(p => ({ ...p, [k]: !p[k] }));
   const [confirmEnviar, setConfirmEnviar] = useState(false);
   const [showAprobModal, setShowAprobModal] = useState(false);
+  const [confirmarAprobInterna, setConfirmarAprobInterna] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [enlaceCopiado, setEnlaceCopiado] = useState(false);
+  const [firmasAbiertas, setFirmasAbiertas] = useState(false);
   const sym = currencySymbol(cot.moneda);
   const calcDetalleTotal = p => toCotNumber(p.total) || (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario));
   const subtotalDetalleImpl = partidas
@@ -1108,10 +1248,10 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
     toCotNumber(cot.subtotal_rec) <= 0 || toCotNumber(cot.total_rec) <= 0
   );
   const subtotalImplDetalle = usarTotalesPartidasHC ? subtotalDetalleImpl : (cot.subtotal_impl ?? cot.subtotal);
-  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18) / 100) : (cot.igv_impl ?? cot.igv);
+  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18)) / 100 : (cot.igv_impl ?? cot.igv);
   const totalImplDetalle = usarTotalesPartidasHC ? subtotalImplDetalle + igvImplDetalle : (cot.total_impl ?? cot.total);
   const subtotalRecDetalle = usarTotalesRecPartidasHC ? subtotalDetalleRec : cot.subtotal_rec;
-  const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18) / 100) : cot.igv_rec;
+  const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18)) / 100 : cot.igv_rec;
   const totalRecDetalle = usarTotalesRecPartidasHC ? subtotalRecDetalle + igvRecDetalle : cot.total_rec;
 
   const { authUser, role } = useApp();
@@ -1160,321 +1300,306 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
 
   const historial = cot.historial_versiones || [];
 
+  const fechaLocalDx = valor => {
+    const fecha = valor ? new Date(valor) : null;
+    return fecha && !Number.isNaN(fecha.getTime()) ? fecha : null;
+  };
+  const fechaCortaDx = valor => { const f = fechaLocalDx(valor); return f ? `${String(f.getDate()).padStart(2, '0')} ${COT_MESES_DX[f.getMonth()]}` : null; };
+  const fechaHoraDx = valor => { const f = fechaLocalDx(valor); return f ? `${fechaCortaDx(valor)} ${f.getFullYear()} · ${String(f.getHours()).padStart(2, '0')}:${String(f.getMinutes()).padStart(2, '0')}` : null; };
+  const estadoDx = COT_ESTADOS_DX[cot.estado] || { label: String(cot.estado || '—').replace('_', ' '), clase: 'is-gray' };
+  const clienteNombre = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
+  const tieneOS = Boolean(osVinculada || cot.os_cliente_id);
+  const osEtiqueta = osVinculada?.numero || osVinculada?.codigo || 'OS vinculada';
+  const aceptadaCliente = Boolean(cot.aceptacion_fecha) || Boolean(cot.aprobacion_tipo) || ['aprobada', 'aceptada', 'ganada', 'convertida'].includes(cot.estado);
+  const enviadaCliente = Boolean(cot.fecha_envio) || ['enviada', 'aprobada', 'aceptada', 'ganada', 'convertida'].includes(cot.estado);
+  const puedeGenerarOS = ['aprobada', 'aceptada', 'ganada'].includes(cot.estado) && !tieneOS;
+  const mostrarQR = Boolean(cot.token_aceptacion) && cot.token_activo !== false && !cot.aceptacion_fecha && cot.aprobacion_tipo !== 'manual';
+  const enlaceAceptacion = cot.token_aceptacion ? `${window.location.origin}/#aceptar/${cot.token_aceptacion}` : '';
+
+  const pasosCiclo = [
+    { titulo:'Borrador', hecho:true, detalle:cotFechaDx(cot.fecha) },
+    { titulo: esPendiente ? 'Pendiente de revisión' : 'Aprobada internamente', hecho:aprobadaInterna || enviadaCliente, detalle: aprobadaInterna ? [fechaCortaDx(cot.aprobada_interna_at), cot.aprobada_interna_por].filter(Boolean).join(' · ') : (esPendiente ? 'Jefatura comercial' : 'Revisión de jefatura') },
+    { titulo: enviadaCliente ? 'Enviada' : 'Enviar al cliente', hecho:enviadaCliente, detalle: cot.fecha_envio ? fechaHoraDx(cot.fecha_envio) : 'Bloquea la edición' },
+    { titulo:'Aceptada por el cliente', hecho:aceptadaCliente, detalle: cot.aceptacion_fecha ? `${fechaCortaDx(cot.aceptacion_fecha)} · ${cot.aceptacion_nombre || 'Cliente'} (QR)` : (cot.aprobacion_tipo === 'manual' ? [cot.aprobacion_fecha_cliente ? cotFechaDx(cot.aprobacion_fecha_cliente) : null, cot.aprobacion_canal].filter(Boolean).join(' · ') : 'QR o registro manual') },
+    { titulo:'Orden de servicio', hecho:tieneOS || cot.estado === 'convertida', detalle: tieneOS ? osEtiqueta : 'Al aceptar' },
+  ];
+  const pasoActual = pasosCiclo.findIndex(paso => !paso.hecho);
+
+  const accionesDisponibles = [];
+  if (esBorrador && puedeEnviar) accionesDisponibles.push({ clave:'enviar', icono:I.send, etiqueta:'Enviar a cliente', accion:() => setConfirmEnviar(true) });
+  if (mostrarAprobarBtn) accionesDisponibles.push({ clave:'aprobar_interna', icono:I.check, etiqueta:'Aprobar para envío', accion:() => setConfirmarAprobInterna(true) });
+  if (mostrarSolicitarBtn) accionesDisponibles.push({ clave:'solicitar', icono:I.arrowUp, etiqueta:'Solicitar aprobación', accion:onSolicitarAprobacion });
+  if (cot.estado === 'enviada') accionesDisponibles.push({ clave:'aprob_manual', icono:I.check, etiqueta:'Registrar aprobación', accion:() => setShowAprobModal(true) });
+  if (tieneOS && onVerOS && osVinculada?.id) accionesDisponibles.push({ clave:'ver_os', icono:I.clipboard, etiqueta:`Ver ${osEtiqueta}`, accion:() => onVerOS(osVinculada.id) });
+  if (puedeGenerarOS) accionesDisponibles.push({ clave:'generar_os', icono:I.clipboard, etiqueta:'Generar OS', accion:onGenerarOS });
+  const ordenPrincipal = ['ver_os', 'generar_os', 'aprob_manual', 'enviar', 'aprobar_interna', 'solicitar'];
+  const accionPrincipal = ordenPrincipal.map(clave => accionesDisponibles.find(a => a.clave === clave)).find(Boolean) || null;
+  const accionesMenu = [
+    ...accionesDisponibles.filter(a => a !== accionPrincipal),
+    ...(puedeEditar ? [{ clave:'editar', icono:I.edit, etiqueta:'Editar', accion:onEdit }] : []),
+    ...(esPendiente && !puedeAprobarCot ? [{ clave:'cancelar_solicitud', icono:I.x, etiqueta:'Cancelar solicitud', accion:onCancelarSolicitud }] : []),
+    ...(puedeAprobarCot ? [{ clave:'version', icono:I.plus, etiqueta:'Nueva versión', accion:onCrearVersion }] : []),
+    ...(cot.estado === 'enviada' && puedeAprobarCot ? [{ clave:'revertir', icono:I.refresh, etiqueta:'Revertir a borrador', accion:onRevertirBorrador, separada:true }] : []),
+  ];
+  const ejecutarMenu = accion => { setMenuAbierto(false); accion?.(); };
+  const copiarEnlace = async () => {
+    try { await navigator.clipboard.writeText(enlaceAceptacion); setEnlaceCopiado(true); setTimeout(() => setEnlaceCopiado(false), 2000); } catch { setEnlaceCopiado(false); }
+  };
+  const claseTipoPartida = tipo => (tipo === 'recurrente' ? 'is-violet' : (tipo === 'bien' || tipo === 'material') ? 'is-amber' : 'is-cyan');
+
   return (
-    <>
-      <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
-        <div>
-          <button className="btn btn-ghost" onClick={onBack} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a lista</button>
-          <h1 className="page-title row" style={{gap:10, alignItems:'center'}}>
-            {cot.numero}
-            <span className="badge badge-gray" style={{fontSize:12}}>v{cot.version || 1}</span>
-            <span className={'badge ' + COT_BADGE(cot.estado)}>{cot.estado?.replace('_', ' ')}</span>
-          </h1>
-          <div className="page-sub">
-            {opp?.nombre && <>Oportunidad: <strong>{opp.nombre}</strong> · </>}
-            Cliente: <strong>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</strong>
-            {cuenta?.ruc && <> · RUC: {cuenta.ruc}</>}
+    <div className="dx-cotd" onClick={() => menuAbierto && setMenuAbierto(false)}>
+      <div className="dx-cotd-in">
+        <button type="button" className="dx-cotd-back" onClick={onBack}>{I.chevLeft}Cotizaciones</button>
+        <header className="dx-cotd-top">
+          <div className="dx-cotd-head">
+            <div className="dx-cotd-eyebrow">Comercial · Cotización estándar</div>
+            <h1 className="dx-cotd-title">
+              {cot.numero}
+              <span className="dx-cotd-pill is-gray">v{cot.version || 1}</span>
+              <span className={`dx-cotd-pill ${estadoDx.clase}`}><i />{estadoDx.label}</span>
+              {cot.hoja_costeo_id && <span className="dx-cotd-pill is-cyan">Desde Hoja de Costeo</span>}
+            </h1>
+            <p className="dx-cotd-sub"><strong>{clienteNombre}</strong>{cuenta?.ruc && <> · RUC {cuenta.ruc}</>}{opp?.nombre && <> · {opp.nombre}</>}</p>
           </div>
-        </div>
-        <div className="row">
-          {puedeEditar && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
-          {mostrarSolicitarBtn && (
-            <button className="btn btn-secondary" onClick={onSolicitarAprobacion} style={{color:'var(--orange)', borderColor:'var(--orange)'}}>
-              ⏫ Solicitar aprobación
-            </button>
-          )}
-          {esPendiente && !puedeAprobarCot && (
-            <button className="btn btn-ghost" onClick={onCancelarSolicitud} style={{color:'var(--fg-muted)'}}>
-              ✕ Cancelar solicitud
-            </button>
-          )}
-          {mostrarAprobarBtn && (
-            <button className="btn btn-secondary" onClick={onAprobarInterna} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
-              ✓ Aprobar para envío
-            </button>
-          )}
-          {esBorrador && (
-            <button
-              className="btn btn-primary"
-              onClick={() => setConfirmEnviar(true)}
-              disabled={!puedeEnviar}
-              title={!puedeEnviar ? 'Pendiente de aprobación del jefe comercial' : ''}
-              style={!puedeEnviar ? {opacity:0.45, cursor:'not-allowed'} : {}}
-            >
-              {I.send} Enviar a cliente
-            </button>
-          )}
-          {cot.estado === 'enviada' && puedeAprobarCot && <button className="btn btn-ghost" onClick={onRevertirBorrador} style={{color:'var(--text-muted)'}}>↩ Revertir a borrador</button>}
-          {cot.estado === 'enviada' && <button className="btn btn-secondary" onClick={() => setShowAprobModal(true)}>{I.check} Aprobar manualmente</button>}
-          {cot.estado === 'aprobada' && <button className="btn btn-primary" onClick={onGenerarOS}>{I.clipboard} Generar OS</button>}
-          {puedeAprobarCot && <button className="btn btn-secondary" onClick={onCrearVersion}>{I.plus} Nueva versión</button>}
-          <button className="btn btn-secondary" onClick={onDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
-        </div>
-      </div>
-
-      {/* Bloque 1 — Encabezado */}
-      <div className="card mt-6">
-        <div className="card-body">
-          {/* Fila 1: datos del documento */}
-          <div className="grid-4" style={{marginBottom:16}}>
-            <div><div className="eyebrow">Fecha emisión</div><div style={{fontWeight:600, marginTop:4}}>{cot.fecha}</div></div>
-            <div><div className="eyebrow">Moneda</div><div style={{fontWeight:600, marginTop:4}}>{cot.moneda}</div></div>
-            <div><div className="eyebrow">Validez</div><div style={{fontWeight:600, marginTop:4}}>{validezTexto()}</div></div>
-            <div><div className="eyebrow">Attn. (contacto cliente)</div><div style={{fontWeight:600, marginTop:4}}>{contacto?.nombre || '—'}</div></div>
-          </div>
-          {/* Fila 2: datos internos */}
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, paddingTop:14, borderTop:'1px solid var(--border)'}}>
-            <div>
-              <div className="eyebrow">Vendedor responsable</div>
-              <div style={{fontWeight:600, marginTop:4}}>{vendedorNombre}</div>
-            </div>
-            <div>
-              <div className="eyebrow">Email vendedor</div>
-              <div style={{marginTop:4}}>
-                {vendedorEmail
-                  ? <a href={`mailto:${vendedorEmail}`} style={{color:'var(--cyan)', textDecoration:'none', fontWeight:600}}>{vendedorEmail}</a>
-                  : <span style={{color:'var(--fg-muted)'}}>—</span>}
+          <div className="dx-cotd-acts">
+            {accionPrincipal && <button type="button" className="dx-cotd-btn is-primary" onClick={accionPrincipal.accion}>{accionPrincipal.icono}{accionPrincipal.etiqueta}</button>}
+            <button type="button" className="dx-cotd-btn" onClick={onDescargarPDF} disabled={generandoPDF}>{I.download}{generandoPDF ? 'Generando…' : 'PDF'}</button>
+            {accionesMenu.length > 0 && (
+              <div className="dx-cotd-more">
+                <button type="button" className="dx-cotd-btn" aria-haspopup="menu" aria-expanded={menuAbierto} onClick={event => { event.stopPropagation(); setMenuAbierto(valor => !valor); }}>
+                  <span className="dx-cotd-dots" aria-hidden="true">•••</span>Más
+                </button>
+                {menuAbierto && (
+                  <div className="dx-cotd-menu" role="menu" onClick={event => event.stopPropagation()}>
+                    {accionesMenu.map(item => (
+                      <React.Fragment key={item.clave}>
+                        {item.separada && <div className="dx-cotd-menu-sep" />}
+                        <button type="button" role="menuitem" onClick={() => ejecutarMenu(item.accion)}>{item.icono}{item.etiqueta}</button>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-            <div>
-              <div className="eyebrow">Enviada al cliente</div>
-              <div style={{fontWeight:600, marginTop:4}}>
-                {cot.fecha_envio ? new Date(cot.fecha_envio).toLocaleString('es-PE') : <span style={{color:'var(--fg-muted)'}}>—</span>}
-              </div>
-            </div>
+            )}
           </div>
-          {esBorrador && !aprobadaInterna && !puedeAprobarCot && (
-            <div style={{marginTop:14, padding:'10px 14px', background:'#fff8e1', borderRadius:8, borderLeft:'3px solid #f59e0b', fontSize:13, color:'#92400e', display:'flex', alignItems:'center', gap:8}}>
-              ⏳ <span>Usa <strong>Solicitar aprobación</strong> para que la jefatura comercial revise esta cotización antes de enviarla al cliente.</span>
-            </div>
-          )}
-          {esPendiente && (
-            <div style={{marginTop:14, padding:'10px 14px', background:'#fff7ed', borderRadius:8, borderLeft:'3px solid var(--orange)', fontSize:13, color:'#9a3412', display:'flex', alignItems:'center', gap:8}}>
-              ⏳ <span><strong>Pendiente de revisión</strong> — la jefatura comercial debe aprobar esta cotización para que puedas enviarla al cliente.{puedeAprobarCot ? ' Usa el botón "Aprobar para envío" de arriba.' : ''}</span>
-            </div>
-          )}
-          {aprobadaInterna && (
-            <div style={{marginTop:14, padding:'10px 14px', background:'#f0fdf4', borderRadius:8, borderLeft:'3px solid var(--green)', fontSize:13, color:'#166534', display:'flex', alignItems:'center', gap:8}}>
-              ✓ <span>Aprobada para envío por <strong>{cot.aprobada_interna_por}</strong>{cot.aprobada_interna_at ? ` · ${new Date(cot.aprobada_interna_at).toLocaleDateString('es-PE')}` : ''}</span>
-            </div>
-          )}
-          {cot.descripcion_general && (
-            <div style={{marginTop:16, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid var(--cyan)', fontSize:14, lineHeight:'1.6'}}>
-              {renderComercial(cot.descripcion_general)}
-            </div>
-          )}
-        </div>
-      </div>
+        </header>
 
-      {/* Bloque 2 — Partidas */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Partidas</h3>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr><th style={{width:36}}>N°</th><th>Descripción</th><th>Tipo</th><th style={{width:70}}>Cant.</th><th style={{width:110}}>Det. cant.</th><th style={{width:130}}>P. Unit.</th><th style={{width:120}}>Total</th></tr>
-              </thead>
-              <tbody>
-                {partidas.map((p, i) => (
-                  <tr key={p.id || i}>
-                    <td className="num text-muted">{p.n || i + 1}</td>
-                    <td>
-                      <div style={{fontWeight:600}}>{renderComercial(p.descripcion) || 'Sin descripción'}</div>
-                      {(Array.isArray(p.detalle_items) ? p.detalle_items : []).length > 0 && (
-                        <ul style={{margin:'4px 0 0 16px', padding:0, fontSize:12, color:'var(--fg-muted)', lineHeight:'1.5'}}>
-                          {p.detalle_items.map((d, j) => <li key={j}>{renderComercial(d)}</li>)}
-                        </ul>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge ${p.tipo==='recurrente'?'badge-purple':p.tipo==='bien'?'badge-orange':'badge-cyan'}`}>
-                        {p.tipo || 'servicio'}
-                      </span>
-                    </td>
-                    <td className="num">{p.cantidad}</td>
-                    <td className="text-muted" style={{fontSize:12}}>{renderComercial(p.detalle_cantidad) || '—'}</td>
-                    <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : money(p.precio_unitario || 0, sym)}</td>
-                    <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : money(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
-                  </tr>
+        <section className="dx-cotd-card dx-cotd-flow" aria-label="Ciclo de la cotización">
+          {pasosCiclo.map((paso, index) => (
+            <div key={paso.titulo} className={`dx-cotd-step ${paso.hecho ? 'is-done' : index === pasoActual ? 'is-now' : 'is-todo'}`}>
+              <span className="dx-cotd-dot">{paso.hecho ? I.check : index + 1}</span>
+              <b>{paso.titulo}</b>
+              <span className="dx-cotd-cap">{paso.detalle || '—'}</span>
+            </div>
+          ))}
+        </section>
+
+        <div className="dx-cotd-grid">
+          <div className="dx-cotd-main">
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Datos de la cotización</h2></div>
+              <div className="dx-cotd-card-b">
+                <div className="dx-cotd-fields">
+                  <div className="dx-cotd-f"><small>Fecha de emisión</small><div>{cotFechaDx(cot.fecha)}</div></div>
+                  <div className="dx-cotd-f"><small>Moneda</small><div>{cot.moneda || '—'}</div></div>
+                  <div className="dx-cotd-f"><small>Validez</small><div>{validezTexto()}</div></div>
+                  <div className="dx-cotd-f"><small>Attn. contacto</small><div>{contacto?.nombre || '—'}</div></div>
+                </div>
+                <div className="dx-cotd-fields is-three">
+                  <div className="dx-cotd-f"><small>Vendedor responsable</small><div>{vendedorNombre}</div></div>
+                  <div className="dx-cotd-f"><small>Email vendedor</small><div>{vendedorEmail ? <a href={`mailto:${vendedorEmail}`}>{vendedorEmail}</a> : '—'}</div></div>
+                  <div className="dx-cotd-f"><small>Enviada al cliente</small><div>{fechaHoraDx(cot.fecha_envio) || '—'}</div></div>
+                </div>
+                {esBorrador && !aprobadaInterna && !puedeAprobarCot && <div className="dx-cotd-note is-amber">{I.clock}<span>Usa <strong>Solicitar aprobación</strong> para que la jefatura comercial revise esta cotización antes de enviarla al cliente.</span></div>}
+                {esPendiente && <div className="dx-cotd-note is-amber">{I.clock}<span><strong>Pendiente de revisión</strong> — la jefatura comercial debe aprobar esta cotización para que puedas enviarla al cliente.</span></div>}
+                {aprobadaInterna && <div className="dx-cotd-note is-green">{I.check}<span>Aprobada para envío por <strong>{cot.aprobada_interna_por}</strong>{cot.aprobada_interna_at ? ` · ${new Date(cot.aprobada_interna_at).toLocaleDateString('es-PE')}` : ''}</span></div>}
+                {cot.descripcion_general && <div className="dx-cotd-desc">{renderComercial(cot.descripcion_general)}</div>}
+              </div>
+            </section>
+
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Partidas</h2><span>{partidas.length} {partidas.length === 1 ? 'ítem' : 'ítems'}</span></div>
+              <div className="dx-cotd-card-b">
+                {partidas.length === 0 ? <div className="dx-cotd-muted">Esta cotización no tiene partidas.</div> : (
+                  <table className="dx-cotd-tbl">
+                    <thead><tr><th>N°</th><th>Descripción</th><th>Tipo</th><th className="is-r">Cant.</th><th>Det. cant.</th><th className="is-r">P. unit.</th><th className="is-r">Total</th></tr></thead>
+                    <tbody>
+                      {partidas.map((p, i) => (
+                        <tr key={p.id || i}>
+                          <td className="is-n">{p.n || i + 1}</td>
+                          <td className="is-d">
+                            <strong>{renderComercial(p.descripcion) || 'Sin descripción'}</strong>
+                            {(Array.isArray(p.detalle_items) ? p.detalle_items : []).length > 0 && <ul>{p.detalle_items.map((d, j) => <li key={j}>{renderComercial(d)}</li>)}</ul>}
+                          </td>
+                          <td className="is-tipo"><span className={`dx-cotd-tag ${claseTipoPartida(p.tipo)}`}>{p.tipo || 'servicio'}</span></td>
+                          <td className="is-c is-r">{p.cantidad}</td>
+                          <td className="is-dc">{renderComercial(p.detalle_cantidad) || p.unidad || ''}</td>
+                          <td className="is-pu is-r">{p.incluido ? <span className="dx-cotd-tag is-gray">Incluido</span> : moneyD(p.precio_unitario || 0, sym)}</td>
+                          <td className="is-m is-r">{p.incluido ? '—' : moneyD(calcDetalleTotal(p), sym)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+
+            {cot.hitos_activos && (cot.hitos_pago || []).length > 0 && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Hitos de pago</h2><span>{cot.hitos_pago.length} hitos</span></div>
+                <div className="dx-cotd-card-b">
+                  <table className="dx-cotd-tbl is-hitos">
+                    <thead><tr><th>N°</th><th>Concepto</th><th className="is-r">%</th><th>Condición / vencimiento</th><th className="is-r">Monto</th></tr></thead>
+                    <tbody>
+                      {cot.hitos_pago.map((h, i) => (
+                        <tr key={h.id || i}>
+                          <td className="is-n">{i + 1}</td>
+                          <td className="is-d"><strong>{renderComercial(h.concepto)}</strong></td>
+                          <td className="is-tipo is-r">{h.porcentaje}%</td>
+                          <td className="is-dc">{renderComercial(h.condicion) || '—'}</td>
+                          <td className="is-m is-r">{money(h.monto, sym)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {cot.glosa_factura && <div className="dx-cotd-desc"><small className="dx-cotd-label">Glosa recomendada para facturas</small><div>{renderComercial(cot.glosa_factura)}</div></div>}
+                </div>
+              </section>
+            )}
+
+            {COND_SECTIONS.length > 0 && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Condiciones comerciales</h2><span>{COND_SECTIONS.length} secciones</span></div>
+                <div className="dx-cotd-card-b">
+                  {COND_SECTIONS.map(({ key, label, contenido }, index) => {
+                    const texto = renderComercial(contenido);
+                    if (!texto) return null;
+                    const open = seccionesOpen[key] ?? index === 0;
+                    return (
+                      <div key={key} className={`dx-cotd-acc${open ? ' is-open' : ''}`}>
+                        <button type="button" aria-expanded={open} onClick={() => setSeccionesOpen(actual => ({ ...actual, [key]: !open }))}>{label}{I.chev}</button>
+                        {open && <div className="dx-cotd-acc-b">{texto}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            <section className="dx-cotd-card">
+              <div className={`dx-cotd-acc is-card${firmasAbiertas ? ' is-open' : ''}`}>
+                <button type="button" aria-expanded={firmasAbiertas} onClick={() => setFirmasAbiertas(valor => !valor)}><span className="dx-cotd-acc-title">Página de firmas</span>{I.chev}</button>
+                {firmasAbiertas && (
+                  <div className="dx-cotd-firmas">
+                    <div className="dx-cotd-firma">
+                      <small>Por {cfg.razon_social || 'TIDEO'}</small>
+                      {cfg.firma_url ? <img src={cfg.firma_url} alt="Firma" /> : <div className="dx-cotd-firma-ln" />}
+                      <b>{cfg.firmante || '(sin configurar)'}</b>
+                      <span>{cfg.cargo_firmante}</span>
+                      <span>{cfg.email_comercial}</span>
+                    </div>
+                    <div className="dx-cotd-firma">
+                      <small>Por {clienteNombre === '—' ? 'Cliente' : clienteNombre}</small>
+                      <div className="dx-cotd-firma-ln" />
+                      <b>{contacto?.nombre || '—'}</b>
+                      <span>Sello y firma · Fecha</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <aside className="dx-cotd-aside">
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Totales</h2><span>{cot.moneda}</span></div>
+              <div className="dx-cotd-card-b">
+                <div className="dx-cotd-tot-h">Implementación</div>
+                <div className="dx-cotd-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtotalImplDetalle || 0, sym)}</b></div>
+                <div className="dx-cotd-tot"><span>IGV ({cot.igv_pct || 18}%)</span><b>{moneyD(igvImplDetalle || 0, sym)}</b></div>
+                <div className="dx-cotd-tot is-big"><span>Total</span><b>{moneyD(totalImplDetalle || 0, sym)}</b></div>
+                {hayRecurrente && (
+                  <>
+                    <div className="dx-cotd-tot-h is-sep">Recurrente mensual</div>
+                    <div className="dx-cotd-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtotalRecDetalle || 0, sym)}/mes</b></div>
+                    <div className="dx-cotd-tot"><span>IGV ({cot.igv_pct || 18}%)</span><b>{moneyD(igvRecDetalle || 0, sym)}/mes</b></div>
+                    <div className="dx-cotd-tot is-big"><span>Total</span><b>{moneyD(totalRecDetalle || 0, sym)}/mes</b></div>
+                  </>
+                )}
+              </div>
+            </section>
+
+            {cot.aceptacion_fecha && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Aceptación registrada</h2><span className="dx-cotd-pill is-green"><i />Digital</span></div>
+                <div className="dx-cotd-card-b">
+                  <div className="dx-cotd-kv"><span>Aceptado por</span><b>{cot.aceptacion_nombre || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>DNI</span><b>{cot.aceptacion_dni || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Fecha y hora</span><b>{fechaHoraDx(cot.aceptacion_fecha)}</b></div>
+                  <div className="dx-cotd-kv"><span>IP registrada</span><b className="is-mono">{cot.aceptacion_ip || '—'}</b></div>
+                </div>
+              </section>
+            )}
+
+            {cot.aprobacion_tipo === 'manual' && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Aprobación registrada</h2><span className="dx-cotd-pill is-cyan"><i />Manual</span></div>
+                <div className="dx-cotd-card-b">
+                  <div className="dx-cotd-kv"><span>Canal</span><b>{cot.aprobacion_canal || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Fecha del cliente</span><b>{cot.aprobacion_fecha_cliente ? cotFechaDx(cot.aprobacion_fecha_cliente) : '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Registrado por</span><b>{cot.aprobacion_registrada_por || '—'}</b></div>
+                  <div className="dx-cotd-kv"><span>Registrado el</span><b>{fechaHoraDx(cot.aprobacion_registrada_at) || '—'}</b></div>
+                  {cot.aprobacion_notas && <div className="dx-cotd-desc">{cot.aprobacion_notas}</div>}
+                  {(cot.aprobacion_archivos || []).length > 0 && (
+                    <div className="dx-cotd-files">
+                      {(cot.aprobacion_archivos || []).map((a, i) => (
+                        <a key={i} href={a.url} target="_blank" rel="noopener noreferrer">{I.download}<span>{a.nombre}</span><small>{a.tamanio ? `${(a.tamanio / 1024).toFixed(0)} KB` : ''}</small></a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {mostrarQR && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Aceptación del cliente</h2><span className="dx-cotd-pill is-amber"><i />Pendiente</span></div>
+                <div className="dx-cotd-card-b">
+                  <div className="dx-cotd-qr">
+                    <QRBlock token={cot.token_aceptacion} />
+                    <div><b>Aceptación digital</b><p>El cliente escanea el QR o abre el enlace para revisar y aceptar la cotización. No necesita cuenta en el sistema.</p></div>
+                  </div>
+                  <div className="dx-cotd-link">{enlaceAceptacion}</div>
+                  <button type="button" className="dx-cotd-btn is-block" onClick={copiarEnlace}>{I.copy}{enlaceCopiado ? 'Enlace copiado' : 'Copiar enlace'}</button>
+                </div>
+              </section>
+            )}
+
+            {tieneOS && (
+              <section className="dx-cotd-card">
+                <div className="dx-cotd-card-h"><h2>Orden de servicio</h2></div>
+                <div className="dx-cotd-card-b">
+                  {osVinculada?.id && onVerOS
+                    ? <button type="button" className="dx-cotd-os" onClick={() => onVerOS(osVinculada.id)}><span>{I.clipboard}{osEtiqueta}</span>{I.chevRight}</button>
+                    : <div className="dx-cotd-os is-static"><span>{I.clipboard}{osEtiqueta}</span></div>}
+                  <p className="dx-cotd-muted">Generada desde esta cotización. Ábrela para ver sus OTs y facturación.</p>
+                </div>
+              </section>
+            )}
+
+            <section className="dx-cotd-card">
+              <div className="dx-cotd-card-h"><h2>Historial de versiones</h2></div>
+              <div className="dx-cotd-card-b">
+                {historial.length === 0 ? <div className="dx-cotd-muted">Esta es la única versión.</div> : historial.map((h, i) => (
+                  <div key={i} className="dx-cotd-kv"><span><span className="dx-cotd-pill is-gray">v{h.version}</span> {h.fecha}</span><b>{moneyD(h.total, sym)}</b></div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </section>
+          </aside>
         </div>
       </div>
 
-      {/* Bloque 3 — Totales */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className={hayRecurrente ? 'grid-2' : ''} style={{gap:24, maxWidth: hayRecurrente ? '100%' : 380, marginLeft:'auto'}}>
-            <div>
-              {hayRecurrente && <div className="eyebrow" style={{marginBottom:12}}>Implementación</div>}
-              <TotalesBox subtotal={subtotalImplDetalle} igvPct={cot.igv_pct || 18} igv={igvImplDetalle} total={totalImplDetalle} sym={sym} />
-            </div>
-            {hayRecurrente && (
-              <div>
-                <div className="eyebrow" style={{marginBottom:12}}>Recurrente mensual</div>
-                <TotalesBox subtotal={subtotalRecDetalle} igvPct={cot.igv_pct || 18} igv={igvRecDetalle} total={totalRecDetalle} suffix="/mes" sym={sym} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bloque 4 — Hitos de pago */}
-      {cot.hitos_activos && (cot.hitos_pago || []).length > 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Hitos de pago</h3>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>N°</th><th>Concepto</th><th>%</th><th>Monto</th><th>Condición / vencimiento</th></tr></thead>
-                <tbody>
-                  {cot.hitos_pago.map((h, i) => (
-                    <tr key={h.id || i}>
-                      <td className="num text-muted">{i + 1}</td>
-                      <td style={{fontWeight:600}}>{renderComercial(h.concepto)}</td>
-                      <td className="num">{h.porcentaje}%</td>
-                      <td className="num" style={{fontWeight:600}}>{money(h.monto, sym)}</td>
-                      <td className="text-muted" style={{fontSize:13}}>{renderComercial(h.condicion) || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {cot.glosa_factura && (
-              <div style={{marginTop:16, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
-                <div className="eyebrow" style={{marginBottom:4}}>Glosa recomendada para facturas</div>
-                {renderComercial(cot.glosa_factura)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Bloque 5 — Condiciones comerciales */}
-      {COND_SECTIONS.length > 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Condiciones comerciales</h3>
-            {COND_SECTIONS.map(({ key, label, contenido }) => {
-              const texto = renderComercial(contenido);
-              if (!texto) return null;
-              const open = seccionesOpen[key] !== false;
-              return (
-                <div key={key} style={{marginBottom:10, border:'1px solid var(--border)', borderRadius:8, overflow:'hidden'}}>
-                  <button type="button"
-                    style={{width:'100%', textAlign:'left', padding:'10px 14px', background:'var(--bg-subtle)', border:'none', cursor:'pointer', fontWeight:600, fontSize:14, display:'flex', justifyContent:'space-between'}}
-                    onClick={() => toggleSeccion(key)}>
-                    {label}<span style={{color:'var(--fg-muted)', fontSize:12}}>{open ? '▲' : '▼'}</span>
-                  </button>
-                  {open && <div style={{padding:'10px 14px', fontSize:13, lineHeight:'1.6', whiteSpace:'pre-wrap'}}>{texto}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Bloque 6 — Firmas */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Página de cierre — Firmas</h3>
-          <div className="grid-2" style={{gap:40}}>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cfg.razon_social || 'TIDEO'}</div>
-              {cfg.firma_url && <img src={cfg.firma_url} alt="Firma" style={{maxHeight:60, marginBottom:8, display:'block', margin:'0 auto 8px'}} />}
-              <div style={{borderTop:'1px solid var(--border-strong)', paddingTop:8, fontWeight:600}}>{cfg.firmante || '(sin configurar)'}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.cargo_firmante}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.email_comercial}</div>
-            </div>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cuenta?.razon_social || cuenta?.nombre_comercial || 'Cliente'}</div>
-              <div style={{height:60, display:'flex', alignItems:'flex-end', justifyContent:'center'}}>
-                <div style={{width:'80%', borderBottom:'1px solid var(--border-strong)'}}></div>
-              </div>
-              <div style={{paddingTop:8, fontWeight:600}}>{contacto?.nombre || '—'}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>Sello y firma</div>
-              <div style={{marginTop:8, width:'50%', margin:'8px auto 0', borderBottom:'1px solid var(--border)', paddingBottom:4, fontSize:12, color:'var(--fg-muted)'}}>Fecha</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* QR de aceptación digital */}
-      {cot.token_aceptacion && cot.token_activo !== false && !cot.aceptacion_fecha && (
-        <div className="card mt-4">
-          <div className="card-body row" style={{gap:24, alignItems:'flex-start', flexWrap:'wrap'}}>
-            <div style={{flex:1, minWidth:220}}>
-              <h3 style={{marginBottom:6}}>Aceptación digital</h3>
-              <div className="text-muted" style={{fontSize:13, lineHeight:1.6}}>
-                El cliente puede escanear el código QR para revisar y aceptar la cotización digitalmente desde su dispositivo. No necesita cuenta en el sistema.
-              </div>
-              <div style={{marginTop:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:12, fontFamily:'monospace', wordBreak:'break-all', color:'var(--fg-muted)'}}>
-                {window.location.origin}/#aceptar/{cot.token_aceptacion}
-              </div>
-            </div>
-            <QRBlock token={cot.token_aceptacion} />
-          </div>
-        </div>
-      )}
-
-      {/* Bloque: Aprobación digital (vía QR) */}
-      {cot.aceptacion_fecha && (
-        <div className="card mt-4" style={{borderLeft:'4px solid var(--green)'}}>
-          <div className="card-body">
-            <div className="row" style={{alignItems:'center', gap:10, marginBottom:12}}>
-              <h3 style={{margin:0, color:'var(--green)'}}>✓ Aprobación registrada</h3>
-              <span className="badge badge-green">Aprobación digital</span>
-            </div>
-            <div className="grid-4" style={{fontSize:13}}>
-              <div><div className="eyebrow">Aceptado por</div><div style={{fontWeight:600, marginTop:4}}>{cot.aceptacion_nombre || '—'}</div></div>
-              <div><div className="eyebrow">DNI</div><div style={{fontWeight:600, marginTop:4}}>{cot.aceptacion_dni || '—'}</div></div>
-              <div><div className="eyebrow">Fecha y hora</div><div style={{fontWeight:600, marginTop:4}}>{new Date(cot.aceptacion_fecha).toLocaleString('es-PE')}</div></div>
-              <div><div className="eyebrow">IP registrada</div><div style={{fontWeight:600, marginTop:4, fontSize:11, fontFamily:'monospace'}}>{cot.aceptacion_ip || '—'}</div></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bloque: Aprobación manual (registrada por vendedor) */}
-      {cot.aprobacion_tipo === 'manual' && (
-        <div className="card mt-4" style={{borderLeft:'4px solid var(--green)'}}>
-          <div className="card-body">
-            <div className="row" style={{alignItems:'center', gap:10, marginBottom:16}}>
-              <h3 style={{margin:0, color:'var(--green)'}}>✓ Aprobación registrada</h3>
-              <span className="badge badge-cyan">Aprobación manual</span>
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, fontSize:13}}>
-              <div><div className="eyebrow">Canal</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_canal || '—'}</div></div>
-              <div><div className="eyebrow">Fecha aprobación cliente</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_fecha_cliente || '—'}</div></div>
-              <div><div className="eyebrow">Registrado por</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_registrada_por || '—'}</div></div>
-              <div><div className="eyebrow">Fecha y hora de registro</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_registrada_at ? new Date(cot.aprobacion_registrada_at).toLocaleString('es-PE') : '—'}</div></div>
-              {cot.aprobacion_notas && (
-                <div style={{gridColumn:'span 2'}}><div className="eyebrow">Notas</div><div style={{marginTop:4}}>{cot.aprobacion_notas}</div></div>
-              )}
-            </div>
-            {(cot.aprobacion_archivos || []).length > 0 && (
-              <div style={{marginTop:14}}>
-                <div className="eyebrow" style={{marginBottom:8}}>Archivos adjuntos</div>
-                <div style={{display:'flex', flexDirection:'column', gap:6}}>
-                  {(cot.aprobacion_archivos || []).map((a, i) => (
-                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
-                      style={{display:'flex', alignItems:'center', gap:8, padding:'7px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, textDecoration:'none', color:'var(--cyan)'}}>
-                      {I.download}
-                      <span style={{flex:1}}>{a.nombre}</span>
-                      <span style={{fontSize:11, color:'var(--fg-muted)'}}>{a.tamanio ? (a.tamanio/1024).toFixed(0)+' KB' : ''}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Aprobar manualmente */}
       {showAprobModal && (
         <AprobacionManualModal
           onClose={() => setShowAprobModal(false)}
@@ -1485,24 +1610,24 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
         />
       )}
 
-      {/* Historial de versiones */}
-      {historial.length > 0 && (
-        <div className="card mt-4">
-          <div className="card-body">
-            <h3 style={{marginBottom:12, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Historial de versiones</h3>
-            {historial.map((h, i) => (
-              <div key={i} className="row" style={{justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border-subtle)', fontSize:13}}>
-                <span className="badge badge-gray">v{h.version}</span>
-                <span className="text-muted">{h.fecha}</span>
-                <span className="num">{money(h.total, sym)}</span>
-                <span className="text-muted mono" style={{fontSize:11}}>{h.cotizacion_id}</span>
+      {confirmarAprobInterna && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:460}}>
+            <div className="modal-head">
+              <h2>Aprobar para envío</h2>
+              <button className="icon-btn" onClick={() => setConfirmarAprobInterna(false)}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{gap:20}}>
+              <p style={{margin:0, lineHeight:'1.6'}}>¿Confirmas la aprobación interna de esta cotización? Quedará habilitada para enviarse al cliente.</p>
+              <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+                <button className="btn btn-secondary" onClick={() => setConfirmarAprobInterna(false)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={() => { setConfirmarAprobInterna(false); onAprobarInterna(); }}>Confirmar aprobación</button>
               </div>
-            ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal confirmación envío */}
       {confirmEnviar && (
         <div className="modal-backdrop">
           <div className="modal" style={{maxWidth:460}}>
@@ -1520,23 +1645,6 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           </div>
         </div>
       )}
-    </>
-  );
-}
-
-// ── Totales helper ──────────────────────────────────────────────────────
-function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
-  return (
-    <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-      <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">Subtotal s/ IGV</span><span className="num">{money(subtotal || 0, sym)}{suffix}</span>
-      </div>
-      <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">IGV ({igvPct}%)</span><span className="num">{money(igv || 0, sym)}{suffix}</span>
-      </div>
-      <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
-        <span>Total{suffix === '/mes' ? ' mensual' : ''}</span><span className="num">{money(total || 0, sym)}{suffix}</span>
-      </div>
     </div>
   );
 }
@@ -1559,6 +1667,35 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     return String(a.nombre || '').localeCompare(String(b.nombre || ''));
   });
 
+  // ── Estado de la pantalla (dx-cote) ───────────────────────────────────
+  const [hayCambios, setHayCambios] = useState(false);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [errorSociedad, setErrorSociedad] = useState(false);
+  const [subitemsVisibles, setSubitemsVisibles] = useState({});
+  const [condicionesAbiertas, setCondicionesAbiertas] = useState({});
+  const [firmasAbiertasEditor, setFirmasAbiertasEditor] = useState(false);
+  const [catalogoServicios, setCatalogoServicios] = useState([]);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
+  const marcarCambio = () => setHayCambios(true);
+
+  useEffect(() => {
+    if (!hayCambios) return undefined;
+    const avisar = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [hayCambios]);
+
+  useEffect(() => {
+    let activo = true;
+    if (!isSupabaseConfigured() || !empresa?.id) { setCatalogoServicios([]); return () => { activo = false; }; }
+    setCargandoCatalogo(true);
+    maestrosService.getServicios(empresa.id)
+      .then(data => { if (activo) setCatalogoServicios((data || []).filter(servicio => servicio.estado === 'activo')); })
+      .catch(() => { if (activo) setCatalogoServicios([]); })
+      .finally(() => { if (activo) setCargandoCatalogo(false); });
+    return () => { activo = false; };
+  }, [empresa?.id]);
+
   // ── Bloque 1 ────────────────────────────────────────────────────────
   const [numeroCot,   setNumeroCot]   = useState(cotizacionBase?.numero      || '');
   const [moneda,      setMoneda]      = useState(() => normalizeCurrencyCode(cotizacionBase?.moneda || opp?.moneda || 'PEN'));
@@ -1570,6 +1707,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
   const [sociedadId,  setSociedadId]  = useState(cotizacionBase?.sociedad_id || sociedadIdEscritura || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
+  useEffect(() => { if (sociedadId) setErrorSociedad(false); }, [sociedadId]);
   const opcionesMoneda = (monedasActivas || [])
     .map(m => ({ ...m, codigo: normalizeCurrencyCode(m.codigo) }))
     .filter((m, idx, arr) => m.codigo && arr.findIndex(x => x.codigo === m.codigo) === idx);
@@ -1605,30 +1743,32 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     return [{ ...emptyPartida(), descripcion: opp?.servicio_interes || opp?.nombre || '', precio_unitario: Number(opp?.monto_estimado || 0) }];
   });
 
-  const addPartida     = () => setPartidas(p => [...p, emptyPartida()]);
-  const removePartida  = id => setPartidas(p => p.filter(x => x.id !== id));
-  const updatePartida  = (id, field, value) => setPartidas(p => p.map(x => x.id === id ? { ...x, [field]: value } : x));
-  const movePartida    = (idx, dir) => setPartidas(prev => {
+  const addPartida     = () => { marcarCambio(); setPartidas(p => [...p, emptyPartida()]); };
+  const removePartida  = id => { marcarCambio(); setPartidas(p => p.filter(x => x.id !== id)); };
+  const updatePartida  = (id, field, value) => { marcarCambio(); setPartidas(p => p.map(x => x.id === id ? { ...x, [field]: value } : x)); };
+  const movePartida    = (idx, dir) => { marcarCambio(); setPartidas(prev => {
     const arr = [...prev]; [arr[idx], arr[idx + dir]] = [arr[idx + dir], arr[idx]]; return arr;
-  });
-  const addFromCatalogo = srv => setPartidas(prev => [...prev, {
+  }); };
+  const addFromCatalogo = srv => { marcarCambio(); setPartidas(prev => [...prev, {
     ...emptyPartida(), id: Date.now(),
     descripcion: srv.descripcion,
     detalle_items_txt: (srv.entregables || []).join('\n'),
+    detalle_cantidad: srv.unidad || '',
     precio_unitario: srv.precio || 0,
     incluido: srv.precio_incluido || false,
-  }]);
+  }]); };
 
   // ── Bloque 3: cálculos ───────────────────────────────────────────────
   const pImpl = partidas.filter(p => !p.incluido && p.tipo !== 'recurrente');
   const pRec  = partidas.filter(p => !p.incluido && p.tipo === 'recurrente');
   const calcPartidaTotal = p => toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario);
   const subtImpl  = pImpl.reduce((s, p) => s + calcPartidaTotal(p), 0);
-  const igvImpl   = Math.round(subtImpl * toCotNumber(igvPct) / 100);
-  const totalImpl = subtImpl + igvImpl;
+  // IGV con céntimos (igual que Hoja de Costeo y el detalle).
+  const igvImpl   = Math.round(subtImpl * toCotNumber(igvPct)) / 100;
+  const totalImpl = Math.round((subtImpl + igvImpl) * 100) / 100;
   const subtRec   = pRec.reduce((s, p) => s + calcPartidaTotal(p), 0);
-  const igvRec    = Math.round(subtRec * toCotNumber(igvPct) / 100);
-  const totalRec  = subtRec + igvRec;
+  const igvRec    = Math.round(subtRec * toCotNumber(igvPct)) / 100;
+  const totalRec  = Math.round((subtRec + igvRec) * 100) / 100;
 
   // ── Bloque 4: hitos ─────────────────────────────────────────────────
   const [hitosActivos, setHitosActivos] = useState(cotizacionBase?.hitos_activos || false);
@@ -1636,9 +1776,11 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const [glosa, setGlosa]               = useState(cotizacionBase?.glosa_factura ?? cfg.cond_glosa_factura ?? '');
   const sumPct = hitos.reduce((s, h) => s + Number(h.porcentaje || 0), 0);
 
-  const addHito    = () => setHitos(p => [...p, { id: Date.now(), concepto: '', porcentaje: 0, condicion: '' }]);
-  const removeHito = id => setHitos(p => p.filter(h => h.id !== id));
-  const updateHito = (id, f, v) => setHitos(p => p.map(h => h.id === id ? { ...h, [f]: v } : h));
+  const addHito    = () => { marcarCambio(); setHitos(p => [...p, { id: Date.now(), concepto: '', porcentaje: 0, condicion: '' }]); };
+  const removeHito = id => { marcarCambio(); setHitos(p => p.filter(h => h.id !== id)); };
+  const updateHito = (id, f, v) => { marcarCambio(); setHitos(p => p.map(h => h.id === id ? { ...h, [f]: v } : h)); };
+  // Monto de cada hito con céntimos sobre el total de implementación.
+  const montoHito = h => Math.round(totalImpl * Number(h.porcentaje || 0)) / 100;
 
   // ── Bloque 5: condiciones versionadas ─────────────────────────────────
   const [tiposDocumento, setTiposDocumento] = useState([]);
@@ -1707,11 +1849,12 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
 
   const handleSave = async () => {
     if (empresa?.multisociedad_habilitado && !sociedadId) {
-      alert('Selecciona una sociedad para la cotización.');
+      setErrorSociedad(true);
+      setErrorGuardar('Selecciona una sociedad para la cotización.');
       return;
     }
     if (hitosActivos && Math.abs(sumPct - 100) > 0.01) {
-      alert(`Los porcentajes de hitos suman ${sumPct.toFixed(1)}%. Deben sumar exactamente 100%.`);
+      setErrorGuardar(`Los hitos suman ${sumPct.toFixed(1)}%. Deben sumar exactamente 100%.`);
       return;
     }
     setGuardando(true);
@@ -1767,12 +1910,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
         subtotal_impl: subtImpl, igv_impl: igvImpl, total_impl: totalImpl,
         subtotal_rec: subtRec,   igv_rec: igvRec,   total_rec: totalRec,
         hitos_activos: hitosActivos,
-        hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: Math.round(totalImpl * Number(h.porcentaje || 0) / 100) })) : [],
+        hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: montoHito(h) })) : [],
         glosa_factura:         glosa || null,
         tipo_documento_id: tipoDocumentoId || null,
         condiciones_generales_version_id: bibliotecaCondiciones?.id || null,
         condiciones_snapshot: condicionesSnapshot,
       });
+      setHayCambios(false);
     } catch (err) {
       setErrorGuardar(err?.message || 'No se pudo guardar la cotización. Verifica tus permisos.');
     } finally {
@@ -1780,352 +1924,344 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     }
   };
 
+  const simboloEditor = currencySymbol(monedaActual);
+  const hitosCompletos = Math.abs(sumPct - 100) < 0.01;
+  const partidasConPrecio = partidas.filter(p => p.incluido || toCotNumber(p.precio_unitario) > 0).length;
+  const contactoSeleccionado = contactosCuenta.find(c => c.id === contactoId);
+  const clienteNombreEditor = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
+  const cancelarEditor = () => (hayCambios ? setConfirmarSalida(true) : onCancel());
+
   return (
-    <>
-      {/* Header */}
-      <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
-        <div>
-          <button className="btn btn-ghost" onClick={onCancel} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver</button>
-          <h1 className="page-title">{isEdit ? `Editar ${cotizacionBase.numero} v${cotizacionBase.version}` : 'Nueva Cotización'}</h1>
-          <div className="page-sub">
-            {opp && <>Oportunidad: <strong>{opp.nombre}</strong> · </>}
-            Cliente: <strong>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</strong>
-            {cuenta?.ruc && <> · RUC: {cuenta.ruc}</>}
-          </div>
-        </div>
-        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8}}>
-          <div className="row">
-            <button className="btn btn-secondary" onClick={onCancel} disabled={guardando}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={guardando}>
-              {guardando ? 'Guardando…' : <>{I.save} Guardar cotización</>}
-            </button>
-          </div>
-          {errorGuardar && <span style={{fontSize:12, color:'var(--red)', maxWidth:320, textAlign:'right'}}>{errorGuardar}</span>}
-        </div>
-      </div>
-      {cotizacionBase?.recepcion_id && <div className="alert alert-info mt-4">
-        Origen bloqueado: recepción <strong>{cotizacionBase.recepcion_numero || cotizacionBase.recepcion_id}</strong> · activo <strong>{cotizacionBase.activo_codigo || cotizacionBase.activo_id}</strong>{cotizacionBase.activo_nombre ? ` · ${cotizacionBase.activo_nombre}` : ''}. Estos vínculos se conservarán al guardar.
-      </div>}
+    <div className="dx-cote" onChangeCapture={marcarCambio} onInputCapture={marcarCambio}>
+      <div className="dx-cote-in">
+        <button type="button" className="dx-cote-back" onClick={cancelarEditor} disabled={guardando}>{I.chevLeft}Volver</button>
+        <div className="dx-cote-eyebrow">Comercial · Cotización estándar</div>
+        <h1 className="dx-cote-title">
+          {isEdit ? `Editar ${cotizacionBase.numero}` : 'Nueva cotización'}
+          {isEdit && <span className="dx-cote-pill is-gray">v{cotizacionBase.version || 1}</span>}
+          <span className="dx-cote-pill is-amber"><i />Borrador</span>
+          {cotizacionBase?.hoja_costeo_id && <span className="dx-cote-pill is-cyan">Desde Hoja de Costeo</span>}
+        </h1>
+        <p className="dx-cote-sub"><strong>{clienteNombreEditor}</strong>{cuenta?.ruc && <> · RUC {cuenta.ruc}</>}{opp?.nombre && <> · {opp.nombre}</>}</p>
+        {cotizacionBase?.recepcion_id && <div className="dx-cote-note is-info">Origen bloqueado: recepción <strong>{cotizacionBase.recepcion_numero || cotizacionBase.recepcion_id}</strong> · activo <strong>{cotizacionBase.activo_codigo || cotizacionBase.activo_id}</strong>{cotizacionBase.activo_nombre ? ` · ${cotizacionBase.activo_nombre}` : ''}. Estos vínculos se conservarán al guardar.</div>}
 
-      {/* ── Bloque 1: encabezado ──────────────────────────────────────── */}
-      <div className="card mt-6">
-        <div className="card-body">
-          <div className="eyebrow" style={{marginBottom:16}}>Encabezado</div>
-          {isEdit && (
-            <div className="input-group" style={{marginBottom:16, maxWidth:280}}>
-              <label>Número de cotización</label>
-              <input className="input mono" value={numeroCot} onChange={e => setNumeroCot(e.target.value)} placeholder="Ej. COT-2026-0502" />
-            </div>
-          )}
-          <div className="grid-3" style={{gap:16, marginBottom:16}}>
-            <div className="input-group">
-              <label>Moneda</label>
-              <select className="select" value={monedaActual} onChange={e => setMoneda(normalizeCurrencyCode(e.target.value))}>
-                {opcionesMoneda.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
-              </select>
-            </div>
-            <div className="input-group">
-              <label>IGV (%)</label>
-              <input type="number" className="input" value={igvPct} min="0" max="30" step="0.1" onChange={e => setIgvPct(e.target.value)} />
-            </div>
-            <div className="input-group">
-              <label>Attn. (contacto)</label>
-              <select className="select" value={contactoId} onChange={e => setContactoId(e.target.value)}>
-                <option value="">Sin contacto específico</option>
-                {contactosOrdenados.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}{(c.principal || c.es_principal) ? ' - Principal' : ''}</option>)}
-              </select>
-            </div>
-            <div className="input-group">
-              <label>CEBE</label>
-              <select className="select" value={cebeId} onChange={e => setCebeId(e.target.value)}>
-                <option value="">Sin CEBE asociado</option>
-                {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
-              </select>
-            </div>
-            <SociedadFormField value={sociedadId} onChange={setSociedadId} />
-          </div>
-          <div className="grid-2" style={{gap:16, marginBottom:16}}>
-            <div className="input-group">
-              <label>Tipo de validez</label>
-              <select className="select" value={validezTipo} onChange={e => setValidezTipo(e.target.value)}>
-                <option value="dias">Número de días</option>
-                <option value="fecha_exacta">Fecha exacta ("válida solo hoy")</option>
-              </select>
-            </div>
-            <div className="input-group">
-              {validezTipo === 'dias' ? (
-                <>
-                  <label>Días de validez</label>
-                  <select className="select" value={validezDias} onChange={e => setValidezDias(e.target.value)}>
-                    <option value={15}>15 días</option>
-                    <option value={30}>30 días</option>
-                    <option value={45}>45 días</option>
-                    <option value={60}>60 días</option>
-                  </select>
-                </>
-              ) : (
-                <>
-                  <label>Fecha exacta de validez</label>
-                  <input type="date" className="input" value={validezFecha} onChange={e => setValidezFecha(e.target.value)} />
-                </>
-              )}
-            </div>
-          </div>
-          <div className="input-group">
-            <label>Descripción general del servicio</label>
-            <SmartTextField
-              value={descripcion}
-              onChange={setDescripcion}
-              diccionario={diccionarioComercial}
-              rows={3}
-              placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF."
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Bloque 2: partidas ────────────────────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>
-            <h3>Partidas</h3>
-            <div className="row" style={{gap:8}}>
-              <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} Agregar línea</button>
-              <select className="select" style={{fontSize:13, padding:'4px 10px', height:32}} defaultValue=""
-                onChange={e => { if (!e.target.value) return; const s = MOCK.servicios?.find(x => x.id === e.target.value); if (s) addFromCatalogo(s); e.target.value = ''; }}>
-                <option value="">Del catálogo ▾</option>
-                {(MOCK.servicios || []).filter(s => s.estado === 'activo').map(s => <option key={s.id} value={s.id}>{s.descripcion}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {partidas.map((p, idx) => (
-            <div key={p.id} style={{marginBottom:12, padding:'14px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-              {/* Fila 1: descripción + tipo + acciones */}
-              <div className="row" style={{gap:10, marginBottom:10, alignItems:'flex-end'}}>
-                <span style={{fontWeight:600, fontSize:11, color:'var(--fg-muted)', minWidth:60, paddingBottom:8}}>Partida {idx + 1}</span>
-                <div className="input-group" style={{margin:0, flex:3}}>
-                  <label style={{fontSize:11}}>Descripción</label>
-                  <SmartTextField
-                    value={p.descripcion}
-                    onChange={value => updatePartida(p.id, 'descripcion', value)}
-                    diccionario={diccionarioComercial}
-                    multiline={false}
-                    placeholder="Nombre del servicio o bien"
-                  />
-                </div>
-                <div className="input-group" style={{margin:0, flex:1, minWidth:140}}>
-                  <label style={{fontSize:11}}>Tipo</label>
-                  <select className="select" value={p.tipo} onChange={e => updatePartida(p.id, 'tipo', e.target.value)}>
-                    <option value="material">Material</option>
-                    <option value="servicio">Servicio</option>
-                    <option value="bien">Bien</option>
-                    <option value="recurrente">Recurrente (mensual)</option>
-                  </select>
-                </div>
-                <div className="row" style={{gap:4, paddingBottom:2}}>
-                  {idx > 0 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, -1)} title="Subir">↑</button>}
-                  {idx < partidas.length - 1 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, 1)} title="Bajar">↓</button>}
-                  <button type="button" className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button>
-                </div>
-              </div>
-              {/* Fila 2: cantidad + precio + total */}
-              <div className="row" style={{gap:10, marginBottom:10, alignItems:'flex-end'}}>
-                <div className="input-group" style={{margin:0, width:110}}>
-                  <label style={{fontSize:11}}>Cantidad</label>
-                  <input type="number" className="input num" min="0" step="0.01" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} />
-                </div>
-                <div className="input-group" style={{margin:0, flex:1}}>
-                  <label style={{fontSize:11}}>Precio unitario</label>
-                  {p.incluido
-                    ? <div className="row" style={{gap:6, alignItems:'center'}}>
-                        <span className="badge badge-gray" style={{flex:1, textAlign:'center', height:36, lineHeight:'36px'}}>Incluido</span>
-                        <button type="button" className="icon-btn" style={{fontSize:11}} title="Quitar" onClick={() => updatePartida(p.id, 'incluido', false)}>{I.x}</button>
+        <div className="dx-cote-grid">
+          <div className="dx-cote-main">
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h"><h2>Datos de la cotización</h2></div>
+              <div className="dx-cote-card-b">
+                <div className="dx-cote-fields">
+                  {isEdit && (
+                    <div className="dx-cote-fld">
+                      <label htmlFor="dx-cote-numero">Número</label>
+                      <input id="dx-cote-numero" className="dx-cote-inp is-mono" value={numeroCot} onChange={e => setNumeroCot(e.target.value)} placeholder="Ej. COT-2026-0502" />
+                    </div>
+                  )}
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-moneda">Moneda</label>
+                    <select id="dx-cote-moneda" className="dx-cote-inp" value={monedaActual} onChange={e => setMoneda(normalizeCurrencyCode(e.target.value))}>
+                      {opcionesMoneda.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-igv">IGV (%)</label>
+                    <input id="dx-cote-igv" type="number" className="dx-cote-inp is-num" value={igvPct} min="0" max="30" step="0.1" onChange={e => setIgvPct(e.target.value)} />
+                  </div>
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-contacto">Attn. contacto</label>
+                    <select id="dx-cote-contacto" className="dx-cote-inp" value={contactoId} onChange={e => setContactoId(e.target.value)}>
+                      <option value="">Sin contacto específico</option>
+                      {contactosOrdenados.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}{(c.principal || c.es_principal) ? ' - Principal' : ''}</option>)}
+                    </select>
+                  </div>
+                  <div className="dx-cote-fld">
+                    <label htmlFor="dx-cote-cebe">CEBE</label>
+                    <select id="dx-cote-cebe" className="dx-cote-inp" value={cebeId} onChange={e => setCebeId(e.target.value)}>
+                      <option value="">Sin CEBE asociado</option>
+                      {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
+                    </select>
+                  </div>
+                  {empresa?.multisociedad_habilitado && (
+                    <div className={`dx-cote-fld dx-cote-soc${errorSociedad ? ' has-error' : ''}`}>
+                      <SociedadFormField value={sociedadId} onChange={setSociedadId} />
+                      {errorSociedad && <span className="dx-cote-field-err">Selecciona la sociedad de la cotización.</span>}
+                    </div>
+                  )}
+                  <div className="dx-cote-fld is-span2">
+                    <label htmlFor="dx-cote-validez">Validez</label>
+                    <div className="dx-cote-validez">
+                      <div className="dx-cote-seg" role="group" aria-label="Tipo de validez">
+                        <button type="button" className={validezTipo === 'dias' ? 'is-on' : ''} aria-pressed={validezTipo === 'dias'} onClick={() => { setValidezTipo('dias'); marcarCambio(); }}>Días</button>
+                        <button type="button" className={validezTipo === 'fecha_exacta' ? 'is-on' : ''} aria-pressed={validezTipo === 'fecha_exacta'} onClick={() => { setValidezTipo('fecha_exacta'); marcarCambio(); }}>Fecha exacta</button>
                       </div>
-                    : <div className="row" style={{gap:4, alignItems:'center'}}>
-                        <input type="number" className="input num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} />
-                        <button type="button" className="icon-btn" style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}} title="Marcar como Incluido" onClick={() => updatePartida(p.id, 'incluido', true)}>∅</button>
-                      </div>
-                  }
-                </div>
-                <div className="input-group" style={{margin:0, flex:2}}>
-                  <label style={{fontSize:11}}>Detalle de cantidad</label>
-                  <SmartTextField
-                    value={p.detalle_cantidad}
-                    onChange={value => updatePartida(p.id, 'detalle_cantidad', value)}
-                    diccionario={diccionarioComercial}
-                    multiline={false}
-                    placeholder="1 proyecto, 2 meses…"
-                  />
-                </div>
-                <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total partida</div>
-                  <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>
-                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(calcPartidaTotal(p), monedaActual)}
+                      {validezTipo === 'dias'
+                        ? <select id="dx-cote-validez" className="dx-cote-inp" value={validezDias} onChange={e => setValidezDias(e.target.value)}>
+                            <option value={15}>15 días</option>
+                            <option value={30}>30 días</option>
+                            <option value={45}>45 días</option>
+                            <option value={60}>60 días</option>
+                          </select>
+                        : <input id="dx-cote-validez" type="date" className="dx-cote-inp" value={validezFecha} onChange={e => setValidezFecha(e.target.value)} />}
+                    </div>
+                  </div>
+                  <div className="dx-cote-fld is-full">
+                    <label>Descripción general del servicio</label>
+                    <SmartTextField
+                      value={descripcion}
+                      onChange={valor => { setDescripcion(valor); marcarCambio(); }}
+                      diccionario={diccionarioComercial}
+                      rows={3}
+                      placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF."
+                    />
                   </div>
                 </div>
               </div>
-              {/* Fila 3: sub-ítems (opcional, compacto) */}
-              <div className="input-group" style={{margin:0}}>
-                <label style={{fontSize:11}}>Sub-ítems / entregables (una línea = viñeta en PDF)</label>
-                <SmartTextField
-                  value={p.detalle_items_txt}
-                  onChange={value => updatePartida(p.id, 'detalle_items_txt', value)}
-                  diccionario={diccionarioComercial}
-                  rows={2}
-                  placeholder="Entregable 1&#10;Entregable 2"
-                  inputStyle={{fontSize:12}}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            </section>
 
-      {/* ── Bloque 3: totales ─────────────────────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Resumen de totales</h3>
-          <div className={pRec.length > 0 ? 'grid-2' : ''} style={{gap:24, maxWidth: pRec.length > 0 ? '100%' : 380, marginLeft:'auto'}}>
-            <div>
-              {pRec.length > 0 && <div className="eyebrow" style={{marginBottom:12}}>Implementación</div>}
-              <TotalesBox subtotal={subtImpl} igvPct={igvPct} igv={igvImpl} total={totalImpl} sym={currencySymbol(monedaActual)} />
-            </div>
-            {pRec.length > 0 && (
-              <div>
-                <div className="eyebrow" style={{marginBottom:12}}>Recurrente mensual</div>
-                <TotalesBox subtotal={subtRec} igvPct={igvPct} igv={igvRec} total={totalRec} suffix="/mes" sym={currencySymbol(monedaActual)} />
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h">
+                <h2>Partidas</h2>
+                <select className="dx-cote-inp is-sm" defaultValue="" aria-label="Agregar partida del catálogo de servicios" disabled={!catalogoServicios.length}
+                  onChange={e => { const servicio = catalogoServicios.find(x => x.id === e.target.value); if (servicio) addFromCatalogo(servicio); e.target.value = ''; }}>
+                  <option value="">{cargandoCatalogo ? 'Cargando catálogo…' : catalogoServicios.length ? `Agregar del catálogo (${catalogoServicios.length})…` : 'Catálogo de servicios vacío'}</option>
+                  {catalogoServicios.map(s => <option key={s.id} value={s.id}>{s.codigo ? `${s.codigo} · ` : ''}{s.descripcion}</option>)}
+                </select>
+              </div>
+              <div className="dx-cote-card-b">
+                {partidas.map((p, idx) => {
+                  const subitemsAbiertos = subitemsVisibles[p.id] ?? Boolean(String(p.detalle_items_txt || '').trim());
+                  const cantidadSubitems = String(p.detalle_items_txt || '').split('\n').map(s => s.trim()).filter(Boolean).length;
+                  return (
+                    <div key={p.id} className="dx-cote-part">
+                      <div className="dx-cote-part-h">
+                        <span className="dx-cote-part-n">{idx + 1}</span>
+                        <div className="dx-cote-part-desc">
+                          <SmartTextField
+                            value={p.descripcion}
+                            onChange={value => updatePartida(p.id, 'descripcion', value)}
+                            diccionario={diccionarioComercial}
+                            multiline={false}
+                            placeholder="Nombre del servicio o bien"
+                          />
+                        </div>
+                        <div className="dx-cote-tools">
+                          {idx > 0 && <button type="button" className="dx-cote-icon" onClick={() => movePartida(idx, -1)} aria-label={`Subir partida ${idx + 1}`}>{I.arrowUp}</button>}
+                          {idx < partidas.length - 1 && <button type="button" className="dx-cote-icon" onClick={() => movePartida(idx, 1)} aria-label={`Bajar partida ${idx + 1}`}>{I.arrowDown}</button>}
+                          <button type="button" className="dx-cote-icon is-del" onClick={() => removePartida(p.id)} aria-label={`Eliminar partida ${idx + 1}`}>{I.x}</button>
+                        </div>
+                      </div>
+                      <div className="dx-cote-part-b">
+                        <div className="dx-cote-fld">
+                          <label>Tipo</label>
+                          <select className="dx-cote-inp" value={p.tipo} onChange={e => updatePartida(p.id, 'tipo', e.target.value)}>
+                            <option value="material">Material</option>
+                            <option value="servicio">Servicio</option>
+                            <option value="bien">Bien</option>
+                            <option value="recurrente">Recurrente (mensual)</option>
+                          </select>
+                        </div>
+                        <div className="dx-cote-fld">
+                          <label>Cantidad</label>
+                          <input type="number" className="dx-cote-inp is-num" min="0" step="0.01" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} />
+                        </div>
+                        <div className="dx-cote-fld">
+                          <label>Precio unitario</label>
+                          {p.incluido
+                            ? <div className="dx-cote-incl">Incluido<button type="button" className="dx-cote-icon" onClick={() => updatePartida(p.id, 'incluido', false)} aria-label="Quitar incluido">{I.x}</button></div>
+                            : <div className="dx-cote-money">
+                                <input type="number" className="dx-cote-inp is-num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} />
+                                <button type="button" title="Marcar como incluido (sin costo)" onClick={() => updatePartida(p.id, 'incluido', true)}>Incl.</button>
+                              </div>}
+                        </div>
+                        <div className="dx-cote-fld is-det">
+                          <label>Detalle de cantidad</label>
+                          <SmartTextField
+                            value={p.detalle_cantidad}
+                            onChange={value => updatePartida(p.id, 'detalle_cantidad', value)}
+                            diccionario={diccionarioComercial}
+                            multiline={false}
+                            placeholder="1 proyecto, 2 meses…"
+                          />
+                        </div>
+                        <div className="dx-cote-part-tot"><small>Total</small><b>{p.incluido ? 'Incluido' : moneyD(calcPartidaTotal(p), simboloEditor)}</b></div>
+                      </div>
+                      <button type="button" className={`dx-cote-more${subitemsAbiertos ? ' is-on' : ''}`} aria-expanded={subitemsAbiertos} onClick={() => setSubitemsVisibles(actual => ({ ...actual, [p.id]: !subitemsAbiertos }))}>
+                        {I.chev}{cantidadSubitems ? `Sub-ítems (${cantidadSubitems})` : 'Agregar sub-ítems'}
+                      </button>
+                      {subitemsAbiertos && (
+                        <div className="dx-cote-subitems">
+                          <SmartTextField
+                            value={p.detalle_items_txt}
+                            onChange={value => updatePartida(p.id, 'detalle_items_txt', value)}
+                            diccionario={diccionarioComercial}
+                            rows={3}
+                            placeholder="Una línea = una viñeta en el PDF"
+                            inputStyle={{fontSize:13}}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {partidas.length === 0 && <div className="dx-cote-empty">Sin partidas. Agrega la primera.</div>}
+                <button type="button" className="dx-cote-add" onClick={addPartida}>{I.plus}Agregar partida</button>
+              </div>
+            </section>
+
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h">
+                <h2>Hitos de pago</h2>
+                <label className="dx-cote-switch"><input type="checkbox" checked={hitosActivos} onChange={e => setHitosActivos(e.target.checked)} />Dividir el pago en hitos</label>
+              </div>
+              {hitosActivos && (
+                <div className="dx-cote-card-b">
+                  {hitos.map((h, i) => (
+                    <div key={h.id} className="dx-cote-hito">
+                      <span className="dx-cote-part-n">{i + 1}</span>
+                      <div className="dx-cote-hito-c">
+                        <SmartTextField value={h.concepto} onChange={value => updateHito(h.id, 'concepto', value)} diccionario={diccionarioComercial} multiline={false} placeholder="Ej: Anticipo" />
+                      </div>
+                      <div className="dx-cote-pct">
+                        <input type="number" className={`dx-cote-inp is-num${hitosCompletos ? '' : ' is-err'}`} min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} aria-label={`Porcentaje del hito ${i + 1}`} />
+                        <span>%</span>
+                      </div>
+                      <div className="dx-cote-hito-cond">
+                        <SmartTextField value={h.condicion} onChange={value => updateHito(h.id, 'condicion', value)} diccionario={diccionarioComercial} multiline={false} placeholder="Condición / vencimiento" />
+                      </div>
+                      <span className="dx-cote-hito-m">{moneyD(montoHito(h), simboloEditor)}</span>
+                      <button type="button" className="dx-cote-icon is-del" onClick={() => removeHito(h.id)} aria-label={`Eliminar hito ${i + 1}`}>{I.x}</button>
+                    </div>
+                  ))}
+                  {hitos.length === 0 && <div className="dx-cote-empty">Sin hitos. Agrega uno.</div>}
+                  <button type="button" className="dx-cote-add" onClick={addHito}>{I.plus}Agregar hito</button>
+                  {!hitosCompletos && <div className="dx-cote-err" role="alert">{I.alertCircle}<span>Los hitos suman <strong>{sumPct.toFixed(1)}%</strong>. Deben sumar exactamente 100% para poder guardar.</span></div>}
+                  <div className="dx-cote-fld dx-cote-glosa">
+                    <label>Glosa recomendada para las facturas</label>
+                    <SmartTextField value={glosa} onChange={valor => { setGlosa(valor); marcarCambio(); }} diccionario={diccionarioComercial} rows={2} placeholder="Texto que irá en las facturas…" />
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h">
+                <h2>Condiciones comerciales</h2>
+                <select className="dx-cote-inp is-sm" value={tipoDocumentoId} onChange={e => setTipoDocumentoId(e.target.value)} disabled={tiposDocumento.length <= 1} aria-label="Tipo de documento">
+                  {!tiposDocumento.length && <option value="">Sin tipos disponibles</option>}
+                  {tiposDocumento.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre} ({tipo.codigo})</option>)}
+                </select>
+              </div>
+              <div className="dx-cote-card-b">
+                <p className="dx-cote-muted">Precargadas desde la biblioteca publicada. Lo que cambies aquí solo aplica a esta cotización.</p>
+                {errorCondiciones && <div className="dx-cote-note is-warn">{errorCondiciones}</div>}
+                {cargandoCondiciones && <div className="dx-cote-muted">Cargando condiciones…</div>}
+                {!cargandoCondiciones && tipoDocumentoId && !bibliotecaCondiciones && <div className="dx-cote-note is-warn">Este tipo no tiene una biblioteca publicada. Publica una versión desde Parámetros.</div>}
+                {condiciones.map((condicion, index) => {
+                  const clave = condicion.id || index;
+                  const abierta = condicionesAbiertas[clave] ?? index === 0;
+                  return (
+                    <div key={clave} className={`dx-cote-acc${abierta ? ' is-open' : ''}`}>
+                      <button type="button" aria-expanded={abierta} onClick={() => setCondicionesAbiertas(actual => ({ ...actual, [clave]: !abierta }))}>{condicion.titulo || `Segmento ${index + 1}`}{I.chev}</button>
+                      {abierta && <div className="dx-cote-acc-b"><RichTextEditor value={condicion.contenido_json} onChange={patch => actualizarCondicion(index, patch)} placeholder={`Contenido de ${condicion.titulo || 'segmento'}…`} /></div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+
+          <aside className="dx-cote-aside">
+            <section className="dx-cote-card">
+              <div className="dx-cote-card-h"><h2>Totales</h2><span>{monedaActual} · en vivo</span></div>
+              <div className="dx-cote-card-b">
+                {pRec.length > 0 && <div className="dx-cote-tot-h">Implementación</div>}
+                <div className="dx-cote-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtImpl, simboloEditor)}</b></div>
+                <div className="dx-cote-tot"><span>IGV ({igvPct}%)</span><b>{moneyD(igvImpl, simboloEditor)}</b></div>
+                <div className="dx-cote-tot is-big"><span>Total</span><b>{moneyD(totalImpl, simboloEditor)}</b></div>
+                {pRec.length > 0 && (
+                  <>
+                    <div className="dx-cote-tot-h is-sep">Recurrente mensual</div>
+                    <div className="dx-cote-tot"><span>Subtotal sin IGV</span><b>{moneyD(subtRec, simboloEditor)}/mes</b></div>
+                    <div className="dx-cote-tot"><span>IGV ({igvPct}%)</span><b>{moneyD(igvRec, simboloEditor)}/mes</b></div>
+                    <div className="dx-cote-tot is-big"><span>Total</span><b>{moneyD(totalRec, simboloEditor)}/mes</b></div>
+                  </>
+                )}
+              </div>
+            </section>
+            {hitosActivos && (
+              <section className="dx-cote-card">
+                <div className="dx-cote-card-h"><h2>Hitos</h2><span className={`dx-cote-pill ${hitosCompletos ? 'is-green' : 'is-amber'}`}><i />{sumPct.toFixed(0)}% de 100%</span></div>
+                <div className="dx-cote-card-b">
+                  <div className={`dx-cote-meter${hitosCompletos ? ' is-ok' : ''}`}><i style={{ width: `${Math.min(Math.max(sumPct, 0), 100)}%` }} /></div>
+                  <div className="dx-cote-muted">{hitosCompletos ? 'Listo para guardar.' : sumPct < 100 ? `Falta asignar ${(100 - sumPct).toFixed(1)}% del total.` : `Sobra ${(sumPct - 100).toFixed(1)}% del total.`}</div>
+                </div>
+              </section>
+            )}
+            <section className="dx-cote-card dx-cote-rev">
+              <div className="dx-cote-card-h"><h2>Revisión</h2></div>
+              <div className="dx-cote-card-b dx-cote-checks">
+                <span className={partidas.length && partidasConPrecio === partidas.length ? 'is-ok' : 'is-warn'}>{partidas.length && partidasConPrecio === partidas.length ? I.check : I.alert}{partidasConPrecio} de {partidas.length} partidas con precio</span>
+                {hitosActivos && <span className={hitosCompletos ? 'is-ok' : 'is-warn'}>{hitosCompletos ? I.check : I.alert}Hitos {hitosCompletos ? 'completos' : 'incompletos'}</span>}
+                <span className={contactoSeleccionado ? 'is-ok' : 'is-warn'}>{contactoSeleccionado ? I.check : I.alert}{contactoSeleccionado ? `Attn. ${contactoSeleccionado.nombre}` : 'Sin contacto del cliente'}</span>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <section className="dx-cote-card dx-cote-firmas-card">
+          <div className={`dx-cote-acc is-card${firmasAbiertasEditor ? ' is-open' : ''}`}>
+            <button type="button" aria-expanded={firmasAbiertasEditor} onClick={() => setFirmasAbiertasEditor(valor => !valor)}><span className="dx-cote-acc-title">Página de firmas · vista previa</span>{I.chev}</button>
+            {firmasAbiertasEditor && (
+              <div className="dx-cote-firmas">
+                <div className="dx-cote-firma">
+                  <small>Por {cfg.razon_social || 'TIDEO'}</small>
+                  {cfg.firma_url ? <img src={cfg.firma_url} alt="Firma" /> : <div className="dx-cote-firma-ln" />}
+                  <b>{cfg.firmante || '(configurar en Parámetros)'}</b>
+                  <span>{cfg.cargo_firmante}</span>
+                  <span>{cfg.email_comercial}</span>
+                </div>
+                <div className="dx-cote-firma">
+                  <small>Por {clienteNombreEditor === '—' ? 'Cliente' : clienteNombreEditor}</small>
+                  <div className="dx-cote-firma-ln" />
+                  <b>{contactoSeleccionado?.nombre || '(selecciona un contacto arriba)'}</b>
+                  <span>Sello y firma</span>
+                </div>
               </div>
             )}
           </div>
+        </section>
+      </div>
+
+      <div className="dx-cote-savebar">
+        <div className="dx-cote-savebar-st">
+          {hayCambios ? <span className="dx-cote-pill is-amber"><i />Cambios sin guardar</span> : <span className="dx-cote-pill is-gray"><i />Sin cambios</span>}
+          <span>Total</span><b>{moneyD(totalImpl, simboloEditor)}</b>
+        </div>
+        <div className="dx-cote-savebar-acts">
+          {errorGuardar && <span className="dx-cote-savebar-err" role="alert">{errorGuardar}</span>}
+          <button type="button" className="dx-cote-btn" onClick={cancelarEditor} disabled={guardando}>Cancelar</button>
+          <button type="button" className="dx-cote-btn is-primary" onClick={handleSave} disabled={guardando}>{I.save}{guardando ? 'Guardando…' : <>Guardar<span className="dx-cote-hide-xs"> cotización</span></>}</button>
         </div>
       </div>
 
-      {/* ── Bloque 4: hitos de pago ───────────────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom: hitosActivos ? 16 : 0}}>
-            <h3>Hitos de pago</h3>
-            <label className="row" style={{gap:8, cursor:'pointer', fontWeight:400, fontSize:14}}>
-              <input type="checkbox" checked={hitosActivos} onChange={e => setHitosActivos(e.target.checked)} />
-              Agregar hitos de pago
-            </label>
-          </div>
-          {hitosActivos && (
-            <>
-              <div className="table-wrap" style={{marginBottom:12}}>
-                <table className="tbl">
-                  <thead>
-                    <tr><th>N°</th><th>Concepto</th><th style={{width:110}}>% del total</th><th style={{width:140}}>Monto (auto)</th><th>Condición / vencimiento</th><th style={{width:36}}></th></tr>
-                  </thead>
-                  <tbody>
-                    {hitos.map((h, i) => (
-                      <tr key={h.id}>
-                        <td className="num text-muted">{i + 1}</td>
-                        <td>
-                          <SmartTextField
-                            value={h.concepto}
-                            onChange={value => updateHito(h.id, 'concepto', value)}
-                            diccionario={diccionarioComercial}
-                            multiline={false}
-                            placeholder="Ej: Anticipo"
-                          />
-                        </td>
-                        <td><input type="number" className="input num" min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} /></td>
-                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Math.round(totalImpl * Number(h.porcentaje || 0) / 100), monedaActual)}</td>
-                        <td>
-                          <SmartTextField
-                            value={h.condicion}
-                            onChange={value => updateHito(h.id, 'condicion', value)}
-                            diccionario={diccionarioComercial}
-                            multiline={false}
-                            placeholder="Al inicio del trabajo"
-                          />
-                        </td>
-                        <td><button className="icon-btn text-danger" onClick={() => removeHito(h.id)}>{I.x}</button></td>
-                      </tr>
-                    ))}
-                    {hitos.length === 0 && <tr><td colSpan="6" style={{textAlign:'center', padding:20, color:'var(--fg-muted)', fontSize:13}}>Sin hitos. Agrega uno.</td></tr>}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan="2"></td>
-                      <td className="num" style={{fontWeight:700, color: Math.abs(sumPct - 100) < 0.01 ? 'var(--green)' : 'var(--danger)'}}>
-                        {sumPct.toFixed(1)}%
-                      </td>
-                      <td colSpan="3" style={{fontSize:12, color: Math.abs(sumPct - 100) < 0.01 ? 'var(--green)' : 'var(--danger)'}}>
-                        {Math.abs(sumPct - 100) < 0.01 ? '✓ Suma correcta' : `Debe sumar 100% (faltan ${(100 - sumPct).toFixed(1)}%)`}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-              <button className="btn btn-secondary btn-sm" onClick={addHito}>{I.plus} Agregar hito</button>
-              <div className="input-group" style={{marginTop:16}}>
-                <label>Glosa recomendada para las facturas</label>
-                <SmartTextField
-                  value={glosa}
-                  onChange={setGlosa}
-                  diccionario={diccionarioComercial}
-                  rows={2}
-                  placeholder="Texto que irá en las facturas…"
-                />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Bloque 5: condiciones comerciales ────────────────────────── */}
-      <div className="card mt-4">
-        <div className="card-body">
-          <div className="eyebrow" style={{marginBottom:4}}>Condiciones comerciales</div>
-          <div className="input-group" style={{maxWidth:520, marginBottom:12}}>
-            <label>Tipo de documento</label>
-            <select className="select" value={tipoDocumentoId} onChange={e=>setTipoDocumentoId(e.target.value)} disabled={tiposDocumento.length <= 1}>
-              {!tiposDocumento.length && <option value="">Sin tipos disponibles</option>}
-              {tiposDocumento.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre} ({tipo.codigo})</option>)}
-            </select>
-          </div>
-          <div className="text-muted" style={{fontSize:12, marginBottom:16}}>Pre-cargadas desde la plantilla. Edita aquí para esta cotización sin afectar la biblioteca general.</div>
-          {errorCondiciones && <div className="alert alert-warning">{errorCondiciones}</div>}
-          {cargandoCondiciones && <div className="text-muted">Cargando condiciones…</div>}
-          {!cargandoCondiciones && tipoDocumentoId && !bibliotecaCondiciones && <div className="alert alert-warning">Este tipo no tiene una biblioteca publicada. Publica una versión desde Parámetros Generales.</div>}
-          {condiciones.map((condicion, index) => (
-            <div className="input-group" key={condicion.id || index}>
-              <label style={{fontSize:13}}>{condicion.titulo || `Segmento ${index + 1}`}</label>
-              <RichTextEditor value={condicion.contenido_json} onChange={patch => actualizarCondicion(index, patch)} placeholder={`Contenido de ${condicion.titulo || 'segmento'}…`} />
+      {confirmarSalida && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:460}}>
+            <div className="modal-head">
+              <h2>Salir sin guardar</h2>
+              <button className="icon-btn" onClick={() => setConfirmarSalida(false)}>{I.x}</button>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Bloque 6: preview de firmas ───────────────────────────────── */}
-      <div className="card mt-4" style={{marginBottom:40}}>
-        <div className="card-body">
-          <div className="eyebrow" style={{marginBottom:16}}>Página de cierre — Preview</div>
-          <div className="grid-2" style={{gap:40}}>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cfg.razon_social || 'TIDEO'}</div>
-              {cfg.firma_url && <img src={cfg.firma_url} alt="Firma" style={{maxHeight:60, marginBottom:8, display:'block', margin:'0 auto 8px'}} />}
-              <div style={{borderTop:'1px solid var(--border-strong)', paddingTop:8, fontWeight:600}}>{cfg.firmante || '(configurar en Parámetros)'}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.cargo_firmante}</div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>{cfg.email_comercial}</div>
-            </div>
-            <div style={{textAlign:'center', padding:20, border:'1px dashed var(--border)', borderRadius:8}}>
-              <div className="eyebrow" style={{marginBottom:12}}>Por {cuenta?.razon_social || cuenta?.nombre_comercial || 'Cliente'}</div>
-              <div style={{height:60, display:'flex', alignItems:'flex-end', justifyContent:'center'}}>
-                <div style={{width:'80%', borderBottom:'1px solid var(--border-strong)'}}></div>
+            <div className="modal-body col" style={{gap:20}}>
+              <p style={{margin:0, lineHeight:'1.6'}}>Tienes cambios sin guardar en esta cotización. Si sales ahora se perderán.</p>
+              <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+                <button className="btn btn-secondary" onClick={() => setConfirmarSalida(false)}>Seguir editando</button>
+                <button className="btn btn-primary" onClick={() => { setConfirmarSalida(false); setHayCambios(false); onCancel(); }}>Salir sin guardar</button>
               </div>
-              <div style={{paddingTop:8, fontWeight:600, color:'var(--fg-muted)'}}>
-                {(contactos || []).find(c => c.id === contactoId)?.nombre || '(selecciona un contacto arriba)'}
-              </div>
-              <div style={{fontSize:12, color:'var(--fg-muted)'}}>Sello y firma</div>
             </div>
           </div>
         </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
 
@@ -2180,7 +2316,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
           <div className="modal-body col" style={{gap:14}}>
             <div style={infoBox}>
           <div className="eyebrow">{esCotizacionEspecial ? 'Cotización especial aceptada' : 'Cotización aprobada'}</div>
-              <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
+              <strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
             </div>
             <div style={{fontWeight:500, fontSize:14}}>Se detectaron OS activas para este cliente. ¿Esta cotización corresponde a una OS existente o es una OS nueva?</div>
             <div className="col" style={{gap:8}}>
@@ -2216,7 +2352,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
             <button className="icon-btn" onClick={onClose}>{I.x}</button>
           </div>
           <div className="modal-body col" style={{gap:16}}>
-            <div style={infoBox}><strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
+            <div style={infoBox}><strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
             <div style={{fontWeight:500}}>¿El cliente proporcionó un número de OS?</div>
             <div className="col" style={{gap:8}}>
               <label style={{...optStyle, background: tieneNumero === true ? 'var(--cyan-lt)' : 'transparent'}}>
@@ -2260,7 +2396,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
         </div>
         <form className="modal-body col" style={{gap:14}} onSubmit={e => { e.preventDefault(); onCrearNueva(form); }}>
           <div style={infoBox}>
-            <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
+            <strong>{cot.numero}</strong> · {moneyD(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
             {tieneNumero && form.numero_doc_cliente && <> · OS cliente: <strong>{form.numero_doc_cliente}</strong></>}
           </div>
           <div className="input-group">
@@ -2350,7 +2486,7 @@ function Cotizaciones() {
 }
 
 const MESES_VAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago' };
+const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago', tarifa_mensual: 'Por tarifa mensual' };
 
 function Valorizacion({ role }) {
   const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery, personalOperativo, personalAdmin, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
@@ -2398,19 +2534,17 @@ function Valorizacion({ role }) {
   const [confirmarExceso, setConfirmarExceso] = useState(false);
 
   // List filter states
-  const [filterCliente, setFilterCliente] = useState('');
-  const [filterOs, setFilterOs] = useState('');
+  const [busquedaVal, setBusquedaVal] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterMoneda, setFilterMoneda] = useState('');
-  const [filterPeriodo, setFilterPeriodo] = useState('');
-  const [filterModelo, setFilterModelo] = useState('');
+  const [filterFecha, setFilterFecha] = useState('');
 
   const periodo = `${MESES_VAL[periodoMes]} ${periodoAnio}`;
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const conformidadCompleta = otId => {
     const c = cierresTecnicos.find(ct => ct.ot_id === otId);
-    return ['digital', 'fisico'].includes(c?.conformidad_cliente?.tipo);
+    return conformidadValorizable(c);
   };
   // OTs en ejecucion no tienen cierre técnico aún: la conformidad se gestiona externamente para avance parcial
   const conformidadOK = ot => ot.estado === 'ejecucion' || conformidadCompleta(ot.id);
@@ -2555,6 +2689,10 @@ function Valorizacion({ role }) {
       });
     }
 
+    if (modelo === 'tarifa_mensual') {
+      return [partidaTarifaMensual(os, periodoAnio, periodoMes, MESES_VAL[periodoMes])];
+    }
+
     if (modelo === 'hitos_pago') {
       const cot = getCot(selOs);
       const hitos = cot?.hitos_pago || [];
@@ -2580,8 +2718,19 @@ function Valorizacion({ role }) {
   // ── Step transitions ──────────────────────────────────────────────────
   const handleSelOs = osId => {
     setSelOs(osId);
+    const mensual = esCobroMensual(getOs(osId));
+    if (mensual) setModelo('tarifa_mensual');
+    else if (modelo === 'tarifa_mensual') setModelo('');
     const dis = osId ? ots.filter(ot => ot.os_cliente_id === osId && ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)) : [];
     setOtSeleccionadas(dis.map(ot => ot.id));
+  };
+  // Tarifa mensual: se proponen las OT del mes elegido.
+  const avanzarDesdePaso1 = () => {
+    if (modelo === 'tarifa_mensual') {
+      const periodoISO = periodoMensualISO(periodoAnio, periodoMes);
+      setOtSeleccionadas(otsDisponibles.filter(ot => ot.periodo_mensual === periodoISO).map(ot => ot.id));
+    }
+    setStep(2);
   };
   const advanceToStep3 = () => { setPartidas(computePartidas(otSeleccionadas)); setStep(3); };
   const resetForm = () => {
@@ -2669,75 +2818,46 @@ function Valorizacion({ role }) {
           </div>
         )}
 
-        <div className="side-panel-backdrop" onClick={() => setSelVal(null)} />
-        <div className="side-panel">
-        <div className="side-panel-head">
+        <div className="dx-val-back" onClick={() => setSelVal(null)} />
+        <aside className="dx-val-panel" role="dialog" aria-modal="true" aria-label={`Valorización ${v.numero}`}>
+        <div className="dx-val-ph">
           <div>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>{clienteNombre} · {os?.numero || '—'} · {v.periodo || '—'}</div>
-            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-              <strong style={{fontSize:16}}>{v.numero}</strong>
-              <span className={'badge ' + badgeC(v.estado)}>{badgeL(v.estado)}</span>
+            <div className="dx-val-eyebrow">Valorización · {v.periodo || 'sin período'}</div>
+            <h2>{v.numero}</h2>
+            <div className="dx-val-ph-tags">
+              <span className={`dx-val-pill ${({ aprobada: 'is-green', facturada: 'is-blue', anulada: 'is-red' })[v.estado] || 'is-gray'}`}><i />{badgeL(v.estado)}</span>
+              {v.tipo === 'avance' && <span className="dx-val-tag is-avance">Avance</span>}
+              {v.tipo === 'final' && <span className="dx-val-tag is-final">Final</span>}
+              {v.modelo_calculo && <span className="dx-val-tag is-modelo">{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo}</span>}
               {mostrarBadgeSociedadValorizaciones && <SociedadBadge sociedadId={v.sociedad_id} />}
-              {v.tipo === 'avance' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--orange) 15%,transparent)',color:'var(--orange)'}}>Avance</span>}
-              {v.tipo === 'final' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--green) 15%,transparent)',color:'var(--green)'}}>Final</span>}
             </div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            {v.estado === 'borrador' && <button className="btn btn-primary btn-sm" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>}
-            {v.estado === 'aprobada' && <button className="btn btn-primary btn-sm" style={{background:'var(--green)'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>{I.plus} Factura</button>}
-            <button className="icon-btn" onClick={() => setSelVal(null)}>{I.x}</button>
+          <div className="dx-val-ph-acts">
+            {v.estado === 'borrador' && <button type="button" className="dx-val-ghost" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>}
+            {v.estado === 'aprobada' && <button type="button" className="dx-val-ghost is-danger" onClick={() => setModalAnular(true)}>Anular</button>}
+            {v.estado === 'borrador' && <button type="button" className="dx-val-primary" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>}
+            {v.estado === 'aprobada' && <button type="button" className="dx-val-primary" onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>{I.plus} Facturar</button>}
+            <button type="button" className="dx-val-x" aria-label="Cerrar" onClick={() => setSelVal(null)}>{I.x}</button>
           </div>
         </div>
-        <div className="side-panel-body">
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-            {v.estado === 'borrador' && <button className="btn btn-secondary btn-sm" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>}
-            {v.estado === 'aprobada' && <button className="btn btn-secondary btn-sm" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnular(true)}>Anular</button>}
+        <div className="dx-val-panel-in">
+        <div className="dx-val-pb">
+          <div className="dx-val-tiles">
+            <div className="dx-val-tile"><small>OS Cliente</small><b>{os?.numero || '—'}</b><span>{clienteNombre}</span></div>
+            <div className="dx-val-tile"><small>Período</small><b>{v.periodo || '—'}</b><span>Fecha: {v.fecha || '—'}</span></div>
+            <div className="dx-val-tile"><small>Modelo</small><b>{(MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—').replace(/^Por /, '')}</b><span>{otsIncluidas.length} OT{otsIncluidas.length === 1 ? '' : 's'} incluida{otsIncluidas.length === 1 ? '' : 's'}</span></div>
+            <div className="dx-val-tile"><small>Total</small><b>{moneyCurrency(v.total, v.moneda)}</b><span>{moneyCurrency(v.subtotal, v.moneda)} + IGV {moneyCurrency(v.igv, v.moneda)}</span></div>
           </div>
-          {/* Info cards */}
-          <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:16}}>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>OS Cliente</div>
-            <div style={{fontWeight:600}}>{os?.numero || '—'}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{clienteNombre}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Período</div>
-            <div style={{fontWeight:600}}>{v.periodo || '—'}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)'}}>Fecha: {v.fecha || '—'}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Modelo</div>
-            <div style={{fontWeight:600, fontSize:12}}>{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—'}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total</div>
-            <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>{moneyCurrency(v.total, v.moneda)}</div>
-            <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Subtotal: {moneyCurrency(v.subtotal, v.moneda)} + IGV: {moneyCurrency(v.igv, v.moneda)}</div>
-          </div>
-        </div>
 
-        {v.estado === 'anulada' && v.motivo_anulacion && (
-          <div style={{marginBottom:16, padding:'12px 16px', borderRadius:8, border:'1px solid var(--danger)', background:'color-mix(in srgb, var(--danger) 6%, transparent)'}}>
-            <div style={{fontWeight:600, fontSize:13, color:'var(--danger)', marginBottom:4}}>Motivo de anulación</div>
-            <div style={{fontSize:13}}>{v.motivo_anulacion}</div>
+          {v.estado === 'anulada' && v.motivo_anulacion && (
+            <div className="dx-val-alert"><b>Motivo de anulación</b>{v.motivo_anulacion}</div>
+          )}
+
+          <div className="dx-val-tabs" role="tablist">
+            {TABS.map(t => (
+              <button type="button" key={t.id} role="tab" aria-selected={fichaTab === t.id} className={`dx-val-tab${fichaTab === t.id ? ' is-on' : ''}`} onClick={() => setFichaTab(t.id)}>{t.label}</button>
+            ))}
           </div>
-        )}
-
-        {/* Tabs */}
-        <div style={{display:'flex', borderBottom:'2px solid var(--border)', marginBottom:16, gap:0}}>
-          {TABS.map(t => (
-            <button key={t.id} className="btn btn-ghost"
-              onClick={() => setFichaTab(t.id)}
-              style={{
-                borderRadius:0, padding:'10px 20px', fontWeight: fichaTab === t.id ? 700 : 400,
-                borderBottom: fichaTab === t.id ? '2px solid var(--cyan)' : '2px solid transparent',
-                marginBottom:-2, color: fichaTab === t.id ? 'var(--cyan)' : 'var(--fg-muted)',
-              }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {/* Tab: Partidas */}
         {fichaTab === 'partidas' && (
           <div className="card">
@@ -2850,8 +2970,9 @@ function Valorizacion({ role }) {
             ))}
           </div>
         )}
-        </div>{/* end side-panel-body */}
-        </div>{/* end side-panel */}
+        </div>{/* end dx-val-pb */}
+        </div>{/* end dx-val-panel-in */}
+        </aside>
       </>
     );
     } // end if (v)
@@ -2860,63 +2981,36 @@ function Valorizacion({ role }) {
   // ── Editing view (4-step wizard) ──────────────────────────────────────
   if (editing) {
     const stepLabels = ['Datos generales', 'OTs incluidas', 'Partidas', 'Resumen'];
+    const osPaso4 = getOs(selOs);
+    const saldoPaso4 = Number(osPaso4?.saldo_por_valorizar || 0);
+    const excedePaso4 = saldoPaso4 > 0 && totalVal > saldoPaso4;
+    const MODELOS_VAL_DX = [
+      ['tarifa_mensual', 'Por tarifa mensual', 'Tarifa fija de la OS; prorratea los meses incompletos.'],
+      ['avance_pct', 'Por avance %', 'Avance de cada OT sobre el monto de la cotización.'],
+      ['costo_real', 'Por costo real', 'Costo de ejecución más el margen definido.'],
+      ['hitos_pago', 'Por hitos de pago', 'Hitos de pago definidos en la cotización.'],
+    ].filter(([valor]) => valor !== 'tarifa_mensual' || esCobroMensual(getOs(selOs)));
     return (
-      <>
-        {/* Header */}
-        <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
+      <div className="dx-val">
+      <div className="dx-val-in">
+        <header className="dx-val-top">
           <div>
-            <button className="btn btn-ghost" onClick={resetAndClose} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a Valorizaciones</button>
-            <h1 className="page-title">{editingValId ? 'Editar Valorización' : 'Generar Valorización'}</h1>
-            <div className="page-sub">
-              {selOs ? `${getOs(selOs)?.numero} — ${getClienteNombre(selOs)}` : 'Complete los pasos para crear la valorización'}
-            </div>
+            <div className="dx-val-eyebrow">Valorizaciones</div>
+            <h1 className="dx-val-title">{editingValId ? 'Editar valorización' : 'Generar valorización'}</h1>
+            <p className="dx-val-sub">
+              {selOs ? `${getOs(selOs)?.numero} — ${getClienteNombre(selOs)}` : `${nextNumero} · completa los pasos para crear la valorización`}
+            </p>
           </div>
-          <div className="row">
-            {step > 1 && <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Anterior</button>}
-            {step < 4 && (
-              <button className="btn btn-primary"
-                disabled={(step === 1 && (!selOs || !modelo || !!valDuplicada)) || (step === 2 && otSeleccionadas.length === 0)}
-                onClick={step === 2 ? advanceToStep3 : () => setStep(s => s + 1)}>
-                Siguiente →
-              </button>
-            )}
-            {step === 4 && (() => {
-              const os4 = getOs(selOs);
-              const saldo4 = Number(os4?.saldo_por_valorizar || 0);
-              const excede4 = saldo4 > 0 && totalVal > saldo4;
-              return <>
-                <button className="btn btn-secondary" onClick={() => handleSave('borrador')}>{I.save} Guardar borrador</button>
-                <button className="btn btn-primary" disabled={partidas.length === 0 || (excede4 && !confirmarExceso)} onClick={() => handleSave('aprobada')}>{I.check} Aprobar Valorización</button>
-              </>;
-            })()}
-          </div>
-        </div>
+          <button type="button" className="dx-val-ghost" onClick={resetAndClose}>Cancelar</button>
+        </header>
 
-        {/* Step indicator */}
-        <div style={{display:'flex', gap:0, margin:'16px 0', borderRadius:8, overflow:'hidden', border:'1px solid var(--border)'}}>
+        <ol className="dx-val-steps" aria-label="Pasos de la valorización" style={{listStyle:'none', padding:0, margin:'0 0 16px'}}>
           {stepLabels.map((label, i) => (
-            <div key={i} style={{
-              flex:1, padding:'10px 12px', textAlign:'center', fontSize:12,
-              fontWeight: step === i+1 ? 700 : 400,
-              color: step > i ? 'var(--green)' : step === i+1 ? 'var(--fg)' : 'var(--fg-muted)',
-              borderBottom: `2px solid ${step === i+1 ? 'var(--cyan)' : step > i ? 'var(--green)' : 'transparent'}`,
-              background: step === i+1 ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg-card)',
-              borderRight: i < 3 ? '1px solid var(--border)' : 'none',
-            }}>
-              <span style={{
-                display:'inline-flex', alignItems:'center', justifyContent:'center',
-                width:18, height:18, borderRadius:'50%', marginRight:5,
-                background: step > i ? 'var(--green)' : step === i+1 ? 'var(--cyan)' : 'var(--border)',
-                color: step >= i+1 ? '#fff' : 'var(--fg-muted)',
-                fontSize:10, fontWeight:700,
-              }}>
-                {step > i ? '✓' : i+1}
-              </span>
-              {label}
-            </div>
+            <li key={label} className={`dx-val-step${step === i + 1 ? ' is-on' : ''}${step > i + 1 ? ' is-ok' : ''}`} aria-current={step === i + 1 ? 'step' : undefined}>
+              <b>{step > i + 1 ? '✓' : i + 1}</b><span>{label}</span>
+            </li>
           ))}
-        </div>
-
+        </ol>
         {/* ─── PASO 1 — Datos generales ─── */}
         {step === 1 && (
           <div className="card">
@@ -2961,19 +3055,13 @@ function Valorizacion({ role }) {
                 <SociedadReadOnlyField {...destinoValorizacion} style={{gridColumn:'1/-1'}} />
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Modelo de cálculo <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={modelo} onChange={e => setModelo(e.target.value)}>
-                    <option value="">Seleccione modelo...</option>
-                    <option value="avance_pct">Por avance %</option>
-                    <option value="costo_real">Por costo real</option>
-                    <option value="hitos_pago">Por hitos de pago</option>
-                  </select>
-                  {modelo && (
-                    <div style={{marginTop:8, padding:'10px 12px', borderRadius:6, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
-                      {modelo === 'avance_pct' && '% de avance de cada OT aplicado sobre el monto de cotización, descontando lo ya valorizado.'}
-                      {modelo === 'costo_real' && 'Costo real de ejecución (MO + materiales + terceros + logística) más el margen definido.'}
-                      {modelo === 'hitos_pago' && 'Hitos de pago definidos en la cotización. Selecciona los completados en el período.'}
-                    </div>
-                  )}
+                  <div className="dx-val-modelos" role="radiogroup" aria-label="Modelo de cálculo">
+                    {MODELOS_VAL_DX.map(([valor, titulo, texto]) => (
+                      <button type="button" key={valor} role="radio" aria-checked={modelo === valor} className={`dx-val-modelo${modelo === valor ? ' is-on' : ''}`} onClick={() => setModelo(valor)}>
+                        <span className="dx-val-radio" /><span><b>{titulo}</b><small>{texto}</small></span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -3038,7 +3126,7 @@ function Valorizacion({ role }) {
                   {otsConformidadPend.map(ot => (
                     <div key={ot.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12, marginTop:6}}>
                       <span style={{fontWeight:500}}>{ot.numero} <span style={{color:'var(--fg-muted)', fontWeight:400}}>— {ot.responsable || ''}</span></span>
-                      <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cierre')}>Registrar conformidad</button>
+                      <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cierre', { detail: ot.id, tab: 'conformidad' })}>Ver conformidad</button>
                     </div>
                   ))}
                 </div>
@@ -3070,6 +3158,7 @@ function Valorizacion({ role }) {
                     {modelo === 'avance_pct' && 'Montos calculados. Puedes ajustar el importe a valorizar.'}
                     {modelo === 'costo_real' && 'Costos tomados de partes aprobados y cierre técnico. Ajusta el margen por OT.'}
                     {modelo === 'hitos_pago' && 'Incluye los hitos o conceptos a valorizar en este período.'}
+                    {modelo === 'tarifa_mensual' && 'Monto propuesto desde la tarifa mensual de la OS. Puedes ajustarlo.'}
                   </div>
                 </div>
                 {modelo === 'hitos_pago' && (
@@ -3218,6 +3307,32 @@ function Valorizacion({ role }) {
                   </div>
                 </>
               )}
+
+              {/* Modelo D — Por tarifa mensual */}
+              {modelo === 'tarifa_mensual' && (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Concepto</th>
+                        <th style={{width:160}}>Tarifa mensual</th>
+                        <th style={{width:120}}>Días</th>
+                        <th style={{width:160}}>Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {partidas.map(p => (
+                        <tr key={p.id}>
+                          <td><input type="text" className="input" style={{minWidth:240}} value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
+                          <td className="num">{moneyCurrency(p._tarifa_mensual || 0, monedaOs)}</td>
+                          <td className="num">{p._dias ?? '—'} / {p._dias_mes ?? '—'}</td>
+                          <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', Number(e.target.value))} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -3268,7 +3383,7 @@ function Valorizacion({ role }) {
                 );
               })()}
 
-              {modelo !== 'hitos_pago' && (
+              {!['hitos_pago', 'tarifa_mensual'].includes(modelo) && (
                 <div style={{marginBottom:12, padding:'8px 12px', borderRadius:6, background:'color-mix(in srgb, var(--cyan) 8%, transparent)', border:'1px solid color-mix(in srgb, var(--cyan) 30%, transparent)', fontSize:12, color:'var(--fg-muted)'}}>
                   Para ajustar los montos, regresa al paso <strong>Partidas</strong> y modifica el margen por OT.
                 </div>
@@ -3393,197 +3508,166 @@ function Valorizacion({ role }) {
             </div>
           </div>
         )}
-      </>
+
+        <div className="dx-val-foot">
+          {step > 1 && <button type="button" className="dx-val-ghost" onClick={() => setStep(s => s - 1)}>{I.chevLeft} Anterior</button>}
+          <div>
+            {step < 4 && (
+              <button type="button" className="dx-val-primary"
+                disabled={(step === 1 && (!selOs || !modelo || !!valDuplicada)) || (step === 2 && otSeleccionadas.length === 0)}
+                onClick={step === 2 ? advanceToStep3 : step === 1 ? avanzarDesdePaso1 : () => setStep(s => s + 1)}>
+                Siguiente {I.chevRight}
+              </button>
+            )}
+            {step === 4 && <>
+              <button type="button" className="dx-val-ghost" onClick={() => handleSave('borrador')}>{I.save} Guardar borrador</button>
+              <button type="button" className="dx-val-primary" disabled={partidas.length === 0 || (excedePaso4 && !confirmarExceso)} onClick={() => handleSave('aprobada')}>{I.check} Aprobar valorización</button>
+            </>}
+          </div>
+        </div>
+      </div>
+      </div>
     );
   }
 
-  const badgeClass = e => ({ aprobada: 'badge-green', facturada: 'badge-navy', anulada: 'badge-red' }[e] || 'badge-gray');
-  const badgeLabel = e => ({ borrador: 'Borrador', aprobada: 'Aprobada', facturada: 'Facturada', anulada: 'Anulada' }[e] || (e || '—'));
+  const ESTADO_VAL_DX = {
+    borrador: { label: 'Borrador', clase: 'is-gray' },
+    aprobada: { label: 'Aprobada', clase: 'is-green' },
+    facturada: { label: 'Facturada', clase: 'is-blue' },
+    anulada: { label: 'Anulada', clase: 'is-red' },
+  };
+  const CHIPS_VAL_DX = [['', 'Todas', '#1A2B4A'], ['borrador', 'Borrador', '#6B7280'], ['aprobada', 'Aprobada', '#16A34A'], ['facturada', 'Facturada', '#2F6FD6'], ['anulada', 'Anulada', '#DC2626']];
+  const estadoValDx = e => ESTADO_VAL_DX[e] || { label: e || '—', clase: 'is-gray' };
 
-  // KPIs
+  // KPIs (siguen el filtro de moneda; sin filtro se muestran por separado)
   const hoy = new Date();
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
   const valMes = valorizacionesVista.filter(v => (v.fecha || '').startsWith(mesActual)).length;
-  const montoPendientePEN = valorizacionesVista.filter(v => v.estado === 'aprobada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoPendienteUSD = valorizacionesVista.filter(v => v.estado === 'aprobada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoFacturadoPEN = valorizacionesVista.filter(v => v.estado === 'facturada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoFacturadoUSD = valorizacionesVista.filter(v => v.estado === 'facturada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
+  const sumaEstadoMoneda = (estado, moneda) => valorizacionesVista.filter(v => v.estado === estado && (v.moneda || 'PEN') === moneda).reduce((s, v) => s + Number(v.total || 0), 0);
+  const kpiMonto = estado => {
+    if (filterMoneda) return { valor: moneyCurrency(sumaEstadoMoneda(estado, filterMoneda), filterMoneda), nota: `en ${filterMoneda}` };
+    const usd = sumaEstadoMoneda(estado, 'USD');
+    return { valor: moneyCurrency(sumaEstadoMoneda(estado, 'PEN'), 'PEN'), nota: usd > 0 ? `+ ${moneyCurrency(usd, 'USD')}` : 'en PEN' };
+  };
+  const kpiPendiente = kpiMonto('aprobada');
+  const kpiFacturado = kpiMonto('facturada');
   const otsListasCount = ots.filter(ot => ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)).length;
 
-  // Unique filter options from data
-  const clienteOpts = [...new Map(valorizacionesVista.map(v => {
-    const cId = getClienteId(v.os_cliente_id);
-    return [cId, getClienteNombre(v.os_cliente_id)];
-  })).entries()].filter(([k]) => k);
-  const osOpts = [...new Map(valorizacionesVista.map(v => [v.os_cliente_id, getOs(v.os_cliente_id)?.numero || v.os_cliente_id])).entries()];
-  const periodoOpts = [...new Set(valorizacionesVista.map(v => v.periodo).filter(Boolean))];
-  const modeloOpts = [...new Set(valorizacionesVista.map(v => v.modelo_calculo).filter(Boolean))];
-
-  // Filtering
-  const query = searchQuery.toLowerCase();
-  const filtered = valorizacionesVista.filter(v => {
-    if (filterCliente && getClienteId(v.os_cliente_id) !== filterCliente) return false;
-    if (filterOs && v.os_cliente_id !== filterOs) return false;
-    if (filterEstado && v.estado !== filterEstado) return false;
+  // Buscador inteligente: número, OS, nombre de la OS, cliente, período, modelo, estado y montos.
+  const qVal = cotNormDx(busquedaVal.trim());
+  const qGlobalVal = cotNormDx(searchQuery);
+  const coincideTexto = v => {
+    const os = getOs(v.os_cliente_id);
+    return cotNormDx([v.numero, os?.numero, os?.nombre, getClienteNombre(v.os_cliente_id), v.periodo, MODELO_LABELS[v.modelo_calculo], estadoValDx(v.estado).label, v.tipo, v.total, v.subtotal].join(' '));
+  };
+  const baseFiltrada = valorizacionesVista.filter(v => {
+    const texto = coincideTexto(v);
+    if (qGlobalVal && !texto.includes(qGlobalVal)) return false;
+    if (qVal && !texto.includes(qVal)) return false;
     if (filterMoneda && (v.moneda || 'PEN') !== filterMoneda) return false;
-    if (filterPeriodo && (v.periodo || '') !== filterPeriodo) return false;
-    if (filterModelo && (v.modelo_calculo || '') !== filterModelo) return false;
-    if (query) {
-      return (v.numero || '').toLowerCase().includes(query) ||
-        (getOs(v.os_cliente_id)?.numero || '').toLowerCase().includes(query) ||
-        getClienteNombre(v.os_cliente_id).toLowerCase().includes(query) ||
-        (v.periodo || '').toLowerCase().includes(query);
-    }
+    if (filterFecha && String(v.fecha || '').slice(0, 10) !== filterFecha) return false;
     return true;
   });
-
-  const hasFilters = filterCliente || filterOs || filterEstado || filterMoneda || filterPeriodo || filterModelo;
+  const filtered = baseFiltrada.filter(v => !filterEstado || v.estado === filterEstado);
+  const hasFilters = Boolean(busquedaVal || filterEstado || filterMoneda || filterFecha);
+  const limpiarFiltros = () => { setBusquedaVal(''); setFilterEstado(''); setFilterMoneda(''); setFilterFecha(''); };
 
   return (
-    <>
+    <div className="dx-val">
       {fichaVal}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Valorizaciones</h1>
-          <div className="page-sub">{valorizacionesVista.length} valorizaciones registradas</div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setEditing(true)}>{I.plus} Generar Valorización</button>
-      </div>
-
-      {/* KPIs */}
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card">
-          <div className="kpi-label">Valorizaciones este mes</div>
-          <div className="kpi-value" style={{marginTop:12}}>{valMes}</div>
-          <div className="kpi-icon cyan">{I.clipboard}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Pendiente de facturar</div>
-          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-            <span>{money(montoPendientePEN)}</span>
-            {montoPendienteUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{moneyCurrency(montoPendienteUSD, 'USD')}</span>}
+      <div className="dx-val-in">
+        <header className="dx-val-top">
+          <div>
+            <div className="dx-val-eyebrow">Finanzas</div>
+            <h1 className="dx-val-title">Valorizaciones</h1>
+            <p className="dx-val-sub">{valorizacionesVista.length} valorizaciones · lo ejecutado por OS Cliente, listo para aprobar y facturar.</p>
           </div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado aprobada</div>
-          <div className="kpi-icon orange">{I.clock}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Total facturado</div>
-          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-            <span>{money(montoFacturadoPEN)}</span>
-            {montoFacturadoUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{moneyCurrency(montoFacturadoUSD, 'USD')}</span>}
-          </div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado facturada</div>
-          <div className="kpi-icon green">{I.check}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">OTs listas para valorizar</div>
-          <div className="kpi-value" style={{marginTop:12}}>{otsListasCount}</div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Con conformidad registrada</div>
-          <div className="kpi-icon cyan">{I.warehouse}</div>
-        </div>
-      </div>
+          <button type="button" className="dx-val-primary" onClick={() => setEditing(true)}>{I.plus} Generar valorización</button>
+        </header>
 
-      {/* Filtros */}
-      <div className="card" style={{marginBottom:8}}>
-        <div style={{padding:'12px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center'}}>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterCliente} onChange={e => setFilterCliente(e.target.value)}>
-            <option value="">Todos los clientes</option>
-            {clienteOpts.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterOs} onChange={e => setFilterOs(e.target.value)}>
-            <option value="">Todas las OS</option>
-            {osOpts.map(([id, num]) => <option key={id} value={id}>{num}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="borrador">Borrador</option>
-            <option value="aprobada">Aprobada</option>
-            <option value="facturada">Facturada</option>
-            <option value="anulada">Anulada</option>
-          </select>
-          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterPeriodo} onChange={e => setFilterPeriodo(e.target.value)}>
-            <option value="">Todos los períodos</option>
-            {periodoOpts.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterModelo} onChange={e => setFilterModelo(e.target.value)}>
-            <option value="">Todos los modelos</option>
-            {modeloOpts.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 110px', minWidth:100}} value={filterMoneda} onChange={e => setFilterMoneda(e.target.value)}>
-            <option value="">Todas las monedas</option>
-            <option value="PEN">S/ Soles (PEN)</option>
-            <option value="USD">US$ Dólares (USD)</option>
-          </select>
-          {hasFilters && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setFilterCliente(''); setFilterOs(''); setFilterEstado(''); setFilterMoneda(''); setFilterPeriodo(''); setFilterModelo(''); }}>
-              {I.x} Limpiar
-            </button>
+        <section className="dx-val-kpis" aria-label="Resumen de valorizaciones">
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>Este mes</span><span className="dx-val-ico is-cyan">{I.clipboard}</span></div>
+            <strong className="dx-val-kpi-val">{valMes}</strong>
+            <span className="dx-val-kpi-note">valorizaciones generadas</span>
+          </div>
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>Por facturar</span><span className="dx-val-ico is-amber">{I.clock}</span></div>
+            <strong className="dx-val-kpi-val is-money">{kpiPendiente.valor}</strong>
+            <span className="dx-val-kpi-note">Aprobadas · {kpiPendiente.nota}</span>
+          </div>
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>Facturado</span><span className="dx-val-ico is-green">{I.check}</span></div>
+            <strong className="dx-val-kpi-val is-money">{kpiFacturado.valor}</strong>
+            <span className="dx-val-kpi-note">{kpiFacturado.nota}</span>
+          </div>
+          <div className="dx-val-kpi">
+            <div className="dx-val-kpi-top"><span>OTs listas</span><span className="dx-val-ico is-blue">{I.warehouse}</span></div>
+            <strong className="dx-val-kpi-val">{otsListasCount}</strong>
+            <span className="dx-val-kpi-note">Con conformidad registrada</span>
+          </div>
+        </section>
+
+        <section className="dx-val-card" aria-label="Listado de valorizaciones">
+          <div className="dx-val-bar">
+            <h2 className="dx-val-bar-title">Valorizaciones<span className="dx-val-count">{filtered.length} de {valorizacionesVista.length}</span></h2>
+            <label className="dx-val-search">{I.search}<input type="search" value={busquedaVal} onChange={e => setBusquedaVal(e.target.value)} placeholder="Buscar N°, OS, cliente, período o modelo" aria-label="Buscar valorizaciones" /></label>
+            <input type="date" className="dx-val-date" value={filterFecha} onChange={e => setFilterFecha(e.target.value)} aria-label="Fecha exacta de la valorización" />
+            <select className="dx-val-select" value={filterMoneda} onChange={e => setFilterMoneda(e.target.value)} aria-label="Filtrar por moneda">
+              <option value="">Toda moneda</option>
+              <option value="PEN">Soles (S/)</option>
+              <option value="USD">Dólares (US$)</option>
+            </select>
+            {hasFilters && <button type="button" className="dx-val-clear" onClick={limpiarFiltros}>Limpiar</button>}
+          </div>
+          <div className="dx-val-chips" role="group" aria-label="Filtrar por estado">
+            {CHIPS_VAL_DX.map(([estado, etiqueta, punto]) => {
+              const cantidad = baseFiltrada.filter(v => !estado || v.estado === estado).length;
+              return (
+                <button type="button" key={estado || 'todas'} className={`dx-val-chip${filterEstado === estado ? ' is-on' : ''}${cantidad === 0 && estado ? ' is-zero' : ''}`} style={{'--dx-val-dot': punto}} aria-pressed={filterEstado === estado} onClick={() => setFilterEstado(estado)}>
+                  <i />{etiqueta}<b>{cantidad}</b>
+                </button>
+              );
+            })}
+          </div>
+          <div className="dx-val-cols dx-val-head" role="row"><span>N° valorización</span><span>OS · Cliente</span><span>Período</span><span>Total</span><span>Estado</span><span /><span /></div>
+          {filtered.map(v => {
+            const os = getOs(v.os_cliente_id);
+            const estado = estadoValDx(v.estado);
+            const abrir = () => setSelVal(v.id);
+            return (
+              <div key={v.id} className="dx-val-cols dx-val-row" role="button" tabIndex={0} aria-label={`Abrir valorización ${v.numero}, ${getClienteNombre(v.os_cliente_id)}, ${estado.label}`} onClick={abrir} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } }}>
+                <div className="dx-val-num">
+                  <span className="dx-val-mono">{v.numero}</span>
+                  <div className="dx-val-tags">
+                    {v.tipo === 'avance' && <span className="dx-val-tag is-avance">Avance</span>}
+                    {v.tipo === 'final' && <span className="dx-val-tag is-final">Final</span>}
+                    {v.modelo_calculo && <span className="dx-val-tag is-modelo">{(MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo).replace(/^Por /, '')}</span>}
+                    {mostrarBadgeSociedadValorizaciones && <SociedadBadge sociedadId={v.sociedad_id} />}
+                  </div>
+                </div>
+                <div className="dx-val-client"><strong>{getClienteNombre(v.os_cliente_id)}</strong><span>{[os?.numero, os?.nombre].filter(Boolean).join(' · ') || '—'}</span></div>
+                <div className="dx-val-periodo">{v.periodo || '—'}<span>{v.fecha || ''}</span></div>
+                <div className="dx-val-money"><strong>{moneyCurrency(v.total, v.moneda)}</strong><span>{moneyCurrency(v.subtotal, v.moneda)} + IGV</span></div>
+                <div className="dx-val-estado"><span className={`dx-val-pill ${estado.clase}`}><i />{estado.label}</span></div>
+                <div className="dx-val-accion" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                  {v.estado === 'aprobada' && <button type="button" className="dx-val-act" onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>Facturar</button>}
+                  {v.estado === 'borrador' && <button type="button" className="dx-val-act is-primary" onClick={() => aprobarValorizacion(v.id)}>Aprobar</button>}
+                </div>
+                <span className="dx-val-go" aria-hidden="true">{I.chevRight}</span>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="dx-val-empty">
+              {valorizacionesVista.length === 0
+                ? <><strong>Aún no hay valorizaciones</strong><span>Créalas con “Generar valorización” desde una OS con OTs ejecutadas.</span></>
+                : <><strong>Sin resultados</strong><span>Ninguna valorización coincide con los filtros.</span><button type="button" className="dx-val-ghost" onClick={limpiarFiltros}>Limpiar filtros</button></>}
+            </div>
           )}
-        </div>
+        </section>
       </div>
-
-      {/* Tabla */}
-      <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>N° Valorización</th>
-                {mostrarBadgeSociedadValorizaciones && <th>Sociedad</th>}
-                <th>OS Cliente</th>
-                <th>Cliente</th>
-                <th>Período</th>
-                <th>Modelo</th>
-                <th className="num">Subtotal</th>
-                <th className="num">IGV</th>
-                <th className="num">Total</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(v => (
-                <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVal(v.id)}>
-                  <td className="mono" style={{fontWeight:600}}>{v.numero}</td>
-                  {mostrarBadgeSociedadValorizaciones && <td><SociedadBadge sociedadId={v.sociedad_id} /></td>}
-                  <td className="mono text-muted">{getOs(v.os_cliente_id)?.numero || '—'}</td>
-                  <td style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{getClienteNombre(v.os_cliente_id)}</td>
-                  <td className="text-muted">{v.periodo || '—'}</td>
-                  <td className="text-muted" style={{fontSize:12}}>{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—'}</td>
-                  <td className="num">{moneyCurrency(v.subtotal, v.moneda)}</td>
-                  <td className="num">{moneyCurrency(v.igv, v.moneda)}</td>
-                  <td className="num" style={{fontWeight:600}}>{moneyCurrency(v.total, v.moneda)}</td>
-                  <td>
-                    <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
-                      <span className={'badge ' + badgeClass(v.estado)}>{badgeLabel(v.estado)}</span>
-                      {v.tipo === 'avance' && <span style={{fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3, background:'color-mix(in srgb, var(--orange) 15%, transparent)', color:'var(--orange)'}}>Avance</span>}
-                      {v.tipo === 'final' && <span style={{fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3, background:'color-mix(in srgb, var(--green) 15%, transparent)', color:'var(--green)'}}>Final</span>}
-                    </div>
-                  </td>
-                  <td onClick={e => e.stopPropagation()}>
-                    {v.estado === 'aprobada' && (
-                      <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>
-                        Facturar
-                      </button>
-                    )}
-                    {v.estado === 'borrador' && (
-                      <button className="btn btn-primary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => aprobarValorizacion(v.id)}>
-                        {I.check} Aprobar
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={mostrarBadgeSociedadValorizaciones ? 11 : 10} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
-                  {query || hasFilters ? 'No se encontraron resultados' : 'No hay valorizaciones registradas'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 

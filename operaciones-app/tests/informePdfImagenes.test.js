@@ -51,9 +51,9 @@ describe('prepararImagenesInforme', () => {
   });
 
   it('devuelve logo null cuando falta la ruta o falla su descarga', async () => {
-    await expect(prepararImagenesInforme({ empresa: {}, hallazgos: [] })).resolves.toEqual({ logo: null, firma: null, fotos: {}, dimensionesFotos: {}, warnings: [] });
+    await expect(prepararImagenesInforme({ empresa: {}, hallazgos: [] })).resolves.toEqual({ logo: null, firma: null, fotos: {}, dimensionesFotos: {}, dibujos: {}, warnings: [] });
     fetch.mockRejectedValueOnce(new Error('offline'));
-    await expect(prepararImagenesInforme({ empresa: { logo_url: 'https://logo/image' }, hallazgos: [] })).resolves.toEqual({ logo: null, firma: null, fotos: {}, dimensionesFotos: {}, warnings: [] });
+    await expect(prepararImagenesInforme({ empresa: { logo_url: 'https://logo/image' }, hallazgos: [] })).resolves.toEqual({ logo: null, firma: null, fotos: {}, dimensionesFotos: {}, dibujos: {}, warnings: [] });
   });
 
   it('no accede a Storage cuando no hay rutas de fotos', async () => {

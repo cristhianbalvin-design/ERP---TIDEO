@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nueva cuenta — mock</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#E9ECF0;font-family:'DM Sans',sans-serif}
+  .mk-bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#1A2B4A;color:#fff;font-size:13px}
+  .mk-bar button{height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:transparent;color:#fff;cursor:pointer;font:inherit}
+  .mk-bar button.on{background:#00ACC1;border-color:#00ACC1;color:#02161A}
+  .mk-bar span{opacity:.75;margin:0 2px 0 10px}
+  .mk-frame{position:relative;display:flex;height:860px;margin:16px auto;overflow:hidden;background:#F4F6F8;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+  .mk-side{width:240px;flex:none;background:#14213A}
+  .mk-frame.is-mobile .mk-side{display:none}
+  .mk-page{flex:1;padding:28px 32px;color:#1A2B4A;font:700 28px Sora}
+  .dark .mk-frame{background:#020617} .dark .mk-page{color:#F8FAFC}
+  .mk-note{max-width:1100px;margin:0 auto 24px;padding:0 16px;color:#4B5563;font-size:13px}
+
+  /* ===== Modal Nueva cuenta (prefijo dx-ncta-) ===== */
+  .dx-ncta{--n:#1A2B4A;--cy:#00ACC1;--cyf:#0B4F5A;--cyb:#E0F7FA;--amf:#8A4B00;--amb:#FFF3E0;--rdf:#9B1C1C;--rdb:#FDECEC;--rd:#DC2626;--gr:#6B7280;--grb:#F1F3F5;--ink:#1F2937;--line:#E4E7EB;--line2:#EEF0F3;--bd:#C9CFD8;--hd:#F8F9FA;--card:#fff;--hov:#F6FBFC;
+    position:absolute;inset:0;z-index:10;display:flex;justify-content:flex-end;background:rgba(15,27,48,.45);font:14px/1.4 'DM Sans',sans-serif;color:var(--ink)}
+  .dark .dx-ncta{--n:#F8FAFC;--cy:#22D3EE;--cyf:#67E8F9;--cyb:#0A3038;--amf:#FDBA74;--amb:#3A2810;--rdf:#FCA5A5;--rdb:#3B1414;--rd:#F87171;--gr:#94A3B8;--grb:#273244;--ink:#F8FAFC;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.08);--bd:#475569;--hd:#0B1222;--card:#0F172A;--hov:#172033;background:rgba(0,0,0,.6)}
+  .dx-ncta *{box-sizing:border-box}
+  .dx-ncta button,.dx-ncta input,.dx-ncta select,.dx-ncta textarea{font:inherit}
+  .dx-ncta button{cursor:pointer}
+  .dx-ncta svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .dx-ncta :focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+  .dx-ncta-panel{display:flex;width:min(640px,100%);height:100%;flex-direction:column;background:var(--card);box-shadow:-8px 0 32px rgba(15,27,48,.18);container-type:inline-size}
+  .dx-ncta-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:22px 24px 16px;border-bottom:1px solid var(--line)}
+  .dx-ncta-eyebrow{color:var(--cyf);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .dx-ncta-title{margin:4px 0 2px;color:var(--n);font:700 22px/1.2 Sora,sans-serif}
+  .dx-ncta-sub{margin:0;color:var(--gr);font-size:13px}
+  .dx-ncta-x{display:flex;width:36px;height:36px;flex:none;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--gr)}
+  .dx-ncta-x:hover{background:var(--grb)}
+  .dx-ncta-body{flex:1;overflow:auto;padding:20px 24px 28px}
+  .dx-ncta-sec{margin-bottom:22px}
+  .dx-ncta-sec-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .dx-ncta-num{display:flex;width:24px;height:24px;flex:none;align-items:center;justify-content:center;border-radius:50%;background:var(--cyb);color:var(--cyf);font:700 12px Sora}
+  .dx-ncta-sec-h h3{margin:0;color:var(--n);font:700 15px Sora,sans-serif}
+  .dx-ncta-sec-h small{color:var(--gr);font-size:12px}
+  .dx-ncta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .dx-ncta-f{display:flex;min-width:0;flex-direction:column;gap:6px}
+  .dx-ncta-f.is-full{grid-column:1/-1}
+  .dx-ncta-f label{color:var(--ink);font-size:13px;font-weight:600}
+  .dx-ncta-f label em{color:var(--rd);font-style:normal}
+  .dx-ncta-in{width:100%;height:40px;padding:0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--ink);font-size:14px}
+  textarea.dx-ncta-in{height:auto;min-height:76px;padding:10px 12px;resize:vertical}
+  .dx-ncta-in:focus{border-color:var(--cy);outline:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 15%,transparent)}
+  .dx-ncta-in.is-error{border-color:var(--rd)}
+  .dx-ncta-in.is-mono{font-family:ui-monospace,Menlo,monospace;letter-spacing:.04em}
+  .dx-ncta-help{color:var(--gr);font-size:12px}
+  .dx-ncta-err{display:flex;align-items:center;gap:6px;color:var(--rdf);font-size:12px;font-weight:600}
+  .dx-ncta-err svg{width:14px;height:14px}
+  .dx-ncta-seg{display:flex;padding:3px;border:1px solid var(--bd);border-radius:10px;background:var(--hd);gap:3px}
+  .dx-ncta-seg button{flex:1;min-width:0;height:32px;border:0;border-radius:7px;background:transparent;color:var(--gr);font-size:13px;font-weight:600;white-space:nowrap}
+  .dx-ncta-seg button.is-on{background:var(--card);color:var(--n);box-shadow:0 1px 2px rgba(15,27,48,.12)}
+  .dx-ncta-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .dx-ncta-chip{display:inline-flex;height:36px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600}
+  .dx-ncta-chip i{width:8px;height:8px;border-radius:50%;background:var(--d,#6B7280)}
+  .dx-ncta-chip.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n);background:var(--hov)}
+  .dx-ncta-dup{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:var(--amb);color:var(--amf);font-size:13px}
+  .dx-ncta-dup strong{display:block}
+  .dx-ncta-dup button{margin-left:auto;border:0;background:transparent;color:var(--amf);font-weight:700;text-decoration:underline;white-space:nowrap}
+  .dx-ncta-more{display:flex;width:100%;align-items:center;gap:10px;padding:12px 14px;border:1px dashed var(--bd);border-radius:10px;background:transparent;color:var(--n);font-weight:600;text-align:left}
+  .dx-ncta-more span{color:var(--gr);font-weight:500;font-size:12px}
+  .dx-ncta-more svg:last-child{margin-left:auto}
+  .dx-ncta-alert{display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;padding:10px 12px;border-radius:10px;background:var(--rdb);color:var(--rdf);font-size:13px}
+  .dx-ncta-foot{display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid var(--line);background:var(--card)}
+  .dx-ncta-foot p{margin:0 auto 0 0;color:var(--gr);font-size:12px}
+  .dx-ncta-btn{display:inline-flex;height:40px;align-items:center;gap:8px;padding:0 16px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--n);font-weight:600}
+  .dx-ncta-primary{display:inline-flex;height:40px;align-items:center;gap:8px;padding:0 18px;border:0;border-radius:8px;background:#1A2B4A;color:#fff;font-weight:600}
+  .dark .dx-ncta-primary{background:#00ACC1;color:#02161A}
+  .dx-ncta-primary:disabled{opacity:.5;cursor:not-allowed}
+  .dx-ncta-confirm{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,27,48,.4)}
+  .dx-ncta-confirm div{width:min(380px,100%);padding:20px;border-radius:14px;background:var(--card);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  .dx-ncta-confirm h4{margin:0 0 6px;color:var(--n);font:700 16px Sora}
+  .dx-ncta-confirm p{margin:0 0 16px;color:var(--gr);font-size:13px}
+  .dx-ncta-confirm nav{display:flex;justify-content:flex-end;gap:8px}
+  @container (max-width:520px){
+    .dx-ncta-head,.dx-ncta-body{padding-inline:16px}
+    .dx-ncta-grid{grid-template-columns:1fr}
+    .dx-ncta-long{display:none}
+    .dx-ncta-foot{padding:12px 16px}
+    .dx-ncta-foot p{display:none}
+    .dx-ncta-foot .dx-ncta-btn,.dx-ncta-foot .dx-ncta-primary{flex:1;justify-content:center}
+  }
+</style>
+</head>
+<body>
+<div class="mk-bar">
+  <span>Estado:</span>
+  <button data-st="vacio" class="on">Vacío</button><button data-st="lleno">Lleno</button><button data-st="errores">Con errores</button><button data-st="duplicado">RUC duplicado</button><button data-st="dni">Persona natural (DNI)</button><button data-st="salir">Salir sin guardar</button>
+  <span>Ancho:</span><button data-w="1280" class="on">1280</button><button data-w="800">800</button><button data-w="375">375</button>
+  <span>Tema:</span><button id="mk-theme">Oscuro</button>
+</div>
+<div class="mk-frame" id="mk-frame" style="width:1280px">
+  <aside class="mk-side"></aside>
+  <div class="mk-page">Cuentas y Contactos</div>
+  <div class="dx-ncta" id="ncta"></div>
+</div>
+<div class="mk-note">Mock del formulario "Nueva cuenta". Es un componente compartido: se abre desde Cuentas y Contactos, desde la Cotización Especial y desde el Tarifario de Flota, así que el cambio llega a los tres. Industrias del catálogo real de WHYNCO (18); responsables, los comerciales asignables; RUC duplicado comprobado contra las cuentas existentes (ejemplo real: ALAPAYANA S.A.C).</div>
+<script>
+const IND = ["Aeropuertos y servicios aeroportuarios","Agricultura y actividad agropecuaria","Agroindustria y sector azucarero","Alimentos y bebidas","Alquiler de maquinaria y equipos","Construcción, concreto y cemento","Energía y generación eléctrica","Hidrocarburos, petróleo y gas","Industria y manufactura","Maquinaria pesada y talleres de mantenimiento","Marítimo, naviero y astilleros","Metalmecánica y fabricación de maquinaria","Minería y contratistas mineros","Pesca y procesamiento pesquero","Puertos, operadores logísticos y terminales","Saneamiento y gestión de residuos","Sector público y empresas del Estado","Transporte, logística y equipos móviles"];
+const RESP = ["Edinson Grandez Mosqueda","MARILI ANTONIA MARTINEZ MENDEZ"];
+const FUENTES = ['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'];
+const TIPOS = [['prospecto','Prospecto','#2F6FD6'],['cliente','Cliente','#16A34A'],['partner','Partner','#5B3A8C'],['proveedor_estrategico','Proveedor estratégico','#6B7280']];
+const ico = {x:'<path d="M18 6 6 18M6 6l12 12"/>',err:'<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>',warn:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',down:'<path d="m6 9 6 6 6-6"/>',plus:'<path d="M12 5v14M5 12h14"/>',check:'<path d="M20 6 9 17l-5-5"/>'};
+const svg = k => `<svg viewBox="0 0 24 24">${ico[k]}</svg>`;
+const opt = (arr, sel, ph) => `<option value="">${ph}</option>` + arr.map(v => `<option ${v===sel?'selected':''}>${v}</option>`).join('');
+function render(st){
+  const lleno = st !== 'vacio';
+  const dni = st === 'dni';
+  const err = st === 'errores';
+  const dup = st === 'duplicado';
+  const f = dni
+    ? {doc:'45879632', rs:'', nc:'Carlos Huamán Rojas', tipo:'prospecto', ind:'Alquiler de maquinaria y equipos', resp:RESP[0], ctn:'', ctc:'', ctt:'987654321', cte:'chuaman@gmail.com'}
+    : dup ? {doc:'20100108292', rs:'ALAPAYANA S.A.C', nc:'Alpayana', tipo:'cliente', ind:'Minería y contratistas mineros', resp:RESP[0], ctn:'Jony Paulino', ctc:'Jefe de mantenimiento', ctt:'940479643', cte:'jpaulino@alpayana.com'}
+    : err ? {doc:'2010010829', rs:'', nc:'Minera del Sur', tipo:'prospecto', ind:'', resp:'', ctn:'Luis Ramos', ctc:'', ctt:'84512', cte:'lramos@'}
+    : lleno ? {doc:'20601646375', rs:'PERU BARRENADOS S.A.C.', nc:'Perú Barrenados', tipo:'cliente', ind:'Minería y contratistas mineros', resp:RESP[0], ctn:'Ana Quispe', ctc:'Jefa de compras', ctt:'951234567', cte:'aquispe@perubarrenados.pe'}
+    : {doc:'', rs:'', nc:'', tipo:'prospecto', ind:'', resp:'', ctn:'', ctc:'', ctt:'', cte:''};
+  const etDoc = dni ? 'DNI' : 'RUC';
+  document.getElementById('ncta').innerHTML = `
+  <div class="dx-ncta-panel" role="dialog" aria-modal="true" aria-labelledby="ncta-title">
+    <div class="dx-ncta-head">
+      <div><div class="dx-ncta-eyebrow">Comercial · Cuentas</div><h2 class="dx-ncta-title" id="ncta-title">Nueva cuenta</h2><p class="dx-ncta-sub">Los campos con <em style="color:var(--rd);font-style:normal">*</em> son obligatorios. El resto se puede completar después desde la ficha.</p></div>
+      <button class="dx-ncta-x" aria-label="Cerrar">${svg('x')}</button>
+    </div>
+    <div class="dx-ncta-body">
+      ${err ? `<div class="dx-ncta-alert">${svg('err')}<div><strong>Revisa 3 campos antes de crear la cuenta.</strong><br>RUC, razón social y teléfono del contacto.</div></div>` : ''}
+      <section class="dx-ncta-sec">
+        <div class="dx-ncta-sec-h"><span class="dx-ncta-num">1</span><h3>Identificación</h3></div>
+        <div class="dx-ncta-grid">
+          <div class="dx-ncta-f is-full"><label>Tipo de documento</label>
+            <div class="dx-ncta-seg" role="radiogroup" aria-label="Tipo de documento"><button class="${!dni?'is-on':''}" role="radio" aria-checked="${!dni}">RUC<span class="dx-ncta-long"> · Empresa</span></button><button class="${dni?'is-on':''}" role="radio" aria-checked="${dni}">DNI<span class="dx-ncta-long"> · Persona natural</span></button><button role="radio" aria-checked="false">Tax ID<span class="dx-ncta-long"> extranjero</span></button></div></div>
+          <div class="dx-ncta-f"><label>${etDoc} <em>*</em></label><input class="dx-ncta-in is-mono ${err||dup?'is-error':''}" value="${f.doc}" placeholder="${dni?'8 dígitos':'11 dígitos'}" inputmode="numeric">
+            ${err ? `<span class="dx-ncta-err">${svg('err')}El RUC debe tener 11 números y empezar con 1 o 2.</span>` : `<span class="dx-ncta-help">${dni?'8 dígitos.':'11 dígitos, empieza con 10 o 20.'}</span>`}</div>
+          <div class="dx-ncta-f"><label>País</label><input class="dx-ncta-in" value="Perú"></div>
+          ${dup ? `<div class="dx-ncta-f is-full"><div class="dx-ncta-dup">${svg('warn')}<div><strong>Ya existe una cuenta con este RUC</strong>ALAPAYANA S.A.C · Cliente · Edinson Grandez Mosqueda</div><button>Abrir esa cuenta</button></div></div>` : ''}
+          ${dni ? '' : `<div class="dx-ncta-f is-full"><label>Razón social <em>*</em></label><input class="dx-ncta-in ${err?'is-error':''}" value="${f.rs}" placeholder="Como figura en SUNAT">${err?`<span class="dx-ncta-err">${svg('err')}Ingresa la razón social.</span>`:''}</div>`}
+          <div class="dx-ncta-f is-full"><label>${dni?'Nombre completo':'Nombre comercial'} <em>*</em></label><input class="dx-ncta-in" value="${f.nc}" placeholder="${dni?'Nombres y apellidos':'Cómo lo conoce el equipo'}"></div>
+          <div class="dx-ncta-f is-full"><label>Tipo de cuenta</label><div class="dx-ncta-chips">${TIPOS.map(([v,l,c]) => `<button class="dx-ncta-chip ${v===f.tipo?'is-on':''}" style="--d:${c}" aria-pressed="${v===f.tipo}"><i></i>${l}</button>`).join('')}</div></div>
+          <div class="dx-ncta-f"><label>Industria</label><select class="dx-ncta-in">${opt(IND, f.ind, 'Seleccionar industria')}</select></div>
+          <div class="dx-ncta-f"><label>Responsable comercial</label><select class="dx-ncta-in">${opt(RESP, f.resp, 'Sin asignar')}</select></div>
+        </div>
+      </section>
+      <section class="dx-ncta-sec">
+        <div class="dx-ncta-sec-h"><span class="dx-ncta-num">2</span><h3>Contacto principal</h3><small>Opcional</small></div>
+        <div class="dx-ncta-grid">
+          <div class="dx-ncta-f"><label>Nombre</label><input class="dx-ncta-in" value="${f.ctn}" placeholder="Persona con quien tratamos"></div>
+          <div class="dx-ncta-f"><label>Cargo</label><input class="dx-ncta-in" value="${f.ctc}" placeholder="Ej. Jefe de mantenimiento"></div>
+          <div class="dx-ncta-f"><label>Teléfono</label><input class="dx-ncta-in ${err?'is-error':''}" value="${f.ctt}" placeholder="9 dígitos" inputmode="tel">${err?`<span class="dx-ncta-err">${svg('err')}Debe tener 9 dígitos y empezar con 9.</span>`:''}</div>
+          <div class="dx-ncta-f"><label>Correo</label><input class="dx-ncta-in" type="email" value="${f.cte}" placeholder="nombre@empresa.com"></div>
+        </div>
+      </section>
+      <button class="dx-ncta-more" aria-expanded="false">${svg('plus')}Más datos de la empresa <span>Dirección, teléfono, correo corporativo, fuente y notas</span>${svg('down')}</button>
+    </div>
+    <div class="dx-ncta-foot">
+      <p>Condiciones de pago y crédito se definen luego en la ficha.</p>
+      <button class="dx-ncta-btn">Cancelar</button>
+      <button class="dx-ncta-primary" ${dup?'disabled':''}>${svg('check')}Crear cuenta</button>
+    </div>
+    ${st==='salir' ? `<div class="dx-ncta-confirm"><div><h4>¿Salir sin guardar?</h4><p>Perderás los datos que escribiste en esta cuenta nueva.</p><nav><button class="dx-ncta-btn">Seguir editando</button><button class="dx-ncta-primary" style="background:#B91C1C;color:#fff">Salir sin guardar</button></nav></div></div>` : ''}
+  </div>`;
+}
+let st = 'vacio';
+document.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-st]').forEach(x=>x.classList.remove('on')); b.classList.add('on'); st = b.dataset.st; render(st === 'salir' ? 'lleno' : st); if (st === 'salir') render('salir'); });
+document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-w]').forEach(x=>x.classList.remove('on')); b.classList.add('on'); const w=+b.dataset.w; document.getElementById('mk-frame').style.width=w+'px'; document.getElementById('mk-frame').classList.toggle('is-mobile', w<600); });
+document.getElementById('mk-theme').onclick = () => { document.documentElement.classList.toggle('dark'); document.getElementById('mk-theme').classList.toggle('on'); };
+render('vacio');
+</script>
+</body>
+</html>

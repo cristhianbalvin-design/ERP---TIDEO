@@ -668,7 +668,7 @@ export const maestrosService = {
     const payload = {
       id: servicio.id || makeId('srv'),
       empresa_id: empresaId,
-      ...pick(servicio, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas', 'spot_catalogo_id']),
+      ...pick(servicio, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas', 'spot_catalogo_id', 'tipo_cobro']),
     };
     const { data, error } = await supabase.from('servicios').insert([payload]).select().single();
     if (error) throw error;
@@ -676,7 +676,7 @@ export const maestrosService = {
   },
   actualizarServicio: async (servicioId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas', 'spot_catalogo_id'])).eq('id', servicioId).select().single();
+    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas', 'spot_catalogo_id', 'tipo_cobro'])).eq('id', servicioId).select().single();
     if (error) throw error;
     return data;
   },

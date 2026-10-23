@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recetas de actividad</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A2B4A;--cyan:#00ACC1;--cyan-fg:#0B4F5A;--cyan-bg:#E0F7FA;--ink:#1F2937;--gray:#6B7280;--line:#E4E7EB;--soft:#EEF0F3;--border:#C9CFD8;--bg:#F4F6F8;--head:#F8F9FA;--card:#fff;--amber:#8A4B00;--amber-bg:#FFF3E0;--green:#14633A;--green-bg:#E3F6EA;--hover:#F6FBFC}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--navy:#F8FAFC;--cyan:#22D3EE;--cyan-fg:#67E8F9;--cyan-bg:#0A3038;--ink:#F8FAFC;--gray:#94A3B8;--line:rgba(255,255,255,.1);--soft:rgba(255,255,255,.08);--border:#475569;--bg:#020617;--head:#0F172A;--card:#1E293B;--amber:#FDBA74;--amber-bg:#3A2810;--green:#86EFAC;--green-bg:#12351F;--hover:#172033}}
+:root[data-theme="dark"]{--navy:#F8FAFC;--cyan:#22D3EE;--cyan-fg:#67E8F9;--cyan-bg:#0A3038;--ink:#F8FAFC;--gray:#94A3B8;--line:rgba(255,255,255,.1);--soft:rgba(255,255,255,.08);--border:#475569;--bg:#020617;--head:#0F172A;--card:#1E293B;--amber:#FDBA74;--amber-bg:#3A2810;--green:#86EFAC;--green-bg:#12351F;--hover:#172033}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans',sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.page{max-width:1280px;margin:0 auto;padding:22px 24px 110px}
+.eyebrow{color:var(--cyan-fg);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+h1{margin:4px 0 0;font:700 24px 'Sora',sans-serif;color:var(--navy)}
+h2{margin:0;font:700 17px 'Sora',sans-serif;color:var(--navy)}
+.sub{color:var(--gray);margin-top:4px}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.btn{height:40px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--navy);font-weight:600;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:var(--card)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.chip{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.chip b{font:700 17px 'Sora',sans-serif;color:var(--navy)}
+.chip span{color:var(--gray);font-size:12px}
+.chip.warn b{color:var(--amber)}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.toolbar{display:flex;align-items:center;gap:10px;padding:13px 14px;border-bottom:1px solid var(--line)}
+.search{flex:1;min-width:0;height:38px;border:1px solid var(--border);border-radius:8px;padding:0 10px;background:var(--card);color:var(--ink)}
+.filters{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.filter{border:1px solid var(--line);background:var(--card);color:var(--gray);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600}
+.filter[aria-pressed=true]{border-color:var(--cyan);background:var(--cyan-bg);color:var(--cyan-fg)}
+.tree{max-height:calc(100vh - 290px);overflow:auto}
+.group{border-bottom:1px solid var(--soft)}
+.ghead{padding:10px 14px 4px;color:var(--gray);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.act{display:flex;align-items:center;gap:10px;width:100%;padding:9px 14px 9px 22px;border:0;background:transparent;text-align:left;color:var(--ink)}
+.act:hover{background:var(--hover)}
+.act[aria-current=true]{background:var(--cyan-bg);box-shadow:inset 3px 0 0 var(--cyan)}
+.act .n{flex:1;min-width:0}
+.act .n b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act .n small{color:var(--gray)}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+.pill i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--green-bg);color:var(--green)}
+.pill.warn{background:var(--amber-bg);color:var(--amber)}
+.pill.off{background:var(--soft);color:var(--gray)}
+.dhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid var(--line)}
+.route{color:var(--gray);font-size:12px}
+.route b{color:var(--cyan-fg)}
+.totals{display:flex;gap:18px;flex-wrap:wrap;text-align:right}
+.totals div small{display:block;color:var(--gray);font-size:11px}
+.totals div b{font:700 16px 'Sora',sans-serif;color:var(--navy)}
+.grid{display:grid;grid-template-columns:26px minmax(140px,1.5fr) minmax(120px,1fr) 62px 82px minmax(104px,1fr) 62px 80px 30px;gap:6px;align-items:center;padding:9px 14px}
+.th{background:var(--head);color:var(--gray);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.cat{grid-column:3/6;background:var(--cyan-bg);color:var(--cyan-fg);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.cat.m{grid-column:6/9}
+.row{border-top:1px solid var(--soft)}
+.row.diff{background:color-mix(in srgb,var(--amber-bg) 55%,var(--card))}
+.ord{display:flex;flex-direction:column;gap:2px}
+.ord button{border:0;background:none;color:var(--gray);padding:0;height:16px;line-height:1}
+.tname b{display:block;color:var(--navy)}
+.tname small{color:var(--gray)}
+.cell{width:100%;min-width:0;height:36px;border:1px solid var(--border);border-radius:7px;padding:0 8px;background:var(--card);color:var(--ink)}
+.cell.num{text-align:right}
+.cost{text-align:right;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.cost small{display:block;font-weight:400;color:var(--gray);font-size:11px}
+.cost.muted{color:var(--gray)}
+.cost.alert small{color:var(--amber);font-weight:700}
+.x{border:0;background:none;color:var(--gray);width:32px;height:32px;border-radius:7px}
+.x:hover{background:#FFF1F0;color:#B42318}
+.add{display:flex;gap:10px;align-items:center;padding:12px 16px;border-top:1px solid var(--line);position:relative}
+.add input{flex:1}
+.menu{position:absolute;left:16px;right:16px;top:58px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(15,27,48,.16);z-index:5;max-height:230px;overflow:auto;display:none}
+.menu.open{display:block}
+.menu button{display:flex;justify-content:space-between;width:100%;border:0;background:transparent;padding:10px 12px;text-align:left;color:var(--ink);border-bottom:1px solid var(--soft)}
+.menu button:hover{background:var(--hover)}
+.menu small{color:var(--gray)}
+.note{margin:12px 16px 16px;padding:10px 12px;border-radius:10px;background:var(--cyan-bg);color:var(--cyan-fg);font-size:13px}
+.empty{padding:32px;text-align:center;color:var(--gray)}
+.foot{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -4px 14px rgba(15,27,48,.08);padding:10px 24px;display:flex;align-items:center;gap:12px;z-index:10}
+.foot .st{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--gray)}
+.foot .st i{width:9px;height:9px;border-radius:50%;background:var(--green)}
+.foot .st.dirty{color:var(--amber)}.foot .st.dirty i{background:var(--amber)}
+.foot .sp{flex:1}
+.kv>span{display:none}
+.kv{display:contents}
+.ttot{display:none}
+@media (max-width:1023px){
+ .page{padding:16px 16px 100px}
+ .layout{grid-template-columns:1fr}
+ .tree{max-height:280px}
+ .th{display:none}
+ .grid.row{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"name tot" "cargo horas" "equipo hmaq" "mo maq" "ord del";gap:10px 12px;margin:10px 12px;border:1px solid var(--line);border-radius:12px;padding:12px}
+ .tname{grid-area:name}.ttot{display:block;grid-area:tot;text-align:right}.ttot b{font:700 15px 'Sora',sans-serif;color:var(--navy)}
+ .kv{display:flex;flex-direction:column;gap:4px}.kv>span{display:block;color:var(--gray);font-size:11px;font-weight:700;text-transform:uppercase}
+ .k1{grid-area:cargo}.k2{grid-area:horas}.k3{grid-area:mo}.k4{grid-area:equipo}.k5{grid-area:hmaq}.k6{grid-area:maq}
+ .ord{grid-area:ord;flex-direction:row;gap:8px}.ord button{height:36px;width:36px;border:1px solid var(--border);border-radius:8px}
+ .del{grid-area:del;justify-self:end}
+ .cell{height:44px;font-size:16px}
+ .cost{text-align:left}
+ .totals{text-align:left}
+}
+@media (max-width:640px){.foot .st span{display:none}.chips .chip:nth-child(n+3){display:none}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <div><div class="eyebrow">Maestros · Costeo</div><h1>Recetas de actividad</h1><div class="sub">Tareas, cargo, horas y equipo con que arranca cada actividad en el diagnóstico y en la Hoja de Costeo.</div></div>
+    <button class="btn" type="button">Ver variables de costeo</button>
+  </div>
+  <div class="chips">
+    <div class="chip"><b>22</b><span>actividades</span></div>
+    <div class="chip"><b id="cCompletas">0</b><span>recetas completas</span></div>
+    <div class="chip warn"><b id="cSinHoras">20</b><span>sin horas o sin cargo</span></div>
+    <div class="chip"><b>2</b><span>sin tareas</span></div>
+  </div>
+  <div class="layout">
+    <section class="card" aria-label="Actividades por trabajo">
+      <div class="toolbar"><input class="search" id="buscar" placeholder="Buscar trabajo o actividad…" aria-label="Buscar actividad"></div>
+      <div class="filters" role="group" aria-label="Filtrar por estado">
+        <button class="filter" aria-pressed="true" data-f="todas">Todas</button>
+        <button class="filter" aria-pressed="false" data-f="warn">Por completar</button>
+        <button class="filter" aria-pressed="false" data-f="ok">Completas</button>
+        <button class="filter" aria-pressed="false" data-f="off">Sin tareas</button>
+      </div>
+      <div class="tree" id="tree"></div>
+    </section>
+    <section class="card" aria-label="Receta de la actividad" id="detalle"></section>
+  </div>
+</div>
+<footer class="foot">
+  <div class="st" id="st"><i></i><span id="stTxt">Sin cambios</span></div>
+  <div class="sp"></div>
+  <button class="btn" id="descartar" type="button" disabled>Descartar</button>
+  <button class="btn primary" id="guardar" type="button" disabled>Guardar receta</button>
+</footer>
+<script>
+const CARGOS={"":["Sin cargo",null],ayu:["Ayudante Tecnico",8.48],tec:["Técnico de Mantenimiento",20.30],ing:["Ingeniero de Proyectos",54.35],mon:["Operador de Montacargas",17.05],mec:["Tecnico Mecanico",null]};
+const EQUIPOS={"":["Sin equipo",0],len:["LENOVO",1.72],lap:["LAPTOP",0.26]};
+const T=(n,c)=>({nombre:n,codigo:c,cargo:"",horas:0,equipo:"",hmaq:0});
+const DATA=[
+ ["Armado, pruebas y entrega",[["ACT-GEN-02","Armado y prueba de cilindro",[T("Armado de cilindro","GEN-002"),T("Prueba hidráulica","GEN-003"),T("Pintura y embalaje","GEN-008")]]]],
+ ["Evaluación y diagnóstico",[["ACT-EVA-01","Evaluación dimensional de cilindro",[T("Medición de camisa","EVA-001"),T("Medición de vástago","EVA-002"),T("Inspección de pistón y sellos","EVA-003"),T("Prueba de estanqueidad preliminar","EVA-004"),T("Elaboración de informe técnico","EVA-005")]],["ACT-GEN-01","Recepción y desarmado de cilindro",[T("Recepción e inspección visual","GEN-001"),T("Drenaje y despresurizado","GEN-004"),T("Desarmado de equipo","GEN-005"),T("Lavado y limpieza de componentes","GEN-006")]]]],
+ ["Fabricación de vástagos",[["ACT-FAB-01","Fabricación de vástago",[T("Corte de material","FAB-001"),T("Torneado de desbaste","FAB-002"),T("Torneado de acabado","FAB-003"),T("Rectificado cilíndrico","FAB-006"),T("Pulido de vástago","FAB-007"),T("Control de calidad dimensional final","FAB-010")]]]],
+ ["Reparación de cilindros hidráulicos",[["ACT-CAM-01","Bruñido de camisa",[T("Control dimensional","CTL-001"),T("Bruñido intermedio de camisa","CAM-002"),T("Limpieza y protección anticorrosiva","CAM-004")]],["ACT-SEL-01","Cambio de sellos de cilindro",[T("Cambio de kit de sellos","SEL-001"),T("Mecanizado de alojamientos de sellos","SEL-002")]],["ACT-VAS-01","Reparación de vástago",[T("Pulido de vástago","FAB-007"),T("Rectificado de vástago","VAS-002"),T("Enderezado de vástago","VAS-003"),T("Control dimensional","CTL-001")]]]],
+ ["Reparación de bombas hidráulicas",[["ACT-BOM-01","Reparación de bomba hidráulica",[T("Desarmado de bomba","BOM-001"),T("Lavado y limpieza de componentes","GEN-006"),T("Rectificado de caras del cuerpo","BOM-003"),T("Cambio de rodamientos y sellos","BOM-004")]]]],
+ ["Desarrollo",[["TSI-BE869","Levantamiento",[]]]],
+ ["Sin trabajo",[["COD-001","Mantenimiento preventivo",[]]]],
+];
+// Ejemplo: la primera actividad ya tiene la receta a medio completar.
+Object.assign(DATA[0][1][0][2][0],{cargo:"tec",horas:4});
+Object.assign(DATA[0][1][0][2][1],{cargo:"tec",horas:2,equipo:"len",hmaq:2});
+const ACTS=[];DATA.forEach(([trabajo,acts])=>acts.forEach(([codigo,nombre,tareas])=>ACTS.push({trabajo,codigo,nombre,tareas,orig:JSON.stringify(tareas)})));
+let sel=0,filtro="todas";
+const money=v=>"S/ "+v.toLocaleString("es-PE",{minimumFractionDigits:2,maximumFractionDigits:2});
+const estado=a=>!a.tareas.length?"off":a.tareas.every(t=>t.cargo&&t.horas>0)?"ok":"warn";
+const ESTADO={ok:["Completa","ok"],warn:["Por completar","warn"],off:["Sin tareas","off"]};
+const costoMo=t=>(CARGOS[t.cargo]?.[1]||0)*t.horas;
+const costoMaq=t=>(EQUIPOS[t.equipo]?.[1]||0)*t.hmaq;
+function renderTree(){
+  const q=document.getElementById("buscar").value.trim().toLowerCase();
+  const grupos=new Map();
+  ACTS.forEach((a,i)=>{if(q&&!(a.nombre+" "+a.trabajo+" "+a.codigo).toLowerCase().includes(q))return;if(filtro!=="todas"&&estado(a)!==filtro)return;if(!grupos.has(a.trabajo))grupos.set(a.trabajo,[]);grupos.get(a.trabajo).push(i)});
+  document.getElementById("tree").innerHTML=grupos.size?[...grupos].map(([g,ids])=>`<div class="group"><div class="ghead">${g}</div>${ids.map(i=>{const a=ACTS[i],[l,c]=ESTADO[estado(a)];return `<button class="act" type="button" aria-current="${i===sel}" data-i="${i}"><span class="n"><b>${a.nombre}</b><small>${a.codigo} · ${a.tareas.length} tareas</small></span><span class="pill ${c}"><i></i>${l}</span></button>`}).join("")}</div>`).join(""):`<div class="empty">No hay actividades que coincidan.</div>`;
+  const ok=ACTS.filter(a=>estado(a)==="ok").length,warn=ACTS.filter(a=>estado(a)==="warn").length;
+  document.getElementById("cCompletas").textContent=ok;document.getElementById("cSinHoras").textContent=warn;
+}
+function opts(map,val){return Object.entries(map).map(([k,[n]])=>`<option value="${k}"${k===val?" selected":""}>${n}</option>`).join("")}
+function renderDetalle(){
+  const a=ACTS[sel];const d=document.getElementById("detalle");
+  const hh=a.tareas.reduce((s,t)=>s+t.horas,0),hm=a.tareas.reduce((s,t)=>s+t.hmaq,0),tot=a.tareas.reduce((s,t)=>s+costoMo(t)+costoMaq(t),0);
+  d.innerHTML=`<div class="dhead"><div><div class="route">${a.trabajo} › <b>${a.codigo}</b></div><h2>${a.nombre}</h2></div><div class="totals"><div><small>Horas-hombre</small><b>${hh.toLocaleString("es-PE")} h</b></div><div><small>Horas-máquina</small><b>${hm.toLocaleString("es-PE")} h</b></div><div><small>Costo estimado</small><b>${money(tot)}</b></div></div></div>
+  <div class="grid th"><div></div><div></div><div class="cat">Mano de obra</div><div class="cat m">Máquina</div><div></div></div>
+  <div class="grid th"><div>#</div><div>Tarea</div><div>Cargo</div><div>Horas</div><div style="text-align:right">Costo</div><div>Equipo</div><div>Horas-máq.</div><div style="text-align:right">Costo</div><div></div></div>
+  ${a.tareas.length?a.tareas.map((t,i)=>{const tarifa=CARGOS[t.cargo]?.[1];const falta=!t.cargo||!t.horas;return `<div class="grid row${falta?" diff":""}" data-i="${i}">
+   <div class="ord"><button type="button" aria-label="Subir tarea" data-m="-1">▲</button><button type="button" aria-label="Bajar tarea" data-m="1">▼</button></div>
+   <div class="tname"><b>${t.nombre}</b><small>${t.codigo}${falta?" · falta cargo u horas":""}</small></div>
+   <div class="ttot"><b>${money(costoMo(t)+costoMaq(t))}</b></div>
+   <label class="kv k1"><span>Cargo</span><select class="cell" data-k="cargo">${opts(CARGOS,t.cargo)}</select></label>
+   <label class="kv k2"><span>Horas</span><input class="cell num" type="number" min="0" step="0.5" value="${t.horas||""}" placeholder="0" data-k="horas"></label>
+   <div class="kv k3"><span>Costo MO</span><div class="cost${t.cargo&&tarifa==null?" alert":""}">${money(costoMo(t))}<small>${!t.cargo?"—":tarifa==null?"Sin tarifa":money(tarifa)+" / h"}</small></div></div>
+   <label class="kv k4"><span>Equipo</span><select class="cell" data-k="equipo">${opts(EQUIPOS,t.equipo)}</select></label>
+   <label class="kv k5"><span>Horas-máq.</span><input class="cell num" type="number" min="0" step="0.5" value="${t.hmaq||""}" placeholder="0" data-k="hmaq" ${t.equipo?"":"disabled"}></label>
+   <div class="kv k6"><span>Costo máquina</span><div class="cost ${t.equipo?"":"muted"}">${t.equipo?money(costoMaq(t)):"—"}${t.equipo?`<small>${money(EQUIPOS[t.equipo][1])} / h</small>`:""}</div></div>
+   <button class="x del" type="button" aria-label="Quitar tarea" data-del="1">✕</button></div>`}).join(""):`<div class="empty">Esta actividad todavía no tiene tareas. Agrega la primera abajo.</div>`}
+  <div class="add"><input class="search" id="nuevaTarea" placeholder="Escribe para buscar y añadir una tarea (nombre o código)…" aria-label="Agregar tarea"><button class="btn" type="button">+ Crear tarea</button>
+   <div class="menu" id="menu"><button type="button" data-n="Control de calidad dimensional final|FAB-010"><span>Control de calidad dimensional final</span><small>FAB-010</small></button><button type="button" data-n="Prueba de funcionamiento|MPR-004"><span>Prueba de funcionamiento</span><small>MPR-004</small></button><button type="button" data-n="Soldadura de fabricación|HCP-002"><span>Soldadura de fabricación</span><small>HCP-002</small></button></div></div>
+  <div class="note">La tarifa del cargo y el costo del equipo vienen de <b>Variables de costeo</b>; aquí solo se definen cantidades. El costo es una estimación con las tarifas de hoy.</div>`;
+  const dirty=JSON.stringify(a.tareas)!==a.orig;
+  document.getElementById("st").className="st"+(dirty?" dirty":"");document.getElementById("stTxt").textContent=dirty?"Cambios sin guardar en "+a.nombre:"Sin cambios";
+  document.getElementById("guardar").disabled=!dirty;document.getElementById("descartar").disabled=!dirty;
+}
+document.getElementById("tree").addEventListener("click",e=>{const b=e.target.closest(".act");if(!b)return;sel=+b.dataset.i;renderTree();renderDetalle()});
+document.getElementById("buscar").addEventListener("input",renderTree);
+document.querySelectorAll(".filter").forEach(f=>f.addEventListener("click",()=>{document.querySelectorAll(".filter").forEach(x=>x.setAttribute("aria-pressed",x===f));filtro=f.dataset.f;renderTree()}));
+const det=document.getElementById("detalle");
+det.addEventListener("change",e=>{const r=e.target.closest(".row");if(!r||!e.target.dataset.k)return;const t=ACTS[sel].tareas[+r.dataset.i];const k=e.target.dataset.k;t[k]=k==="horas"||k==="hmaq"?Math.max(0,+e.target.value||0):e.target.value;if(k==="equipo"&&!t.equipo)t.hmaq=0;renderTree();renderDetalle()});
+det.addEventListener("click",e=>{const r=e.target.closest(".row");const a=ACTS[sel];
+ if(r&&e.target.dataset.m){const i=+r.dataset.i,j=i+ +e.target.dataset.m;if(j<0||j>=a.tareas.length)return;[a.tareas[i],a.tareas[j]]=[a.tareas[j],a.tareas[i]];renderDetalle();}
+ if(r&&e.target.dataset.del){a.tareas.splice(+r.dataset.i,1);renderTree();renderDetalle();}
+ const m=e.target.closest("[data-n]");if(m){const[n,c]=m.dataset.n.split("|");a.tareas.push(T(n,c));renderTree();renderDetalle();}});
+det.addEventListener("focusin",e=>{if(e.target.id==="nuevaTarea")document.getElementById("menu").classList.add("open")});
+det.addEventListener("focusout",e=>{if(e.target.id==="nuevaTarea")setTimeout(()=>document.getElementById("menu")?.classList.remove("open"),150)});
+document.getElementById("descartar").addEventListener("click",()=>{const a=ACTS[sel];a.tareas=JSON.parse(a.orig);renderTree();renderDetalle()});
+document.getElementById("guardar").addEventListener("click",()=>{const a=ACTS[sel];a.orig=JSON.stringify(a.tareas);renderDetalle()});
+renderTree();renderDetalle();
+</script>
+</body>
+</html>

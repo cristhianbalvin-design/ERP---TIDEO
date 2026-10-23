@@ -1,6 +1,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { WORK_COMPACT_QUERY } from '../src/workMode.js';
 
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'empresa-test', sociedadId: 'sociedad-test', estado: 'listo', permiteEscritura: true, sociedadActiva: { nombre: 'Sociedad de prueba' }, usuario: { id: 'usuario-test' } },
@@ -72,7 +73,7 @@ describe('RecepcionActivosClientePage', () => {
     const media = { matches: false, addEventListener: vi.fn((_name, listener) => { media.onChange = listener; }), removeEventListener: vi.fn() };
     window.matchMedia = vi.fn(() => media);
     const root = await renderPage();
-    expect(window.matchMedia).toHaveBeenCalledWith('(max-width:680px), (max-height:520px)');
+    expect(window.matchMedia).toHaveBeenCalledWith(WORK_COMPACT_QUERY);
     const row = root.root.findAll(node => node.props.className?.includes('dx-ui-row'))[0];
     await act(async () => row.props.onClick());
     expect(document.documentElement.dataset.dxWorkMode).toBe('false');

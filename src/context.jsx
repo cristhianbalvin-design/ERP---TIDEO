@@ -6,6 +6,7 @@ import { normalizeDashboardRoute } from './dashboardsTabs.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, siguienteNumeroOSCliente as siguienteNumeroOSClienteRpc, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { applyNotificacionSistemaEvent, mergeNotificacionesSistema } from './services/notificacionesRealtime.js';
 import { loadOpsFromSupabase, actualizarBacklog, siguienteNumeroOrdenTrabajo as siguienteNumeroOrdenTrabajoRpc, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -291,11 +292,14 @@ const DICCIONARIO_COMERCIAL_DEFAULT = [
 
 function getInitialNavigation() {
   if (typeof window === 'undefined') return { pagina: 'dashboard', params: {} };
-  const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
+  const [hashRoute = '', hashQuery = ''] = window.location.hash.replace(/^#\/?/, '').trim().split('?');
   const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
   const savedPage = localStorage.getItem('tideo_active_page')?.trim();
-  const initial = normalizeDashboardRoute(hashPage || queryPage || savedPage || 'dashboard');
-  return { pagina: initial.pagina || 'dashboard', params: initial.pestana ? { pestana: initial.pestana } : {} };
+  const initial = normalizeDashboardRoute(hashRoute || queryPage || savedPage || 'dashboard');
+  return {
+    pagina: initial.pagina || 'dashboard',
+    params: { ...(initial.pestana ? { pestana: initial.pestana } : {}), ...Object.fromEntries(new URLSearchParams(hashQuery)) },
+  };
 }
 
 export function AppProvider({ children }) {
@@ -481,6 +485,7 @@ export function AppProvider({ children }) {
   const [licencias, setLicencias] = useState([]);
   const [solicitudesRRHH, setSolicitudesRRHH] = useState(useSupabase ? [] : (MOCK.solicitudesRRHH || []));
   const [personalDocumentos, setPersonalDocumentos] = useState(useSupabase ? [] : (MOCK.personalDocumentos || []));
+  const [contratosArchivados, setContratosArchivados] = useState([]);
   const [reclutamientoVacantes, setReclutamientoVacantes] = useState(useSupabase ? [] : (MOCK.reclutamientoVacantes || []));
   const [reclutamientoCandidaturas, setReclutamientoCandidaturas] = useState(useSupabase ? [] : (MOCK.reclutamientoCandidaturas || []));
   const [amonestacionesPersonal, setAmonestacionesPersonal] = useState(useSupabase ? [] : (MOCK.amonestacionesPersonal || []));
@@ -1249,13 +1254,15 @@ export function AppProvider({ children }) {
         }
 
         try {
-          const [solData, pdocsData] = await Promise.all([
+          const [solData, pdocsData, contratosArchivadosData] = await Promise.all([
             solicitudesRrhhService.cargarSolicitudes(empresa.id),
             personalDocumentosService.getDocumentosActivos(empresa.id),
+            personalDocumentosService.getContratosArchivadosRelevantes(empresa.id),
           ]);
           if (mounted) {
             setSolicitudesRRHH(solData || []);
             setPersonalDocumentos(pdocsData || []);
+            setContratosArchivados(contratosArchivadosData || []);
           }
         } catch (_err) { /* módulo documental puede no estar migrado aún */ }
 
@@ -1665,29 +1672,48 @@ export function AppProvider({ children }) {
 
   // Carga notificaciones persistentes del sistema al iniciar sesión
   useEffect(() => {
-    if (!isSupabaseConfigured() || !authUser?.id) return;
-    getSupabaseClient().then(sb =>
-      cargarNotificacionesSistema(sb, authUser.id)
-    ).then(rows => {
-      if (!rows?.length) return;
-      setNotificaciones(prev => [
-        ...rows.map(r => ({
-          id: r.id,
-          text: r.mensaje || r.texto,
-          title: r.titulo || '',
-          message: r.mensaje || r.texto,
-          read: r.leida,
-          time: new Date(r.created_at || r.creada_en).toLocaleDateString('es-PE'),
-          tipo: r.tipo,
-          priority: r.prioridad || 'media',
-          referenceType: r.referencia_tipo,
-          referenceId: r.referencia_id,
-          referencePayload: r.referencia_payload || {},
-          _db: true,
-        })),
-        ...prev,
-      ]);
+    const userId = authUser?.id;
+    if (!userId) {
+      setNotificaciones(prev => prev.filter(n => !n._db));
+      return;
+    }
+    if (!isSupabaseConfigured()) return;
+
+    let active = true;
+    let client = null;
+    let channel = null;
+    const sync = async () => {
+      try {
+        const sb = client || await getSupabaseClient();
+        if (!active) return;
+        client = sb;
+        const rows = await cargarNotificacionesSistema(sb, userId);
+        if (active) setNotificaciones(prev => mergeNotificacionesSistema(prev, rows || []));
+      } catch {}
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+
+    sync();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    getSupabaseClient().then(sb => {
+      if (!active) return;
+      client = sb;
+      channel = sb.channel(`notificaciones-sistema-${userId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones_sistema', filter: `user_id=eq.${userId}` }, payload => {
+          if (active && payload.new) setNotificaciones(prev => applyNotificacionSistemaEvent(prev, payload.new));
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notificaciones_sistema', filter: `user_id=eq.${userId}` }, payload => {
+          if (active && payload.new) setNotificaciones(prev => applyNotificacionSistemaEvent(prev, payload.new));
+        })
+        .subscribe(status => { if (status === 'SUBSCRIBED') sync(); });
     }).catch(() => {});
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (channel && client) client.removeChannel(channel).catch(() => {});
+    };
   }, [authUser?.id]);
 
   const crmSync = (fn) => {
@@ -3118,7 +3144,8 @@ export function AppProvider({ children }) {
     const extras = {
       activo_id: cotFinal.activo_id,
       recepcion_id: cotFinal.recepcion_id,
-      ...(hc.oportunidad_id ? {} : { linea_negocio: lineaResuelta }),
+      // La línea viene de la oportunidad; si la oportunidad no tiene, se usa la elegida al generar.
+      ...(cotFinal.linea_negocio || !lineaResuelta ? {} : { linea_negocio: lineaResuelta }),
     };
     const extrasResult = await crmPersist(sb2 => svcActualizarCotizacion(sb2, cotFinal.id, extras));
     if (extrasResult?.error) throw extrasResult.error;
@@ -3455,6 +3482,8 @@ export function AppProvider({ children }) {
       monto_facturado: datos.monto_facturado || 0,
       monto_cobrado: datos.monto_cobrado || 0,
       ots_asociadas: datos.ots_asociadas || [],
+      tipo_cobro: datos.tipo_cobro || null,
+      tarifa_mensual: datos.tarifa_mensual ?? null,
     };
 
     try {
@@ -3514,6 +3543,33 @@ export function AppProvider({ children }) {
     }
     setOsClientes(prev => prev.map(o => o.id === id ? { ...o, ...datos } : o));
     crmSync(sb => svcActualizarOSCliente(sb, id, datos));
+  };
+
+  // Pausa, reactiva, cierra o anula una OS Cliente. Devuelve true si el cambio se aplicó.
+  // Cerrar exige que no queden OTs abiertas; el motivo queda en la auditoría.
+  const ESTADOS_OT_TERMINADOS = ['cerrada', 'cerrada_tecnica', 'valorizada', 'facturada', 'anulada'];
+  const cambiarEstadoOS = async (osId, estado, motivo = '') => {
+    const os = osClientes.find(o => o.id === osId);
+    if (!os || !['activa', 'en_pausa', 'cerrada', 'anulada'].includes(estado)) return false;
+    if (estado === 'cerrada') {
+      const abiertas = ots.filter(ot => (ot.os_cliente_id === osId || (os.ots_asociadas || []).includes(ot.id)) && !ESTADOS_OT_TERMINADOS.includes(ot.estado));
+      if (abiertas.length) {
+        addNotificacion(`No se puede cerrar ${os.numero}: tiene ${abiertas.length} OT${abiertas.length === 1 ? '' : 's'} abierta${abiertas.length === 1 ? '' : 's'} (${abiertas.slice(0, 3).map(ot => ot.numero).join(', ')}${abiertas.length > 3 ? '…' : ''}).`, 'error');
+        return false;
+      }
+    }
+    const datos = { estado };
+    if (estado === 'cerrada') datos.fecha_cierre_real = new Date().toISOString().split('T')[0];
+    try {
+      await actualizarOSCliente(osId, datos);
+    } catch (error) {
+      addNotificacion(`No se pudo cambiar el estado de ${os.numero}: ${error?.message || 'error desconocido'}.`, 'error');
+      return false;
+    }
+    auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: osId, accion: `estado_${estado}`, valor_anterior: { estado: os.estado }, valor_nuevo: { estado, motivo: String(motivo || '').trim() || null } });
+    const etiquetas = { activa: 'reactivada', en_pausa: 'pausada', cerrada: 'cerrada', anulada: 'anulada' };
+    addNotificacion(`OS ${os.numero} ${etiquetas[estado]}.`);
+    return true;
   };
 
   const vincularCotizacionOS = async (cotizacionId, osId, { origen = 'estandar', cotizacionEspecial = null } = {}) => {
@@ -4715,6 +4771,16 @@ export function AppProvider({ children }) {
     return `Valorización ${numero} aprobada.`;
   };
 
+  // Ajusta y guarda el saldo por valorizar de la OS. Se calcula fuera del actualizador de estado,
+  // porque React lo ejecuta después y el valor no estaría disponible para guardarlo en la base.
+  const ajustarSaldoPorValorizarOS = (osClienteId, delta) => {
+    const osc = osClientes.find(o => o.id === osClienteId);
+    if (!osc) return;
+    const saldo = Math.round(Math.max(0, Number(osc.saldo_por_valorizar || 0) + Number(delta || 0)) * 100) / 100;
+    setOsClientes(prev => prev.map(o => (o.id === osClienteId ? { ...o, saldo_por_valorizar: saldo } : o)));
+    crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldo }));
+  };
+
   const generarValorizacion = (osClienteId, subtotal, igv, total, periodo, meta = {}) => {
     const estadoFinal = meta.estadoFinal || 'aprobada';
     const now = new Date().toISOString().split('T')[0];
@@ -4722,6 +4788,7 @@ export function AppProvider({ children }) {
       id: generateId('val'),
       empresa_id: empresa.id,
       os_cliente_id: osClienteId,
+      sociedad_id: osClientes.find(os => os.id === osClienteId)?.sociedad_id || null,
       numero: `VAL-${new Date().getFullYear()}-${String(valorizaciones.length + 1).padStart(3, '0')}`,
       fecha: now,
       estado: estadoFinal,
@@ -4740,17 +4807,7 @@ export function AppProvider({ children }) {
 
     if (estadoFinal === 'aprobada') {
       // Descontar de OS Cliente solo al aprobar
-      let saldoPorValorizar = null;
-      setOsClientes(prev => prev.map(osc => {
-        if (osc.id === osClienteId) {
-          saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(total || 0));
-          return { ...osc, saldo_por_valorizar: saldoPorValorizar };
-        }
-        return osc;
-      }));
-      if (saldoPorValorizar !== null) {
-        crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
-      }
+      ajustarSaldoPorValorizarOS(osClienteId, -Number(total || 0));
 
       if (meta.otIds?.length) {
         const otsCerradas = ots.filter(o => meta.otIds.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
@@ -4810,17 +4867,7 @@ export function AppProvider({ children }) {
     } : v));
     auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: 'aprobar', valor_nuevo: { ...val, estado: 'aprobada' } });
 
-    let saldoPorValorizar = null;
-    setOsClientes(prev => prev.map(osc => {
-      if (osc.id === osClienteId) {
-        saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - total);
-        return { ...osc, saldo_por_valorizar: saldoPorValorizar };
-      }
-      return osc;
-    }));
-    if (saldoPorValorizar !== null) {
-      crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
-    }
+    ajustarSaldoPorValorizarOS(osClienteId, -total);
 
     if (val.ot_ids?.length) {
       const otsCerradas = ots.filter(o => val.ot_ids.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
@@ -4860,17 +4907,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: 'anular', valor_nuevo: { motivo } });
 
     if (fueAprobada) {
-      let saldoRestaurado = null;
-      setOsClientes(prev => prev.map(osc => {
-        if (osc.id === osClienteId) {
-          saldoRestaurado = Number(osc.saldo_por_valorizar || 0) + total;
-          return { ...osc, saldo_por_valorizar: saldoRestaurado };
-        }
-        return osc;
-      }));
-      if (saldoRestaurado !== null) {
-        crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoRestaurado }));
-      }
+      ajustarSaldoPorValorizarOS(osClienteId, total);
       if (val.ot_ids?.length) {
         const otsARevertir = ots.filter(o => val.ot_ids.includes(o.id) && o.estado === 'valorizada').map(o => o.id);
         if (otsARevertir.length) {
@@ -4914,17 +4951,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: estadoFinal === 'aprobada' ? 'aprobar' : 'editar', valor_nuevo: updated });
 
     if (estadoFinal === 'aprobada') {
-      let saldoPorValorizar = null;
-      setOsClientes(prev => prev.map(osc => {
-        if (osc.id === val.os_cliente_id) {
-          saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(datos.total || 0));
-          return { ...osc, saldo_por_valorizar: saldoPorValorizar };
-        }
-        return osc;
-      }));
-      if (saldoPorValorizar !== null) {
-        crmSync(sb => svcActualizarOSCliente(sb, val.os_cliente_id, { saldo_por_valorizar: saldoPorValorizar }));
-      }
+      ajustarSaldoPorValorizarOS(val.os_cliente_id, -Number(datos.total || 0));
       if (datos.ot_ids?.length) {
         const otsCerradas = ots.filter(o => datos.ot_ids.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
         if (otsCerradas.length) {
@@ -6353,7 +6380,7 @@ export function AppProvider({ children }) {
     let sociedadHonorariosId = null;
     if (empresa?.multisociedad_habilitado) {
       const resolucionSociedad = resolverSociedadContratoVigente({
-        documentos: personalDocumentos,
+        documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
         tiposDocumento,
         sociedades: sociedadesDisponibles,
         personalId: recibo.vendedor_id,
@@ -10286,11 +10313,18 @@ export function AppProvider({ children }) {
   const recargarPersonalDocumentosPersonaCtx = async (personalId) => {
     if (!isSupabaseConfigured() || !empresa?.id) return;
     try {
-      const docsPersona = await personalDocumentosService.getDocumentosActivosPersona(empresa.id, personalId);
+      const [docsPersona, contratosArchivadosPersona] = await Promise.all([
+        personalDocumentosService.getDocumentosActivosPersona(empresa.id, personalId),
+        personalDocumentosService.getContratosArchivadosRelevantes(empresa.id, personalId),
+      ]);
       setPersonalDocumentos(prev => {
         const sinPersona = prev.filter(d => String(d.personal_id) !== String(personalId));
         return [...sinPersona, ...(docsPersona || [])];
       });
+      setContratosArchivados(prev => [
+        ...prev.filter(d => String(d.personal_id) !== String(personalId)),
+        ...(contratosArchivadosPersona || []),
+      ]);
     } catch (e) {
       console.error('Error al recargar documentos del personal:', e);
     }
@@ -10721,7 +10755,7 @@ export function AppProvider({ children }) {
           throw new Error('No se pudo identificar al colaborador y la fecha de cese para derivar la sociedad de la liquidación.');
         }
         const resolucionSociedad = resolverSociedadContratoVigente({
-          documentos: personalDocumentos,
+          documentos: [...new Map([...personalDocumentos, ...contratosArchivados].map(doc => [doc.id, doc])).values()],
           tiposDocumento,
           sociedades: sociedadesDisponibles,
           personalId,
@@ -11935,7 +11969,7 @@ export function AppProvider({ children }) {
     agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento, eliminarAgendaEvento,
     hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo,
     cotizaciones, setCotizaciones, actualizarCotizacion,
-    osClientes, setOsClientes, actualizarOSCliente,
+    osClientes, setOsClientes, actualizarOSCliente, cambiarEstadoOS,
     cxp, setCxp,
     cxpDistribucionesCeco, setCxpDistribucionesCeco,
     cxpPagos, setCxpPagos,
@@ -12056,6 +12090,7 @@ export function AppProvider({ children }) {
     licencias, setLicencias,
     solicitudesRRHH, setSolicitudesRRHH,
     personalDocumentos, setPersonalDocumentos,
+    contratosArchivados,
     reclutamientoVacantes, setReclutamientoVacantes,
     reclutamientoCandidaturas, setReclutamientoCandidaturas,
     amonestacionesPersonal, setAmonestacionesPersonal,

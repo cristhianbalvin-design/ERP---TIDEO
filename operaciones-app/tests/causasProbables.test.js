@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { agruparCausasProbables, buscarCausasProbables } from '../src/zahory-mock/pages/causasProbables.js';
+import { buscarTiposDano, coincideConErrores } from '../src/zahory-mock/pages/dibujoHallazgoLogic.js';
 
 const causes = [
   { codigo: 'contaminacion_fluido', etiqueta: 'Contaminación del fluido', orden: 20 },
@@ -19,5 +20,21 @@ describe('búsqueda de causas probables', () => {
     expect(buscarCausasProbables(causes, '').items.map(row => row.codigo)).toEqual(causes.map(row => row.codigo));
     expect(agruparCausasProbables(causes)[0].label).toBe('Los más usados');
     expect(buscarCausasProbables(causes, 'sin resultado').items).toEqual([]);
+  });
+});
+
+describe('tolerancia a errores de escritura', () => {
+  it('encuentra causas con una o dos letras equivocadas', () => {
+    expect(buscarCausasProbables(causes, 'lubricasion').items[0].codigo).toBe('lubricacion_deficiente');
+    expect(buscarCausasProbables(causes, 'mantenimento').items[0].codigo).toBe('falta_mantenimiento');
+  });
+  it('encuentra tipos de daño con errores y no inventa coincidencias', () => {
+    const tipos = [{ codigo: 'corrosion', etiqueta: 'Corrosión' }, { codigo: 'desgaste', etiqueta: 'Desgaste' }];
+    expect(buscarTiposDano(tipos, 'corrocion').items[0].codigo).toBe('corrosion');
+    expect(buscarTiposDano(tipos, 'desgate').items[0].codigo).toBe('desgaste');
+    expect(buscarTiposDano(tipos, 'xyzab').items).toEqual([]);
+  });
+  it('no aplica tolerancia a palabras cortas', () => {
+    expect(coincideConErrores('fuga', 'fuego')).toBe(false);
   });
 });

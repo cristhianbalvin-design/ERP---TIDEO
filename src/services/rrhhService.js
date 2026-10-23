@@ -309,6 +309,7 @@ const toAsistenciaRow = (empresaId, registro = {}, { includeId = true } = {}) =>
 
 const normalizarPersonalOperativo = (p = {}) => ({
   ...p,
+  direccion: p.direccion || '',
   documento: p.documento || p.dni || '',
   sede: p.sede || '',
   supervisor_id: p.supervisor_id || null,
@@ -375,6 +376,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   turno_id: persona.turno_id || null,
   telefono: persona.telefono || null,
   email: persona.email || null,
+  direccion: persona.direccion || null,
   sede: persona.sede || null,
   supervisor_id: persona.supervisor_id || null,
   supervisor: persona.supervisor || null,

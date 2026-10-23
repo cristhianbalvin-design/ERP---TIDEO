@@ -8,7 +8,7 @@ const catalogs = { tipos_dano: [{ codigo: 'desgaste', etiqueta: 'Desgaste' }], c
 describe('construirVistaInforme', () => {
   it('devuelve exactamente la forma del snapshot 595 y resuelve etiquetas de catálogos', () => {
     const result = construirVistaInforme(diagnostico, { incluir_mediciones: true, mostrar_horas: true }, catalogs, { numero: 'RAC-1' });
-    expect(Object.keys(result)).toEqual(['version', 'emitido_en', 'cabecera', 'hallazgos', 'mediciones', 'tareas_repuestos', 'resumen', 'conclusion', 'conclusion_origen', 'emisor']);
+    expect(Object.keys(result)).toEqual(['version', 'emitido_en', 'cabecera', 'hallazgos', 'mediciones', 'tareas_repuestos', 'resumen', 'diagnostico_origen', 'conclusion', 'conclusion_origen', 'emisor']);
     expect(Object.keys(result.cabecera)).toEqual(['recepcion_id', 'numero_recepcion', 'numero_caso', 'fecha_recepcion', 'activo_id', 'activo_codigo', 'activo_nombre', 'numero_serie', 'horometro', 'cliente_id', 'cliente_razon_social', 'diagnostico_id', 'tipo', 'estado_diagnostico']);
     expect(result.hallazgos[0].tipo_dano_etiqueta).toBe('Desgaste');
     expect(result.hallazgos[0].causa_probable_etiqueta).toBe('Falta de lubricación');

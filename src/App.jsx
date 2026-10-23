@@ -56,6 +56,7 @@ const Maestros     = lazy(() => import('./pages_admin.jsx').then(m => ({ default
 const Servicios    = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Servicios })));
 const Tarifarios   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Tarifarios })));
 const Parametros   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Parametros })));
+const NotificacionesConfig = lazy(() => import('./pages_notificaciones_config.jsx'));
 const RRHHAdmin    = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.RRHHAdmin })));
 const Reclutamiento = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.Reclutamiento })));
 const MiPortal      = lazy(() => import('./pages_mi_portal.jsx').then(m => ({ default: m.MiPortal })));
@@ -90,6 +91,7 @@ const Inventario   = lazy(() => import('./pages_extra.jsx').then(m => ({ default
 const HojaCosteo   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.HojaCosteo })));
 const HojaCosteoWizard = lazy(() => import('./pages_hoja_costeo_wizard.jsx'));
 const CosteoVariables = lazy(() => import('./pages_costeo_variables.jsx'));
+const RecetasActividad = lazy(() => import('./pages_recetas_actividad.jsx'));
 
 // Módulos secundarios
 const MobileFieldView   = lazy(() => import('./pages_mobile.jsx').then(m => ({ default: m.MobileFieldView })));
@@ -109,6 +111,7 @@ const ApiKeys           = lazy(() => import('./pages_api_keys.jsx').then(m => ({
 const PaginaAceptacion    = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaAceptacion })));
 const PaginaAceptacionEspecial = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaAceptacionEspecial })));
 const PaginaConformidadOT = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaConformidadOT })));
+const PaginaFirmarContrato = lazy(() => import('./pages_firmar_contrato.jsx'));
 const PostulacionPublica  = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.PostulacionPublica })));
 
 // ─── iOS Install Banner ───────────────────────────────────────────────────────
@@ -286,7 +289,9 @@ function MainLayout({ onShowApplicationWelcome }) {
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
-  const activeAllowed = active === 'costeo_variables'
+  const activeAllowed = active === 'notificaciones_config'
+    ? Boolean(role?.permisos?.todo)
+    : active === 'costeo_variables'
     ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
     : puedeVerPantalla(role, active,
       active === 'dashboard' ? DASHBOARDS_ACCESS_ANY_OF : active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'sourcing_bandeja' ? ['ordenes_compra'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
@@ -309,7 +314,7 @@ function MainLayout({ onShowApplicationWelcome }) {
         // Encontrar el primer modulo permitido de acuerdo al orden del SIDEBAR
         for (const group of SIDEBAR) {
           if (group.plataforma && !isSuperadmin) continue;
-          const found = group.items.find(it => puedeVerPantalla(role, it.key, it.accessAnyOf || []));
+          const found = group.items.find(it => (!it.adminOnly || role?.permisos?.todo) && puedeVerPantalla(role, it.key, it.accessAnyOf || []));
           if (found) {
             fallback = found.key;
             break;
@@ -385,6 +390,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'hoja_costeo':      return <HojaCosteo/>;
       case 'hoja_costeo_wizard': return <HojaCosteoWizard/>;
       case 'costeo_variables': return <CosteoVariables/>;
+      case 'recetas_actividad': return <RecetasActividad/>;
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
       case 'panel_produccion': return <PanelProduccionOSCliente/>;
@@ -405,6 +411,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'servicios':        return <Servicios/>;
       case 'tarifarios':       return <Tarifarios/>;
       case 'parametros':       return <Parametros/>;
+      case 'notificaciones_config': return <NotificacionesConfig/>;
       case 'rrhh_admin':       return <RRHHAdmin/>;
       case 'metricas_saas':    return isSuperadmin ? <MetricasSaaS/> : <Dashboard role={role}/>;
       case 'salud_implementacion': return isSuperadmin ? <SaludImplementacion/> : <Dashboard role={role}/>;
@@ -453,7 +460,7 @@ function MainLayout({ onShowApplicationWelcome }) {
 }
 
 function ApplicationEntry() {
-  const [selected, setSelected] = useState(false);
+  const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard'));
   const { setMobileMode, setMobileProfile } = useApp();
   const enterAttendance = () => {
     setMobileProfile('asistencia');
@@ -473,6 +480,29 @@ function ApplicationEntry() {
 
 export default function App() {
   const hash = window.location.hash;
+
+  if (hash.startsWith('#firmar/') || hash.startsWith('#/firmar/')) {
+    const prefijo = hash.startsWith('#/firmar/') ? '#/firmar/' : '#firmar/';
+    const token = hash.slice(prefijo.length).split('?')[0];
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PaginaFirmarContrato token={decodeURIComponent(token)} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  const rutaFirmaContrato = window.location.pathname.match(/^\/firmar\/([^/]+)\/?$/);
+  if (rutaFirmaContrato) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PaginaFirmarContrato token={decodeURIComponent(rutaFirmaContrato[1])} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
 
   if (hash.startsWith('#aceptar-especial/')) {
     const token = hash.slice('#aceptar-especial/'.length).split('?')[0];

@@ -141,6 +141,34 @@ export function normalizarBusquedaTipoDano(texto = '') {
   return String(texto).trim().toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// Tolerancia a errores de escritura: distancia de edición ≤1 (palabras de 5+ letras) o ≤2 (8+ letras).
+function distanciaEdicion(a, b, maximo) {
+  if (Math.abs(a.length - b.length) > maximo) return maximo + 1;
+  let previa = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const actual = [i];
+    let minimoFila = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      actual[j] = Math.min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      minimoFila = Math.min(minimoFila, actual[j]);
+    }
+    if (minimoFila > maximo) return maximo + 1;
+    previa = actual;
+  }
+  return previa[b.length];
+}
+
+export function coincideConErrores(query, texto) {
+  const tokens = normalizarBusquedaTipoDano(query).split(/\s+/).filter(token => token.length >= 5);
+  if (!tokens.length) return false;
+  const palabras = normalizarBusquedaTipoDano(texto).split(/[\s_/]+/).filter(Boolean);
+  return tokens.every(token => {
+    const maximo = token.length >= 8 ? 2 : 1;
+    return palabras.some(palabra => distanciaEdicion(token, palabra.slice(0, Math.max(token.length, Math.min(palabra.length, token.length + maximo))), maximo) <= maximo
+      || distanciaEdicion(token, palabra, maximo) <= maximo);
+  });
+}
+
 const SYNONYMS = {
   corrosion: ['oxido', 'herrumbre'], rayado: ['rayon', 'rayadura', 'ralladura', 'surco'], fuga: ['derrame', 'gotea', 'pierde aceite'],
   fisura_grieta: ['rajadura', 'rajado', 'quebradura'], golpe_abolladura: ['golpeado', 'abollado', 'impacto'], rotura: ['roto', 'quebrado'],
@@ -156,7 +184,7 @@ export function buscarTiposDano(items = [], texto = '', { frecuentes = [] } = {}
     const label = normalizarBusquedaTipoDano(item.etiqueta || item.nombre);
     const words = label.split(/\s+/);
     const synonyms = (SYNONYMS[item.codigo] || []).map(normalizarBusquedaTipoDano);
-    const rank = !query ? 6 : label === query || codigo === query ? 0 : label.startsWith(query) ? 1 : words.some(w => w.startsWith(query)) ? 2 : label.includes(query) || codigo.includes(query) ? 3 : synonyms.some(s => s.includes(query) || query.includes(s)) ? 4 : 99;
+    const rank = !query ? 6 : label === query || codigo === query ? 0 : label.startsWith(query) ? 1 : words.some(w => w.startsWith(query)) ? 2 : label.includes(query) || codigo.includes(query) ? 3 : synonyms.some(s => s.includes(query) || query.includes(s)) ? 4 : coincideConErrores(query, `${label} ${codigo} ${synonyms.join(' ')}`) ? 5 : 99;
     return { item, rank, frequent: freq.has(item.codigo) };
   }).filter(x => x.rank < 99).sort((a, b) => a.rank - b.rank || Number(b.frequent) - Number(a.frequent) || String(a.item.etiqueta).localeCompare(String(b.item.etiqueta), 'es'));
   const exacta = ranked.some(x => x.rank === 0);

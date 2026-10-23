@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
-import { setWorkMode } from '../../workMode.js';
+import { WORK_COMPACT_QUERY, setWorkMode } from '../../workMode.js';
 import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
 import { subirAdjunto, cargarAdjuntosPorEntidades, obtenerUrlAdjunto } from '../../../../src/services/storageService.js';
 import { catalogoComponentesService } from '../../../../src/services/catalogoComponentesService.js';
@@ -30,7 +30,7 @@ const dateLabel = value => value ? new Date(`${value}T00:00:00`).toLocaleDateStr
 const previewUrl = file => { try { return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : ''; } catch { return ''; } };
 const estadoCustodiaClass = estado => ({ recibido: 'is-amber', en_diagnostico: 'is-cyan', en_reparacion: 'is-violet', listo_entrega: 'is-green', entregado: 'is-gray' }[estado] || 'is-gray');
 const diagnosticUrl = row => row?.diagnostico_id
-  ? `/diagnostico-tecnico?nuevo=mantenimiento&trabajo=${encodeURIComponent(row.diagnostico_id)}`
+  ? `/diagnostico-tecnico?trabajo=${encodeURIComponent(row.diagnostico_id)}`
   : `/diagnostico-tecnico?nuevo=mantenimiento&recepcion=${encodeURIComponent(row?.id || '')}`;
 const diagnosticoEmitido = diag => (typeof diag === 'string' ? diag : diag?.estado) === 'emitido';
 const diagnosticoBorrador = diag => (typeof diag === 'string' ? diag : diag?.estado) === 'borrador';
@@ -109,7 +109,7 @@ export function RecepcionActivosClientePage() {
   }, [empresaId, sociedadId, sesion.estado]);
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => {
-    const media = window.matchMedia('(max-width:680px), (max-height:520px)');
+    const media = window.matchMedia(WORK_COMPACT_QUERY);
     const updateWorkMode = () => setWorkMode(view !== 'list' && media.matches);
     updateWorkMode();
     media.addEventListener?.('change', updateWorkMode);
