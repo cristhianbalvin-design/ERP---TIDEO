@@ -16,7 +16,6 @@ import {
   makeMOItem,
   makeRepuestoItem,
   makeTerceroItem,
-  ESPECIALIDADES,
   calcSegmentoMO,
   calcSegmentoRepuestos,
   calcSegmentoTerceros,
@@ -272,8 +271,8 @@ const getBannerImpacto = (cargo) => {
 
 // ── Barra inferior fija (Sticky Bottom Bar) ────────────────────────────────
 
-const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoId, valid, guardando, onCancel, onSave }) => {
-  const totals = useMemo(() => calcOTTotals(segmentos), [segmentos]);
+const StickyTotals = ({ segmentos, costoHoraPorCargo, tipoCargo, ingreso, centroCosto, objetoCostoId, valid, guardando, onCancel, onSave }) => {
+  const totals = useMemo(() => calcOTTotals(segmentos, costoHoraPorCargo), [segmentos, costoHoraPorCargo]);
   const ingresoNum = noFacturable(tipoCargo) ? 0 : Number(ingreso || 0);
   const margen = totals.total > 0 && ingresoNum > 0
     ? ((ingresoNum - totals.total) / ingresoNum * 100).toFixed(1)
@@ -383,6 +382,7 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 const SegmentoCard = ({
   seg, isOnly, onPatch, onRemove, empresaId, sociedadId, permiteEscritura, tiposServicio, cargandoTiposServicio,
   errorTiposServicio, tecnicos, cargandoTecnicos, cuadrillas, cargandoCuadrillas,
+  cargosMO, costosHoraPorCargo, formatoMonedaOT, cargandoCargosMO, errorCargosMO,
   errorCuadrillas,
 }) => {
   const [tab, setTab] = useState('mo');
@@ -418,7 +418,7 @@ const SegmentoCard = ({
     });
   };
 
-  const totalMO  = calcSegmentoMO(seg);
+  const totalMO  = calcSegmentoMO(seg, costosHoraPorCargo);
   const totalRep = calcSegmentoRepuestos(seg);
   const totalTer = calcSegmentoTerceros(seg);
   const totalSeg = totalMO + totalRep + totalTer;
@@ -551,7 +551,7 @@ const SegmentoCard = ({
             <div>
               {seg.estimacion_mano_obra.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 64px 80px 24px', gap: 6, marginBottom: 4, fontSize: 11, color: 'var(--text-muted)', padding: '0 2px' }}>
-                  <span>Especialidad</span>
+                  <span>Cargo</span>
                   <span style={{ textAlign: 'center' }}>Técnicos</span>
                   <span style={{ textAlign: 'center' }}>Horas</span>
                   <span style={{ textAlign: 'right' }}>Subtotal</span>
@@ -559,17 +559,19 @@ const SegmentoCard = ({
                 </div>
               )}
               {seg.estimacion_mano_obra.map((item, i) => {
-                const esp = ESPECIALIDADES.find(e => e.id === item.especialidad_id);
-                const costo = (esp?.tarifaUSD || 0) * Number(item.cantidad_tecnicos || 1) * Number(item.horas_estimadas || 0);
+                const costoHora = costosHoraPorCargo.get(item.cargo_id);
+                const costo = Number(costoHora || 0) * Number(item.cantidad_tecnicos || 1) * Number(item.horas_estimadas || 0);
                 return (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 64px 80px 24px', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-                    <select className="input" value={item.especialidad_id}
-                      onChange={e => patchEst('estimacion_mano_obra', i, { especialidad_id: e.target.value })}
+                    <select className="input" value={item.cargo_id}
+                      onChange={e => patchEst('estimacion_mano_obra', i, { cargo_id: e.target.value })}
                       style={{ fontSize: 12, padding: '4px 6px' }}>
-                      <option value="">-- Especialidad --</option>
-                      {ESPECIALIDADES.map(e => (
-                        <option key={e.id} value={e.id}>{e.label} · ${e.tarifaUSD}/h</option>
-                      ))}
+                      <option value="">-- Cargo --</option>
+                      {cargosMO.map(cargo => {
+                        const tarifa = costosHoraPorCargo.get(cargo.id);
+                        const detalle = tarifa == null ? 'sin costo/hora' : `${formatoMonedaOT(tarifa)}/h`;
+                        return <option key={cargo.id} value={cargo.id}>{cargo.nombre} · {detalle}</option>;
+                      })}
                     </select>
                     <input type="number" className="input" min={1} value={item.cantidad_tecnicos}
                       onChange={e => patchEst('estimacion_mano_obra', i, { cantidad_tecnicos: e.target.value })}
@@ -578,7 +580,7 @@ const SegmentoCard = ({
                       onChange={e => patchEst('estimacion_mano_obra', i, { horas_estimadas: e.target.value })}
                       style={{ fontSize: 12, padding: '4px 4px', textAlign: 'center' }} title="Horas estimadas" />
                     <span className="mono" style={{ fontSize: 12, textAlign: 'right', fontWeight: 600, color: costo > 0 ? 'var(--navy)' : 'var(--text-muted)' }}>
-                      ${costo.toFixed(0)}
+                      {formatoMonedaOT(costo)}
                     </span>
                     <button className="btn btn-ghost btn-sm" style={{ color: '#E53935', padding: '3px 5px' }}
                       onClick={() => removeEst('estimacion_mano_obra', i)}>
@@ -588,11 +590,16 @@ const SegmentoCard = ({
                 );
               })}
               {seg.estimacion_mano_obra.length === 0 && (
-                <div className="muted" style={{ fontSize: 12, paddingBottom: 8 }}>Sin líneas de MO. Agrega las especialidades requeridas.</div>
+                <div className="muted" style={{ fontSize: 12, paddingBottom: 8 }}>Sin líneas de MO. Agrega los cargos requeridos.</div>
+              )}
+              {cargandoCargosMO && <div className="muted" style={{ fontSize: 11 }}>Cargando cargos y costos...</div>}
+              {errorCargosMO && <div className="muted" style={{ fontSize: 11 }}>{errorCargosMO}</div>}
+              {seg.estimacion_mano_obra.some(item => item.cargo_id && costosHoraPorCargo.get(item.cargo_id) == null) && (
+                <div className="muted" style={{ fontSize: 11, paddingBottom: 6 }}>Hay cargos sin costo/hora; configúralo en Variables de costeo.</div>
               )}
               <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--cyan)' }}
                 onClick={() => addEst('estimacion_mano_obra', makeMOItem)}>
-                <Icon name="plus" size={11}/> Agregar especialidad
+                <Icon name="plus" size={11}/> Agregar cargo
               </button>
             </div>
           )}
@@ -705,8 +712,71 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
   const [intentoGuardado, setIntentoGuardado] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [segmentos, setSegmentos] = useState([makeSegmento()]);
+  const [cargosMO, setCargosMO] = useState([]);
+  const [costosHoraPEN, setCostosHoraPEN] = useState(new Map());
+  const [tasaUsdPorPen, setTasaUsdPorPen] = useState(null);
+  const [cargandoCargosMO, setCargandoCargosMO] = useState(false);
+  const [errorCargosMO, setErrorCargosMO] = useState(null);
   const [backlogs, setBacklogs] = useState([]);
   const [creada, setCreada] = useState(null);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId) {
+      setCargosMO([]);
+      setCostosHoraPEN(new Map());
+      setTasaUsdPorPen(null);
+      return () => { vigente = false; };
+    }
+
+    const cargarCargosMO = async () => {
+      setCargandoCargosMO(true);
+      setErrorCargosMO(null);
+      try {
+        const supabase = getSupabaseClient();
+        const [cargos, planilla, configuracion, tipoCambio] = await Promise.all([
+          supabase.from('cargos_empresa').select('id, codigo, nombre, estado')
+            .eq('empresa_id', sesionOperativa.empresaId).eq('estado', 'activo').order('nombre'),
+          supabase.from('vw_costo_hora_planilla_por_cargo')
+            .select('empresa_id, cargo_id, costo_hora_planilla').eq('empresa_id', sesionOperativa.empresaId),
+          supabase.from('costo_hora_cargo_config').select('cargo_id, costo_hora_manual')
+            .eq('empresa_id', sesionOperativa.empresaId),
+          supabase.rpc('obtener_tipo_cambio_vigente', { p_moneda_base: 'PEN' }),
+        ]);
+        const error = [cargos, planilla, configuracion].find(result => result.error)?.error;
+        if (error) throw error;
+        if (!vigente) return;
+
+        const manualPorCargo = new Map((configuracion.data || []).map(item => [item.cargo_id, Number(item.costo_hora_manual)]));
+        const planillaPorCargo = new Map((planilla.data || [])
+          .filter(item => Number(item.costo_hora_planilla) > 0)
+          .map(item => [item.cargo_id, Number(item.costo_hora_planilla)]));
+        const costos = new Map();
+        (cargos.data || []).forEach(cargo => {
+          const manual = manualPorCargo.get(cargo.id);
+          const planillaCargo = planillaPorCargo.get(cargo.id);
+          const costo = manual > 0 ? manual : planillaCargo;
+          if (costo != null) costos.set(cargo.id, costo);
+        });
+        setCargosMO(cargos.data || []);
+        setCostosHoraPEN(costos);
+        setTasaUsdPorPen(Number(tipoCambio.data) > 0 ? Number(tipoCambio.data) : null);
+        setErrorCargosMO(tipoCambio.error ? 'No se pudo cargar la tasa de cambio; los costos USD no están disponibles.' : null);
+      } catch (error) {
+        if (vigente) {
+          setCargosMO([]);
+          setCostosHoraPEN(new Map());
+          setTasaUsdPorPen(null);
+          setErrorCargosMO(`No se pudieron cargar los costos de mano de obra: ${error.message || error}`);
+        }
+      } finally {
+        if (vigente) setCargandoCargosMO(false);
+      }
+    };
+
+    cargarCargosMO();
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId]);
 
   // ── Estado DBS (C1, C2, C5, C6) ────────────────────────────────────────
   const [objetoCostoTipo, setObjetoCostoTipo] = useState('contrato');
@@ -1309,6 +1379,12 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
     const codigo = monedaOT === 'PEN' ? 'S/' : monedaOT === 'USD' ? 'US$' : monedaOT;
     return `${codigo} ${valor}`;
   };
+  const costosHoraPorCargo = useMemo(() => new Map(
+    [...costosHoraPEN].map(([cargoId, costoPEN]) => [
+      cargoId,
+      monedaOT === 'PEN' ? costoPEN : monedaOT === 'USD' && tasaUsdPorPen ? costoPEN * tasaUsdPorPen : null,
+    ])
+  ), [costosHoraPEN, monedaOT, tasaUsdPorPen]);
 
   useEffect(() => {
     let vigente = true;
@@ -1713,7 +1789,7 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
 
     setGuardando(true);
     setErrorGuardado(null);
-    const totales = calcOTTotals(segmentos);
+    const totales = calcOTTotals(segmentos, costosHoraPorCargo);
     const payloadBase = {
       id: generarIdOT(),
       objeto_costo_tipo: objetoCostoTipo,
@@ -1825,7 +1901,7 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
 
   // ── Pantalla de confirmación ────────────────────────────────────────────
   if (creada) {
-    const t = calcOTTotals(creada.segmentos);
+    const t = calcOTTotals(creada.segmentos, costosHoraPorCargo);
     const etiquetaEquipoCreada = creada.equipo
       ? [equipo?.codigo || equipo?.cod, equipo?.nombre].filter(Boolean).join(' - ') || creada.equipo
       : 'Sin equipo';
@@ -2576,6 +2652,11 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
                 empresaId={sesionOperativa.empresaId}
                 sociedadId={sesionOperativa.sociedadId}
                 permiteEscritura={sesionOperativa.permiteEscritura}
+                cargosMO={cargosMO}
+                costosHoraPorCargo={costosHoraPorCargo}
+                formatoMonedaOT={formatoMonedaOT}
+                cargandoCargosMO={cargandoCargosMO}
+                errorCargosMO={errorCargosMO}
                 tiposServicio={tiposServicioInterno}
                 cargandoTiposServicio={cargandoTiposServicio}
                 errorTiposServicio={errorTiposServicio}
@@ -2616,7 +2697,7 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
 
       <div className="dx-ot-bottom-space" />
       <div className="dx-ot-foot">
-        <div className="dx-ot-foot-cost"><span>Costo estimado</span><strong>{formatoMonedaOT(calcOTTotals(segmentos).total)}</strong></div>
+        <div className="dx-ot-foot-cost"><span>Costo estimado</span><strong>{formatoMonedaOT(calcOTTotals(segmentos, costosHoraPorCargo).total)}</strong></div>
         <div className="dx-ot-foot-pending" aria-live="polite">
           {pendientesPaso[pasoActual - 1].length ? `Falta: ${pendientesPaso[pasoActual - 1][0]}` : 'Paso completo'}
         </div>

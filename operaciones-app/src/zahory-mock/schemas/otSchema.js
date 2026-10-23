@@ -13,17 +13,6 @@ export const LINEA_NEGOCIO_LABELS = {
   interno_zahory:      'Interno plataforma',
 };
 
-export const ESPECIALIDADES = [
-  { id: 'MEC_A',  label: 'Mecánico A',          tarifaUSD: 35 },
-  { id: 'MEC_B',  label: 'Mecánico B',          tarifaUSD: 28 },
-  { id: 'ELEC_A', label: 'Electricista A',      tarifaUSD: 38 },
-  { id: 'ELEC_B', label: 'Electricista B',      tarifaUSD: 30 },
-  { id: 'SOLD',   label: 'Soldador',            tarifaUSD: 32 },
-  { id: 'LUBR',   label: 'Lubricador',          tarifaUSD: 22 },
-  { id: 'INSP',   label: 'Inspector técnico',   tarifaUSD: 45 },
-  { id: 'OP_EQ',  label: 'Operador de equipo',  tarifaUSD: 25 },
-];
-
 export const OT_COMBINATION_GUARDS = {
   'Preventivo_PM:Garantia_Fabrica':
     'Un Mantenimiento Preventivo es por desgaste natural. La Garantia de Fabrica no cubre desgaste. Seleccione Correctivo si un repuesto fallo.',
@@ -59,7 +48,7 @@ export const makeOperacion = (n = 1) => ({
 });
 
 export const makeMOItem = () => ({
-  especialidad_id: '',
+  cargo_id: '',
   cantidad_tecnicos: 1,
   horas_estimadas: 4,
 });
@@ -89,10 +78,12 @@ export const makeSegmento = (n = 1) => ({
 
 // ── Totalizadores ──────────────────────────────────────────────────────────
 
-export const calcSegmentoMO = (seg) =>
+export const calcSegmentoMO = (seg, costoHoraPorCargo) =>
   seg.estimacion_mano_obra.reduce((sum, item) => {
-    const esp = ESPECIALIDADES.find(e => e.id === item.especialidad_id);
-    return sum + (esp?.tarifaUSD || 0) * Number(item.cantidad_tecnicos || 1) * Number(item.horas_estimadas || 0);
+    const costoHora = typeof costoHoraPorCargo === 'function'
+      ? costoHoraPorCargo(item.cargo_id)
+      : costoHoraPorCargo?.get?.(item.cargo_id) ?? costoHoraPorCargo?.[item.cargo_id];
+    return sum + Number(costoHora || 0) * Number(item.cantidad_tecnicos || 1) * Number(item.horas_estimadas || 0);
   }, 0);
 
 export const calcSegmentoRepuestos = (seg) =>
@@ -104,8 +95,8 @@ export const calcSegmentoRepuestos = (seg) =>
 export const calcSegmentoTerceros = (seg) =>
   seg.estimacion_terceros.reduce((sum, item) => sum + Number(item.costo_estimado || 0), 0);
 
-export const calcOTTotals = (segmentos) => {
-  const mo = segmentos.reduce((s, seg) => s + calcSegmentoMO(seg), 0);
+export const calcOTTotals = (segmentos, costoHoraPorCargo) => {
+  const mo = segmentos.reduce((s, seg) => s + calcSegmentoMO(seg, costoHoraPorCargo), 0);
   const repuestos = segmentos.reduce((s, seg) => s + calcSegmentoRepuestos(seg), 0);
   const terceros = segmentos.reduce((s, seg) => s + calcSegmentoTerceros(seg), 0);
   return { mo, repuestos, terceros, total: mo + repuestos + terceros };
@@ -165,7 +156,7 @@ export const validateOTForm = (data) => {
 //   descripcion: z.string().min(1),
 // });
 // const moItemSchema = z.object({
-//   especialidad_id: z.enum(ESPECIALIDADES.map(e => e.id)),
+//   cargo_id: z.string(),
 //   cantidad_tecnicos: z.number().int().min(1),
 //   horas_estimadas: z.number().min(0.5),
 // });
