@@ -412,7 +412,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
     'centro_beneficio_id', 'responsable_id', 'sociedad_id', 'os_cliente_id', 'activo_id', 'recepcion_id',
     'proyecto_id', 'contrato_alquiler_id',
-    'linea_negocio',
+    'linea_negocio', 'tipo_ejecucion',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
@@ -498,6 +498,8 @@ export async function persistirOSCliente(supabase, empresaId, osc) {
     overhead_modo: osc.overhead_modo || 'monto',
     tipo_cobro: osc.tipo_cobro || null,
     tarifa_mensual: osc.tarifa_mensual ?? null,
+    // Si llega vacío y la OS viene de una cotización, la BD lo hereda de ella.
+    tipo_ejecucion: osc.tipo_ejecucion || null,
   };
   return supabase.from('os_clientes').insert(row);
 }
@@ -539,6 +541,7 @@ export async function actualizarOSCliente(supabase, oscId, datos) {
     'overhead_modo',
     'tipo_cobro',
     'tarifa_mensual',
+    'tipo_ejecucion',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])

@@ -337,6 +337,32 @@ export default function HojaCosteoWizard() {
 
   // Trazabilidad con el Diagnóstico Técnico: origen, desfase y versiones.
   const [sincronizacion, setSincronizacion] = useState(null);
+  // Tipo de ejecución por Trabajo: mantenimiento (va a OT) o fabricación (va a OF).
+  const [tiposTrabajo, setTiposTrabajo] = useState({});
+  useEffect(() => {
+    let vigente = true;
+    setTiposTrabajo({});
+    if (!hoja?.id || !isSupabaseConfigured()) return () => { vigente = false; };
+    (async () => {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.from('hoja_costeo_trabajos').select('familia_trabajo_id, tipo_ejecucion').eq('hoja_costeo_id', hoja.id);
+      if (vigente && !error) setTiposTrabajo(Object.fromEntries((data || []).map(item => [item.familia_trabajo_id, item.tipo_ejecucion])));
+    })();
+    return () => { vigente = false; };
+  }, [hoja?.id]);
+  const tipoPorDefecto = sincronizacion?.tiene_diagnostico ? sincronizacion.diagnostico_tipo || '' : '';
+  const tipoDeTrabajo = familiaId => tiposTrabajo[familiaId] || tipoPorDefecto;
+  const cambiarTipoTrabajo = async (familiaId, tipo) => {
+    if (!familiaId || !tipo || bloqueada) return;
+    const anterior = tiposTrabajo[familiaId];
+    setTiposTrabajo(prev => ({ ...prev, [familiaId]: tipo }));
+    const sb = await getSupabaseClient();
+    const { error } = await sb.from('hoja_costeo_trabajos').upsert({ hoja_costeo_id: hoja.id, familia_trabajo_id: familiaId, tipo_ejecucion: tipo }, { onConflict: 'hoja_costeo_id,familia_trabajo_id' });
+    if (error) {
+      setTiposTrabajo(prev => ({ ...prev, [familiaId]: anterior }));
+      addToast(`No se pudo guardar el tipo del trabajo: ${error.message || error}`, 'error');
+    }
+  };
   const [sincronizando, setSincronizando] = useState('');
   const cargarSincronizacion = async () => {
     if (!hoja?.id || !isSupabaseConfigured()) return;
@@ -1540,7 +1566,7 @@ export default function HojaCosteoWizard() {
         const claveTrabajo = `${grupo.familia_trabajo_id}:${grupo.actividad_id}`;
         const contraido = Boolean(trabajosContraidos[claveTrabajo]);
         return <section className={`hcx-work ${contraido ? 'is-collapsed' : ''}`} key={claveTrabajo}>
-          <header className="hcx-workhead"><button className="hcx-collapse" type="button" aria-expanded={!contraido} aria-label={contraido ? 'Expandir trabajo' : 'Contraer trabajo'} onClick={() => setTrabajosContraidos(prev => ({ ...prev, [claveTrabajo]: !prev[claveTrabajo] }))}>⌄</button><div><div className="hcx-worktitle"><span className="hcx-workname">{familiaPorId.get(grupo.familia_trabajo_id)?.nombre || 'Sin trabajo'}</span><span className="hcx-pill">Actividad: {actividad?.nombre || 'Sin actividad'}</span></div><div className="hcx-workmeta">{grupo.tareas.length} tareas · {horas.toLocaleString('es-PE', { maximumFractionDigits: 1 })} h-hombre · {horasMaquina.toLocaleString('es-PE', { maximumFractionDigits: 1 })} h-máquina</div></div><span className="hcx-money">{money(manoObra + maquina)}<small>mano de obra + máquina</small></span><button className="hcx-btn" type="button" disabled={bloqueada} onClick={() => aplicarActividad(grupo)}>Aplicar actividad</button><button className="hcx-btn" type="button" disabled={bloqueada} onClick={() => abrirBuscadorTarea(grupo)}>{I.plus} Agregar tareas</button></header>
+          <header className="hcx-workhead"><button className="hcx-collapse" type="button" aria-expanded={!contraido} aria-label={contraido ? 'Expandir trabajo' : 'Contraer trabajo'} onClick={() => setTrabajosContraidos(prev => ({ ...prev, [claveTrabajo]: !prev[claveTrabajo] }))}>⌄</button><div><div className="hcx-worktitle"><span className="hcx-workname">{familiaPorId.get(grupo.familia_trabajo_id)?.nombre || 'Sin trabajo'}</span><span className="hcx-pill">Actividad: {actividad?.nombre || 'Sin actividad'}</span>{grupo.familia_trabajo_id && <select className="hcx-cell hcx-tipo-trabajo" aria-label={`Tipo de ejecución de ${familiaPorId.get(grupo.familia_trabajo_id)?.nombre || 'este trabajo'}`} disabled={bloqueada} value={tipoDeTrabajo(grupo.familia_trabajo_id)} onChange={event => cambiarTipoTrabajo(grupo.familia_trabajo_id, event.target.value)}>{!tipoDeTrabajo(grupo.familia_trabajo_id) && <option value="">Tipo: sin definir</option>}<option value="mantenimiento">Mantenimiento (OT)</option><option value="fabricacion">Fabricación (OF)</option></select>}</div><div className="hcx-workmeta">{grupo.tareas.length} tareas · {horas.toLocaleString('es-PE', { maximumFractionDigits: 1 })} h-hombre · {horasMaquina.toLocaleString('es-PE', { maximumFractionDigits: 1 })} h-máquina</div></div><span className="hcx-money">{money(manoObra + maquina)}<small>mano de obra + máquina</small></span><button className="hcx-btn" type="button" disabled={bloqueada} onClick={() => aplicarActividad(grupo)}>Aplicar actividad</button><button className="hcx-btn" type="button" disabled={bloqueada} onClick={() => abrirBuscadorTarea(grupo)}>{I.plus} Agregar tareas</button></header>
           <div className="hcx-grid hcx-tablehead"><div>Tarea</div><div className="hcx-category">MANO DE OBRA</div><div className="hcx-category machine">MÁQUINA</div><div>Detalle</div></div>
           <div className="hcx-grid hcx-tablehead hcx-table-subhead"><div></div><div>Cargo</div><div>Horas-hombre</div><div>Costo</div><div>Activo propio</div><div>Horas-máq.</div><div>Costo</div><div></div></div>
           <div className="hcx-tasks">{grupo.tareas.map(linea => {
@@ -1615,7 +1641,7 @@ export default function HojaCosteoWizard() {
   return (
     <div className="hcx-wizard">
       <div className="hcx-shell">
-        <header className="hcx-head">{modoTrabajo && <button className="hcx-menu" type="button" aria-label="Abrir menú" onClick={toggleCosteoWorkNav}>☰</button>}<div className="hcx-headtext"><button className="hcx-back" type="button" onClick={() => navigate('hoja_costeo', { detail: hoja.id })}>← Volver a la hoja</button><h1>Costeo · {hoja.numero}</h1><div className="hcx-sub">Hoja de costeo · {monedaHoja} · {(cuentas || []).find(item => item.id === hoja.cuenta_id)?.nombre_comercial || (cuentas || []).find(item => item.id === hoja.cuenta_id)?.razon_social || (hoja.cuenta_id ? 'Cuenta sin nombre' : 'Sin cuenta')}</div></div><div className="hcx-badges"><span className={`hcx-status ${estadoPie.clase}`}><i />{hoja.estado || 'borrador'}</span><span className="hcx-pill">Cotización especial</span></div></header>
+        <header className="hcx-head">{modoTrabajo && <button className="hcx-menu" type="button" aria-label="Abrir menú" onClick={toggleCosteoWorkNav}>☰</button>}<div className="hcx-headtext"><button className="hcx-back" type="button" onClick={() => navigate('hoja_costeo', { detail: hoja.id })}>← Volver a la hoja</button><h1>Costeo · {hoja.numero}</h1><div className="hcx-sub">Hoja de costeo · {monedaHoja} · {(cuentas || []).find(item => item.id === hoja.cuenta_id)?.nombre_comercial || (cuentas || []).find(item => item.id === hoja.cuenta_id)?.razon_social || (hoja.cuenta_id ? 'Cuenta sin nombre' : 'Sin cuenta')}</div></div><div className="hcx-badges"><span className={`hcx-status ${estadoPie.clase}`}><i />{hoja.estado || 'borrador'}</span><span className="hcx-pill">Cotización especial</span>{(() => { const tipos = [...new Set(lineas.map(linea => linea.familia_trabajo_id).filter(Boolean).map(tipoDeTrabajo).filter(Boolean))]; const etiqueta = tipos.length === 0 ? 'Tipo sin definir' : tipos.length > 1 ? 'Mixto: OT y OF' : tipos[0] === 'fabricacion' ? 'Fabricación (OF)' : 'Mantenimiento (OT)'; return <span className="hcx-pill" title="Se calcula con el tipo de cada trabajo y pasa a la cotización y la OS.">{etiqueta}</span>; })()}</div></header>
         {renderSincronizacion()}
         <div className="hcx-summary"><div className="hcx-chip"><b>{gruposPorTarea.length}</b><span>trabajos</span></div><div className="hcx-chip"><b>{lineas.length}</b><span>tareas</span></div><div className="hcx-chip"><b>{lineas.reduce((sum, item) => sum + numero(item.horas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-hombre</span></div><div className="hcx-chip"><b>{lineasActivos.reduce((sum, item) => sum + numero(item.horas_uso_estimadas), 0).toLocaleString('es-PE', { maximumFractionDigits: 1 })} h</b><span>horas-máquina</span></div><span className="hcx-spacer" />{paso === 'mano_obra' && <button className="hcx-btn primary hcx-summary-add" type="button" disabled={bloqueada} onClick={() => setPanelTrabajo(true)}>{I.plus} Agregar trabajo</button>}</div>
         <nav className="hcx-stepnav" aria-label="Pasos del wizard">{STEPS.map((item, index) => <button key={item.id} className={`hcx-step ${paso === item.id ? 'is-current' : index < pasoActual ? 'is-done' : ''}`} type="button" onClick={() => setPaso(item.id)}><span>{index < pasoActual ? '✓' : index + 1}</span><small>{item.label}</small><em>{montoPaso(item.id) == null ? '—' : money(montoPaso(item.id))}</em></button>)}</nav>

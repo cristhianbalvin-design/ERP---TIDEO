@@ -1223,8 +1223,14 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
 }
 
 // ── Detalle (lectura) ──────────────────────────────────────────────────
+const TIPO_EJECUCION_LABEL = { mantenimiento: 'Mantenimiento (OT)', fabricacion: 'Fabricación (OF)', mixto: 'Mixto (OT y OF)' };
+
 function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onSolicitarAprobacion, onCancelarSolicitud, onAprobacionManual, onGenerarOS, onVerOS, osVinculada, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
+  const { actualizarCotizacion } = useApp();
+  // Tipo de ejecución: define si la OS generará OT (mantenimiento), OF (fabricación) o ambas.
+  // Con Hoja de Costeo se calcula de sus trabajos; sin hoja se elige aquí.
+  const tipoEjecucionEditable = !cot.hoja_costeo_id && !['anulada', 'rechazada'].includes(cot.estado);
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
   const [confirmEnviar, setConfirmEnviar] = useState(false);
@@ -1406,10 +1412,13 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                   <div className="dx-cotd-f"><small>Validez</small><div>{validezTexto()}</div></div>
                   <div className="dx-cotd-f"><small>Attn. contacto</small><div>{contacto?.nombre || '—'}</div></div>
                 </div>
-                <div className="dx-cotd-fields is-three">
+                <div className="dx-cotd-fields is-three is-four">
                   <div className="dx-cotd-f"><small>Vendedor responsable</small><div>{vendedorNombre}</div></div>
                   <div className="dx-cotd-f"><small>Email vendedor</small><div>{vendedorEmail ? <a href={`mailto:${vendedorEmail}`}>{vendedorEmail}</a> : '—'}</div></div>
                   <div className="dx-cotd-f"><small>Enviada al cliente</small><div>{fechaHoraDx(cot.fecha_envio) || '—'}</div></div>
+                  <div className="dx-cotd-f"><small>Tipo de ejecución</small>{tipoEjecucionEditable
+                    ? <select className="dx-cotd-tipo" aria-label="Tipo de ejecución" value={cot.tipo_ejecucion || ''} onChange={event => actualizarCotizacion(cot.id, { tipo_ejecucion: event.target.value || null })}><option value="">Sin definir</option><option value="mantenimiento">Mantenimiento (OT)</option><option value="fabricacion">Fabricación (OF)</option><option value="mixto">Mixto (OT y OF)</option></select>
+                    : <div title={cot.hoja_costeo_id ? 'Se calcula con los trabajos de la Hoja de Costeo.' : undefined}>{TIPO_EJECUCION_LABEL[cot.tipo_ejecucion] || 'Sin definir'}</div>}</div>
                 </div>
                 {esBorrador && !aprobadaInterna && !puedeAprobarCot && <div className="dx-cotd-note is-amber">{I.clock}<span>Usa <strong>Solicitar aprobación</strong> para que la jefatura comercial revise esta cotización antes de enviarla al cliente.</span></div>}
                 {esPendiente && <div className="dx-cotd-note is-amber">{I.clock}<span><strong>Pendiente de revisión</strong> — la jefatura comercial debe aprobar esta cotización para que puedas enviarla al cliente.</span></div>}
