@@ -13,7 +13,7 @@ import { RecepcionActivosClientePage } from '../pages/RecepcionActivosClientePag
 import { DiagnosticoTecnicoPage } from '../pages/DiagnosticoTecnicoPage.jsx';
 import { ParteTallerPage } from '../pages/pages3.jsx';
 import { ReportesMinaPage } from '../pages/ReportesMinaPage.jsx';
-import { SchedulerDespacho } from '../pages/TransportePages.jsx';
+import { PlannerPage } from '../pages/planner/PlannerPage.jsx';
 import { AnalisisSOS } from '../pages/ProduccionPages.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
@@ -52,7 +52,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'mis-reportes': return <ReportesMinaPage onNav={onNavigate} />;
     case 'nuevo-reporte': return <ReportesMinaPage onNav={onNavigate} vistaInicial="nuevo" />;
     case 'cierre-conformidad': return <CierreConformidadPage />;
-    case 'scheduler-despacho': return <SchedulerDespacho setCurrent={onNavigate} />;
+    case 'scheduler-despacho': return <PlannerPage />;
 
     case 'hse-dashboard': return <HSEDashboard setCurrent={onNavigate} />;
     case 'permisos-trabajo': return <PermisosTrabajoHSE />;
