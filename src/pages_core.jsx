@@ -5015,6 +5015,7 @@ function OSCliente() {
     observaciones: os?.observaciones || '',
     tipo_cobro: os?.tipo_cobro || 'puntual',
     tarifa_mensual: os?.tarifa_mensual ?? '',
+    tipo_ejecucion: os?.tipo_ejecucion || '',
   });
   const [modalFormularioOS, setModalFormularioOS] = useState(null);
   const [formularioOS, setFormularioOS] = useState(() => formularioOSBase());
@@ -5049,6 +5050,10 @@ function OSCliente() {
   const PILL_OS = { activa:'is-green', en_ejecucion:'is-green', por_facturar:'is-green', en_pausa:'is-amber', cerrada:'is-gray', facturada:'is-gray', anulada:'is-red' };
   const fechaOS = valor => (valor ? String(valor).slice(0, 10).split('-').reverse().join('/') : '—');
   // Las OTs se crean en la app de Operaciones: se abre su Nueva OT con la OS y el cliente ya elegidos.
+  // Tipo de ejecución: mantenimiento → OT; fabricación → OF; mixto → ambas. Sin definir: se permite OT como hasta hoy.
+  const TIPO_EJECUCION_LABEL = { mantenimiento: 'Mantenimiento (OT)', fabricacion: 'Fabricación (OF)', mixto: 'Mixto (OT y OF)' };
+  const permiteOT = os => !os?.tipo_ejecucion || ['mantenimiento', 'mixto'].includes(os.tipo_ejecucion);
+  const permiteOF = os => ['fabricacion', 'mixto'].includes(os?.tipo_ejecucion);
   const abrirNuevaOTEnOperaciones = os => {
     const base = (import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/').replace(/\/?$/, '/');
     const query = new URLSearchParams({ os: os.id, ...(os.cuenta_id ? { cliente: os.cuenta_id } : {}) });
@@ -5119,6 +5124,7 @@ function OSCliente() {
       observaciones: formularioOS.observaciones.trim() || null,
       tipo_cobro: formularioOS.tipo_cobro,
       tarifa_mensual: esCobroMensual(formularioOS) ? Number(formularioOS.tarifa_mensual) : null,
+      tipo_ejecucion: formularioOS.tipo_ejecucion || null,
     };
     if (editandoOS) {
       const anterior = modalFormularioOS;
@@ -5240,6 +5246,7 @@ function OSCliente() {
                 <div className="input-group dx-osc-full"><label>Nombre / alcance de la OS *</label><input className="input" value={formularioOS.nombre} onChange={e => actualizarFormularioOS('nombre', e.target.value)} placeholder="Ej. Alquiler de equipo" required autoFocus /></div>
                 {modalFormularioOS === 'crear' && <div className="input-group"><label>N° OS interno</label><input className="input" value={formularioOS.numero} onChange={e => actualizarFormularioOS('numero', e.target.value)} placeholder="Automático si se deja vacío" /></div>}
                 <div className="input-group"><label>N° OS del cliente</label><input className="input" value={formularioOS.numero_doc_cliente} onChange={e => actualizarFormularioOS('numero_doc_cliente', e.target.value)} placeholder="Opcional" /></div>
+                <div className="input-group"><label>Tipo de ejecución</label><select className="select" value={formularioOS.tipo_ejecucion} onChange={e => actualizarFormularioOS('tipo_ejecucion', e.target.value)}><option value="">Sin definir</option><option value="mantenimiento">Mantenimiento (OT)</option><option value="fabricacion">Fabricación (OF)</option><option value="mixto">Mixto (OT y OF)</option></select></div>
                 {modalFormularioOS === 'crear' && empresa?.multisociedad_habilitado && <div className="input-group"><label>Sociedad *</label><select className="select" value={formularioOS.sociedad_id} onChange={e => actualizarFormularioOS('sociedad_id', e.target.value)} required><option value="">Selecciona una sociedad</option>{(sociedadesDisponibles || []).filter(s => s.activa !== false).map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre || s.codigo}</option>)}</select></div>}
               </div>
             </section>
@@ -5411,6 +5418,7 @@ function OSCliente() {
               {os.nombre || os.numero}
               <span className={`dx-osc-pill ${PILL_OS[os.estado] || 'is-gray'}`}><i />{LABEL[os.estado] || os.estado}</span>
               <span className="dx-osc-tag is-gray">{os.moneda || 'PEN'}</span>
+              {os.tipo_ejecucion && <span className="dx-osc-tag is-mensual">{TIPO_EJECUCION_LABEL[os.tipo_ejecucion]}</span>}
             </h1>
             <p className="dx-osc-sub">
               {getNombre(os.cuenta_id)} · {os.numero_doc_cliente ? <>N° OS del cliente <strong>{os.numero_doc_cliente}</strong></> : 'Sin N° OS del cliente'}
@@ -5422,7 +5430,8 @@ function OSCliente() {
             {os.cotizacion_especial_id && <button type="button" className="dx-osc-ghost" onClick={() => navigate('cotizaciones', { especial:'detalle', especial_id:os.cotizacion_especial_id })}>{I.file} Ver cotización especial</button>}
             {!cerrada && <button type="button" className="dx-osc-ghost" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button>}
             <button type="button" className="dx-osc-ghost" aria-haspopup="menu" aria-expanded={menuAccionesOS} onClick={() => setMenuAccionesOS(v => !v)}>Más acciones {I.chev}</button>
-            {!cerrada && <button type="button" className="dx-osc-primary" onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Crear OT</button>}
+            {!cerrada && permiteOF(os) && <button type="button" className="dx-osc-ghost" disabled title="La Orden de Fabricación estará disponible pronto">{I.plus} Crear OF · Disponible pronto</button>}
+            {!cerrada && permiteOT(os) && <button type="button" className="dx-osc-primary" onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Crear OT</button>}
             {menuAccionesOS && <>
               <div className="dx-osc-menu-back" onClick={() => setMenuAccionesOS(false)} />
               <div className="dx-osc-menu" role="menu">
@@ -5438,6 +5447,16 @@ function OSCliente() {
         </header>
 
         <section className="dx-osc-meta" aria-label="Datos de la OS">
+          <div><small>Ejecución</small>
+            {!cerrada ? (
+              <select aria-label="Tipo de ejecución" value={os.tipo_ejecucion || ''} onChange={e => actualizarOSCliente(os.id, { tipo_ejecucion: e.target.value || null })}>
+                <option value="">Sin definir</option>
+                <option value="mantenimiento">Mantenimiento (OT)</option>
+                <option value="fabricacion">Fabricación (OF)</option>
+                <option value="mixto">Mixto (OT y OF)</option>
+              </select>
+            ) : <b>{TIPO_EJECUCION_LABEL[os.tipo_ejecucion] || 'Sin definir'}</b>}
+          </div>
           <div><small>Cobro</small><b>{etiquetaTipoCobro(os.tipo_cobro)}</b><span>{esCobroMensual(os) ? `${moneyCurrency(os.tarifa_mensual || 0, os.moneda)} al mes, sin IGV` : 'Por avance, costo real o hitos'}</span></div>
           <div><small>Vigencia</small><b>{os.fecha_inicio || os.fecha_fin ? `${fechaOS(os.fecha_inicio)} – ${fechaOS(os.fecha_fin)}` : 'Sin fechas'}</b><span>{os.fecha_fin ? 'Cierre estimado' : 'Sin cierre estimado'}</span></div>
           <div><small>Condición de pago</small><b>{os.condicion_pago || 'Sin definir'}</b><span>{os.sla ? `SLA: ${os.sla}` : 'Sin SLA'}</span></div>
@@ -5570,7 +5589,7 @@ function OSCliente() {
             {activeTab === 'OTs' && <>
               <div className="card-head" style={{justifyContent:'space-between'}}>
                 <h3>Órdenes de Trabajo</h3>
-                {!cerrada && <button className="btn btn-primary os-local-action" style={{fontSize:12}} onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Nueva OT</button>}
+                {!cerrada && permiteOT(os) && <button className="btn btn-primary os-local-action" style={{fontSize:12}} onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Nueva OT</button>}
               </div>
               <div className="table-wrap">
                 <table className="tbl">
