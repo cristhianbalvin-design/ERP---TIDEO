@@ -67,7 +67,8 @@ const referenceLabel = reference => reference?.numero || 'Referencia no disponib
 const typeLabel = tipo => tipo === 'fabricacion' ? 'Fabricación' : 'Mantenimiento';
 const statusLabel = estado => estado === 'emitido' ? 'Emitido' : 'Borrador';
 const referenceStatusLabel = estado => estado === 'en_diagnostico' ? 'En diagnóstico' : estado ? String(estado).replaceAll('_', ' ').replace(/^\p{L}/u, letter => letter.toLocaleUpperCase('es')) : 'Recibido';
-const etiquetaEtapa = etapa => String(etapa || '').replaceAll('_', ' ').replace(/^\p{L}/u, letter => letter.toLocaleUpperCase('es'));
+const ETAPAS_OPORTUNIDAD = { calificacion: 'Calificación', propuesta: 'Propuesta', negociacion: 'Negociación', cierre: 'Cierre', ganada: 'Ganada', perdida: 'Perdida' };
+const etiquetaEtapa = etapa => ETAPAS_OPORTUNIDAD[String(etapa || '').toLowerCase()] || String(etapa || '').replaceAll('_', ' ').replace(/^\p{L}/u, letter => letter.toLocaleUpperCase('es'));
 const montoOportunidad = reference => {
   const monto = Number(reference?.monto_estimado);
   if (!reference?.monto_estimado || !Number.isFinite(monto)) return '';
@@ -431,7 +432,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   useEffect(() => {
     setHallazgoView('lista');
     setInformePanel(false);
-    setWorkStep(4);
+    setWorkStep(selected?.tipo === 'fabricacion' ? (selected.estado === 'emitido' ? pasoFinal('fabricacion') : pasoTrabajos('fabricacion')) : 4);
   }, [selected?.id]);
 
   // Hoja de Costeo vigente creada desde este diagnóstico (trazabilidad).

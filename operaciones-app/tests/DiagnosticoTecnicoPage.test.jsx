@@ -749,7 +749,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     const crear = () => renderer.root.findAllByType('button').find(button => button.props['aria-label'] === 'Crear borrador y continuar');
     expect(crear().props.disabled).toBe(true);
     const option = renderer.root.findAll(node => node.props.role === 'radio').find(node => textOf(node).includes('Oportunidad nueva'));
-    expect(textOf(option)).toContain('Cliente Uno · Calificacion');
+    expect(textOf(option)).toContain('Cliente Uno · Calificación');
     expect(textOf(option)).toContain('S/ 430.70');
     await act(async () => { option.props.onClick(); await wait(0); });
     expect(crear().props.disabled).toBe(false);
@@ -1047,6 +1047,15 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await goToPaso('Emitir y costear');
     expect(textOf(renderer.root)).toContain('Agrega al menos un trabajo.');
     expect(buttonByText(renderer, 'Emitir diagnóstico').props.disabled).toBe(true);
+  });
+
+  it('H4: Fabricación abierta desde la URL queda en Trabajos a realizar', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion'));
+    await renderPage({ trabajo: 'one' });
+    await act(async () => { await wait(100); });
+    expect(textOf(renderer.root)).toContain('Paso 2 de 3');
+    const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    expect(steps[1].props.className).toBe('is-current');
   });
 
   it('E3: reabrir actualiza la fila de mantenimiento sin alterar las otras filas', async () => {

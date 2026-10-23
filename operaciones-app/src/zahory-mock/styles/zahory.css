@@ -6119,3 +6119,7 @@ width:20px;height:20px}
 .dx-material-ro-empty{margin:6px 0 0;color:var(--dx-ui-gray,#6B7280)}
 .dx-work-steps[data-pasos="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 .dx-work-mobile-segments[data-pasos="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+.dx-work-page .dx-scope>.dx-inf-open-row{margin:12px 20px 0}
+.dx-work-page .dx-scope>.dx-hc-sync-info{margin:12px 20px 0}
+.dx-work-page .dx-initial-card.dx-fab-emitir+.dx-initial-card.dx-fab-emitir{margin-top:12px}
+@container (max-width:760px){.dx-work-page .dx-scope>.dx-inf-open-row,.dx-work-page .dx-scope>.dx-hc-sync-info{margin:8px 12px 0}.dx-work-page .dx-scope>.dx-inf-open-row .btn{flex:1 1 auto}.dx-work-page .dx-initial-receipt-copy{flex:1 1 calc(100% - 34px)}.dx-work-page .dx-initial-receipt-copy strong{overflow-wrap:anywhere}.dx-work-page .dx-initial-receipt-copy+.dx-ui-pill{margin-left:30px}}
