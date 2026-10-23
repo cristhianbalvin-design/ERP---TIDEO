@@ -80,10 +80,10 @@ export function crearVisor(THREE, OrbitControls, canvas, host, opt = {}) {
     V.centro = new THREE.Vector3(L.ancho / 2, 0, L.largo / 2); V.span = Math.max(L.ancho, L.largo * 1.25);
     controls.minDistance = 4; controls.maxDistance = V.span * 3;
     V.recalcularVistas(); V.colorear();
-    if (!V.encuadrado) { camera.position.copy(V.vistas.iso.pos); controls.target.copy(V.centro); V.encuadrado = true; }
+    if (!V.encuadrado || !V.interactuo) { V.encuadrar(); V.encuadrado = true; }
   };
   V.recalcularVistas = () => {
-    if (!V.centro) return; const f = Math.max(1, 1.35 / (camera.aspect || 1)), d = V.span * 1.05 * f;
+    if (!V.centro) return; const f = Math.max(1, 1.5 / (camera.aspect || 1)), d = V.span * 1.2 * f;
     V.vistas = { iso: { pos: V.centro.clone().add(new THREE.Vector3(-0.42, 0.72, 1).normalize().multiplyScalar(d)), tgt: V.centro.clone() }, top: { pos: V.centro.clone().add(new THREE.Vector3(0, d * 1.2, 0.5)), tgt: V.centro.clone() } };
   };
   const grad = (t, a, b) => new THREE.Color(a).lerp(new THREE.Color(b), Math.max(0, Math.min(1, t)));
@@ -113,15 +113,19 @@ export function crearVisor(THREE, OrbitControls, canvas, host, opt = {}) {
     ['estructura', 'zonas', 'etiquetas', 'muros'].forEach(k => { V.G[k].visible = s[k]; });
     V.bins.forEach(b => { const p = b.userData.pos; const off = p.rackId && s.racks[p.rackId] === false; b.visible = !off && !(V.modo === 'estado' && V.filtrosOff.has(b.userData.estado)) && (s.vacias || b.userData.lleno); });
   };
-  V.ajustar = () => { const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); V.recalcularVistas(); };
+  // Mientras la persona no mueva la cámara, el encuadre sigue al tamaño del lienzo.
+  V.interactuo = false;
+  controls.addEventListener('start', () => { V.interactuo = true; });
+  V.encuadrar = () => { if (!V.vistas.iso) return; camera.position.copy(V.vistas.iso.pos); controls.target.copy(V.vistas.iso.tgt); controls.update(); };
+  V.ajustar = () => { const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); V.recalcularVistas(); if (!V.interactuo && !V.anim) V.encuadrar(); };
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(V.ajustar) : null; ro?.observe(host); V.ajustar();
-  V.irA = (p1, t1) => { if (reducido) { camera.position.copy(p1); controls.target.copy(t1); return; } V.anim = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1, t1 }; };
-  V.vista = v => V.vistas[v] && V.irA(V.vistas[v].pos.clone(), V.vistas[v].tgt.clone());
+  V.irA = (p1, t1) => { V.interactuo = true; if (reducido) { camera.position.copy(p1); controls.target.copy(t1); return; } V.anim = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1, t1 }; };
+  V.vista = v => { if (!V.vistas[v]) return; V.irA(V.vistas[v].pos.clone(), V.vistas[v].tgt.clone()); if (v === 'iso') V.interactuo = false; };
   V.volarA = p => { const t = new THREE.Vector3(p.x, p.y, p.z), dir = camera.position.clone().sub(controls.target).normalize(), pos = t.clone().add(dir.multiplyScalar(16)); pos.y = Math.max(pos.y, p.y + 6); V.irA(pos, t); };
   V.limitar = () => { if (!V.L) return; const t = controls.target, ox = t.x, oz = t.z; t.x = Math.max(0, Math.min(V.L.ancho, t.x)); t.z = Math.max(0, Math.min(V.L.largo, t.z)); camera.position.x += t.x - ox; camera.position.z += t.z - oz; };
-  V.paneo = (dir, paso) => { const off = camera.position.clone().sub(controls.target); off.y = 0; off.normalize(); const fwd = off.clone().negate(), der = new THREE.Vector3(-fwd.z, 0, fwd.x); const v = dir === 'arriba' ? fwd : dir === 'abajo' ? fwd.negate() : dir === 'der' ? der : der.negate(); v.multiplyScalar(paso); controls.target.add(v); camera.position.add(v); V.limitar(); };
-  V.zoom = f => { const off = camera.position.clone().sub(controls.target); const d = Math.max(controls.minDistance, Math.min(controls.maxDistance, off.length() * f)); camera.position.copy(controls.target).add(off.setLength(d)); };
-  V.girar = (az, pol) => { const off = camera.position.clone().sub(controls.target); const s = new THREE.Spherical().setFromVector3(off); s.theta += az; s.phi = Math.max(controls.minPolarAngle, Math.min(controls.maxPolarAngle, s.phi + pol)); off.setFromSpherical(s); camera.position.copy(controls.target).add(off); };
+  V.paneo = (dir, paso) => { V.interactuo = true; const off = camera.position.clone().sub(controls.target); off.y = 0; off.normalize(); const fwd = off.clone().negate(), der = new THREE.Vector3(-fwd.z, 0, fwd.x); const v = dir === 'arriba' ? fwd : dir === 'abajo' ? fwd.negate() : dir === 'der' ? der : der.negate(); v.multiplyScalar(paso); controls.target.add(v); camera.position.add(v); V.limitar(); };
+  V.zoom = f => { V.interactuo = true; const off = camera.position.clone().sub(controls.target); const d = Math.max(controls.minDistance, Math.min(controls.maxDistance, off.length() * f)); camera.position.copy(controls.target).add(off.setLength(d)); };
+  V.girar = (az, pol) => { V.interactuo = true; const off = camera.position.clone().sub(controls.target); const s = new THREE.Spherical().setFromVector3(off); s.theta += az; s.phi = Math.max(controls.minPolarAngle, Math.min(controls.maxPolarAngle, s.phi + pol)); off.setFromSpherical(s); camera.position.copy(controls.target).add(off); };
   // Ctrl + rueda para acercar: la rueda sola deja hacer scroll a la página (como el Planner)
   const rueda = ev => { if (!ev.ctrlKey && !ev.metaKey) { ev.stopImmediatePropagation(); opt.onZoomHint?.(); } };
   canvas.addEventListener('wheel', rueda, { capture: true });
