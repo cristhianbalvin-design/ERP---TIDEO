@@ -1701,6 +1701,8 @@ function OT({ role }) {
       setExpandedCostSections({ mano_obra: false, materiales: false, terceros: false, logistica: false });
     }
   }, [sel?.id]);
+  const facturacionBloqueada = ['Interno_Plataforma', 'Garantia_Fabrica', 'Reclamo_Rework']
+    .includes(sel?.cargo_financiero);
   const abrirEditDatos = () => {
     const buscarOperativoPorRef = ref => (personalOperativo || []).find(p =>
       p.id === ref || p.auth_user_id === ref || p.nombre === ref || p.email === ref
@@ -1717,7 +1719,7 @@ function OT({ role }) {
       centro_costo_id: sel?.centro_costo_id || '',
       tipo: sel?.tipo || '',
       prioridad: sel?.prioridad || 'normal',
-      facturable: sel?.facturable !== false,
+      facturable: facturacionBloqueada ? false : sel?.facturable !== false,
       tecnico_responsable_id: responsableActual,
       supervisor: supervisorActual,
       sede: sel?.sede || osVinculada?.sede || '',
@@ -2620,10 +2622,16 @@ function OT({ role }) {
                         </div>
                         <div className="input-group">
                           <label>Facturación</label>
-                          <select className="select" value={formDatos.facturable ? 'si' : 'no'} onChange={e => setFormDatos(p => ({...p, facturable: e.target.value === 'si'}))}>
+                          <select
+                            className="select"
+                            value={formDatos.facturable ? 'si' : 'no'}
+                            disabled={facturacionBloqueada}
+                            onChange={e => setFormDatos(p => ({...p, facturable: e.target.value === 'si'}))}
+                          >
                             <option value="si">Facturable</option>
                             <option value="no">No facturable</option>
                           </select>
+                          {facturacionBloqueada && <div className="text-muted" style={{fontSize:11, marginTop:4}}>No facturable por su cargo financiero.</div>}
                         </div>
                         <div className="input-group">
                           <label>Responsable</label>
