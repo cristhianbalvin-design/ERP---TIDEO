@@ -86,3 +86,13 @@ Tipografía: **Sora** para títulos y números destacados, **DM Sans** para text
 - No agregar librerías, fuentes ni colores fuera de la sección 2 sin aprobación.
 - No cambiar clases ni estilos de otras pantallas mientras se trabaja una.
 - No afirmar un resultado visual sin haberlo medido o visto en el navegador.
+
+## 9. Componentes dx compartidos adicionales
+
+Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/dx/` y usan clases `dx-ui-*`:
+
+- `filtrarBusquedaInteligente(registros, consulta)` normaliza a minúsculas sin tildes, separa términos y exige que todos aparezcan entre los valores del registro.
+- `<DxBuscador value={texto} onChange={setTexto} placeholder="Buscar…" label="Buscar registros" />` es la caja accesible de búsqueda.
+- `<DxFechaExacta value={fecha} onChange={setFecha} label="Vigentes en la fecha" />` permite elegir o limpiar una fecha exacta.
+- `<DxFiltroMoneda value={moneda} onChange={setMoneda} />` ofrece Todas, PEN y USD. Los importes de resumen siempre se mantienen separados por moneda.
+- `<DxReferenceSelector label="Ruta" options={rutas} value={rutaId} onChange={setRutaId} getLabel={ruta => ruta.nombre} loading={cargando} optionalLabel="Todas las rutas" />` busca, selecciona y limpia una referencia; presenta estados de carga y sin resultados.

@@ -1667,6 +1667,22 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-ui .dx-ui-tab { height:36px; padding:0 14px; border:1px solid var(--dx-ui-line); border-radius:999px; background:var(--dx-ui-card); color:var(--dx-ui-gray); font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
 .dx-ui .dx-ui-tab.on { border-color:transparent; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
 .dx-ui .dx-ui-tab:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-ui .dx-ui-search>button,.dx-ui .dx-ui-date button { border:0; background:transparent; color:var(--dx-ui-gray); cursor:pointer; font:600 12px 'DM Sans',sans-serif; }
+.dx-ui .dx-ui-search>button:disabled,.dx-ui .dx-ui-date button:disabled { opacity:.4; cursor:default; }
+.dx-ui .dx-ui-date { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 10px; border:1px solid var(--dx-ui-border); border-radius:8px; color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui .dx-ui-date input { min-width:130px; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:13px 'DM Sans',sans-serif; }
+.dx-ui .dx-ui-segment { display:inline-flex; gap:2px; padding:3px; border:1px solid var(--dx-ui-line); border-radius:999px; background:var(--dx-ui-bg); }
+.dx-ui .dx-ui-segment button { min-height:30px; padding:0 10px; border:0; border-radius:999px; background:transparent; color:var(--dx-ui-gray); font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-ui .dx-ui-segment button.on { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui .dx-ui-segment button:focus-visible,.dx-ui .dx-ui-date button:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-ui .dx-ui-reference { display:flex; min-width:0; flex-direction:column; gap:6px; color:var(--dx-ui-ink); }
+.dx-ui .dx-ui-reference>label { color:var(--dx-ui-gray); font-size:12px; font-weight:600; }
+.dx-ui .dx-ui-reference>input,.dx-ui .dx-ui-reference-selected { min-height:40px; padding:9px 11px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui .dx-ui-reference-options { display:flex; max-height:150px; flex-direction:column; overflow:auto; border:1px solid var(--dx-ui-line); border-radius:8px; background:var(--dx-ui-card); }
+.dx-ui .dx-ui-reference-options button,.dx-ui .dx-ui-reference-options small { padding:7px 10px; border:0; background:transparent; color:var(--dx-ui-ink); text-align:left; font:13px 'DM Sans',sans-serif; }
+.dx-ui .dx-ui-reference-options button:hover { background:var(--dx-ui-hover); }
+.dx-ui .dx-ui-reference-selected { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.dx-ui .dx-ui-reference-selected button { border:0; background:transparent; color:var(--dx-ui-cyan-fg); cursor:pointer; }
 @media (max-width:760px) {
   .dx-ui .dx-ui-head-page { align-items:flex-start; flex-direction:column; }
   .dx-ui .dx-ui-actions { width:100%; margin-left:0; }
@@ -6097,3 +6113,39 @@ display:none}
 width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .dx-otb-oti svg{
 width:20px;height:20px}
+
+/* Transporte Comercial · maestros dx */
+.dx-ui.dx-transporte { padding:24px 28px 60px; }
+.dx-transporte .dx-transporte-list { margin-bottom:18px; }
+.dx-transporte .dx-transporte-route-cols { --dx-ui-cols:minmax(230px,1.7fr) minmax(125px,.9fr) minmax(120px,1fr) minmax(105px,.8fr) minmax(90px,.65fr) minmax(95px,.7fr) 14px; }
+.dx-transporte .dx-transporte-tariff-cols { --dx-ui-cols:minmax(190px,1.4fr) minmax(145px,1fr) minmax(125px,.9fr) minmax(110px,.8fr) minmax(160px,1.1fr) minmax(95px,.7fr) 14px; }
+.dx-transporte .dx-transporte-route-main { display:flex; min-width:0; flex-direction:column; gap:2px; overflow:hidden; }
+.dx-transporte .dx-transporte-route-main b,.dx-transporte .dx-transporte-route-main strong { overflow:hidden; color:var(--dx-ui-navy); text-overflow:ellipsis; white-space:nowrap; }
+.dx-transporte .dx-transporte-route-main small,.dx-transporte .dx-transporte-subline { overflow:hidden; color:var(--dx-ui-gray); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.dx-transporte .dx-transporte-field { display:flex; min-width:0; flex-direction:column; gap:5px; color:var(--dx-ui-gray); font-size:12px; font-weight:600; }
+.dx-transporte .dx-transporte-field input,.dx-transporte .dx-transporte-field select,.dx-transporte .dx-transporte-field textarea,.dx-transporte .dx-ui-reference>input { width:100%; min-width:0; min-height:40px; padding:8px 10px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-transporte .dx-transporte-field textarea { resize:vertical; }
+.dx-transporte .dx-transporte-field small { color:var(--dx-ui-red-fg); font-size:11px; font-weight:400; }
+.dx-transporte .dx-transporte-form-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.dx-transporte .dx-transporte-wide { grid-column:1/-1; }
+.dx-transporte .dx-transporte-error { margin-top:12px; color:var(--dx-ui-red-fg); }
+.dx-transporte .dx-transporte-related { margin:18px 0; padding:14px; border:1px solid var(--dx-ui-line); border-radius:10px; }
+.dx-transporte .dx-transporte-related h3,.dx-transporte .dx-transporte-probe h2 { margin:0 0 8px; color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }
+.dx-transporte .dx-transporte-related>div,.dx-transporte .dx-transporte-related p,.dx-transporte .dx-transporte-probe p { margin:5px 0; color:var(--dx-ui-gray); font-size:13px; }
+.dx-transporte .dx-transporte-notice { display:flex; justify-content:space-between; margin-bottom:12px; padding:10px 14px; border-radius:8px; background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-transporte .dx-transporte-notice button { border:0; background:transparent; color:inherit; cursor:pointer; }
+.dx-transporte .dx-transporte-probe { display:grid; grid-template-columns:1fr; gap:12px; margin-top:18px; padding:20px; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); }
+.dx-transporte .dx-transporte-probe form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:end; gap:12px; }
+.dx-transporte .dx-transporte-probe-result { display:flex; flex-wrap:wrap; gap:10px; color:var(--dx-ui-ink); }
+.dx-transporte .dx-transporte-probe-result b { color:var(--dx-ui-navy); font:700 16px 'Sora',sans-serif; }
+.dx-transporte .dx-ui-row small { display:block; }
+@container (max-width:760px) {
+  .dx-transporte .dx-ui-head.dx-transporte-route-cols,.dx-transporte .dx-ui-head.dx-transporte-tariff-cols { display:none; }
+  .dx-transporte .dx-ui-row.dx-transporte-route-cols,.dx-transporte .dx-ui-row.dx-transporte-tariff-cols { grid-template-columns:minmax(0,1fr) auto; gap:7px 12px; align-items:start; padding:14px 16px; }
+  .dx-transporte .dx-ui-row.dx-transporte-route-cols>:first-child,.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:first-child { grid-column:1; }
+  .dx-transporte .dx-ui-row.dx-transporte-route-cols>:nth-child(2),.dx-transporte .dx-ui-row.dx-transporte-route-cols>:nth-child(3),.dx-transporte .dx-ui-row.dx-transporte-route-cols>:nth-child(4),.dx-transporte .dx-ui-row.dx-transporte-route-cols>:nth-child(5),.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:nth-child(2),.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:nth-child(3),.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:nth-child(4),.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:nth-child(5) { grid-column:1; color:var(--dx-ui-gray); font-size:12px; }
+  .dx-transporte .dx-ui-row.dx-transporte-route-cols>:nth-child(6),.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:nth-child(6) { grid-column:2; grid-row:1; }
+  .dx-transporte .dx-ui-row.dx-transporte-route-cols>:last-child,.dx-transporte .dx-ui-row.dx-transporte-tariff-cols>:last-child { grid-column:2; grid-row:2; }
+  .dx-transporte .dx-transporte-form-grid,.dx-transporte .dx-transporte-probe form { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@container (max-width:480px) { .dx-transporte .dx-transporte-form-grid,.dx-transporte .dx-transporte-probe form { grid-template-columns:minmax(0,1fr); } }
