@@ -55,18 +55,23 @@ function Pill({ state }) {
   );
 }
 
-function Field({ label, name, form, setForm, type = 'text', required = false, error, ...props }) {
+function Field({ label, name, form, updateField, fieldErrors = {}, type = 'text', required = false, ...props }) {
+  const error = fieldErrors[name];
+  const errorId = `${name}-error`;
   return (
-    <label className="dx-transporte-field">
-      {label}{required && ' *'}
+    <label className="dx-ui-field">
+      <span>{label}{required && <span className="dx-ui-required"> *</span>}</span>
       <input
+        name={name}
         type={type}
         value={form[name] ?? ''}
-        onChange={event => setForm(current => ({ ...current, [name]: event.target.value }))}
+        onChange={event => updateField(name, event.target.value)}
         aria-invalid={Boolean(error)}
+        aria-required={required || undefined}
+        aria-describedby={error ? errorId : undefined}
         {...props}
       />
-      {error && <small>{error}</small>}
+      {error && <small className="dx-ui-field-error" id={errorId} role="alert">{error}</small>}
     </label>
   );
 }
@@ -85,6 +90,7 @@ export function MaestroRutasPage() {
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [notice, setNotice] = useState('');
 
   const canChange = access.crear || access.editar;
@@ -143,6 +149,12 @@ export function MaestroRutasPage() {
       / routesWithDistance.length
     : 0;
 
+  function updateField(name, value) {
+    setForm(current => ({ ...current, [name]: value }));
+    setFieldErrors(current => ({ ...current, [name]: '' }));
+    setFormError('');
+  }
+
   function open(route) {
     const values = route
       ? {
@@ -160,6 +172,7 @@ export function MaestroRutasPage() {
 
     setForm(values);
     setFormError('');
+    setFieldErrors({});
     setModal(route || {});
   }
 
@@ -167,9 +180,14 @@ export function MaestroRutasPage() {
     event.preventDefault();
     const errors = validarFormularioRuta(form);
     if (Object.keys(errors).length) {
-      setFormError(Object.values(errors)[0]);
+      setFieldErrors(errors);
+      setFormError('');
+      requestAnimationFrame(() => {
+        document.querySelector(`[name="${Object.keys(errors)[0]}"]`)?.focus();
+      });
       return;
     }
+    setFieldErrors({});
 
     setSaving(true);
     setFormError('');
@@ -256,16 +274,14 @@ export function MaestroRutasPage() {
         </div>
       )}
 
-      <div className="dx-ui-summary">
-        <div className="dx-ui-chip"><b>{rutas.length}</b><span>Total de rutas</span></div>
-        <div className="dx-ui-chip"><b>{activeRoutes.length}</b><span>Activas</span></div>
-        <div className="dx-ui-chip">
-          <b>{rutas.length - activeRoutes.length}</b>
-          <span>Inactivas</span>
+      <div className="dx-ui-kpi-row">
+        <div className="dx-ui-kpi"><strong>{rutas.length}</strong><span>Total de rutas</span></div>
+        <div className="dx-ui-kpi"><strong>{activeRoutes.length}</strong><span>Activas</span></div>
+        <div className="dx-ui-kpi">
+          <strong>{rutas.length - activeRoutes.length}</strong><span>Inactivas</span>
         </div>
-        <div className="dx-ui-chip">
-          <b>{averageKm.toFixed(1)} km</b>
-          <span>Promedio activas</span>
+        <div className="dx-ui-kpi">
+          <strong>{averageKm.toFixed(1)} km</strong><span>Promedio activas</span>
         </div>
       </div>
 
@@ -279,6 +295,7 @@ export function MaestroRutasPage() {
             placeholder="Buscar código, origen, destino…"
           />
           <select
+            className="dx-ui-select"
             aria-label="Filtrar por estado"
             value={stateFilter}
             onChange={event => setStateFilter(event.target.value)}
@@ -339,16 +356,40 @@ export function MaestroRutasPage() {
                 <small>
                   {route.nombre}
                   {route.origen_ubigeo || route.destino_ubigeo
-                    ? ` · ${route.origen_ubigeo || '—'} → ${route.destino_ubigeo || '—'}`
+                    ? ` · Ubigeo ${route.origen_ubigeo || 'Sin dato'} → ${route.destino_ubigeo || 'Sin dato'}`
                     : ''}
                 </small>
               </span>
               <span>
-                {route.distancia_km ?? '—'} km · {route.duracion_estimada_horas ?? '—'} h
+                <small>Distancia</small>
+                <strong className={route.distancia_km == null ? 'dx-transporte-no-data' : ''}>
+                  {route.distancia_km == null ? 'Sin dato' : `${route.distancia_km} km`}
+                </strong>
+                <small>Duración</small>
+                <strong className={route.duracion_estimada_horas == null ? 'dx-transporte-no-data' : ''}>
+                  {route.duracion_estimada_horas == null
+                    ? 'Sin dato'
+                    : `${route.duracion_estimada_horas} h`}
+                </strong>
               </span>
-              <span>{route.tipo_carga_habitual || '—'}</span>
-              <span>{formatearImporte(route.peajes_estimados, route.moneda_peajes)}</span>
-              <span>{currentTariffsCount}</span>
+              <span>
+                <small>Carga</small>
+                <strong className={!route.tipo_carga_habitual ? 'dx-transporte-no-data' : ''}>
+                  {route.tipo_carga_habitual || 'Sin dato'}
+                </strong>
+              </span>
+              <span>
+                <small>Peajes</small>
+                <strong className={route.peajes_estimados == null ? 'dx-transporte-no-data' : ''}>
+                  {route.peajes_estimados == null
+                    ? 'Sin dato'
+                    : formatearImporte(route.peajes_estimados, route.moneda_peajes)}
+                </strong>
+              </span>
+              <span>
+                <small>Tarifas</small>
+                <strong>{currentTariffsCount} {currentTariffsCount === 1 ? 'tarifa' : 'tarifas'}</strong>
+              </span>
               <span><Pill state={route.estado} /></span>
               <span className="dx-ui-arrow">›</span>
             </div>
@@ -392,103 +433,161 @@ export function MaestroRutasPage() {
         {modal && (
           <div className="card-body">
             <form id="route-form" className="dx-transporte-form" onSubmit={save}>
-              <div className="dx-transporte-form-grid">
+              <div className="dx-ui-form-grid">
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Código"
                   name="codigo"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   required
-                  error={formError && !form.codigo ? formError : ''}
                 />
-                <Field label="Nombre de ruta" name="nombre" form={form} setForm={setForm} required />
-                <Field label="Origen" name="origen_nombre" form={form} setForm={setForm} required />
-                <Field label="Dirección de origen" name="origen_direccion" form={form} setForm={setForm} />
-                <Field label="Ubigeo de origen" name="origen_ubigeo" form={form} setForm={setForm} />
                 <Field
+                  fieldErrors={fieldErrors}
+                  label="Nombre de ruta"
+                  name="nombre"
+                  form={form}
+                  updateField={updateField}
+                  required
+                />
+                <Field
+                  fieldErrors={fieldErrors}
+                  label="Origen"
+                  name="origen_nombre"
+                  form={form}
+                  updateField={updateField}
+                  required
+                />
+                <Field
+                  fieldErrors={fieldErrors}
+                  label="Dirección de origen"
+                  name="origen_direccion"
+                  form={form}
+                  updateField={updateField}
+                />
+                <Field
+                  fieldErrors={fieldErrors}
+                  label="Ubigeo de origen"
+                  name="origen_ubigeo"
+                  form={form}
+                  updateField={updateField}
+                />
+                <Field
+                  fieldErrors={fieldErrors}
                   label="Latitud de origen"
                   name="origen_latitud"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   step="any"
                 />
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Longitud de origen"
                   name="origen_longitud"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   step="any"
                 />
-                <Field label="Destino" name="destino_nombre" form={form} setForm={setForm} required />
-                <Field label="Dirección de destino" name="destino_direccion" form={form} setForm={setForm} />
-                <Field label="Ubigeo de destino" name="destino_ubigeo" form={form} setForm={setForm} />
                 <Field
+                  fieldErrors={fieldErrors}
+                  label="Destino"
+                  name="destino_nombre"
+                  form={form}
+                  updateField={updateField}
+                  required
+                />
+                <Field
+                  fieldErrors={fieldErrors}
+                  label="Dirección de destino"
+                  name="destino_direccion"
+                  form={form}
+                  updateField={updateField}
+                />
+                <Field
+                  fieldErrors={fieldErrors}
+                  label="Ubigeo de destino"
+                  name="destino_ubigeo"
+                  form={form}
+                  updateField={updateField}
+                />
+                <Field
+                  fieldErrors={fieldErrors}
                   label="Latitud de destino"
                   name="destino_latitud"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   step="any"
                 />
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Longitud de destino"
                   name="destino_longitud"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   step="any"
                 />
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Distancia (km)"
                   name="distancia_km"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   min="0"
                   step="any"
                 />
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Duración estimada (horas)"
                   name="duracion_estimada_horas"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   min="0"
                   step="any"
                 />
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Tipo de carga habitual"
                   name="tipo_carga_habitual"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                 />
                 <Field
+                  fieldErrors={fieldErrors}
                   label="Peajes estimados"
                   name="peajes_estimados"
                   form={form}
-                  setForm={setForm}
+                  updateField={updateField}
                   type="number"
                   min="0"
                   step="any"
                 />
-                <label className="dx-transporte-field">
-                  Moneda de peajes
+                <label className="dx-ui-field">
+                  <span>Moneda de peajes <span className="dx-ui-required"> *</span></span>
                   <select
+                    className="dx-ui-select"
+                    name="moneda_peajes"
+                    aria-invalid={Boolean(fieldErrors.moneda_peajes)}
+                    aria-required="true"
                     value={form.moneda_peajes}
-                    onChange={event => setForm(value => ({
-                      ...value,
-                      moneda_peajes: event.target.value,
-                    }))}
+                    onChange={event => updateField('moneda_peajes', event.target.value)}
                   >
                     <option value="PEN">PEN (S/)</option>
                     <option value="USD">USD (US$)</option>
                   </select>
+                  {fieldErrors.moneda_peajes && (
+                    <small className="dx-ui-field-error" role="alert">{fieldErrors.moneda_peajes}</small>
+                  )}
                 </label>
-                <label className="dx-transporte-field">
-                  Estado
+                <label className="dx-ui-field">
+                  <span>Estado</span>
                   <select
+                    className="dx-ui-select"
                     value={form.estado}
                     onChange={event => setForm(value => ({ ...value, estado: event.target.value }))}
                   >
@@ -496,8 +595,8 @@ export function MaestroRutasPage() {
                     <option value="inactiva">Inactiva</option>
                   </select>
                 </label>
-                <label className="dx-transporte-field dx-transporte-wide">
-                  Notas
+                <label className="dx-ui-field dx-ui-field-full">
+                  <span>Notas</span>
                   <textarea
                     value={form.notas}
                     onChange={event => setForm(value => ({ ...value, notas: event.target.value }))}

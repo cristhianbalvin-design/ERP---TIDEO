@@ -16,19 +16,55 @@ test('estado de vigencia distingue inactiva, futura, vigente y vencida', () => {
   assert.equal(utils.estadoVigencia({ ...base, vigente_hasta: '2026-10-22' }, '2026-10-23'), 'vencida');
 });
 
-test('formateo, modalidad y validación', () => {
+test('formateo, modalidad y validaci\u00f3n de tarifa correcta', () => {
   assert.equal(utils.formatearImporte(4.1234, 'PEN', 'km'), 'S/ 4.1234');
   assert.equal(utils.etiquetaModalidad('viaje'), 'Por viaje');
-  assert.ok(utils.validarFormularioTarifa({
-    tipo_unidad: 'Camión',
+  assert.deepEqual(utils.validarFormularioTarifa({
+    tipo_unidad: 'Cami\u00f3n',
     modalidad: 'viaje',
     ruta_id: 'x',
     tarifa: '10',
     moneda: 'PEN',
     vigente_desde: '2026-01-01',
-  }).tarifa === undefined);
+    vigente_hasta: '',
+    minimo_facturable: '',
+  }), {});
 });
 
+test('formulario de ruta vac\u00edo devuelve todos los obligatorios', () => {
+  assert.deepEqual(utils.validarFormularioRuta({}), {
+    codigo: 'Este campo es obligatorio.',
+    nombre: 'Este campo es obligatorio.',
+    origen_nombre: 'Este campo es obligatorio.',
+    destino_nombre: 'Este campo es obligatorio.',
+    moneda_peajes: 'Selecciona PEN o USD.',
+  });
+});
+
+test('tarifa por viaje requiere ruta', () => {
+  const errors = utils.validarFormularioTarifa({
+    tipo_unidad: 'Camioneta',
+    modalidad: 'viaje',
+    tarifa: '10',
+    moneda: 'PEN',
+    vigente_desde: '2026-01-01',
+  });
+
+  assert.equal(errors.ruta_id, 'Selecciona una ruta para la modalidad Por viaje.');
+});
+
+test('vigente hasta anterior a desde devuelve error en su campo', () => {
+  const errors = utils.validarFormularioTarifa({
+    tipo_unidad: 'Camioneta',
+    modalidad: 'km',
+    tarifa: '10',
+    moneda: 'PEN',
+    vigente_desde: '2026-02-01',
+    vigente_hasta: '2026-01-31',
+  });
+
+  assert.equal(errors.vigente_hasta, 'La fecha final no puede ser anterior al inicio.');
+});
 test('enriquece tarifas sin ruta ni cuenta con etiquetas generales', () => {
   const [tarifa] = utils.enriquecerTarifas([{ ruta_id: null, cuenta_id: null }]);
 

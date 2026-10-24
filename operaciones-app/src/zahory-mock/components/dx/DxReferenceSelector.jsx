@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { filtrarBusquedaInteligente } from './busquedaInteligente.js';
 
 export function DxReferenceSelector({
@@ -8,10 +8,15 @@ export function DxReferenceSelector({
   onChange,
   getLabel = item => item?.nombre || item?.id || '',
   loading = false,
-  placeholder = 'Buscar…',
+  placeholder = 'Buscar\u2026',
   optionalLabel = 'Sin asignar',
+  name,
+  error,
+  required = false,
 }) {
   const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
   const selected = options.find(item => item.id === value) || null;
   const matches = useMemo(
     () => filtrarBusquedaInteligente(options, query).slice(0, 8),
@@ -21,18 +26,29 @@ export function DxReferenceSelector({
   function clearSelection() {
     onChange(null);
     setQuery('');
+    setOpen(false);
   }
 
   function selectItem(item) {
     onChange(item.id);
     setQuery('');
+    setOpen(false);
+  }
+
+  function handleBlur(event) {
+    if (!rootRef.current?.contains(event.relatedTarget)) setOpen(false);
   }
 
   return (
-    <div className="dx-ui-reference">
-      <label>{label}</label>
+    <div className="dx-ui-reference" ref={rootRef} onBlur={handleBlur}>
+      <label>{label}{required && <span className="dx-ui-required"> *</span>}</label>
       {selected ? (
-        <div className="dx-ui-reference-selected">
+        <div
+          className="dx-ui-reference-selected"
+          aria-invalid={Boolean(error)}
+          aria-required={required || undefined}
+          aria-describedby={error ? `${name}-error` : undefined}
+        >
           <span>{getLabel(selected)}</span>
           <button type="button" onClick={clearSelection} aria-label={`Limpiar ${label}`}>
             Limpiar
@@ -41,29 +57,49 @@ export function DxReferenceSelector({
       ) : (
         <>
           <input
+            name={name}
             value={query}
-            onChange={event => setQuery(event.target.value)}
+            onFocus={() => setOpen(true)}
+            onChange={event => {
+              setQuery(event.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={event => {
+              if (event.key === 'Escape') setOpen(false);
+            }}
             placeholder={placeholder}
             aria-label={label}
+            aria-invalid={Boolean(error)}
+            aria-required={required || undefined}
+            aria-describedby={error ? `${name}-error` : undefined}
           />
-          {loading ? (
-            <small>Cargando…</small>
-          ) : (
-            <div className="dx-ui-reference-options">
-              {optionalLabel && (
-                <button type="button" onClick={() => onChange(null)}>
-                  {optionalLabel}
-                </button>
+          {open && (
+            <div className="dx-ui-reference-options" role="listbox">
+              {loading ? (
+                <small>{'Cargando…'}</small>
+              ) : (
+                <>
+                  {optionalLabel && (
+                    <button type="button" role="option" onClick={clearSelection}>
+                      {optionalLabel}
+                    </button>
+                  )}
+                  {matches.map(item => (
+                    <button type="button" role="option" key={item.id} onClick={() => selectItem(item)}>
+                      {getLabel(item)}
+                    </button>
+                  ))}
+                  {query && !matches.length && <small>Sin resultados</small>}
+                </>
               )}
-              {matches.map(item => (
-                <button type="button" key={item.id} onClick={() => selectItem(item)}>
-                  {getLabel(item)}
-                </button>
-              ))}
-              {query && !matches.length && <small>Sin resultados</small>}
             </div>
           )}
         </>
+      )}
+      {error && (
+        <small className="dx-ui-field-error" id={`${name}-error`} role="alert">
+          {error}
+        </small>
       )}
     </div>
   );

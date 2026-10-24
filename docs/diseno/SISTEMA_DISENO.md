@@ -96,3 +96,35 @@ Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/
 - `<DxFechaExacta value={fecha} onChange={setFecha} label="Vigentes en la fecha" />` permite elegir o limpiar una fecha exacta.
 - `<DxFiltroMoneda value={moneda} onChange={setMoneda} />` ofrece Todas, PEN y USD. Los importes de resumen siempre se mantienen separados por moneda.
 - `<DxReferenceSelector label="Ruta" options={rutas} value={rutaId} onChange={setRutaId} getLabel={ruta => ruta.nombre} loading={cargando} optionalLabel="Todas las rutas" />` busca, selecciona y limpia una referencia; presenta estados de carga y sin resultados.
+
+
+## 10. Estándar de tarjetas KPI y formularios
+
+### Tarjetas KPI
+
+- La fila usa `dx-ui-kpi-row`: grilla `repeat(auto-fit, minmax(168px, 1fr))` con `gap:10px`.
+- Cada tarjeta usa `dx-ui-kpi`: flex, `align-items:center`, `gap:8px`, `min-height:56px`, `padding:8px 16px`, radio de 10 px, y el mismo borde y fondo de `dx-ui-chip`.
+- El número va en un elemento `strong`, con Sora a 20 px y peso 700. La etiqueta va en `span` a 12 px.
+- Las tarjetas de una fila comparten ancho y alto.
+
+### Formularios y selectores
+
+- `dx-ui-form-grid` tiene tres columnas, `gap:16px 20px` y `align-items:start`; los cortes por contenedor son 760 px (dos columnas) y 480 px (una columna).
+- `dx-ui-field` es una columna con `gap:6px`. La etiqueta mide 12 px, peso 600 y `min-height:18px`.
+- Inputs, selects y el control de referencia miden exactamente 40 px, con radio de 10 px. El textarea ocupa toda la fila.
+- Los selects usan `dx-ui-select`, `appearance:none` y una flecha dibujada en CSS.
+- El asterisco de cada campo obligatorio usa `dx-ui-required`.
+- El error aparece justo debajo del control en 12 px rojo, con `role="alert"` o `aria-describedby`; el control lleva `aria-invalid` y borde rojo.
+- El desplegable de un selector de referencia nunca altera la altura del campo: se posiciona bajo el control y admite scroll.
+- La validación devuelve los errores por campo en una sola pasada; cada error se muestra bajo su control y el foco va al primer campo inválido. El pie del modal queda reservado para errores del servidor.
+
+### Familias KPI existentes por migrar
+
+| Familia actual | Estado |
+|---|---|
+| `kpi` | Por migrar |
+| `report-kpi-grid` | Por migrar |
+| `dx-ui-chip` / `dx-ui-summary` | Por migrar |
+| `dx-otb-kpi` | Por migrar |
+| `dx-acta-kpi` | Por migrar |
+| `dx-inf-summary-card` | Por migrar |

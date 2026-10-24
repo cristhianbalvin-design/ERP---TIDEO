@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { AccesoTransporte } from './AccesoTransporte.jsx';
 import { usePermisosTransporte } from './usePermisosTransporte.js';
@@ -66,12 +66,20 @@ const PILL = {
   inactiva: 'is-gray',
 };
 
-function Field({ label, children, ...props }) {
+function Field({ label, name, required = false, error, children, ...props }) {
+  const errorId = `${name}-error`;
   return (
-    <label className="dx-transporte-field">
-      {label}
-      <input {...props} />
+    <label className="dx-ui-field">
+      <span>{label}{required && <span className="dx-ui-required"> *</span>}</span>
+      <input
+        name={name}
+        aria-invalid={Boolean(error)}
+        aria-required={required || undefined}
+        aria-describedby={error ? errorId : undefined}
+        {...props}
+      />
       {children}
+      {error && <small className="dx-ui-field-error" id={errorId} role="alert">{error}</small>}
     </label>
   );
 }
@@ -99,6 +107,7 @@ export function TarifasTransportePage() {
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [notice, setNotice] = useState('');
   const [probe, setProbe] = useState({
     ruta_id: null,
@@ -110,6 +119,7 @@ export function TarifasTransportePage() {
   });
   const [probeResult, setProbeResult] = useState(null);
   const [probing, setProbing] = useState(false);
+  const probeVersion = useRef(0);
   const [probeError, setProbeError] = useState('');
 
   const reload = useCallback(async () => {
@@ -164,6 +174,24 @@ export function TarifasTransportePage() {
     [enriched, query, currency, mode, exactDate, validity, today],
   );
 
+  function updateField(name, value) {
+    setForm(current => ({ ...current, [name]: value }));
+    setFieldErrors(current => ({
+      ...current,
+      [name]: '',
+      ...(name === 'modalidad' && value !== 'viaje' ? { ruta_id: '' } : {}),
+    }));
+    setFormError('');
+  }
+
+  function updateProbe(name, value) {
+    probeVersion.current += 1;
+    setProbe(current => ({ ...current, [name]: value }));
+    setProbeResult(null);
+    setProbeError('');
+    setProbing(false);
+  }
+
   function open(item) {
     const nextForm = item
       ? {
@@ -177,6 +205,7 @@ export function TarifasTransportePage() {
 
     setForm(nextForm);
     setFormError('');
+    setFieldErrors({});
     setModal(true);
   }
 
@@ -184,9 +213,14 @@ export function TarifasTransportePage() {
     event.preventDefault();
     const errors = validarFormularioTarifa(form);
     if (Object.keys(errors).length) {
-      setFormError(Object.values(errors)[0]);
+      setFieldErrors(errors);
+      setFormError('');
+      requestAnimationFrame(() => {
+        document.querySelector(`[name="${Object.keys(errors)[0]}"]`)?.focus();
+      });
       return;
     }
+    setFieldErrors({});
 
     setSaving(true);
 
@@ -237,6 +271,7 @@ export function TarifasTransportePage() {
 
   async function runProbe(event) {
     event.preventDefault();
+    const requestVersion = probeVersion.current;
     setProbing(true);
     setProbeError('');
     setProbeResult(null);
@@ -250,11 +285,13 @@ export function TarifasTransportePage() {
         tipoUnidad: probe.tipo_unidad,
         fecha: probe.fecha,
       });
-      setProbeResult(result || false);
+      if (requestVersion === probeVersion.current) setProbeResult(result || false);
     } catch (probeFailure) {
-      setProbeError(probeFailure.message || 'No se pudo resolver la tarifa.');
+      if (requestVersion === probeVersion.current) {
+        setProbeError(probeFailure.message || 'No se pudo resolver la tarifa.');
+      }
     } finally {
-      setProbing(false);
+      if (requestVersion === probeVersion.current) setProbing(false);
     }
   }
 
@@ -291,12 +328,12 @@ export function TarifasTransportePage() {
         </div>
       )}
 
-      <div className="dx-ui-summary">
-        <div className="dx-ui-chip"><b>{tarifas.length}</b><span>Total de tarifas</span></div>
-        <div className="dx-ui-chip"><b>{activeToday.length}</b><span>Vigentes hoy</span></div>
-        <div className="dx-ui-chip"><b>{due30}</b><span>Por vencer en 30 días</span></div>
-        <div className="dx-ui-chip">
-          <b>{tarifas.filter(tariff => Boolean(tariff.cuenta_id)).length}</b>
+      <div className="dx-ui-kpi-row">
+        <div className="dx-ui-kpi"><strong>{tarifas.length}</strong><span>Total de tarifas</span></div>
+        <div className="dx-ui-kpi"><strong>{activeToday.length}</strong><span>Vigentes hoy</span></div>
+        <div className="dx-ui-kpi"><strong>{due30}</strong><span>Por vencer en 30 días</span></div>
+        <div className="dx-ui-kpi">
+          <strong>{tarifas.filter(tariff => Boolean(tariff.cuenta_id)).length}</strong>
           <span>Específicas por cliente</span>
         </div>
       </div>
@@ -312,6 +349,7 @@ export function TarifasTransportePage() {
           />
           <DxFiltroMoneda value={currency} onChange={setCurrency} />
           <select
+            className="dx-ui-select"
             aria-label="Filtrar modalidad"
             value={mode}
             onChange={event => setMode(event.target.value)}
@@ -323,6 +361,7 @@ export function TarifasTransportePage() {
             <option value="hora">Por hora</option>
           </select>
           <select
+            className="dx-ui-select"
             aria-label="Filtrar vigencia"
             value={validity}
             onChange={event => {
@@ -426,13 +465,13 @@ export function TarifasTransportePage() {
           <h2>Probar tarifa</h2>
           <p>Consulta la tarifa aplicable y su nivel de prioridad.</p>
         </div>
-        <form onSubmit={runProbe}>
+        <form className="dx-ui-form-grid" onSubmit={runProbe}>
           <DxReferenceSelector
             label="Ruta"
             options={rutas}
             loading={loading}
             value={probe.ruta_id}
-            onChange={value => setProbe(current => ({ ...current, ruta_id: value }))}
+            onChange={value => updateProbe('ruta_id', value)}
             getLabel={route => `${route.codigo} · ${route.nombre}`}
             optionalLabel="Todas las rutas"
           />
@@ -441,31 +480,27 @@ export function TarifasTransportePage() {
             options={cuentas}
             loading={loading}
             value={probe.cuenta_id}
-            onChange={value => setProbe(current => ({ ...current, cuenta_id: value }))}
+            onChange={value => updateProbe('cuenta_id', value)}
             getLabel={cuentaLabel}
             optionalLabel="Tarifa base"
           />
-          <label className="dx-transporte-field">
-            Tipo de unidad
+          <label className="dx-ui-field">
+            <span>Tipo de unidad</span>
             <select
+              className="dx-ui-select"
               value={probe.tipo_unidad}
-              onChange={event => setProbe(current => ({
-                ...current,
-                tipo_unidad: event.target.value,
-              }))}
+              onChange={event => updateProbe('tipo_unidad', event.target.value)}
             >
               <option value="">Selecciona</option>
               {unitTypes.map(type => <option key={type}>{type}</option>)}
             </select>
           </label>
-          <label className="dx-transporte-field">
-            Modalidad
+          <label className="dx-ui-field">
+            <span>Modalidad</span>
             <select
+              className="dx-ui-select"
               value={probe.modalidad}
-              onChange={event => setProbe(current => ({
-                ...current,
-                modalidad: event.target.value,
-              }))}
+              onChange={event => updateProbe('modalidad', event.target.value)}
             >
               <option value="viaje">Por viaje</option>
               <option value="km">Por km</option>
@@ -473,23 +508,24 @@ export function TarifasTransportePage() {
               <option value="hora">Por hora</option>
             </select>
           </label>
-          <label className="dx-transporte-field">
-            Moneda
+          <label className="dx-ui-field">
+            <span>Moneda</span>
             <select
+              className="dx-ui-select"
               value={probe.moneda}
-              onChange={event => setProbe(current => ({ ...current, moneda: event.target.value }))}
+              onChange={event => updateProbe('moneda', event.target.value)}
             >
               <option value="">Cualquiera</option>
               <option value="PEN">PEN</option>
               <option value="USD">USD</option>
             </select>
           </label>
-          <label className="dx-transporte-field">
-            Fecha
+          <label className="dx-ui-field">
+            <span>Fecha</span>
             <input
               type="date"
               value={probe.fecha}
-              onChange={event => setProbe(current => ({ ...current, fecha: event.target.value }))}
+              onChange={event => updateProbe('fecha', event.target.value)}
             />
           </label>
           <button className="dx-btn primary" disabled={probing || !probe.tipo_unidad}>
@@ -544,108 +580,132 @@ export function TarifasTransportePage() {
         {modal && (
           <div className="card-body">
             <form id="tariff-form" className="dx-transporte-form" onSubmit={save}>
-              <div className="dx-transporte-form-grid">
+              <div className="dx-ui-form-grid">
                 <DxReferenceSelector
                   label="Ruta"
                   options={rutas}
                   loading={loading}
                   value={form.ruta_id}
-                  onChange={value => setForm(current => ({ ...current, ruta_id: value }))}
+                  onChange={value => updateField('ruta_id', value)}
                   getLabel={route => `${route.codigo} · ${route.nombre}`}
                   optionalLabel="Todas las rutas"
+                  name="ruta_id"
+                  required={form.modalidad === 'viaje'}
+                  error={fieldErrors.ruta_id}
                 />
                 <DxReferenceSelector
                   label="Cliente"
                   options={cuentas}
                   loading={loading}
                   value={form.cuenta_id}
-                  onChange={value => setForm(current => ({ ...current, cuenta_id: value }))}
+                  onChange={value => updateField('cuenta_id', value)}
                   getLabel={cuentaLabel}
                   optionalLabel="Tarifa base"
                 />
-                <label className="dx-transporte-field">
-                  Tipo de unidad
+                <label className="dx-ui-field">
+                  <span>Tipo de unidad <span className="dx-ui-required"> *</span></span>
                   <input
+                    name="tipo_unidad"
+                    aria-invalid={Boolean(fieldErrors.tipo_unidad)}
+                    aria-required="true"
+                    aria-describedby={fieldErrors.tipo_unidad ? 'tipo_unidad-error' : undefined}
                     list="transporte-unit-types"
                     value={form.tipo_unidad}
-                    onChange={event => setForm(current => ({
-                      ...current,
-                      tipo_unidad: event.target.value,
-                    }))}
+                    onChange={event => updateField('tipo_unidad', event.target.value)}
                   />
                   <datalist id="transporte-unit-types">
                     {unitTypes.map(type => <option key={type} value={type} />)}
                   </datalist>
+                  {fieldErrors.tipo_unidad && (
+                    <small className="dx-ui-field-error" id="tipo_unidad-error" role="alert">
+                      {fieldErrors.tipo_unidad}
+                    </small>
+                  )}
                 </label>
-                <label className="dx-transporte-field">
-                  Modalidad
+                <label className="dx-ui-field">
+                  <span>Modalidad <span className="dx-ui-required"> *</span></span>
                   <select
+                    className="dx-ui-select"
+                    name="modalidad"
+                    aria-invalid={Boolean(fieldErrors.modalidad)}
+                    aria-required="true"
                     value={form.modalidad}
-                    onChange={event => setForm(current => ({
-                      ...current,
-                      modalidad: event.target.value,
-                    }))}
+                    onChange={event => updateField('modalidad', event.target.value)}
                   >
                     <option value="viaje">Por viaje</option>
                     <option value="km">Por km</option>
                     <option value="tonelada">Por tonelada</option>
                     <option value="hora">Por hora</option>
                   </select>
+                  {fieldErrors.modalidad && (
+                    <small className="dx-ui-field-error" role="alert">{fieldErrors.modalidad}</small>
+                  )}
                 </label>
                 <Field
                   label="Tarifa"
+                  name="tarifa"
+                  required
+                  error={fieldErrors.tarifa}
                   type="number"
                   min="0.0001"
                   step="0.0001"
                   value={form.tarifa}
-                  onChange={event => setForm(current => ({ ...current, tarifa: event.target.value }))}
+                  onChange={event => updateField('tarifa', event.target.value)}
                 />
-                <label className="dx-transporte-field">
-                  Moneda
+                <label className="dx-ui-field">
+                  <span>Moneda <span className="dx-ui-required"> *</span></span>
                   <select
-                    required
+                    className="dx-ui-select"
+                    name="moneda"
+                    aria-invalid={Boolean(fieldErrors.moneda)}
+                    aria-required="true"
+                    aria-describedby={fieldErrors.moneda ? 'moneda-error' : undefined}
                     value={form.moneda}
-                    onChange={event => setForm(current => ({ ...current, moneda: event.target.value }))}
+                    onChange={event => updateField('moneda', event.target.value)}
                   >
                     <option value="">Selecciona moneda</option>
                     <option value="PEN">PEN (S/)</option>
                     <option value="USD">USD (US$)</option>
                   </select>
+                  {fieldErrors.moneda && (
+                    <small className="dx-ui-field-error" id="moneda-error" role="alert">
+                      {fieldErrors.moneda}
+                    </small>
+                  )}
                 </label>
                 <Field
                   label="Mínimo facturable"
+                  name="minimo_facturable"
+                  error={fieldErrors.minimo_facturable}
                   type="number"
                   min="0"
                   step="0.01"
                   value={form.minimo_facturable}
-                  onChange={event => setForm(current => ({
-                    ...current,
-                    minimo_facturable: event.target.value,
-                  }))}
+                  onChange={event => updateField('minimo_facturable', event.target.value)}
                 />
                 <Field
                   label="Vigente desde"
+                  name="vigente_desde"
+                  required
+                  error={fieldErrors.vigente_desde}
                   type="date"
+                  onChange={event => updateField('vigente_desde', event.target.value)}
                   value={form.vigente_desde}
-                  onChange={event => setForm(current => ({
-                    ...current,
-                    vigente_desde: event.target.value,
-                  }))}
                 />
                 <Field
                   label="Vigente hasta"
+                  name="vigente_hasta"
+                  error={fieldErrors.vigente_hasta}
                   type="date"
+                  onChange={event => updateField('vigente_hasta', event.target.value)}
                   value={form.vigente_hasta}
-                  onChange={event => setForm(current => ({
-                    ...current,
-                    vigente_hasta: event.target.value,
-                  }))}
                 >
                   <small>Vacío = sin fecha final</small>
                 </Field>
-                <label className="dx-transporte-field">
-                  Estado
+                <label className="dx-ui-field">
+                  <span>Estado</span>
                   <select
+                    className="dx-ui-select"
                     value={form.estado}
                     onChange={event => setForm(current => ({ ...current, estado: event.target.value }))}
                   >
@@ -653,12 +713,12 @@ export function TarifasTransportePage() {
                     <option value="inactiva">Inactiva</option>
                   </select>
                 </label>
-                <label className="dx-transporte-field dx-transporte-wide">
-                  Notas
+                <label className="dx-ui-field dx-ui-field-full">
+                  <span>Notas</span>
                   <textarea
                     rows="3"
                     value={form.notas || ''}
-                    onChange={event => setForm(current => ({ ...current, notas: event.target.value }))}
+                    onChange={event => updateField('notas', event.target.value)}
                   />
                 </label>
               </div>

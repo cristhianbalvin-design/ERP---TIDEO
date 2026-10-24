@@ -69,11 +69,11 @@ export function enriquecerTarifas(tarifas = [], rutas = [], cuentas = []) {
 }
 
 const numeric = (value, min = 0) => (
-  value === '' || (Number.isFinite(Number(value)) && Number(value) >= min)
+  value == null || value === '' || (Number.isFinite(Number(value)) && Number(value) >= min)
 );
 
 const coord = (value, min, max) => (
-  value === '' || (Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max)
+  value == null || value === '' || (Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max)
 );
 
 export function validarFormularioRuta(form) {
@@ -83,7 +83,7 @@ export function validarFormularioRuta(form) {
     if (!String(form[field] || '').trim()) errors[field] = 'Este campo es obligatorio.';
   }
   for (const field of ['distancia_km', 'duracion_estimada_horas', 'peajes_estimados']) {
-    if (!numeric(form[field])) errors[field] = 'Ingresa un número igual o mayor que cero.';
+    if (!numeric(form[field])) errors[field] = 'Ingresa un n\u00famero igual o mayor que cero.';
   }
   for (const field of ['origen_latitud', 'destino_latitud']) {
     if (!coord(form[field], -90, 90)) errors[field] = 'La latitud debe estar entre -90 y 90.';
@@ -113,7 +113,7 @@ export function validarFormularioTarifa(form) {
   }
   if (!['PEN', 'USD'].includes(form.moneda)) errors.moneda = 'Selecciona una moneda.';
   if (!numeric(form.minimo_facturable)) {
-    errors.minimo_facturable = 'El mínimo debe ser igual o mayor que cero.';
+    errors.minimo_facturable = 'El m\u00ednimo debe ser igual o mayor que cero.';
   }
   if (!form.vigente_desde) errors.vigente_desde = 'Indica el inicio de vigencia.';
   if (form.vigente_hasta && form.vigente_hasta < form.vigente_desde) {
