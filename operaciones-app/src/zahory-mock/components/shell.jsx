@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect } from 'react';
+import { useModulosWms } from '../pages/wms/useModulosWms.js';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 export const Icon = ({ name, size = 16, stroke = 2 }) => {
@@ -243,10 +244,14 @@ export const SIDEBAR_ZONES = [
           { id: 'almacen-inventario', label: 'Inventario & Kardex',     icon: 'box' },
           { id: 'solicitudes',         label: 'Solicitudes SOLPE',       icon: 'parts' },
           { id: 'almacen-reservas',    label: 'Reserva de Repuestos',    icon: 'lock' },
-          { id: 'almacen-alertas',     label: 'Stock Mínimos & Alertas', icon: 'alert' },
+          { id: 'almacen-despachos',   label: 'Despachos',               icon: 'box' },
+          { id: 'almacen-alertas',     label: 'Stock mínimos & reposición', icon: 'alert' },
+          { id: 'almacen-conteos',     label: 'Conteos cíclicos',        icon: 'box', modulo: 'conteos' },
+          { id: 'almacen-custodia',    label: 'Custodia de terceros',    icon: 'lock', modulo: 'custodia' },
           { id: 'almacen-ubicaciones', label: 'Ubicaciones',             icon: 'box' },
           { id: 'almacen-gemelo',      label: 'Gemelo digital',          icon: 'box' },
           { id: 'almacen-minas',       label: 'Minas y proyectos',       icon: 'box' },
+          { id: 'almacen-config',      label: 'Configuración del WMS',   icon: 'box', roles: ['gerente'] },
         ],
       },
       {
@@ -386,6 +391,8 @@ export const Sidebar = ({ current, onNav, role }) => {
   const roleStr = role;
   const tecnicoAreaId = roleStr === 'tecnico' ? getTecnicoAreaId() : null;
   const canSee = (roles) => !roles || roles.includes(roleStr);
+  const modulosWms = useModulosWms();
+  const moduloActivo = (it) => !it.modulo || modulosWms[it.modulo] !== false;
   const canSeeArea = (area) => roleStr !== 'tecnico' || area.id === tecnicoAreaId;
   const isActive = (it) => itemMatchesPage(it, current);
   const handleAreaClick = (area) => {
@@ -422,7 +429,7 @@ export const Sidebar = ({ current, onNav, role }) => {
 
           // ── Flat zone ────────────────────────────────────────────────────
           if (zone.type === 'flat') {
-            const vis = zone.items.filter(it => canSee(it.roles));
+            const vis = zone.items.filter(it => canSee(it.roles) && moduloActivo(it));
             if (!vis.length) return null;
             return (
               <div key={zone.id}>
@@ -446,7 +453,7 @@ export const Sidebar = ({ current, onNav, role }) => {
               <div key={zone.id}>
                 <div className="nav-section-label" title={zone.label}><span className="dot" /><span className="label">{zone.label}</span></div>
                 {visibleGroups.map(g => {
-                  const visibleItems = (g.items || []).filter(it => canSee(it.roles));
+                  const visibleItems = (g.items || []).filter(it => canSee(it.roles) && moduloActivo(it));
                   const visibleAreaItems = (g.areaItems || []).filter(it => canSee(it.roles) && canSeeArea(it));
                   const visibleTailItems = (g.tailItems || []).filter(it => canSee(it.roles));
                   if (!visibleItems.length && !visibleAreaItems.length && !visibleTailItems.length) return null;
@@ -533,7 +540,7 @@ export const Sidebar = ({ current, onNav, role }) => {
               <div key={zone.id}>
                 <div className="nav-section-label" title={zone.label}><span className="dot" /><span className="label">{zone.label}</span></div>
                 {visGroups.map(g => {
-                  const visItems = g.items.filter(it => canSee(it.roles));
+                  const visItems = g.items.filter(it => canSee(it.roles) && moduloActivo(it));
                   if (!visItems.length) return null;
                   return (
                     <div key={g.id}>
