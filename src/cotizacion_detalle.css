@@ -124,6 +124,8 @@
 .dx-cotd-aside { position: sticky; top: 16px; min-width: 0; }
 .dx-cotd-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 16px; }
 .dx-cotd-fields.is-three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--dx-cotd-line-soft); }
+.dx-cotd-fields.is-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dx-cotd-tipo { width: 100%; min-width: 0; height: 34px; padding: 0 8px; border: 1px solid var(--dx-cotd-border); border-radius: 8px; background: var(--dx-cotd-card); color: var(--dx-cotd-ink); font: inherit; }
 .dx-cotd-f small, .dx-cotd-label, .dx-cotd-tot-h { display: block; color: var(--dx-cotd-gray); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .dx-cotd-f div { margin-top: 3px; overflow: hidden; color: var(--dx-cotd-navy); font-weight: 600; text-overflow: ellipsis; }
 .dx-cotd-f a { color: var(--dx-cotd-cyan-fg); text-decoration: none; }

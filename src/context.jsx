@@ -3343,7 +3343,7 @@ export function AppProvider({ children }) {
       const sb = await getSupabaseClient();
       const { data, error } = await sb
         .from('cotizaciones_especiales')
-        .select('id,empresa_id,sociedad_id,cuenta_id,oportunidad_id,numero,moneda,total,estado,activo_id')
+        .select('id,empresa_id,sociedad_id,cuenta_id,oportunidad_id,numero,moneda,total,estado,activo_id,tipo_ejecucion')
         .eq('id', cotId)
         .eq('empresa_id', empresa.id)
         .single();
@@ -3391,6 +3391,8 @@ export function AppProvider({ children }) {
       responsable_comercial_id: datos.responsable_comercial_id || null,
       responsable_comercial: responsableUser?.nombre || null,
       observaciones: datos.observaciones || null,
+      // Tipo de ejecución: el de la cotización (o, si viene vacío, la BD lo hereda de su hoja).
+      tipo_ejecucion: datos.tipo_ejecucion || cot.tipo_ejecucion || null,
       saldo_por_ejecutar: cot.total,
       saldo_por_valorizar: cot.total,
       saldo_por_facturar: cot.total,
@@ -3484,6 +3486,7 @@ export function AppProvider({ children }) {
       ots_asociadas: datos.ots_asociadas || [],
       tipo_cobro: datos.tipo_cobro || null,
       tarifa_mensual: datos.tarifa_mensual ?? null,
+      tipo_ejecucion: datos.tipo_ejecucion || null,
     };
 
     try {

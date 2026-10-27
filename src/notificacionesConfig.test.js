@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, construirMatrizDestinatarios,
+  normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, normalizarHoraEnvio, construirMatrizDestinatarios,
   reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, normalizarTelefonosAdicionales,
   etiquetaRolDestinatario, etiquetaCanalEnvio, etiquetaRolConfig, etiquetaModuloNotificacion,
 } from './services/notificacionesConfigService.js';
+
+test('normaliza horas de envío en tramos de 15 minutos', () => {
+  assert.equal(normalizarHoraEnvio('9:30'), '09:30');
+  assert.equal(normalizarHoraEnvio('09:30'), '09:30');
+  assert.equal(normalizarHoraEnvio('09:30:00'), '09:30');
+  assert.equal(normalizarHoraEnvio('23:45'), '23:45');
+  for (const value of ['09:20', '24:00', '', null, undefined]) assert.equal(normalizarHoraEnvio(value), null);
+});
 
 test('normaliza días únicos entre 1 y 180 en orden descendente', () => {
   assert.deepEqual(normalizarDiasAnticipacion([1, 180, 30]), [180, 30, 1]);

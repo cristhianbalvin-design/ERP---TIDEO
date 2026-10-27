@@ -141,6 +141,7 @@
 .hcx-wizard .hcx-spacer { flex:1; }
 .hcx-wizard .hcx-step em { display:block; margin-top:4px; color:var(--hcx-navy); font-style:normal; font-weight:700; font-size:12px; }
 .hcx-wizard .hcx-worktitle { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.hcx-wizard select.hcx-tipo-trabajo { width:auto; height:30px; padding:0 8px; font-size:12px; font-weight:700; }
 .hcx-wizard .hcx-workname { color:var(--hcx-navy); font:700 16px 'Sora',sans-serif; }
 .hcx-wizard .hcx-collapse { border:0; background:none; color:var(--hcx-navy); font-size:18px; padding:0 2px; }
 .hcx-wizard .hcx-table-subhead { text-transform:none; letter-spacing:0; font-size:11px; }

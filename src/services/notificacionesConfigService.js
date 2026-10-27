@@ -47,6 +47,16 @@ export function validarUmbralMinutos(value) {
   return umbral;
 }
 
+export function normalizarHoraEnvio(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::00)?$/);
+  if (!match) return null;
+  const hora = Number(match[1]);
+  const minutos = Number(match[2]);
+  if (hora > 23 || minutos > 59 || minutos % 15 !== 0) return null;
+  return `${String(hora).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
+}
+
 export function normalizarDiasVencidoMax(value) {
   const dias = Number(value);
   if (!Number.isInteger(dias) || dias < 1 || dias > 365) throw new RangeError('El rango debe ser un entero entre 1 y 365 días.');
