@@ -9,7 +9,8 @@ describe('Flujo de mantenimiento en página', () => {
   it('usa la ruta nueva y una página en vez del contenedor de diálogo', () => {
     expect(page).toContain('const diagnosticoHash = params => `/diagnostico-tecnico');
     expect(page).toContain("query.set('nuevo', 'mantenimiento')");
-    expect(page).toMatch(/pageMode=\{maintenancePage\}/);
+    expect(page).toMatch(/const workPage = maintenancePage \|\| fabricacionPage;/);
+    expect(page).toMatch(/pageMode=\{workPage\}/);
     expect(page).toMatch(/className="dx-initial-flow"/);
     expect(page).not.toMatch(/key=\{selected\?\.id \|\| `nuevo-\$\{form\.tipo\}`\}/);
   });
