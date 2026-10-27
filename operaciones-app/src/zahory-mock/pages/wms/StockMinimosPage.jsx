@@ -123,9 +123,9 @@ export function StockMinimosPage() {
         {puede.crear && visibles.some(f => cantidadSugerida(f) > 0) && <button type="button" className="dx-btn sm" onClick={seleccionarAlertas}>Seleccionar sugeridos</button>}
       </div>
       {cargando && !filas.length ? <div className="dx-ui-empty">Cargando stock…</div>
-        : !visibles.length ? <div className="dx-ui-empty">{filtro === 'alertas' ? 'Ningún material está bajo su punto de reorden.' : 'No hay materiales para mostrar.'}</div>
+        : !visibles.length ? <div className="dx-ui-empty">{filtro === 'alertas' ? 'Ningún material está bajo su punto de reorden.' : 'No hay materiales para mostrar.'}{filtro === 'alertas' && resumen.sin_parametro > 0 && <><br />{resumen.sin_parametro} materiales aún no tienen mínimo ni punto de reorden. <button type="button" className="dx-btn sm" onClick={() => setFiltro('sin_parametro')}>Configurarlos</button></>}</div>
         : <div className="dx-w-scroll"><table className="dx-w-table">
-          <thead><tr>{puede.crear && <th aria-label="Seleccionar" />}<th>Material</th><th>Estado</th><th className="num">Disponible</th><th className="num">Mínimo</th><th className="num">Reorden</th><th className="num dx-w-hide-m">Máximo</th><th className="num dx-w-hide-m">Protegido OT</th><th className="num dx-w-hide-m">Consumo/mes</th><th className="num dx-w-hide-m">Cobertura</th><th className="num">Sugerido</th>{puede.editar && <th />}</tr></thead>
+          <thead><tr>{puede.crear && <th aria-label="Seleccionar" />}<th>Material</th><th>Estado</th><th className="num">Disponible</th><th className="num dx-w-hide-m">Mínimo</th><th className="num dx-w-hide-m">Reorden</th><th className="num dx-w-hide-m">Máximo</th><th className="num dx-w-hide-m">Protegido OT</th><th className="num dx-w-hide-m">Consumo/mes</th><th className="num dx-w-hide-m">Cobertura</th><th className="num">Sugerido</th>{puede.editar && <th />}</tr></thead>
           <tbody>{visibles.map(f => {
             const est = estadoStock(f); const sug = cantidadSugerida(f); const cob = coberturaMeses(f);
             return <tr key={clave(f)}>
@@ -133,8 +133,8 @@ export function StockMinimosPage() {
               <td className="mat"><b>{f.codigo}</b><small>{f.descripcion} · {f.almacen_codigo}</small></td>
               <td><span className={`dx-ui-pill ${est.pill}`}><i />{est.label}</span></td>
               <td className="num">{formatoCantidad(f.disponible)} {f.unidad || ''}</td>
-              <td className="num">{formatoCantidad(f.stock_minimo)}</td>
-              <td className="num">{formatoCantidad(f.punto_reorden)}</td>
+              <td className="num dx-w-hide-m">{formatoCantidad(f.stock_minimo)}</td>
+              <td className="num dx-w-hide-m">{formatoCantidad(f.punto_reorden)}</td>
               <td className="num dx-w-hide-m">{formatoCantidad(f.stock_maximo)}</td>
               <td className="num dx-w-hide-m">{f.proposito === 'mixto' ? formatoCantidad(f.protegido_operaciones) : '—'}</td>
               <td className="num dx-w-hide-m">{formatoCantidad(f.consumo_mes)}</td>

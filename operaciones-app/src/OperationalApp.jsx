@@ -15,6 +15,8 @@ import {
   getZahoryNavigation,
   itemMatchesRoute,
 } from './zahory-mock/navigation.js';
+import { filtrarNavegacionPorModulos } from './zahory-mock/navegacionModulos.js';
+import { useModulosWms } from './zahory-mock/pages/wms/useModulosWms.js';
 
 const routes = {
   inicio: { label: 'Inicio', icon: 'dashboard', title: 'Inicio operativo', description: 'Resumen de tu jornada y trabajo asignado.' },
@@ -126,6 +128,8 @@ function NavEntry({ item, route, navigate }) {
 
 export function OperationalApp() {
   const sesionOperativa = useSesionOperativa();
+  const modulosWms = useModulosWms();
+  const navegacionVisible = useMemo(() => filtrarNavegacionPorModulos(zahoryNavigation, modulosWms), [modulosWms]);
   const [location, setLocation] = useState(readLocation);
   const route = location.route;
   const routeParams = location.params;
@@ -286,12 +290,12 @@ export function OperationalApp() {
   const searchResults = useMemo(() => {
     const query = normalizeSearch(moduleSearch);
     if (!query) return [];
-    return getSearchableModules(zahoryNavigation)
+    return getSearchableModules(navegacionVisible)
       .map(module => ({ ...module, score: scoreModuleSearch(query, module) }))
       .filter(module => module.score > 0)
       .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, 'es'))
       .slice(0, 8);
-  }, [moduleSearch]);
+  }, [moduleSearch, navegacionVisible]);
 
   const handleSearchNavigation = moduleId => {
     setModuleSearch('');
@@ -351,7 +355,7 @@ export function OperationalApp() {
                 <NavEntry key={key} item={{ ...item, id: key }} route={route} navigate={navigate} />
               ))}
               <div className="ops-imported-nav">
-                {zahoryNavigation.map(zone => (
+                {navegacionVisible.map(zone => (
                   <section className={`ops-nav-zone ops-nav-zone-${zone.id}`} key={zone.id}>
                     <div className="ops-nav-zone-label">{zone.label}</div>
                     {zone.type === 'flat' ? zone.items.map(item => (

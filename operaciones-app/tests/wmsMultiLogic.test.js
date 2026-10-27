@@ -106,3 +106,12 @@ describe('custodia', () => {
     expect(rangoMesAnterior(new Date(2026, 2, 3))).toEqual({ desde: '2026-02-01', hasta: '2026-02-28' });
   });
 });
+
+describe('menú según módulos WMS', () => {
+  it('oculta las entradas cuyo módulo está apagado y deja el resto', async () => {
+    const { filtrarNavegacionPorModulos } = await import('../src/zahory-mock/navegacionModulos.js');
+    const nav = [{ id: 'z', groups: [{ id: 'g', items: [{ id: 'a' }, { id: 'c', modulo: 'custodia' }, { id: 'k', modulo: 'conteos' }] }] }];
+    const r = filtrarNavegacionPorModulos(nav, { custodia: false, conteos: true });
+    expect(r[0].groups[0].items.map(i => i.id)).toEqual(['a', 'k']);
+  });
+});

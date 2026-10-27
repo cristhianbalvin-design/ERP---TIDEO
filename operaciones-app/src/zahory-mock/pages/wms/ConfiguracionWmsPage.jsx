@@ -66,7 +66,7 @@ export function ConfiguracionWmsPage() {
             <button type="button" className={`dx-w-sw${modulos[m.id] ? ' on' : ''}`} role="switch" aria-checked={Boolean(modulos[m.id])} aria-labelledby={`dx-wcfg-m-${m.id}`} disabled={!puede.editar || proximo} onClick={() => setModulos({ ...modulos, [m.id]: !modulos[m.id] })} />
           </div>;
         })}
-        <div className="dx-w-field sep"><label htmlFor="dx-wcfg-umbral">Umbral de aprobación de ajustes (S/)</label><input id="dx-wcfg-umbral" inputMode="decimal" disabled={!puede.editar} value={umbral} onChange={e => setUmbral(e.target.value)} /><small className="dx-ui-sub">Si las diferencias de un conteo superan este monto, otra persona debe aprobar los ajustes.</small></div>
+        <div className="dx-w-field dx-w-gap"><label htmlFor="dx-wcfg-umbral">Umbral de aprobación de ajustes (S/)</label><input id="dx-wcfg-umbral" inputMode="decimal" disabled={!puede.editar} value={umbral} onChange={e => setUmbral(e.target.value)} /><small className="dx-ui-sub">Si las diferencias de un conteo superan este monto, otra persona debe aprobar los ajustes.</small></div>
       </div></div>
 
       <div className="dx-ui-card"><div className="dx-w-sec">

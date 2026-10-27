@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { despacharReservaOT } from '../../../services/reservasRepuestosService.js';
 import { despacharDemanda, listarColaDespachos, reintentarReserva } from '../../../services/wmsMultipropositoService.js';
 import { fechaLocalISO } from '../fechaLocal.js';
@@ -29,6 +29,7 @@ export function DespachosPage() {
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
+  const detalleRef = useRef(null);
 
   const cargar = useCallback(async () => {
     if (!empresaId || !permisos.ver) return;
@@ -46,6 +47,8 @@ export function DespachosPage() {
   const elegir = p => {
     setSeleccion(p.id); setError(''); setAviso(''); setEscaneo(''); setRecibe(''); setGuia(guiaInicial());
     setPreparado(Object.fromEntries((p.lineas || []).map(l => [l.linea_id, ''])));
+    // En pantallas angostas el detalle queda debajo de la cola: se lleva a la vista.
+    if (globalThis.window?.innerWidth <= 1100) requestAnimationFrame(() => detalleRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   };
   const escanear = e => {
     e.preventDefault();
@@ -134,11 +137,11 @@ export function DespachosPage() {
         {cargando && !cola.length ? <div className="dx-ui-empty">Cargando cola de despachos…</div>
           : !visibles.length ? <div className="dx-ui-empty">{cola.length ? 'Ningún pedido coincide con el filtro.' : 'No hay pedidos pendientes de despacho.'}</div>
           : <div className="dx-w-scroll"><table className="dx-w-table">
-            <thead><tr><th>Documento</th><th>Canal</th><th>Destino</th><th className="num">Líneas</th><th className="dx-w-hide-m">Requerido</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Documento</th><th>Canal</th><th className="dx-w-hide-m">Destino</th><th className="num">Líneas</th><th className="dx-w-hide-m">Requerido</th><th>Estado</th></tr></thead>
             <tbody>{visibles.map(p => <tr key={`${p.canal}-${p.id}`} className={`click${p.id === seleccion ? ' sel' : ''}`} tabIndex={0} onClick={() => elegir(p)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(p); } }}>
               <td><b>{p.numero}</b></td>
               <td><span className={`dx-ui-pill ${CANALES[p.canal]?.pill || 'is-gray'}`}><i />{CANALES[p.canal]?.label || p.canal}</span></td>
-              <td>{p.destino}</td>
+              <td className="dx-w-hide-m">{p.destino}</td>
               <td className="num">{p.lineas.length}</td>
               <td className="dx-w-hide-m">{p.fecha_requerida || '—'}</td>
               <td>{p.estado === 'parcial' ? <span className="dx-ui-pill is-amber"><i />Faltante</span> : <span className="dx-ui-pill is-green"><i />Listo</span>}</td>
@@ -146,7 +149,7 @@ export function DespachosPage() {
           </table></div>}
       </div>
 
-      <div className="dx-ui-card">
+      <div className="dx-ui-card" ref={detalleRef}>
         {!pedido ? <div className="dx-ui-empty">Selecciona un pedido de la cola para prepararlo.</div> : <>
           <div className="dx-w-bar"><h2>{pedido.numero}</h2><span className={`dx-ui-pill ${meta.pill}`}><i />{meta.label}</span></div>
           <div className="dx-w-sec">
