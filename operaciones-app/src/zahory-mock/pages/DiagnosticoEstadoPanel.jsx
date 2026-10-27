@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { emitirDiagnosticoTecnico, listarHistorialEstadosDiagnostico, reabrirDiagnosticoTecnico } from '../../services/diagnosticoTecnicoService.js';
 
-export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, permitirEmision = true, cambiosSinGuardar, onCambioCompleto, informeAction = null }) {
+export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, permitirEmision = true, cambiosSinGuardar, onCambioCompleto, informeAction = null, emitirRef = null }) {
   const [historial, setHistorial] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState('');
@@ -46,7 +46,14 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
     finally { busyRef.current = false; setBusy(false); }
   };
 
-  const visibleEmitir = permitirEmision && diagnostico.estado === 'borrador' && puedeAprobar && permiteEscritura;
+  const puedeEmitir = permitirEmision && diagnostico.estado === 'borrador' && puedeAprobar && permiteEscritura;
+  // Con emitirRef, la acción de emitir la dispara el pie de la página y aquí solo queda el diálogo.
+  useEffect(() => {
+    if (!emitirRef) return undefined;
+    emitirRef.current = puedeEmitir ? () => { setError(''); setDialogo('emitir'); } : null;
+    return () => { emitirRef.current = null; };
+  }, [emitirRef, puedeEmitir]);
+  const visibleEmitir = puedeEmitir && !emitirRef;
   const visibleReabrir = diagnostico.estado === 'emitido' && puedeAprobar && permiteEscritura;
   const corto = motivo.trim().length < 10;
   const transicion = row => `${row.estado_anterior === 'borrador' ? 'Borrador' : 'Emitido'} → ${row.estado_nuevo === 'emitido' ? 'Emitido' : 'Borrador'}`;
