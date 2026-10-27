@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   informePermission: vi.fn(),
   generateConclusion: vi.fn(),
   getDraft: vi.fn(),
+  supabase: { rpc: vi.fn() },
   service: Object.fromEntries([
     'usuarioPuedeDiagnostico', 'listarDiagnosticosTecnicos', 'obtenerDiagnosticoTecnico', 'resolverReferenciasDiagnostico',
     'listarTecnicosDiagnostico', 'actualizarDatosInicialesDiagnostico', 'obtenerEquipoParaDiagnostico', 'listarCatalogoComponentesParaRecepcion',
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.session }));
 vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => null }));
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
+vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => mocks.supabase }));
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   usuarioPuedeInforme: mocks.informePermission,
   generarConclusionIA: mocks.generateConclusion,
@@ -35,7 +37,7 @@ vi.mock('../src/zahory-mock/pages/DiagnosticoInformePanel.jsx', () => ({
   DiagnosticoInformePanel: props => <div className="mock-report-panel">{props.encabezadoControles}<button type="button" className="dx-informe-emitir" onClick={async () => { const result = await props.onEmitirDiagnostico?.(); await props.onRecargarDiagnostico?.(result); }}>Emitir informe</button></div>,
 }));
 
-import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
+import { CatalogSelector, DiagnosticoTecnicoPage } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
 
 const detail = (id, tipo = 'fabricacion', lineas = []) => ({
   id,
@@ -105,6 +107,8 @@ beforeEach(() => {
   mocks.informePermission.mockResolvedValue(true);
   mocks.generateConclusion.mockResolvedValue({ ok: true, conclusion: 'El equipo requiere reparación.' });
   mocks.getDraft.mockResolvedValue({ id: 'informe-two', estado: 'borrador', diagnostico_id: 'two' });
+  mocks.supabase.rpc.mockReset();
+  mocks.supabase.rpc.mockResolvedValue({ data: null, error: null });
   const listeners = new Map();
   globalThis.window = {
     setTimeout,
@@ -180,7 +184,7 @@ async function renderPage(routeParams = {}) {
 }
 
 async function addQuickTask(taskName = 'Tarea 1', activityName = 'Actividad 1') {
-  await goToWorkStep(5);
+  await goToTrabajos();
   const addWork = buttonByText(renderer, 'Agregar tareas') || buttonByText(renderer, 'Agregar trabajo');
   if (addWork) {
     await act(async () => { addWork.props.onClick(); await wait(0); });
@@ -216,42 +220,50 @@ async function goToWorkStep(step) {
   await act(async () => { await navigation[step - 1].props.onClick(); await wait(0); });
 }
 
+async function goToPaso(label) {
+  const steps = renderer.root.findAllByProps({ className: 'dx-work-steps' });
+  const target = steps[0].findAllByType('button').find(button => textOf(button).includes(label));
+  await act(async () => { await target.props.onClick(); await wait(0); });
+}
+
+async function goToTrabajos() {
+  const steps = renderer.root.findAllByProps({ className: 'dx-work-steps' });
+  if (!steps.length) return;
+  const target = steps[0].findAllByType('button').find(button => textOf(button).includes('Trabajos a realizar'));
+  await act(async () => { await target.props.onClick(); await wait(0); });
+}
+
 function fillMaterialDescription(value) {
   const input = renderer.root.findAllByType('input').find(item => String(item.props['aria-label'] || '').startsWith('Descripci'));
   input.props.onChange({ target: { value } });
 }
 
 describe('Diagnostico Tecnico - Etapa B', () => {
-  it('A: composedPath conserva abiertos los selectores dentro de Shadow DOM', async () => {
+  it('A: composedPath conserva abierto el selector dentro de Shadow DOM', async () => {
     const rootNodes = [];
     const createNodeMock = element => {
       const node = { contains: vi.fn(() => false) };
       if (element.props?.className === 'field diagnostico-combobox') rootNodes.push(node);
       return node;
     };
-    const referenceSelect = vi.fn();
     const catalogSelect = vi.fn();
     await act(async () => {
       renderer = create(<>
-        <ReferenceSelector tipo="fabricacion" value={null} search="" references={[{ id: 'opp-1', numero: 'Oportunidad 1' }]} loading={false} disabled={false} onSearch={vi.fn()} onSelect={referenceSelect} />
         <CatalogSelector label="Trabajo *" kind="familia" value={null} options={[{ id: 'fam-1', nombre: 'Trabajo 1' }]} disabled={false} placeholder="Buscar" canCreate={false} clearable={false} onSelect={catalogSelect} onError={vi.fn()} />
       </>, { createNodeMock });
       await wait(0);
     });
-    const referenceInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Oportunidad' })[0];
     const catalogInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Trabajo *' })[0];
-    await act(async () => { referenceInput.props.onFocus(); catalogInput.props.onFocus(); await wait(0); });
+    await act(async () => { catalogInput.props.onFocus(); await wait(0); });
     const host = {};
     await act(async () => {
       documentListeners.get('mousedown').forEach(listener => listener({ target: host, composedPath: () => [host, ...rootNodes, {}] }));
       await wait(0);
     });
-    expect(renderer.root.findAllByProps({ role: 'listbox' })).toHaveLength(2);
+    expect(renderer.root.findAllByProps({ role: 'listbox' })).toHaveLength(1);
     await act(async () => {
-      buttonByText(renderer, 'Oportunidad 1').props.onClick();
       buttonByText(renderer, 'Trabajo 1').props.onClick();
     });
-    expect(referenceSelect).toHaveBeenCalledWith({ id: 'opp-1', numero: 'Oportunidad 1' });
     expect(catalogSelect).toHaveBeenCalledWith({ id: 'fam-1', nombre: 'Trabajo 1' });
   });
 
@@ -291,16 +303,16 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await Promise.resolve(); await Promise.resolve(); });
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     const warning = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
-    const button = buttonByText(renderer, 'Guardando...');
+    const button = buttonContaining(renderer, 'Guardando');
     console.log('T1B_SLOW_RESULT', JSON.stringify({ button: textOf(button).trim(), warning_visible: textOf(renderer.root).includes(warning), warning_step: warnSpy.mock.calls[0]?.[0] || null }));
-    expect(textOf(button).trim()).toBe('Guardando...');
+    expect(textOf(button).trim()).toBe('Guardando…');
     expect(textOf(renderer.root)).toContain(warning);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('sincronizarMaterialesLinea'));
     globalThis.window.confirm = vi.fn(() => true);
     await act(async () => { globalThis.window.dispatchEvent({ type: 'keydown', key: 'Escape' }); });
     expect(renderer.root.findAllByProps({ role: 'alertdialog' })).toHaveLength(1);
-    await act(async () => { buttonByText(renderer, 'Cerrar igual').props.onClick(); });
-    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
+    await act(async () => { buttonByText(renderer, 'Volver a diagnósticos').props.onClick(); });
+    expect(renderer.root.findAllByProps({ className: 'dx-work-steps' })).toHaveLength(0);
     renderer.unmount();
     renderer = null;
     syncPending.resolve();
@@ -318,10 +330,10 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     fillMaterialDescription('Filtro hidraulico');
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await Promise.resolve(); await Promise.resolve(); });
     globalThis.window.confirm = vi.fn(() => true);
-    await act(async () => { renderer.root.findAllByProps({ 'aria-label': 'Cerrar' })[0].props.onClick(); });
+    await act(async () => { renderer.root.findAllByProps({ 'aria-label': 'Volver a diagnósticos' })[0].props.onClick(); });
     expect(renderer.root.findAllByProps({ role: 'alertdialog' })).toHaveLength(1);
-    await act(async () => { buttonByText(renderer, 'Cerrar igual').props.onClick(); });
-    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
+    await act(async () => { buttonByText(renderer, 'Volver a diagnósticos').props.onClick(); });
+    expect(renderer.root.findAllByProps({ className: 'dx-work-steps' })).toHaveLength(0);
     syncPending.resolve();
     await act(async () => { await Promise.resolve(); await Promise.resolve(); await wait(80); });
     const relevantErrors = consoleError.mock.calls.filter(([message]) => String(message).includes('unmounted') || String(message).includes('desmont'));
@@ -368,10 +380,10 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(textOf(renderer.root)).toContain('error visible de prueba');
   });
 
-  it('R1: Cerrar en el pie respeta confirmacion cuando hay cambios sucios', async () => {
+  it('R1: volver a diagnósticos respeta confirmacion cuando hay cambios sucios', async () => {
     await openDetailAndAddLine();
     globalThis.window.confirm = vi.fn(() => false);
-    await act(async () => { buttonByText(renderer, 'Cerrar').props.onClick(); });
+    await act(async () => { renderer.root.findAllByProps({ 'aria-label': 'Volver a diagnósticos' })[0].props.onClick(); });
     expect(globalThis.window.confirm).not.toHaveBeenCalled();
     expect(renderer.root.findAllByProps({ role: 'alertdialog' })).toHaveLength(1);
     expect(textOf(renderer.root)).toContain('Tienes cambios sin guardar');
@@ -429,8 +441,8 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await openDetailAndAddLine();
     fillMaterialDescription('Filtro uno');
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(40); });
-    await act(async () => { buttonByText(renderer, 'Cerrar').props.onClick(); });
-    await act(async () => { buttonByText(renderer, 'Cerrar igual').props.onClick(); });
+    await act(async () => { renderer.root.findAllByProps({ 'aria-label': 'Volver a diagnósticos' })[0].props.onClick(); });
+    await act(async () => { buttonByText(renderer, 'Volver a diagnósticos').props.onClick(); });
     await act(async () => { listRows()[1].props.onClick(); await wait(100); });
     await addQuickTask();
     await act(async () => {
@@ -619,21 +631,20 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(textOf(renderer.root)).not.toContain('hallazgos quedaron pendientes');
   });
 
-  it('DX7: Guardar todo explica cuando no hay cambios y oculta el aviso al cambiar o guardar', async () => {
+  it('DX7: Guardar todo se habilita con cambios y el pie muestra el estado del borrador', async () => {
     const save = deferred();
     mocks.service.guardarDiagnosticoLinea.mockReturnValue(save.promise);
     await renderPage();
     await act(async () => { listRows()[0].props.onClick(); await wait(100); });
-    let saveButton = buttonByText(renderer, 'Guardar todo');
+    const saveButton = buttonByText(renderer, 'Guardar todo');
     expect(saveButton.props.disabled).toBe(true);
-    expect(saveButton.props.title).toBe('No hay cambios por guardar');
-    expect(renderer.root.findByProps({ role: 'status' }).children.join('')).toBe('Sin cambios por guardar');
+    expect(renderer.root.findAll(node => node.props.role === 'status' && textOf(node) === 'Borrador guardado')).toHaveLength(1);
     await addQuickTask();
-    expect(renderer.root.findAll(node => node.props.role === 'status' && textOf(node) === 'Sin cambios por guardar')).toHaveLength(0);
+    expect(renderer.root.findAll(node => node.props.role === 'status' && textOf(node) === 'Borrador guardado')).toHaveLength(0);
+    expect(textOf(renderer.root)).toContain('1 cambio sin guardar');
     expect(buttonByText(renderer, 'Guardar todo').props.disabled).toBe(false);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(0); });
-    expect(buttonByText(renderer, 'Guardando...').props.disabled).toBe(true);
-    expect(renderer.root.findAll(node => node.props.role === 'status' && textOf(node) === 'Sin cambios por guardar')).toHaveLength(0);
+    expect(buttonContaining(renderer, 'Guardando').props.disabled).toBe(true);
     await act(async () => { save.resolve({ id: 'line-new' }); await wait(100); });
   });
 
@@ -648,7 +659,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     ]));
     await renderPage();
     await act(async () => { listRows()[0].props.onClick(); await wait(100); });
-    await goToWorkStep(5);
+    await goToTrabajos();
     const dom = textOf(renderer.root);
     expect(dom).toContain('2 trabajos');
     expect(dom).toContain('3 tareas');
@@ -664,7 +675,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [] }]));
     await renderPage();
     await act(async () => { listRows()[0].props.onClick(); await wait(100); });
-    await goToWorkStep(5);
+    await goToTrabajos();
     expect(renderer.root.findByProps({ 'aria-label': 'Horas de equipo de Tarea 1' }).props.disabled).toBe(true);
   });
 
@@ -722,31 +733,40 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('R10: editar ReferenceSelector invalida la seleccion y bloquea Guardar', async () => {
-    mocks.service.listarReferenciasDiagnostico.mockResolvedValue([{ id: 'opp-new', numero: 'Oportunidad nueva', cliente: 'Cliente' }]);
+  it('R10: Fabricación se crea en página: elegir oportunidad, crear borrador y entrar a Trabajos', async () => {
+    mocks.service.listarReferenciasDiagnostico.mockResolvedValue([
+      { id: 'opp-new', numero: 'Oportunidad nueva', cliente: 'Cliente Uno', etapa: 'calificacion', monto_estimado: '430.7', moneda: 'PEN' },
+      { id: 'opp-dos', numero: 'Otra oportunidad', cliente: 'Cliente Dos' },
+    ]);
+    mocks.service.crearDiagnosticoTecnico.mockResolvedValue({ id: 'fab-new' });
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('fab-new', 'fabricacion'));
     await renderPage();
     await act(async () => { buttonByText(renderer, 'Fabricación').props.onClick(); await wait(350); });
-    const referenceInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Oportunidad' })[0];
-    await act(async () => { referenceInput.props.onFocus(); await wait(0); });
-    await act(async () => { buttonContaining(renderer, 'Oportunidad nueva').props.onClick(); await wait(0); });
-    await act(async () => { referenceInput.props.onChange({ target: { value: 'otra búsqueda' } }); await wait(0); });
-    const save = buttonByText(renderer, 'Guardar');
-    console.log('R10_REFERENCE_EDIT_RESULT', JSON.stringify({ input: referenceInput.props.value, save_disabled: save?.props.disabled, create_calls: mocks.service.crearDiagnosticoTecnico.mock.calls.length }));
-    expect(referenceInput.props.value).toBe('otra búsqueda');
-    expect(save.props.disabled).toBe(true);
-    expect(mocks.service.crearDiagnosticoTecnico).not.toHaveBeenCalled();
+    expect(textOf(renderer.root)).toContain('Nuevo diagnóstico · Fabricación');
+    const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    expect(steps.map(textOf)).toEqual(['11 · Oportunidad', '22 · Trabajos a realizar', '33 · Emitir y costear']);
+    expect(steps[1].props.disabled).toBe(true);
+    const crear = () => renderer.root.findAllByType('button').find(button => button.props['aria-label'] === 'Crear borrador y continuar');
+    expect(crear().props.disabled).toBe(true);
+    const option = renderer.root.findAll(node => node.props.role === 'radio').find(node => textOf(node).includes('Oportunidad nueva'));
+    expect(textOf(option)).toContain('Cliente Uno · Calificación');
+    expect(textOf(option)).toContain('S/ 430.70');
+    await act(async () => { option.props.onClick(); await wait(0); });
+    expect(crear().props.disabled).toBe(false);
+    await act(async () => { await renderer.root.findByProps({ id: 'diagnostico-cabecera-form' }).props.onSubmit({ preventDefault() {} }); await wait(150); });
+    expect(mocks.service.crearDiagnosticoTecnico).toHaveBeenCalledWith('empresa-prueba', 'usuario-prueba', expect.objectContaining({ tipo: 'fabricacion', oportunidad_id: 'opp-new', recepcion_id: null }));
+    const workSteps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    expect(workSteps[1].props.className).toBe('is-current');
+    expect(buttonByText(renderer, 'Siguiente: Emitir y costear')).toBeTruthy();
   });
 
-  it('R11: ReferenceSelector permite borrar completamente el texto', async () => {
-    mocks.service.listarReferenciasDiagnostico.mockResolvedValue([{ id: 'opp-new', numero: 'Oportunidad nueva', cliente: 'Cliente' }]);
+  it('R11: el buscador de oportunidades consulta por texto', async () => {
     await renderPage();
     await act(async () => { buttonByText(renderer, 'Fabricación').props.onClick(); await wait(350); });
-    const referenceInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Oportunidad' })[0];
-    await act(async () => { referenceInput.props.onFocus(); await wait(0); });
-    await act(async () => { buttonContaining(renderer, 'Oportunidad nueva').props.onClick(); await wait(0); });
-    await act(async () => { referenceInput.props.onChange({ target: { value: '' } }); await wait(0); });
-    console.log('R11_REFERENCE_CLEAR_RESULT', JSON.stringify({ input: referenceInput.props.value }));
-    expect(referenceInput.props.value).toBe('');
+    const search = renderer.root.findByProps({ 'aria-label': 'Buscar por oportunidad o cliente' });
+    await act(async () => { search.props.onChange({ target: { value: 'cilindro' } }); await wait(350); });
+    expect(mocks.service.listarReferenciasDiagnostico).toHaveBeenLastCalledWith('empresa-prueba', 'fabricacion', 'cilindro');
+    expect(textOf(renderer.root)).toContain('No hay oportunidades abiertas que coincidan.');
   });
 
   it('R12: presenta resumen agrupado, contador sucio y horas de la l?nea', async () => {
@@ -781,12 +801,12 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(css).not.toMatch(/\.card\s*\{[^}]*overflow:\s*hidden/);
   });
 
-  it('R16: el modal explica por qué una sesión sin sociedad no puede editar', async () => {
+  it('R16: la página explica por qué una sesión sin sociedad no puede editar', async () => {
     mocks.session.permiteEscritura = false;
     await renderPage();
     await act(async () => { buttonByText(renderer, 'Fabricación').props.onClick(); await wait(20); });
     const reason = 'Selecciona una sociedad concreta en la barra superior para poder editar.';
-    const save = buttonByText(renderer, 'Guardar');
+    const save = renderer.root.findAllByType('button').find(button => button.props['aria-label'] === 'Crear borrador y continuar');
     const occurrences = textOf(renderer.root).split(reason).length - 1;
     console.log('R16_READONLY_SOCIETY_RESULT', JSON.stringify({ occurrences, save_disabled: save?.props.disabled }));
     expect(occurrences).toBe(1);
@@ -951,12 +971,15 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     let loads = 0;
     mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async () => {
       loads += 1;
-      return { ...detail('one', 'fabricacion', [{ id: 'line-1', materiales: [] }]), estado: loads > 1 ? 'emitido' : 'borrador' };
+      return { ...detail('one', 'fabricacion', [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [] }]), estado: loads > 1 ? 'emitido' : 'borrador' };
     });
     await renderPage();
     await act(async () => { listRows()[0].props.onClick(); await wait(100); });
-    const emit = buttonContaining(renderer, 'Emitir');
-    expect(emit).toBeTruthy();
+    expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
+    await goToPaso('Emitir y costear');
+    expect(textOf(renderer.root)).toContain('Resumen para emitir');
+    const emit = buttonByText(renderer, 'Emitir diagnóstico');
+    expect(emit.props.disabled).toBe(false);
     await act(async () => { emit.props.onClick(); });
     await act(async () => { buttonContaining(renderer, 'Confirmar').props.onClick(); await wait(30); });
     expect(mocks.service.emitirDiagnosticoTecnico).toHaveBeenCalledTimes(1);
@@ -971,23 +994,68 @@ describe('Diagnostico Tecnico - Etapa B', () => {
   ])('E2: emitir actualiza solo la fila %s sin recargar la lista', async (_tipo, id, otherId) => {
     let estado = 'borrador';
     mocks.service.emitirDiagnosticoTecnico.mockImplementation(async () => { estado = 'emitido'; return { estado }; });
-    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async (_empresa, diagnosticoId) => ({ ...detail(diagnosticoId, diagnosticoId === 'one' ? 'fabricacion' : 'mantenimiento'), estado }));
+    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async (_empresa, diagnosticoId) => ({ ...detail(diagnosticoId, diagnosticoId === 'one' ? 'fabricacion' : 'mantenimiento', diagnosticoId === 'one' ? [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [] }] : []), estado }));
     await renderPage();
     const row = diagnosticoId => listRows().find(node => textOf(node).includes(diagnosticoId === 'one' ? 'opp-one' : 'rac-two'));
     const otherBefore = textOf(row(otherId));
     await act(async () => { row(id).props.onClick(); await wait(100); });
-    if (_tipo === 'mantenimiento') {
-      expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
-      const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
-      await act(async () => { await steps[5].props.onClick(); await wait(0); });
-      expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeTruthy();
-    }
+    expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
+    const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    await act(async () => { await steps.at(-1).props.onClick(); await wait(0); });
+    expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeTruthy();
     await act(async () => { buttonByText(renderer, 'Emitir diagnóstico').props.onClick(); });
     await act(async () => { buttonByText(renderer, 'Confirmar emisión').props.onClick(); await wait(40); });
     expect(textOf(row(id))).toContain('Emitido');
     expect(textOf(row(otherId))).toBe(otherBefore);
     expect(textOf(row(id))).toContain('Cliente de prueba');
     expect(mocks.service.listarDiagnosticosTecnicos).toHaveBeenCalledTimes(1);
+  });
+
+  it('H1: Mantenimiento emitido genera la Hoja de Costeo con la sociedad de su recepción', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async (_empresa, id) => ({ ...detail(id, id === 'one' ? 'fabricacion' : 'mantenimiento'), estado: 'emitido' }));
+    mocks.supabase.rpc.mockImplementation(async name => name === 'generar_hoja_costeo_desde_diagnostico' ? { data: { hoja_costeo_id: 'hc_1' }, error: null } : { data: null, error: null });
+    const assign = vi.fn();
+    await renderPage();
+    await act(async () => { listRows().find(node => textOf(node).includes('rac-two')).props.onClick(); await wait(100); });
+    window.location = { pathname: '/', search: '', hash: '#/diagnostico-tecnico?trabajo=two', assign };
+    const generar = buttonByText(renderer, 'Generar hoja de costeo');
+    expect(generar).toBeTruthy();
+    await act(async () => { generar.props.onClick(); await wait(0); });
+    expect(mocks.supabase.rpc).toHaveBeenCalledWith('generar_hoja_costeo_desde_diagnostico', { p_diagnostico_id: 'two', p_sociedad_id: null });
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining('hoja_costeo_wizard?hojaId=hc_1'));
+  });
+
+  it('H2: Fabricación emitida abre en Emitir y costear y muestra las líneas como texto', async () => {
+    mocks.service.listarCargosEmpresa.mockResolvedValue([{ id: 'cargo-1', nombre: 'Soldador' }]);
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({ ...detail('one', 'fabricacion', [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', cargo_id: 'cargo-1', horas_mano_obra: 2.5, horas_maquina: 0, materiales: [] }]), estado: 'emitido' });
+    await renderPage();
+    await act(async () => { listRows()[0].props.onClick(); await wait(100); });
+    const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    expect(steps[2].props.className).toBe('is-current');
+    expect(textOf(renderer.root)).toContain('Trabajos emitidos');
+    expect(buttonByText(renderer, 'Generar hoja de costeo')).toBeTruthy();
+    await goToTrabajos();
+    expect(renderer.root.findAll(node => node.props['aria-label'] === 'Horas-hombre de Tarea 1')).toHaveLength(0);
+    expect(textOf(renderer.root)).toContain('Soldador');
+    expect(textOf(renderer.root)).toMatch(/2[.,]5/);
+  });
+
+  it('H3: Fabricación no deja emitir con trabajos incompletos ni sin trabajos', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion'));
+    await renderPage();
+    await act(async () => { listRows()[0].props.onClick(); await wait(100); });
+    await goToPaso('Emitir y costear');
+    expect(textOf(renderer.root)).toContain('Agrega al menos un trabajo.');
+    expect(buttonByText(renderer, 'Emitir diagnóstico').props.disabled).toBe(true);
+  });
+
+  it('H4: Fabricación abierta desde la URL queda en Trabajos a realizar', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion'));
+    await renderPage({ trabajo: 'one' });
+    await act(async () => { await wait(100); });
+    expect(textOf(renderer.root)).toContain('Paso 2 de 3');
+    const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    expect(steps[1].props.className).toBe('is-current');
   });
 
   it('E3: reabrir actualiza la fila de mantenimiento sin alterar las otras filas', async () => {
@@ -1014,9 +1082,10 @@ describe('Diagnostico Tecnico - Etapa B', () => {
   it('E4: completar el cambio de estado funciona aunque la fila esté filtrada', async () => {
     let estado = 'borrador';
     mocks.service.emitirDiagnosticoTecnico.mockImplementation(async () => { estado = 'emitido'; return { estado }; });
-    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async (_empresa, id) => ({ ...detail(id, id === 'one' ? 'fabricacion' : 'mantenimiento'), estado }));
+    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async (_empresa, id) => ({ ...detail(id, id === 'one' ? 'fabricacion' : 'mantenimiento', [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [] }]), estado }));
     await renderPage();
     await act(async () => { listRows().find(node => textOf(node).includes('opp-one')).props.onClick(); await wait(100); });
+    await goToPaso('Emitir y costear');
     const search = renderer.root.findByProps({ 'aria-label': 'Buscar diagnósticos' });
     await act(async () => { search.props.onChange({ target: { value: 'sin coincidencias' } }); });
     expect(textOf(renderer.root)).toContain('No hay diagnósticos que coincidan');
@@ -1067,7 +1136,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await renderPage();
     await act(async () => { listRows()[0].props.onClick(); await wait(120); });
     await addQuickTask('Tarea receta 2', 'Actividad uno');
-    expect(textOf(renderer.root)).toContain('Se agregaron 2 tareas');
+    expect(textOf(renderer.root)).toContain('2 cambios sin guardar');
     expect(renderer.root.findAll(node => node.props.className?.includes('dx-cascada-line is-dirty'))).toHaveLength(2);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].tarea_id)).toEqual(['task-2', 'task-3']);
@@ -1087,7 +1156,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion'));
     await renderPage();
     await act(async () => { listRows()[0].props.onClick(); await wait(120); });
-    await goToWorkStep(5);
+    await goToTrabajos();
     await addQuickTask('Tarea receta', 'Actividad uno');
     expect(renderer.root.findAllByProps({ className: 'dx-cascada-line is-dirty' })).toHaveLength(1);
     expect(textOf(renderer.root)).toContain('Tarea receta');

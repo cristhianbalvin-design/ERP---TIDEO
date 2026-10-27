@@ -159,12 +159,13 @@ describe('HallazgosTrabajoPanel', () => {
   it('usa una sola barra de seis pasos y muestra solo el paso activo', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
-    expect(source).toContain('PASOS_MANTENIMIENTO.map((label, index)');
+    expect(source).toContain('pasos.map((label, index)');
     expect(source).toContain("style={workStep === 4 ? undefined : { display: 'none' }}");
     expect(source).toContain('<HallazgosTrabajoPanel empresaId={empresaId}');
-    expect(source).toContain("workStep === 5 && <section");
+    expect(source).toContain("enPasoTrabajos && <section");
     expect(source).toContain("informePanel && <>");
     expect(css).toContain('.dx-work-steps{grid-template-columns:repeat(6,minmax(0,1fr))}');
+    expect(css).toContain('.dx-work-steps[data-pasos="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}');
   });
 
   it('muestra campos de hallazgo, matriz, mediciones y tareas, sin controles fuera de v1', async () => {

@@ -6,10 +6,11 @@ const service = await readFile(new URL('../src/services/diagnosticoTecnicoServic
 const flow = await readFile(new URL('../src/zahory-mock/pages/diagnosticoFlujo.js', import.meta.url), 'utf8');
 
 describe('Flujo de mantenimiento en página', () => {
-  it('usa la ruta nueva y una página en vez del contenedor de diálogo', () => {
+  it('usa la ruta nueva y una página en vez del contenedor de diálogo para ambos tipos', () => {
     expect(page).toContain('const diagnosticoHash = params => `/diagnostico-tecnico');
-    expect(page).toContain("query.set('nuevo', 'mantenimiento')");
-    expect(page).toMatch(/pageMode=\{maintenancePage\}/);
+    expect(page).toContain("query.set('nuevo', tipo)");
+    expect(page).toContain('const workPage = Boolean(selected || form.tipo);');
+    expect(page).toMatch(/pageMode=\{workPage\}/);
     expect(page).toMatch(/className="dx-initial-flow"/);
     expect(page).not.toMatch(/key=\{selected\?\.id \|\| `nuevo-\$\{form\.tipo\}`\}/);
   });
@@ -38,11 +39,13 @@ describe('Flujo de mantenimiento en página', () => {
     expect(page).toContain("estado === 'en_diagnostico' ? 'En diagn\u00f3stico'");
     expect(page).not.toContain('new Date().toISOString().slice(0, 10)');
   });
-  it('el borrador existente muestra una sola navegación de seis pasos', () => {
+  it('el borrador existente muestra una sola navegación con los pasos de su tipo', () => {
     expect(page).not.toContain("workStep === 3 ? 'is-current' : ''");
-    expect(page).toContain('PASOS_MANTENIMIENTO.map((label, index)');
+    expect(page).toContain('pasos.map((label, index)');
+    expect(page).toContain('const pasos = pasosDiagnostico(tipoActual);');
     expect(flow).toContain("'Trabajos a realizar'");
     expect(flow).toContain("'Diagn\\u00f3stico e informe'");
+    expect(flow).toContain("'Emitir y costear'");
   });
   it('restablece estado temporal del panel de tareas al abrir un borrador', () => {
     const start = page.indexOf('const openExisting = async diagnostico => {');

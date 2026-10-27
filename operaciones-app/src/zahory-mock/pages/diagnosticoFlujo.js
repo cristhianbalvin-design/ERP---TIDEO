@@ -7,6 +7,19 @@ export const PASOS_MANTENIMIENTO = [
   'Diagn\u00f3stico e informe',
 ];
 
+export const PASOS_FABRICACION = [
+  'Oportunidad',
+  'Trabajos a realizar',
+  'Emitir y costear',
+];
+
+// Fabricación y Mantenimiento comparten el flujo: origen → trabajos → emisión.
+// Mantenimiento agrega Equipo, Datos y Hallazgos antes de los trabajos y el informe al final.
+export const pasosDiagnostico = tipo => tipo === 'fabricacion' ? PASOS_FABRICACION : PASOS_MANTENIMIENTO;
+export const pasoTrabajos = tipo => tipo === 'fabricacion' ? 2 : 5;
+export const pasoFinal = tipo => tipo === 'fabricacion' ? 3 : 6;
+export const pasosDeCreacion = tipo => tipo === 'fabricacion' ? 1 : 3;
+
 export function datosInicialesValidos(referencia, datos = {}) {
   return Boolean(
     referencia?.id

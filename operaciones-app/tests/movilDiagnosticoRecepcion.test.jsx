@@ -80,10 +80,10 @@ describe('movil diagnostico y recepcion', () => {
     expect(shellCss).toMatch(/\.header:has\(\.ops-work-menu-button\) \{ display:none !important/);
   });
 
-  it('el JSX expone Detalles colapsable e indicador Paso N de 6 con segmentos accesibles', () => {
+  it('el JSX expone Detalles colapsable e indicador Paso N de M con segmentos accesibles', () => {
     expect(pageJsx).toMatch(/className="dx-work-meta-toggle" aria-label="Detalles" aria-expanded=\{metaOpen\}/);
     expect(pageJsx).toMatch(/setMetaOpen\(open => !open\)/);
-    expect(pageJsx).toContain('Paso {workStep} de 6');
+    expect(pageJsx).toContain('Paso {workStep} de {pasos.length}');
     expect(pageJsx).toMatch(/aria-label=\{`Paso \$\{index \+ 1\}: \$\{label\}`\}/);
   });
 
