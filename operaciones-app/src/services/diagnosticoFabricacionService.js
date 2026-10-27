@@ -156,16 +156,17 @@ export async function buscarMaterialesCatalogo(empresaId, texto = '') {
   requireEmpresa(empresaId);
   const consulta = String(texto || '').trim().replace(/[%_,()]/g, ' ');
   let query = getSupabaseClient().from('materiales').select(MATERIAL_COLUMNS)
-    .eq('empresa_id', empresaId).eq('estado', 'activo').order('descripcion').limit(20);
+    .eq('empresa_id', empresaId).ilike('estado', 'activo').order('descripcion').limit(20);
   if (consulta) query = query.or(`codigo.ilike.%${consulta}%,descripcion.ilike.%${consulta}%`);
   const { data, error } = await query;
   if (error) throw toError(error);
   return data || [];
 }
 
-export async function listarDibujosCatalogo(empresaId) {
+// En empresas multisociedad el catálogo exige la sociedad activa.
+export async function listarDibujosCatalogo(empresaId, sociedadId = null) {
   requireEmpresa(empresaId);
-  const filas = await catalogoComponentesService.listar(empresaId, null);
+  const filas = await catalogoComponentesService.listar(empresaId, sociedadId || null);
   return (filas || []).filter(row => row.activo !== false && row.svg);
 }
 

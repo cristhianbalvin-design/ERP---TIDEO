@@ -53,3 +53,12 @@ describe('diagnosticoFabricacionService · lógica', () => {
     expect(mensajeErrorFabricacion({})).toBe('No se pudo completar la operación.');
   });
 });
+
+describe('textoTolerancia', () => {
+  it('muestra la tolerancia con signo menos y más', async () => {
+    const { textoTolerancia } = await import('../src/zahory-mock/pages/DiagnosticoFabricacionPasos.jsx');
+    expect(textoTolerancia({ tolerancia_menos: '0.02', tolerancia_mas: '0.05' })).toBe('−0.02 / +0.05');
+    expect(textoTolerancia({ tolerancia_menos: '-0.1', tolerancia_mas: null })).toBe('−0.1');
+    expect(textoTolerancia({})).toBe('');
+  });
+});

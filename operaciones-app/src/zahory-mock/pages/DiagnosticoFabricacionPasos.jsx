@@ -11,7 +11,9 @@ export const PASOS_FABRICACION = ['Origen', 'Piezas', 'Plano y características'
 const etiquetaTipo = tipo => TIPOS_CARACTERISTICA.find(item => item.id === tipo)?.etiqueta || 'Otro';
 const textoMaterial = material => (material ? [material.descripcion, material.codigo, material.unidad].filter(Boolean).join(' · ') : '');
 const formatoCantidad = valor => Number(valor || 0).toLocaleString('es-PE', { maximumFractionDigits: 3 });
-const textoValor = item => [item.nominal, [item.tolerancia_menos, item.tolerancia_mas].filter(Boolean).join(' / '), item.unidad].filter(Boolean).join(' ');
+const conSigno = (valor, signo) => (valor === null || valor === undefined || valor === '' ? '' : `${signo}${String(valor).replace(/^[-+−]\s*/, '')}`);
+export const textoTolerancia = item => [conSigno(item.tolerancia_menos, '−'), conSigno(item.tolerancia_mas, '+')].filter(Boolean).join(' / ');
+const textoValor = item => [item.nominal, textoTolerancia(item), item.unidad].filter(Boolean).join(' ');
 
 export function PasosFabricacion({ paso, onPaso, bloqueados = [] }) {
   return (
@@ -236,10 +238,11 @@ export function FabricacionPiezasPaso({ empresaId, diagnosticoId, piezas, onPiez
 
 const CARACTERISTICA_VACIA = { nombre: '', tipo: 'cota', nominal: '', tolerancia_menos: '', tolerancia_mas: '', unidad: 'mm', critica: false };
 
-export function FabricacionPlanoPaso({ empresaId, diagnosticoId, piezas, onPiezas, piezaId, onPiezaId, canEdit }) {
+export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, piezas, onPiezas, piezaId, onPiezaId, canEdit }) {
   const pieza = piezas.find(item => item.id === piezaId) || piezas[0] || null;
   const [urlPlano, setUrlPlano] = useState('');
   const [dibujos, setDibujos] = useState([]);
+  const [errorDibujos, setErrorDibujos] = useState('');
   const [elegirDibujo, setElegirDibujo] = useState(false);
   const [pagina, setPagina] = useState(1);
   const [subiendo, setSubiendo] = useState(false);
@@ -262,9 +265,12 @@ export function FabricacionPlanoPaso({ empresaId, diagnosticoId, piezas, onPieza
   }, [pieza?.plano_imagen_ruta, pieza?.plano_origen]);
   useEffect(() => {
     let vigente = true;
-    if ((pieza?.plano_origen === 'catalogo' || elegirDibujo) && !dibujos.length) listarDibujosCatalogo(empresaId).then(rows => { if (vigente) setDibujos(rows); }).catch(() => {});
+    if ((pieza?.plano_origen === 'catalogo' || elegirDibujo) && !dibujos.length) {
+      setErrorDibujos('');
+      listarDibujosCatalogo(empresaId, sociedadId).then(rows => { if (vigente) setDibujos(rows); }).catch(loadError => { if (vigente) setErrorDibujos(loadError?.message || 'No se pudieron cargar los dibujos del catálogo.'); });
+    }
     return () => { vigente = false; };
-  }, [pieza?.plano_origen, elegirDibujo, empresaId]);
+  }, [pieza?.plano_origen, elegirDibujo, empresaId, sociedadId]);
 
   const svgCatalogo = useMemo(() => dibujos.find(item => item.id === pieza?.componente_catalogo_id)?.svg || '', [dibujos, pieza?.componente_catalogo_id]);
   if (!pieza) return <section className="dx-fab-card"><p className="dx-fab-empty">Primero agrega una pieza en el paso 2.</p></section>;
@@ -333,7 +339,7 @@ export function FabricacionPlanoPaso({ empresaId, diagnosticoId, piezas, onPieza
           {canEdit && (
             <div className="dx-fab-src" role="group" aria-label="Origen del plano">
               <button type="button" className={pieza.plano_origen === 'subido' ? 'on' : ''} disabled={subiendo} onClick={() => inputRef.current?.click()}>⤒ {pieza.plano_origen === 'subido' ? 'Reemplazar plano' : 'Subir plano o foto'}</button>
-              <label className="dx-fab-page">Página del PDF<input type="number" min="1" value={pagina} onChange={event => setPagina(Math.max(1, Number(event.target.value) || 1))} /></label>
+              {(!pieza.plano_origen || pieza.plano_mime === 'application/pdf') && <label className="dx-fab-page" title="Página que se usa al subir un PDF">Página del PDF<input type="number" min="1" value={pagina} onChange={event => setPagina(Math.max(1, Number(event.target.value) || 1))} /></label>}
               <button type="button" className={pieza.plano_origen === 'catalogo' || elegirDibujo ? 'on' : ''} disabled={subiendo} onClick={() => setElegirDibujo(open => !open)}>▦ Dibujo del catálogo</button>
               <button type="button" className="is-soon" disabled title="Fase 2">✎ Plano de Ingeniería · próximamente</button>
               <input ref={inputRef} type="file" hidden accept="image/jpeg,image/png,image/webp,application/pdf" onChange={event => subir(event.target.files?.[0])} />
@@ -341,7 +347,7 @@ export function FabricacionPlanoPaso({ empresaId, diagnosticoId, piezas, onPieza
           )}
           {elegirDibujo && canEdit && (
             <div className="dx-fab-dibujos" role="listbox" aria-label="Dibujos del catálogo">
-              {!dibujos.length && <p className="dx-fab-empty">Cargando dibujos…</p>}
+              {!dibujos.length && <p className="dx-fab-empty" role={errorDibujos ? 'alert' : undefined}>{errorDibujos || 'Cargando dibujos…'}</p>}
               {dibujos.map(dibujo => (
                 <button key={dibujo.id} type="button" role="option" aria-selected={pieza.componente_catalogo_id === dibujo.id} className={pieza.componente_catalogo_id === dibujo.id ? 'is-on' : ''} onClick={() => usarDibujo(dibujo.id)}>
                   <span className="dx-fab-dibujo-mini" dangerouslySetInnerHTML={{ __html: dibujo.svg }} /><b>{dibujo.nombre}</b>
@@ -436,7 +442,7 @@ export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, origenTe
             {piezas.map((pieza, index) => (
               <div key={pieza.id} className="dx-fab-sheet-piece">
                 <b>{index + 1} · {pieza.nombre} · {formatoCantidad(pieza.cantidad)} und{pieza.material ? ` · ${pieza.material.descripcion}` : ''}</b>
-                {pieza.caracteristicas.length > 0 && <table><thead><tr><th>#</th><th>Característica</th><th>Nominal</th><th>Tol.</th><th>Crítica</th></tr></thead><tbody>{pieza.caracteristicas.map(item => <tr key={item.id}><td>{item.numero}</td><td>{item.nombre}</td><td>{[item.nominal, item.unidad].filter(Boolean).join(' ') || '—'}</td><td>{[item.tolerancia_menos, item.tolerancia_mas].filter(Boolean).join(' / ') || '—'}</td><td>{item.critica ? 'Sí' : ''}</td></tr>)}</tbody></table>}
+                {pieza.caracteristicas.length > 0 && <table><thead><tr><th>#</th><th>Característica</th><th>Nominal</th><th>Tol.</th><th>Crítica</th></tr></thead><tbody>{pieza.caracteristicas.map(item => <tr key={item.id}><td>{item.numero}</td><td>{item.nombre}</td><td>{[item.nominal, item.unidad].filter(Boolean).join(' ') || '—'}</td><td>{textoTolerancia(item) || '—'}</td><td>{item.critica ? 'Sí' : ''}</td></tr>)}</tbody></table>}
               </div>
             ))}
             {!piezas.length && <p className="dx-fab-empty">Sin piezas.</p>}

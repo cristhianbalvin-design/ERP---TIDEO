@@ -6382,3 +6382,9 @@ width:20px;height:20px}
   .dx-fab .dx-fab-kpis { grid-template-columns:minmax(0,1fr); }
 }
 @media (max-width:760px) { .dx-ui.dx-fab { padding:8px 10px 16px; } }
+/* El cuerpo de trabajos se oculta fuera de su paso aunque .dx-work-page lo fuerce a block. */
+.dx-work-page .dx-scope > .dx-body.dx-work-hidden { display:none !important; }
+/* Fabricación en página: el estado (emitir/reabrir) vive en Revisión y el encabezado de Trabajos queda visible. */
+.dx-work-page .dx-scope-fab .diagnostico-estado-panel { display:block !important; margin:0 24px 16px; border:0; }
+.dx-work-page .dx-scope-fab .dx-body-fabricacion .dx-diagnostico-resumen-heading { display:flex !important; }
+@media (max-width:760px) { .dx-work-page .dx-scope-fab .diagnostico-estado-panel { margin:0 10px 12px; } }
