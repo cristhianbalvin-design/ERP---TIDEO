@@ -6142,6 +6142,16 @@ width:20px;height:20px}
 
 /* Transporte Comercial · maestros dx */
 .dx-ui.dx-transporte { padding:24px 28px 60px; }
+.dx-transporte .dx-ui-kpi { height:56px; min-height:56px; }
+.dx-transporte .dx-ui-kpi strong,.dx-transporte .dx-ui-kpi span { white-space:nowrap; }
+.dx-transporte .dx-transporte-form-section { grid-column:1/-1; margin:4px 0 -6px; padding-bottom:6px; border-bottom:1px solid var(--dx-ui-line); color:var(--dx-ui-navy); font:700 13px 'Sora',sans-serif; }
+.dx-transporte .dx-transporte-distance { white-space:nowrap; }
+.dx-transporte input[type="date"] { color-scheme:light; }
+.dx-transporte-modal > .card-header { background:var(--dx-ui-card); }
+.dx-transporte-modal > .card-header .dx-modal-title { color:var(--dx-ui-navy); }
+.dx-transporte-modal > .card-header .dx-modal-subtitle { color:var(--dx-ui-gray); }
+.dx-transporte-modal > .card-header .dx-modal-close { background:var(--dx-ui-card); color:var(--dx-ui-navy); border-color:var(--dx-ui-line); }
+.dx-transporte-modal .diagnostico-modal-footer .btn-secondary { background:var(--dx-ui-card); color:var(--dx-ui-navy); border-color:var(--dx-ui-line); }
 .dx-transporte .dx-transporte-list { margin-bottom:18px; }
 .dx-transporte .dx-transporte-route-cols { --dx-ui-cols:minmax(230px,1.7fr) minmax(125px,.9fr) minmax(120px,1fr) minmax(105px,.8fr) minmax(90px,.65fr) minmax(95px,.7fr) 14px; }
 .dx-transporte .dx-transporte-tariff-cols { --dx-ui-cols:minmax(190px,1.4fr) minmax(145px,1fr) minmax(125px,.9fr) minmax(110px,.8fr) minmax(160px,1.1fr) minmax(95px,.7fr) 14px; }
@@ -6178,3 +6188,9 @@ width:20px;height:20px}
 }
 [data-theme='dark'] .dx-ui.dx-transporte .dx-transporte-probe,[data-theme='dark'] .dx-ui.dx-transporte .dx-transporte-related { background:var(--dx-ui-card); border-color:var(--dx-ui-line); }
 [data-theme='dark'] .dx-ui.dx-transporte .dx-transporte-no-data { color:var(--dx-ui-gray); }
+[data-theme='dark'] .dx-ui.dx-transporte input[type="date"],:host([data-theme='dark']) .dx-ui.dx-transporte input[type="date"] { color-scheme:dark; }
+[data-theme='dark'] .dx-transporte-modal > .card-header,:host([data-theme='dark']) .dx-transporte-modal > .card-header { background:var(--dx-ui-card); }
+[data-theme='dark'] .dx-transporte-modal > .card-header .dx-modal-title,:host([data-theme='dark']) .dx-transporte-modal > .card-header .dx-modal-title { color:var(--dx-ui-ink); }
+[data-theme='dark'] .dx-transporte-modal > .card-header .dx-modal-subtitle,:host([data-theme='dark']) .dx-transporte-modal > .card-header .dx-modal-subtitle { color:var(--dx-ui-gray); }
+[data-theme='dark'] .dx-transporte-modal > .card-header .dx-modal-close,:host([data-theme='dark']) .dx-transporte-modal > .card-header .dx-modal-close { background:var(--dx-ui-card); color:var(--dx-ui-ink); border-color:var(--dx-ui-line); }
+[data-theme='dark'] .dx-transporte-modal .diagnostico-modal-footer .btn-secondary,:host([data-theme='dark']) .dx-transporte-modal .diagnostico-modal-footer .btn-secondary { background:var(--dx-ui-card); color:var(--dx-ui-ink); border-color:var(--dx-ui-line); }

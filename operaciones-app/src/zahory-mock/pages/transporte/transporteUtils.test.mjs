@@ -31,6 +31,26 @@ test('formateo, modalidad y validaci\u00f3n de tarifa correcta', () => {
   }), {});
 });
 
+test('formatea distancias, fechas, datos vacíos y contadores en es-PE', () => {
+  assert.equal(utils.formatearNumeroTransporte(1010.0), '1,010');
+  assert.equal(utils.formatearNumeroTransporte(1010.5), '1,010.5');
+  assert.equal(utils.formatearNumeroTransporte(null), 'Sin dato');
+  assert.equal(utils.formatearFechaTransporte('2026-10-27'), '27/10/2026');
+  assert.equal(utils.formatearFechaTransporte(''), 'Sin dato');
+  assert.equal(utils.formatearFechaTransporte('', 'Sin fecha final'), 'Sin fecha final');
+  assert.equal(utils.etiquetaContador(1, 'ruta'), '1 ruta');
+  assert.equal(utils.etiquetaContador(2, 'ruta'), '2 rutas');
+  assert.equal(utils.etiquetaContador(1, 'tarifa'), '1 tarifa');
+  assert.equal(utils.etiquetaContador(0, 'tarifa'), '0 tarifas');
+});
+
+test('unifica tipos de unidad sin duplicados de mayúsculas o acentos', () => {
+  assert.deepEqual(
+    utils.unificarTiposUnidad(['Furgón', 'Camioneta'], ['furgon', 'CAMIONETA', 'Camión 2 ejes']),
+    ['Furgón', 'Camioneta', 'Camión 2 ejes'],
+  );
+});
+
 test('formulario de ruta vac\u00edo devuelve todos los obligatorios', () => {
   assert.deepEqual(utils.validarFormularioRuta({}), {
     codigo: 'Este campo es obligatorio.',

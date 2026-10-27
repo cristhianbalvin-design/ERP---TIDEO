@@ -11,6 +11,7 @@ export function DxReferenceSelector({
   placeholder = 'Buscar\u2026',
   optionalLabel = 'Sin asignar',
   name,
+  id = name,
   error,
   required = false,
 }) {
@@ -41,9 +42,10 @@ export function DxReferenceSelector({
 
   return (
     <div className="dx-ui-reference" ref={rootRef} onBlur={handleBlur}>
-      <label>{label}{required && <span className="dx-ui-required"> *</span>}</label>
+      <label htmlFor={id}>{label}{required && <span className="dx-ui-required"> *</span>}</label>
       {selected ? (
         <div
+          id={id}
           className="dx-ui-reference-selected"
           aria-invalid={Boolean(error)}
           aria-required={required || undefined}
@@ -57,6 +59,7 @@ export function DxReferenceSelector({
       ) : (
         <>
           <input
+            id={id}
             name={name}
             value={query}
             onFocus={() => setOpen(true)}

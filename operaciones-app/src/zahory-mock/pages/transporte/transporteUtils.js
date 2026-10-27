@@ -34,6 +34,38 @@ export const MODALIDAD_LABEL = Object.freeze({
 
 export const etiquetaModalidad = modalidad => MODALIDAD_LABEL[modalidad] || modalidad || '—';
 
+export function formatearNumeroTransporte(valor, maximumFractionDigits = 2) {
+  if (valor === '' || valor == null || !Number.isFinite(Number(valor))) return 'Sin dato';
+  return Number(valor).toLocaleString('es-PE', {
+    maximumFractionDigits,
+    minimumFractionDigits: 0,
+  });
+}
+
+export function formatearFechaTransporte(fecha, vacio = 'Sin dato') {
+  if (!fecha) return vacio;
+  const [year, month, day] = String(fecha).split('-');
+  return year && month && day ? `${day}/${month}/${year}` : 'Sin dato';
+}
+
+export function etiquetaContador(cantidad, singular, plural = `${singular}s`) {
+  return `${cantidad} ${cantidad === 1 ? singular : plural}`;
+}
+
+export function unificarTiposUnidad(defaults = [], catalogo = []) {
+  const result = [];
+  const seen = new Set();
+  for (const value of [...defaults, ...catalogo]) {
+    const label = String(value || '').trim();
+    const key = label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-PE');
+    if (label && !seen.has(key)) {
+      seen.add(key);
+      result.push(label);
+    }
+  }
+  return result;
+}
+
 export function formatearImporte(valor, moneda, modalidad) {
   if (valor === '' || valor == null || !Number.isFinite(Number(valor))) return '—';
 

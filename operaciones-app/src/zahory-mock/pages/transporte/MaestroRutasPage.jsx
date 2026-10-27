@@ -15,6 +15,9 @@ import { listarTarifas } from '../../../services/transporteTarifasService.js';
 import {
   fechaActualLocal,
   formatearImporte,
+  formatearNumeroTransporte,
+  formatearFechaTransporte,
+  etiquetaContador,
   validarFormularioRuta,
 } from './transporteUtils.js';
 
@@ -41,7 +44,7 @@ const BLANK = {
 };
 
 const nullableNumber = value => value === '' ? null : Number(value);
-const dateSpan = item => `${item.vigente_desde || '—'} · ${item.vigente_hasta || 'Sin fecha final'}`;
+const dateSpan = item => `${formatearFechaTransporte(item.vigente_desde)} · ${formatearFechaTransporte(item.vigente_hasta, 'Sin fecha final')}`;
 
 function Pill({ state }) {
   const className = state === 'activa' ? 'is-green' : 'is-gray';
@@ -281,14 +284,14 @@ export function MaestroRutasPage() {
           <strong>{rutas.length - activeRoutes.length}</strong><span>Inactivas</span>
         </div>
         <div className="dx-ui-kpi">
-          <strong>{averageKm.toFixed(1)} km</strong><span>Promedio activas</span>
+          <strong>{routesWithDistance.length ? `${formatearNumeroTransporte(averageKm)} km` : 'Sin dato'}</strong><span>Distancia promedio</span>
         </div>
       </div>
 
       <div className="dx-ui-card dx-transporte-list">
         <div className="dx-ui-toolbar">
           <h2>Rutas registradas</h2>
-          <span className="dx-ui-count">{filtered.length} rutas</span>
+          <span className="dx-ui-count">{etiquetaContador(filtered.length, 'ruta')}</span>
           <DxBuscador
             value={query}
             onChange={setQuery}
@@ -362,8 +365,8 @@ export function MaestroRutasPage() {
               </span>
               <span>
                 <small>Distancia</small>
-                <strong className={route.distancia_km == null ? 'dx-transporte-no-data' : ''}>
-                  {route.distancia_km == null ? 'Sin dato' : `${route.distancia_km} km`}
+                <strong className={`dx-transporte-distance${route.distancia_km == null ? ' dx-transporte-no-data' : ''}`}>
+                  {route.distancia_km == null ? 'Sin dato' : `${formatearNumeroTransporte(route.distancia_km)} km`}
                 </strong>
                 <small>Duración</small>
                 <strong className={route.duracion_estimada_horas == null ? 'dx-transporte-no-data' : ''}>
@@ -401,7 +404,10 @@ export function MaestroRutasPage() {
         open={Boolean(modal)}
         title={modal?.id ? `Ruta ${modal.codigo}` : 'Nueva ruta'}
         subtitle="Completa los datos del trayecto."
-        variant="dx-modal"
+        variant="dx-modal dx-transporte-modal"
+        titleClassName="dx-modal-title"
+        subtitleClassName="dx-modal-subtitle"
+        closeClassName="dx-modal-close"
         dirty={Boolean(modal && JSON.stringify(form) !== JSON.stringify(
           modal.id
             ? {
@@ -434,6 +440,7 @@ export function MaestroRutasPage() {
           <div className="card-body">
             <form id="route-form" className="dx-transporte-form" onSubmit={save}>
               <div className="dx-ui-form-grid">
+                <div className="dx-transporte-form-section">General</div>
                 <Field
                   fieldErrors={fieldErrors}
                   label="Código"
@@ -450,6 +457,18 @@ export function MaestroRutasPage() {
                   updateField={updateField}
                   required
                 />
+                <label className="dx-ui-field">
+                  <span>Estado</span>
+                  <select
+                    className="dx-ui-select"
+                    value={form.estado}
+                    onChange={event => setForm(value => ({ ...value, estado: event.target.value }))}
+                  >
+                    <option value="activa">Activa</option>
+                    <option value="inactiva">Inactiva</option>
+                  </select>
+                </label>
+                <div className="dx-transporte-form-section">Origen</div>
                 <Field
                   fieldErrors={fieldErrors}
                   label="Origen"
@@ -490,6 +509,7 @@ export function MaestroRutasPage() {
                   type="number"
                   step="any"
                 />
+                <div className="dx-transporte-form-section">Destino</div>
                 <Field
                   fieldErrors={fieldErrors}
                   label="Destino"
@@ -530,6 +550,7 @@ export function MaestroRutasPage() {
                   type="number"
                   step="any"
                 />
+                <div className="dx-transporte-form-section">Operación</div>
                 <Field
                   fieldErrors={fieldErrors}
                   label="Distancia (km)"
@@ -568,7 +589,7 @@ export function MaestroRutasPage() {
                   step="any"
                 />
                 <label className="dx-ui-field">
-                  <span>Moneda de peajes <span className="dx-ui-required"> *</span></span>
+                  <span>Moneda de peajes<span className="dx-ui-required"> *</span></span>
                   <select
                     className="dx-ui-select"
                     name="moneda_peajes"
@@ -583,17 +604,6 @@ export function MaestroRutasPage() {
                   {fieldErrors.moneda_peajes && (
                     <small className="dx-ui-field-error" role="alert">{fieldErrors.moneda_peajes}</small>
                   )}
-                </label>
-                <label className="dx-ui-field">
-                  <span>Estado</span>
-                  <select
-                    className="dx-ui-select"
-                    value={form.estado}
-                    onChange={event => setForm(value => ({ ...value, estado: event.target.value }))}
-                  >
-                    <option value="activa">Activa</option>
-                    <option value="inactiva">Inactiva</option>
-                  </select>
                 </label>
                 <label className="dx-ui-field dx-ui-field-full">
                   <span>Notas</span>

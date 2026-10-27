@@ -24,8 +24,11 @@ import {
   enriquecerTarifas,
   estadoVigencia,
   etiquetaModalidad,
+  etiquetaContador,
   fechaActualLocal,
+  formatearFechaTransporte,
   formatearImporte,
+  unificarTiposUnidad,
   validarFormularioTarifa,
 } from './transporteUtils.js';
 
@@ -108,6 +111,7 @@ export function TarifasTransportePage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [selectorSession, setSelectorSession] = useState(0);
   const [notice, setNotice] = useState('');
   const [probe, setProbe] = useState({
     ruta_id: null,
@@ -137,7 +141,7 @@ export function TarifasTransportePage() {
       setTarifas(tariffRows);
       setRutas(routeRows);
       setCuentas(accountRows);
-      setUnitTypes([...new Set([...UNIT_DEFAULTS, ...types])]);
+      setUnitTypes(unificarTiposUnidad(UNIT_DEFAULTS, types));
     } catch (loadError) {
       setError(loadError.message || 'No se pudieron cargar las tarifas.');
     } finally {
@@ -201,9 +205,10 @@ export function TarifasTransportePage() {
         minimo_facturable: item.minimo_facturable ?? '',
         vigente_hasta: item.vigente_hasta || '',
       }
-      : { ...BLANK, vigente_desde: today };
+      : { ...BLANK };
 
     setForm(nextForm);
+    setSelectorSession(session => session + 1);
     setFormError('');
     setFieldErrors({});
     setModal(true);
@@ -341,7 +346,7 @@ export function TarifasTransportePage() {
       <div className="dx-ui-card dx-transporte-list">
         <div className="dx-ui-toolbar">
           <h2>Tarifas registradas</h2>
-          <span className="dx-ui-count">{filtered.length} tarifas</span>
+          <span className="dx-ui-count">{etiquetaContador(filtered.length, 'tarifa')}</span>
           <DxBuscador
             value={query}
             onChange={setQuery}
@@ -437,8 +442,8 @@ export function TarifasTransportePage() {
                 {formatearImporte(tariff.tarifa, tariff.moneda, tariff.modalidad)}
               </span>
               <span>
-                {tariff.minimo_facturable == null
-                  ? '—'
+                {tariff.minimo_facturable == null || tariff.minimo_facturable === ''
+                  ? 'Sin dato'
                   : formatearImporte(
                     tariff.minimo_facturable,
                     tariff.moneda,
@@ -446,7 +451,7 @@ export function TarifasTransportePage() {
                   )}
               </span>
               <span>
-                {tariff.vigente_desde} → {tariff.vigente_hasta || '∞'}
+                {formatearFechaTransporte(tariff.vigente_desde)} → {formatearFechaTransporte(tariff.vigente_hasta, 'Sin fecha final')}
               </span>
               <span>
                 <span className={`dx-ui-pill ${PILL[state]}`}>
@@ -468,6 +473,7 @@ export function TarifasTransportePage() {
         <form className="dx-ui-form-grid" onSubmit={runProbe}>
           <DxReferenceSelector
             label="Ruta"
+            id="probe-ruta_id"
             options={rutas}
             loading={loading}
             value={probe.ruta_id}
@@ -477,6 +483,7 @@ export function TarifasTransportePage() {
           />
           <DxReferenceSelector
             label="Cliente"
+            id="probe-cuenta_id"
             options={cuentas}
             loading={loading}
             value={probe.cuenta_id}
@@ -555,7 +562,10 @@ export function TarifasTransportePage() {
         open={modal}
         title={form.id ? 'Editar tarifa' : 'Nueva tarifa'}
         subtitle="Define los criterios y el periodo de aplicación."
-        variant="dx-modal"
+        variant="dx-modal dx-transporte-modal"
+        titleClassName="dx-modal-title"
+        subtitleClassName="dx-modal-subtitle"
+        closeClassName="dx-modal-close"
         dirty={modal && JSON.stringify(form) !== JSON.stringify(
           form.id
             ? {
@@ -567,7 +577,7 @@ export function TarifasTransportePage() {
               vigente_hasta: tarifas.find(tariff => tariff.id === form.id)
                 ?.vigente_hasta || '',
             }
-            : { ...BLANK, vigente_desde: today },
+            : { ...BLANK },
         )}
         busy={saving}
         onClose={() => setModal(false)}
@@ -582,7 +592,9 @@ export function TarifasTransportePage() {
             <form id="tariff-form" className="dx-transporte-form" onSubmit={save}>
               <div className="dx-ui-form-grid">
                 <DxReferenceSelector
+                  key={`${selectorSession}-route`}
                   label="Ruta"
+                  id="ruta_id"
                   options={rutas}
                   loading={loading}
                   value={form.ruta_id}
@@ -594,28 +606,34 @@ export function TarifasTransportePage() {
                   error={fieldErrors.ruta_id}
                 />
                 <DxReferenceSelector
+                  key={`${selectorSession}-account`}
                   label="Cliente"
+                  id="cuenta_id"
                   options={cuentas}
                   loading={loading}
                   value={form.cuenta_id}
                   onChange={value => updateField('cuenta_id', value)}
                   getLabel={cuentaLabel}
                   optionalLabel="Tarifa base"
+                  name="cuenta_id"
+                  error={fieldErrors.cuenta_id}
                 />
                 <label className="dx-ui-field">
                   <span>Tipo de unidad <span className="dx-ui-required"> *</span></span>
-                  <input
+                  <select
+                    className="dx-ui-select"
                     name="tipo_unidad"
                     aria-invalid={Boolean(fieldErrors.tipo_unidad)}
                     aria-required="true"
                     aria-describedby={fieldErrors.tipo_unidad ? 'tipo_unidad-error' : undefined}
-                    list="transporte-unit-types"
                     value={form.tipo_unidad}
                     onChange={event => updateField('tipo_unidad', event.target.value)}
-                  />
-                  <datalist id="transporte-unit-types">
-                    {unitTypes.map(type => <option key={type} value={type} />)}
-                  </datalist>
+                  >
+                    <option value="">Selecciona un tipo de unidad</option>
+                    {unificarTiposUnidad(unitTypes, form.tipo_unidad ? [form.tipo_unidad] : []).map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
                   {fieldErrors.tipo_unidad && (
                     <small className="dx-ui-field-error" id="tipo_unidad-error" role="alert">
                       {fieldErrors.tipo_unidad}
