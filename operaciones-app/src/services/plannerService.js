@@ -4,7 +4,7 @@ import { validarOtPlanificable } from '../zahory-mock/pages/planner/plannerEngin
 const CAMPOS = {
   bahias: 'id,empresa_id,sociedad_id,codigo,nombre,categoria,orden,activa',
   puestos: 'id,empresa_id,bahia_id,codigo,nombre,capacidad,orden,activo',
-  maquinas: 'id,empresa_id,sociedad_id,tipo_clave,codigo,nombre,bahia_id,puesto_id,horas_dia,estado',
+  maquinas: 'id,empresa_id,sociedad_id,tipo_clave,codigo,nombre,bahia_id,puesto_id,activo_id,horas_dia,estado',
   tipos: 'id,empresa_id,clave,nombre,familia,base_3d,descripcion,orden,activo',
   ocupaciones: 'id,empresa_id,sociedad_id,ot_id,puesto_id,fecha_desde,fecha_hasta,estado',
   personas: 'id,empresa_id,nombre,codigo,cargo,especialidad,especialidad2,estado',
@@ -76,6 +76,7 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
   const [bahias, puestos, maquinas, tipos, ocupaciones, personas, asignaciones, equipos, ordenes,
     familiasTrabajo, actividades, cargos] = consultas;
   const ausencias = await leerAusencias(sb, empresaId);
+  const activosPropios = await leerActivosPropios(sb, empresaId);
   const osIds = [...new Set(ordenes.map(ot => ot.os_cliente_id).filter(Boolean))];
   let ordenesServicio = [];
   if (osIds.length) {
@@ -101,8 +102,24 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
   }));
   return {
     bahias, puestos, maquinas, tipos, ocupaciones, personas, asignaciones, equipos, ots,
-    ordenesServicio, familiasTrabajo, actividades, cargos, ausencias,
+    ordenesServicio, familiasTrabajo, actividades, cargos, ausencias, activosPropios,
   };
+}
+
+// Equipos propios (activos) que se pueden enlazar a una máquina del taller.
+// La bahía de una tarea se deduce de su equipo: tarea → equipo → máquina → bahía.
+async function leerActivosPropios(sb, empresaId) {
+  try {
+    const { data, error } = await sb.from('activos')
+      .select('id,codigo,nombre,estado,propietario_tipo')
+      .eq('empresa_id', empresaId)
+      .or('propietario_tipo.is.null,propietario_tipo.eq.propio')
+      .order('nombre');
+    if (error) return [];
+    return (data || []).filter(activo => activo.estado !== 'baja');
+  } catch {
+    return [];
+  }
 }
 
 // Vacaciones y permisos confirmados por RRHH: el Tablero los pinta como ausencias.
@@ -170,10 +187,11 @@ export async function agregarMaquina({
   codigo = null,
   nombre,
   horasDia = 8,
+  activoId = null,
 }) {
   const { data, error } = await getSupabaseClient().from('planner_maquinas_taller').insert({
     empresa_id: empresaId, sociedad_id: sociedadId || null, tipo_clave: tipo.clave, nombre: nombre || tipo.nombre,
-    codigo, bahia_id: bahiaId, puesto_id: puestoId, horas_dia: horasDia,
+    codigo, bahia_id: bahiaId, puesto_id: puestoId, horas_dia: horasDia, activo_id: activoId || null,
   }).select(CAMPOS.maquinas).single();
   if (error) throw error;
   return data;
@@ -187,9 +205,11 @@ export async function actualizarTipoMaquina({ empresaId, id, nombre, descripcion
   return data;
 }
 
-export async function actualizarMaquina({ empresaId, sociedadId, id, bahiaId, puestoId, horasDia, estado }) {
+export async function actualizarMaquina({ empresaId, sociedadId, id, bahiaId, puestoId, horasDia, estado, activoId }) {
+  const cambios = { bahia_id: bahiaId, puesto_id: puestoId || null, horas_dia: horasDia, estado };
+  if (activoId !== undefined) cambios.activo_id = activoId || null;
   let query = getSupabaseClient().from('planner_maquinas_taller')
-    .update({ bahia_id: bahiaId, puesto_id: puestoId || null, horas_dia: horasDia, estado })
+    .update(cambios)
     .eq('empresa_id', empresaId).eq('id', id);
   if (sociedadId) query = query.eq('sociedad_id', sociedadId);
   const { data, error } = await query.select(CAMPOS.maquinas).single();
