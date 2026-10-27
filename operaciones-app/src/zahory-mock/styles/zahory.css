@@ -6123,7 +6123,7 @@ width:20px;height:20px}
 .dx-work-page .dx-scope>.dx-hc-sync-info{margin:12px 20px 0}
 .dx-work-page .dx-initial-card.dx-fab-emitir+.dx-initial-card.dx-fab-emitir{margin-top:12px}
 .dx-work-page>.diagnostico-modal-footer .btn-secondary.dx-action-44{border-color:var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy)}
-@container (max-width:1020px){.dx-cascada-lines-table .dx-cascada-line td.n{text-align:left}}
+@container (max-width:1020px){.dx-cascada-lines-table .dx-cascada-line td.n,.dx-cascada-lines-table .dx-cascada-line td.n .dx-cascada-ro{text-align:left}}
 [data-theme=dark] .dx-work-page .dx-action-44.btn-primary:disabled{opacity:.45;cursor:not-allowed}
 @container (max-width:760px){.dx-work-page .dx-scope>.dx-inf-open-row,.dx-work-page .dx-scope>.dx-hc-sync-info{margin:8px 12px 0}.dx-work-page .dx-scope>.dx-inf-open-row .btn{flex:1 1 auto}.dx-work-page .dx-initial-receipt-copy{flex:1 1 calc(100% - 34px)}.dx-work-page .dx-initial-receipt-copy strong{overflow-wrap:anywhere}.dx-work-page .dx-initial-receipt-copy+.dx-ui-pill{margin-left:30px}}
 
