@@ -62,3 +62,20 @@ describe('textoTolerancia', () => {
     expect(textoTolerancia({})).toBe('');
   });
 });
+
+describe('markupDibujoCatalogo', () => {
+  const svg = '<svg viewBox="0 0 100 50"><rect data-z="vastago" class="part" x="1" y="1" width="10" height="10"/><rect data-z="camisa" x="20" y="1" width="10" height="10"/><g data-cota="d_vastago" class="dims"><line/></g></svg>';
+  it('marca las partes con características y enciende sus cotas, con el estilo de Hallazgos', async () => {
+    const { markupDibujoCatalogo } = await import('../src/zahory-mock/pages/DiagnosticoFabricacionPasos.jsx');
+    const markup = markupDibujoCatalogo(svg, ['vastago'], ['d_vastago']);
+    expect(markup).toMatch(/data-z="vastago"[^>]*class="part is-marked"/);
+    expect(markup).not.toMatch(/data-z="camisa"[^>]*is-marked/);
+    expect(markup).toMatch(/data-cota="d_vastago"[^>]*class="dims c-on"/);
+    expect(markup).toContain('<style>');
+  });
+  it('sin marcas devuelve el dibujo limpio y vacío si no hay SVG', async () => {
+    const { markupDibujoCatalogo } = await import('../src/zahory-mock/pages/DiagnosticoFabricacionPasos.jsx');
+    expect(markupDibujoCatalogo(svg)).not.toMatch(/class="[^"]*is-marked/);
+    expect(markupDibujoCatalogo('')).toBe('');
+  });
+});

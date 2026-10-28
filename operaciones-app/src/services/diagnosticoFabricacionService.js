@@ -6,7 +6,7 @@ const BUCKET = 'diagnostico-planos';
 const MAX_BYTES = 10 * 1024 * 1024;
 const MIME_PLANO = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const PIEZA_COLUMNS = 'id,empresa_id,diagnostico_id,orden,nombre,cantidad,material_id,observaciones,plano_origen,plano_ruta,plano_imagen_ruta,plano_nombre_original,plano_mime,plano_pagina,plano_ancho,plano_alto,componente_catalogo_id,created_at,updated_at';
-const CARACTERISTICA_COLUMNS = 'id,empresa_id,pieza_id,numero,nombre,tipo,nominal,tolerancia_menos,tolerancia_mas,unidad,critica,pos_x,pos_y,created_at,updated_at';
+const CARACTERISTICA_COLUMNS = 'id,empresa_id,pieza_id,numero,nombre,tipo,nominal,tolerancia_menos,tolerancia_mas,unidad,critica,pos_x,pos_y,zona_id,medida_id,created_at,updated_at';
 const MATERIAL_COLUMNS = 'id,codigo,descripcion,unidad';
 
 export const TIPOS_CARACTERISTICA = [
@@ -302,6 +302,8 @@ export async function guardarCaracteristica(empresaId, piezaId, caracteristica) 
     critica: Boolean(caracteristica.critica),
     pos_x: Math.min(100, Math.max(0, Math.round(Number(caracteristica.pos_x) * 100) / 100)),
     pos_y: Math.min(100, Math.max(0, Math.round(Number(caracteristica.pos_y) * 100) / 100)),
+    zona_id: caracteristica.zona_id || null,
+    medida_id: caracteristica.zona_id ? caracteristica.medida_id || null : null,
   };
   const tabla = getSupabaseClient().from('diagnostico_fabricacion_caracteristicas');
   const { data, error } = caracteristica.id

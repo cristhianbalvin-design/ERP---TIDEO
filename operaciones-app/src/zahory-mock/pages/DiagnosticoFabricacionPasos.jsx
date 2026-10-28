@@ -4,6 +4,7 @@ import {
   eliminarPiezaFabricacion, faltantesPieza, firmarRutasPlanos, guardarCaracteristica, listarDibujosCatalogo,
   mensajeErrorFabricacion, resumenFabricacion, siguienteNumeroCaracteristica, subirPlanoPieza, usarDibujoCatalogoPieza,
 } from '../../services/diagnosticoFabricacionService.js';
+import { normalizeSvgViewport, sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
 
 // Diagnóstico de fabricación en página (mock docs/diseno/fabricacion/DiagnosticoFabricacion.dc.html).
 
@@ -211,6 +212,21 @@ export function FabricacionPiezasPaso({ empresaId, diagnosticoId, piezas, onPiez
   );
 }
 
+// Dibujo del catálogo con el estilo de Hallazgos: partes (data-z) marcadas y cotas (data-cota) encendidas.
+const marcarAtributo = (svg, atributo, ids, clase) => svg.replace(new RegExp(`(<[^>]+${atributo}=["']([^"']+)["'][^>]*)(>)`, 'gi'), (todo, abre, id, cierra) => {
+  if (!ids.has(id)) return todo;
+  const clases = [...new Set([...(abre.match(/\bclass=["']([^"']*)["']/i)?.[1]?.split(/\s+/).filter(Boolean) || []), clase])];
+  const autocierre = /\/\s*$/.test(abre);
+  const base = abre.replace(/\s*\/\s*$/, '').replace(/\s+class=["'][^"']*["']/i, '');
+  return `${base} class="${clases.join(' ')}"${autocierre ? ' /' : ''}${cierra}`;
+});
+export function markupDibujoCatalogo(svg, zonasMarcadas = [], cotasEncendidas = []) {
+  if (!svg) return '';
+  let salida = normalizeSvgViewport(sanitizarSvgCatalogo(svg));
+  salida = marcarAtributo(salida, 'data-z', new Set(zonasMarcadas.filter(Boolean)), 'is-marked');
+  return marcarAtributo(salida, 'data-cota', new Set(cotasEncendidas.filter(Boolean)), 'c-on');
+}
+
 const CARACTERISTICA_VACIA = { nombre: '', tipo: 'cota', nominal: '', tolerancia_menos: '', tolerancia_mas: '', unidad: 'mm', critica: false };
 
 export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, piezas, onPiezas, piezaId, onPiezaId, canEdit }) {
@@ -247,7 +263,8 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
     return () => { vigente = false; };
   }, [pieza?.plano_origen, elegirDibujo, empresaId, sociedadId]);
 
-  const svgCatalogo = useMemo(() => dibujos.find(item => item.id === pieza?.componente_catalogo_id)?.svg || '', [dibujos, pieza?.componente_catalogo_id]);
+  const componente = useMemo(() => dibujos.find(item => item.id === pieza?.componente_catalogo_id) || null, [dibujos, pieza?.componente_catalogo_id]);
+  const svgCatalogo = componente?.svg || '';
   if (!pieza) return <section className="dx-fab-card"><p className="dx-fab-empty">Primero agrega una pieza en el paso 2.</p></section>;
 
   const actualizarPieza = cambios => onPiezas(piezas.map(item => item.id === pieza.id ? { ...item, ...cambios } : item));
@@ -272,8 +289,39 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
       pos_y: Math.round(Math.min(100, Math.max(0, ((event.clientY - caja.top) / caja.height) * 100)) * 100) / 100,
     };
   };
+  const zonaPorId = id => (componente?.zonas || []).find(zona => zona.id === id) || null;
+  const puntoDeZona = (nodo, zonaId, excluirId) => {
+    const caja = lienzoRef.current?.getBoundingClientRect();
+    const zona = nodo.getBoundingClientRect();
+    if (!caja?.width || !caja?.height) return null;
+    // Varias características en la misma parte: se reparten a lo ancho para que los pines no se tapen.
+    const enZona = pieza.caracteristicas.filter(item => item.zona_id === zonaId && item.id !== excluirId).length;
+    const paso = Math.min(28, zona.width / 4);
+    const x = zona.left + zona.width / 2 + (enZona ? (enZona % 2 ? 1 : -1) * Math.ceil(enZona / 2) * paso : 0);
+    const y = zona.top + zona.height / 2;
+    return {
+      pos_x: Math.round(Math.min(100, Math.max(0, ((x - caja.left) / caja.width) * 100)) * 100) / 100,
+      pos_y: Math.round(Math.min(100, Math.max(0, ((y - caja.top) / caja.height) * 100)) * 100) / 100,
+    };
+  };
   const tocarPlano = event => {
     if (!canEdit || event.target.closest?.('.dx-fab-pin')) return;
+    if (pieza.plano_origen === 'catalogo') {
+      const nodo = event.target.closest?.('[data-z]');
+      const zonaId = nodo?.getAttribute('data-z');
+      if (!zonaId) { setError('Toca una parte del dibujo (camisa, vástago, tapas…).'); return; }
+      setError('');
+      const punto = puntoDeZona(nodo, zonaId, borrador?.id);
+      if (!punto) return;
+      if (borrador && (mover || !borrador.id)) {
+        setBorrador(current => ({ ...current, ...punto, zona_id: zonaId, medida_id: current.zona_id === zonaId ? current.medida_id : null }));
+        setMover(false);
+        return;
+      }
+      setSeleccion(null);
+      setBorrador({ ...CARACTERISTICA_VACIA, numero: siguienteNumeroCaracteristica(pieza.caracteristicas), ...punto, zona_id: zonaId, medida_id: null });
+      return;
+    }
     const punto = posicion(event);
     if (!punto) return;
     if (borrador && (mover || !borrador.id)) { setBorrador(current => ({ ...current, ...punto })); setMover(false); return; }
@@ -300,6 +348,9 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
   };
 
   const pines = [...pieza.caracteristicas.filter(item => item.id !== borrador?.id), ...(borrador ? [borrador] : [])];
+  const medidaDe = item => zonaPorId(item.zona_id)?.medidas?.find(medida => medida.id === item.medida_id) || null;
+  const markupCatalogo = pieza.plano_origen === 'catalogo' ? markupDibujoCatalogo(svgCatalogo, pines.map(item => item.zona_id), pines.map(item => medidaDe(item)?.cota)) : '';
+  const zonaBorrador = borrador?.zona_id ? zonaPorId(borrador.zona_id) : null;
   const tienePlano = pieza.plano_origen === 'subido' ? Boolean(urlPlano) : pieza.plano_origen === 'catalogo' ? Boolean(svgCatalogo) : false;
   const criticas = pieza.caracteristicas.filter(item => item.critica).length;
 
@@ -310,7 +361,7 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
       </div>
       <div className="dx-fab-plan-layout">
         <section className="dx-fab-card">
-          <header><h2>Plano · {pieza.nombre}</h2>{canEdit && tienePlano && <small>{borrador && (mover || !borrador.id) ? 'Toca el plano para ubicar el pin' : 'Toca el plano para poner un pin'}</small>}</header>
+          <header><h2>Plano · {pieza.nombre}</h2>{canEdit && tienePlano && <small>{pieza.plano_origen === 'catalogo' ? (borrador && (mover || !borrador.id) ? 'Toca la parte donde va el pin' : 'Toca una parte del dibujo') : borrador && (mover || !borrador.id) ? 'Toca el plano para ubicar el pin' : 'Toca el plano para poner un pin'}</small>}</header>
           {canEdit && (
             <div className="dx-fab-src" role="group" aria-label="Origen del plano">
               <button type="button" className={pieza.plano_origen === 'subido' ? 'on' : ''} disabled={subiendo} onClick={() => inputRef.current?.click()}>⤒ {pieza.plano_origen === 'subido' ? 'Reemplazar plano' : 'Subir plano o foto'}</button>
@@ -325,7 +376,7 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
               {!dibujos.length && <p className="dx-fab-empty" role={errorDibujos ? 'alert' : undefined}>{errorDibujos || 'Cargando dibujos…'}</p>}
               {dibujos.map(dibujo => (
                 <button key={dibujo.id} type="button" role="option" aria-selected={pieza.componente_catalogo_id === dibujo.id} className={pieza.componente_catalogo_id === dibujo.id ? 'is-on' : ''} onClick={() => usarDibujo(dibujo.id)}>
-                  <span className="dx-fab-dibujo-mini" dangerouslySetInnerHTML={{ __html: dibujo.svg }} /><b>{dibujo.nombre}</b>
+                  <span className="dx-fab-dibujo-mini" dangerouslySetInnerHTML={{ __html: markupDibujoCatalogo(dibujo.svg) }} /><b>{dibujo.nombre}</b>
                 </button>
               ))}
             </div>
@@ -337,7 +388,7 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
             <div ref={lienzoRef} className={`dx-fab-canvas${canEdit ? ' is-editable' : ''}`} onClick={tocarPlano}>
               {pieza.plano_origen === 'subido'
                 ? <img src={urlPlano} alt={`Plano de ${pieza.nombre}`} draggable="false" />
-                : <span className="dx-fab-svg" dangerouslySetInnerHTML={{ __html: svgCatalogo }} />}
+                : <span className="dx-fab-svg" dangerouslySetInnerHTML={{ __html: markupCatalogo }} />}
               {pines.map(item => (
                 <button key={item.id || 'nuevo'} type="button" className={`dx-fab-pin${item.critica ? ' is-crit' : ''}${(item.id && item.id === seleccion) || (!item.id && borrador) ? ' is-sel' : ''}`} style={{ left: `${item.pos_x}%`, top: `${item.pos_y}%` }} aria-label={`Característica ${item.numero}${item.nombre ? `: ${item.nombre}` : ''}`} onClick={() => item.id && elegir(item)}>{item.numero}</button>
               ))}
@@ -351,7 +402,18 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
           <header><h2>Características</h2><small>{pieza.caracteristicas.length} · {criticas} crítica{criticas === 1 ? '' : 's'}</small></header>
           {borrador && (
             <div className="dx-fab-editor" aria-label={`Característica ${borrador.numero}`}>
-              <div className="dx-fab-field wide"><label htmlFor="fab-car-nombre">Característica {borrador.numero} *</label><input id="fab-car-nombre" className="dx-fab-input" value={borrador.nombre} disabled={!canEdit} onChange={event => setBorrador(current => ({ ...current, nombre: event.target.value }))} /></div>
+              {zonaBorrador && (
+                <div className="dx-fab-zona">
+                  <span>Parte: <b>{zonaBorrador.nombre}</b></span>
+                  {(zonaBorrador.medidas || []).length > 0 && canEdit && <div className="dx-fab-medidas" role="group" aria-label={`Medidas de ${zonaBorrador.nombre}`}>
+                    {zonaBorrador.medidas.map(medida => (
+                      <button key={medida.id} type="button" className={borrador.medida_id === medida.id ? 'on' : ''} aria-pressed={borrador.medida_id === medida.id} title={[medida.desde, medida.referencia].filter(Boolean).join(' · ') || undefined} onClick={() => setBorrador(current => current.medida_id === medida.id ? { ...current, medida_id: null } : { ...current, medida_id: medida.id, nombre: medida.nombre, tipo: 'cota' })}>{medida.nombre}</button>
+                    ))}
+                  </div>}
+                  {medidaDe(borrador) && (medidaDe(borrador).desde || medidaDe(borrador).referencia) && <small>{[medidaDe(borrador).desde && `Se mide: ${medidaDe(borrador).desde}`, medidaDe(borrador).referencia && `Referencia típica: ${medidaDe(borrador).referencia}`].filter(Boolean).join(' · ')}</small>}
+                </div>
+              )}
+              <div className="dx-fab-field wide"><label htmlFor="fab-car-nombre">Característica {borrador.numero} *</label><input id="fab-car-nombre" className="dx-fab-input" value={borrador.nombre} disabled={!canEdit} placeholder={zonaBorrador ? 'Elige una medida o escribe una característica' : undefined} onChange={event => setBorrador(current => ({ ...current, nombre: event.target.value }))} /></div>
               <div className="dx-fab-field wide"><label htmlFor="fab-car-tipo">Tipo</label><select id="fab-car-tipo" className="dx-fab-input" value={borrador.tipo} disabled={!canEdit} onChange={event => setBorrador(current => ({ ...current, tipo: event.target.value }))}>{TIPOS_CARACTERISTICA.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.etiqueta}</option>)}</select></div>
               <div className="dx-fab-field"><label htmlFor="fab-car-nominal">Nominal</label><input id="fab-car-nominal" className="dx-fab-input" value={borrador.nominal || ''} disabled={!canEdit} onChange={event => setBorrador(current => ({ ...current, nominal: event.target.value }))} /></div>
               <div className="dx-fab-field"><label htmlFor="fab-car-tmenos">Tolerancia −</label><input id="fab-car-tmenos" className="dx-fab-input" value={borrador.tolerancia_menos || ''} disabled={!canEdit} onChange={event => setBorrador(current => ({ ...current, tolerancia_menos: event.target.value }))} /></div>
@@ -360,7 +422,7 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
               <label className="dx-fab-check"><input type="checkbox" checked={Boolean(borrador.critica)} disabled={!canEdit} onChange={event => setBorrador(current => ({ ...current, critica: event.target.checked }))} /> Crítica</label>
               {canEdit && (
                 <div className="dx-fab-editor-actions">
-                  {borrador.id && <button type="button" className={`dx-btn${mover ? ' primary' : ''}`} onClick={() => setMover(value => !value)}>{mover ? 'Toca el plano…' : 'Mover pin'}</button>}
+                  {borrador.id && <button type="button" className={`dx-btn${mover ? ' primary' : ''}`} onClick={() => setMover(value => !value)}>{mover ? (pieza.plano_origen === 'catalogo' ? 'Toca otra parte…' : 'Toca el plano…') : 'Mover pin'}</button>}
                   <button type="button" className="dx-btn danger" disabled={guardando} onClick={borrarBorrador}>{borrador.id ? 'Quitar' : 'Descartar'}</button>
                   <button type="button" className="dx-btn" onClick={() => { setBorrador(null); setSeleccion(null); setMover(false); }}>Cerrar</button>
                   <button type="button" className="dx-btn primary" disabled={guardando || !String(borrador.nombre || '').trim()} onClick={guardarBorrador}>{guardando ? 'Guardando…' : 'Guardar'}</button>
@@ -369,11 +431,11 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
             </div>
           )}
           <div className="dx-fab-chars">
-            {!pieza.caracteristicas.length && <p className="dx-fab-empty">{canEdit ? 'Aún no hay características. Toca el plano para poner el primer pin.' : 'Sin características.'}</p>}
+            {!pieza.caracteristicas.length && <p className="dx-fab-empty">{canEdit ? (pieza.plano_origen === 'catalogo' ? 'Aún no hay características. Toca una parte del dibujo para poner el primer pin.' : 'Aún no hay características. Toca el plano para poner el primer pin.') : 'Sin características.'}</p>}
             {pieza.caracteristicas.map(item => (
               <div key={item.id} className={`dx-fab-char${item.id === seleccion ? ' is-sel' : ''}`} role="button" tabIndex={0} aria-label={`Editar característica ${item.numero}: ${item.nombre}`} onClick={() => elegir(item)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); elegir(item); } }}>
                 <span className={`dx-fab-char-n${item.critica ? ' is-crit' : ''}`}>{item.numero}</span>
-                <div><b>{item.nombre}</b><small>{etiquetaTipo(item.tipo)}{item.critica ? ' · crítica' : ''}</small></div>
+                <div><b>{item.nombre}</b><small>{etiquetaTipo(item.tipo)}{zonaPorId(item.zona_id) ? ` · ${zonaPorId(item.zona_id).nombre}` : ''}{item.critica ? ' · crítica' : ''}</small></div>
                 <span className="dx-fab-val">{textoValor(item) || '—'}</span>
               </div>
             ))}
