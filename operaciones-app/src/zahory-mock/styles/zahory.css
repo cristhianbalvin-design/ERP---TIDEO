@@ -6421,7 +6421,7 @@ width:20px;height:20px}
 .dx-ofb-chip i.is-entregada, .dx-ofb-chip i.is-cerrada { background:#16A34A; }
 .dx-ofb-chip i.is-anulada { background:#DC2626; }
 .dx-ofb-clear { height:36px; padding:0 10px; border:0; background:transparent; color:var(--cyf); font-weight:600; }
-.dx-ofb-cols { display:grid; grid-template-columns:minmax(170px,1.2fr) minmax(190px,1.5fr) 140px minmax(110px,.8fr) minmax(120px,.9fr) 120px 112px 20px; column-gap:14px; align-items:center; padding-inline:20px; }
+.dx-ofb-cols { display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(170px,1.5fr) 132px minmax(90px,.8fr) minmax(110px,.9fr) 110px 104px 16px; column-gap:14px; align-items:center; padding-inline:20px; }
 .dx-ofb-head { height:40px; border-bottom:1px solid var(--line); background:var(--hd); color:var(--gr); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
 .dx-ofb-head .is-r { text-align:right; }
 .dx-ofb-row { min-height:84px; padding-block:14px; border-bottom:1px solid var(--line2); cursor:pointer; }
@@ -6437,7 +6437,7 @@ width:20px;height:20px}
 .dx-ofb-strong.is-soon, .dx-ofb-muted.is-soon { color:var(--amf); }
 .dx-ofb-tag { width:max-content; max-width:100%; overflow:hidden; margin-top:2px; padding:1px 7px; border-radius:6px; background:var(--grb2); color:var(--grf2); font-size:11px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
 .dx-ofb-tag.is-warn { background:var(--amb); color:var(--amf); }
-.dx-ofb-pill { display:inline-flex; width:max-content; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ofb-pill { display:inline-flex; width:max-content; max-width:100%; overflow:hidden; text-overflow:ellipsis; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
 .dx-ofb-pill i { width:6px; height:6px; border-radius:50%; background:currentColor; }
 .dx-ofb-pill.is-borrador { background:var(--grb2); color:var(--grf2); }
 .dx-ofb-pill.is-en_ingenieria, .dx-ofb-pill.is-en_produccion { background:var(--blb); color:var(--blf); }
@@ -6461,7 +6461,7 @@ width:20px;height:20px}
 .dx-ofb-pag button:disabled { opacity:.45; cursor:not-allowed; }
 @container (max-width:1100px) {
   .dx-ofb-kpi .dx-ofb-ico { display:none; }
-  .dx-ofb-cols { grid-template-columns:minmax(150px,1.1fr) minmax(160px,1.4fr) 132px minmax(90px,.7fr) minmax(110px,.9fr) 110px 100px 16px; column-gap:12px; padding-inline:16px; }
+  .dx-ofb-cols { grid-template-columns:minmax(120px,1.1fr) minmax(130px,1.4fr) 124px minmax(64px,.7fr) minmax(96px,.9fr) 96px 92px 14px; column-gap:10px; padding-inline:16px; }
 }
 @container (max-width:900px) {
   .dx-ofb-in { padding:18px 16px 32px; }
