@@ -30,9 +30,10 @@ import {
   MonitorViajes,
   CrearOVPage,
   HojaDeRuta,
-  MaestroRutas,
   LiquidacionTransporte,
 } from '../pages/TransportePages.jsx';
+import { MaestroRutasPage } from '../pages/transporte/MaestroRutasPage.jsx';
+import { TarifasTransportePage } from '../pages/transporte/TarifasTransportePage.jsx';
 import {
   DashboardRepuestos,
   PedidosVenta,
@@ -90,9 +91,9 @@ export function renderBusinessLinesRoute(route, context) {
     case 'transporte-viajes': return <MonitorViajes onNav={onNavigate} setCurrentOV={setCurrentOV} />;
     case 'transporte-crear-ov': return <CrearOVPage onNav={onNavigate} />;
     case 'transporte-ruta': return <HojaDeRuta onNav={onNavigate} ovId={currentOV} />;
-    case 'transporte-tarifas': return <MaestroRutas onNav={onNavigate} />;
+    case 'transporte-tarifas': return <MaestroRutasPage />;
     case 'transporte-liquidacion': return <LiquidacionTransporte onNav={onNavigate} />;
-    case 'transporte-tarifas-config': return <PlaceholderPage title="Tarifas Transporte" />;
+    case 'transporte-tarifas-config': return <TarifasTransportePage />;
 
     case 'dashboard-produccion': return <DashboardProduccion onNav={onNavigate} setCurrentOF={setCurrentOF} />;
     case 'produccion-of':
