@@ -7,6 +7,7 @@ export const NODE_TESTS = [
   'src/services/emisorPersonal.test.js',
   'src/zahory-mock/pages/dibujoHallazgoLogic.test.mjs',
   'src/zahory-mock/pages/informeSnapshotDibujo.test.mjs',
+  'src/zahory-mock/pages/transporte/transporteUtils.test.mjs',
   'tests/hallazgosValidation.test.mjs',
   'tests/informeFotosFilas.native.test.js',
   'tests/informeSnapshot.native.test.js',
