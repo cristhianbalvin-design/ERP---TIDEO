@@ -86,3 +86,9 @@ Tipografía: **Sora** para títulos y números destacados, **DM Sans** para text
 - No agregar librerías, fuentes ni colores fuera de la sección 2 sin aprobación.
 - No cambiar clases ni estilos de otras pantallas mientras se trabaja una.
 - No afirmar un resultado visual sin haberlo medido o visto en el navegador.
+
+## 9. Componentes dx-ui añadidos para Flota & Alquileres
+
+La base compartida de `zahory.css` agrega controles y estructuras reutilizables para formularios (`dx-ui-form-grid`, `dx-ui-control`), diálogos (`dx-ui-overlay`, `dx-ui-dialog`, `dx-ui-dialog-wide`, encabezado y pie), campos de fecha (`dx-ui-filter-date`), paneles de detalle (`dx-ui-detail-body`, `dx-ui-detail-card`, `dx-ui-detail-grid`), selección de equipos (`dx-ui-equipment-pick`), línea de tiempo (`dx-ui-timeline`) y filas de documentos (`dx-ui-document-row`). Los controles heredan los colores, tipografías y radios de `--dx-ui-*`; el ajuste de formularios y detalles a una columna usa `@container`.
+
+Las reglas específicas se limitan a los prefijos `dx-flota-*`, `dx-contratos-*` y `dx-pasaporte-*` para columnas y campos propios de cada pantalla. No se incorporan clases específicas para certificaciones, garantías o liquidación en esta entrega.
