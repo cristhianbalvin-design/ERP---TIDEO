@@ -3,8 +3,25 @@ import assert from 'node:assert/strict';
 import {
   normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, normalizarHoraEnvio, construirMatrizDestinatarios,
   reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, normalizarTelefonosAdicionales,
-  etiquetaRolDestinatario, etiquetaCanalEnvio, etiquetaRolConfig, etiquetaModuloNotificacion,
+  etiquetaRolDestinatario, etiquetaCanalEnvio, etiquetaRolConfig, etiquetaModuloNotificacion, rolesSeleccionados, alternarRol,
 } from './services/notificacionesConfigService.js';
+
+test('resuelve selecciones guardadas y automáticas de roles por evento', () => {
+  const roles = [
+    { id: 'admin', es_admin: true, auto_rrhh: false, auto_operaciones: false },
+    { id: 'rrhh', auto_rrhh: true, auto_operaciones: true },
+    { id: 'tecnico', auto_rrhh: false, auto_operaciones: true },
+  ];
+  assert.deepEqual(rolesSeleccionados({ roles_rrhh: ['rrhh'] }, 'roles_rrhh', roles), ['rrhh']);
+  assert.deepEqual(rolesSeleccionados({ roles_rrhh: [] }, 'roles_rrhh', roles), []);
+  assert.deepEqual(rolesSeleccionados({}, 'roles_rrhh', roles), ['admin', 'rrhh']);
+  assert.deepEqual(rolesSeleccionados({}, 'roles_operaciones', roles), ['admin', 'rrhh', 'tecnico']);
+});
+
+test('alternarRol agrega o quita ids y devuelve una lista ordenada sin duplicados', () => {
+  assert.deepEqual(alternarRol(['b', 'a', 'a'], 'c'), ['a', 'b', 'c']);
+  assert.deepEqual(alternarRol(['b', 'a', 'a'], 'a'), ['b']);
+});
 
 test('normaliza horas de envío en tramos de 15 minutos', () => {
   assert.equal(normalizarHoraEnvio('9:30'), '09:30');
@@ -62,6 +79,12 @@ test('normaliza y valida correos adicionales, incluyendo duplicados y máximo', 
 test('conserva correos adicionales en el payload de destinatarios', () => {
   assert.deepEqual(construirMatrizDestinatarios({ rrhh: { correo: true }, correos_adicionales: ['A@x.com'] }, ['rrhh'], ['correo']), {
     rrhh: { correo: true }, correos_adicionales: ['a@x.com'],
+  });
+});
+
+test('conserva roles_rrhh en el payload de destinatarios cuando está presente', () => {
+  assert.deepEqual(construirMatrizDestinatarios({ rrhh: { correo: true }, roles_rrhh: ['rol-b', 'rol-a', 'rol-a'] }, ['rrhh'], ['correo']), {
+    rrhh: { correo: true }, correos_adicionales: [], roles_rrhh: ['rol-a', 'rol-b'],
   });
 });
 

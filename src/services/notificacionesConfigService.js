@@ -28,6 +28,11 @@ export async function listarTelefonosUsuariosNotificaciones(empresaId) {
   return sb.rpc('notif_telefonos_usuarios', { p_empresa_id: empresaId });
 }
 
+export async function listarRolesEmpresaNotificaciones(empresaId) {
+  const sb = await getSupabaseClient();
+  return sb.rpc('notif_roles_empresa', { p_empresa_id: empresaId });
+}
+
 export async function guardarTelefonoUsuarioNotificaciones(empresaId, userId, telefono) {
   const sb = await getSupabaseClient();
   return sb.rpc('notif_telefono_usuario_guardar', { p_empresa_id: empresaId, p_user_id: userId, p_telefono: telefono });
@@ -130,7 +135,24 @@ export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados
   }
   matriz.correos_adicionales = normalizarCorreosAdicionales(destinatarios?.correos_adicionales);
   if (canales.has('whatsapp')) matriz.telefonos_adicionales = normalizarTelefonosAdicionales(destinatarios?.telefonos_adicionales);
+  for (const clave of ['roles_rrhh', 'roles_operaciones']) {
+    if (Array.isArray(destinatarios?.[clave])) matriz[clave] = [...new Set(destinatarios[clave].map(String))].sort((a, b) => a.localeCompare(b));
+  }
   return matriz;
+}
+
+export function rolesSeleccionados(destinatarios = {}, clave, roles = []) {
+  if (Array.isArray(destinatarios?.[clave])) return [...new Set(destinatarios[clave].map(String))].sort((a, b) => a.localeCompare(b));
+  const propiedadAuto = clave === 'roles_rrhh' ? 'auto_rrhh' : clave === 'roles_operaciones' ? 'auto_operaciones' : null;
+  return propiedadAuto ? roles.filter(rol => rol.es_admin || rol[propiedadAuto]).map(rol => String(rol.id)).sort((a, b) => a.localeCompare(b)) : [];
+}
+
+export function alternarRol(lista = [], id) {
+  const seleccionados = new Set((Array.isArray(lista) ? lista : []).map(String));
+  const rolId = String(id);
+  if (seleccionados.has(rolId)) seleccionados.delete(rolId);
+  else seleccionados.add(rolId);
+  return [...seleccionados].sort((a, b) => a.localeCompare(b));
 }
 
 export function reglaTieneCambios(regla) {
