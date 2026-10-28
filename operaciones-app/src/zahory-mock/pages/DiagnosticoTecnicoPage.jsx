@@ -1401,7 +1401,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const renderFabPasos = () => <div className="dx-ui dx-fab dx-fab-body">
     {fabPiezasError && <div className="dx-fab-error" role="alert">No se pudieron cargar las piezas: {fabPiezasError}</div>}
     {fabStep === 1 && <FabricacionOrigenPaso origenTexto={fabOrigenTexto} datos={datosIniciales} onDatos={cambios => setDatosIniciales(current => ({ ...current, ...cambios }))} tecnicos={tecnicosInicio} canEdit={canEditInitialData} dirty={initialDataDirty} guardando={saving} onGuardar={saveInitialData} />}
-    {fabStep === 2 && <FabricacionPiezasPaso empresaId={empresaId} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} canEdit={canEditLines} nombreSugerido={form.referencia?.activo || ''} onVerPlano={piezaId => { setFabPiezaId(piezaId); setFabStep(3); }} />}
+    {fabStep === 2 && <FabricacionPiezasPaso empresaId={empresaId} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} canEdit={canEditLines} nombreSugerido={String(form.referencia?.activo || '').split(' · ').pop()} onVerPlano={piezaId => { setFabPiezaId(piezaId); setFabStep(3); }} />}
     {fabStep === 3 && <FabricacionPlanoPaso empresaId={empresaId} sociedadId={sesion.sociedadActiva?.id || null} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} piezaId={fabPiezaId} onPiezaId={setFabPiezaId} canEdit={canEditLines} />}
     {fabStep === 5 && <FabricacionRevisionPaso piezas={fabPiezas} totalTareas={lineasActuales.length} totalHH={totalHH} origenTexto={fabOrigenTexto} resumen={resumenVisible} onResumen={value => cambiarResumen(value, 'editado')} canEdit={canEditLines} />}
   </div>;

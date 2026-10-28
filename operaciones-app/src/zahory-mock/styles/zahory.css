@@ -6379,7 +6379,6 @@ width:20px;height:20px}
 @container fab (max-width:420px) {
   .dx-fab .dx-fab-editor { grid-template-columns:minmax(0,1fr); }
   .dx-fab .dx-fab-editor .wide { grid-column:auto; }
-  .dx-fab .dx-fab-kpis { grid-template-columns:minmax(0,1fr); }
 }
 @media (max-width:760px) { .dx-ui.dx-fab { padding:8px 10px 16px; } }
 /* El cuerpo de trabajos se oculta fuera de su paso aunque .dx-work-page lo fuerce a block. */
@@ -6388,3 +6387,5 @@ width:20px;height:20px}
 .dx-work-page .dx-scope-fab .diagnostico-estado-panel { display:block !important; margin:0 24px 16px; border:0; }
 .dx-work-page .dx-scope-fab .dx-body-fabricacion .dx-diagnostico-resumen-heading { display:flex !important; }
 @media (max-width:760px) { .dx-work-page .dx-scope-fab .diagnostico-estado-panel { margin:0 10px 12px; } }
+/* Pie del modo trabajo: los botones secundarios siguen el tema (en oscuro el estilo del modal los dejaba blancos). */
+.dx-work-page.dx-modal .diagnostico-modal-footer .dx-action-44.btn-secondary { border-color:var(--dx-ui-border); background:var(--dx-ui-card); color:var(--dx-ui-navy); }

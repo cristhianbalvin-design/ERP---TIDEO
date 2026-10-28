@@ -430,7 +430,7 @@ export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, origenTe
               const faltan = faltantesPieza(pieza);
               return <li key={pieza.id} className={faltan.length ? 'is-warn' : ''}>{pieza.nombre}: {faltan.length ? `falta ${faltan.join(' y ')}` : `material y plano con ${pieza.caracteristicas.length} característica${pieza.caracteristicas.length === 1 ? '' : 's'}`}</li>;
             })}
-            <li className={totalTareas ? '' : 'is-warn'}>{totalTareas ? 'Trabajos a realizar con horas' : 'Sin trabajos a realizar'}</li>
+            <li className={totalTareas && totalHH > 0 ? '' : 'is-warn'}>{!totalTareas ? 'Sin trabajos a realizar' : totalHH > 0 ? `${totalTareas} tarea${totalTareas === 1 ? '' : 's'} con horas` : `${totalTareas} tarea${totalTareas === 1 ? '' : 's'} sin horas-hombre`}</li>
           </ul>
           <div className="dx-fab-pad"><div className="dx-fab-field"><label htmlFor="fab-conclusion">Conclusión para el cliente</label><textarea id="fab-conclusion" className="dx-fab-input dx-fab-textarea" value={resumen} disabled={!canEdit} placeholder="Factibilidad, consideraciones de fabricación y control…" onChange={event => onResumen(event.target.value)} /></div></div>
         </section>
