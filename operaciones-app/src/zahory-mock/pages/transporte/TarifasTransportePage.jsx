@@ -433,25 +433,40 @@ export function TarifasTransportePage() {
                 <small>{tariff.cuenta_name}</small>
               </span>
               <span>
-                {tariff.tipo_unidad}
-                <small className="dx-transporte-subline">
-                  {etiquetaModalidad(tariff.modalidad)}
-                </small>
+                <span className="dx-transporte-tariff-pair">
+                  <small className="dx-transporte-card-label">Unidad</small>
+                  <strong>{tariff.tipo_unidad}</strong>
+                </span>
+                <span className="dx-transporte-tariff-pair">
+                  <small className="dx-transporte-card-label">Modalidad</small>
+                  <small className="dx-transporte-subline">
+                    {etiquetaModalidad(tariff.modalidad)}
+                  </small>
+                </span>
               </span>
               <span>
-                {formatearImporte(tariff.tarifa, tariff.moneda, tariff.modalidad)}
+                <span className="dx-transporte-tariff-pair">
+                  <small className="dx-transporte-card-label">Tarifa</small>
+                  <strong>{formatearImporte(tariff.tarifa, tariff.moneda, tariff.modalidad)}</strong>
+                </span>
               </span>
               <span>
-                {tariff.minimo_facturable == null || tariff.minimo_facturable === ''
-                  ? 'Sin dato'
-                  : formatearImporte(
-                    tariff.minimo_facturable,
-                    tariff.moneda,
-                    tariff.modalidad,
-                  )}
+                <span className="dx-transporte-tariff-pair">
+                  <small className="dx-transporte-card-label">Mínimo</small>
+                  <strong>
+                    {tariff.minimo_facturable == null || tariff.minimo_facturable === ''
+                      ? 'Sin dato'
+                      : formatearImporte(
+                        tariff.minimo_facturable,
+                        tariff.moneda,
+                        tariff.modalidad,
+                      )}
+                  </strong>
+                </span>
               </span>
               <span>
-                {formatearFechaTransporte(tariff.vigente_desde)} → {formatearFechaTransporte(tariff.vigente_hasta, 'Sin fecha final')}
+                <small className="dx-transporte-card-label">Vigencia</small>
+                <strong>{formatearFechaTransporte(tariff.vigente_desde)} → {formatearFechaTransporte(tariff.vigente_hasta, 'Sin fecha final')}</strong>
               </span>
               <span>
                 <span className={`dx-ui-pill ${PILL[state]}`}>

@@ -284,7 +284,7 @@ export function MaestroRutasPage() {
           <strong>{rutas.length - activeRoutes.length}</strong><span>Inactivas</span>
         </div>
         <div className="dx-ui-kpi">
-          <strong>{routesWithDistance.length ? `${formatearNumeroTransporte(averageKm)} km` : 'Sin dato'}</strong><span>Distancia promedio</span>
+          <strong className={!routesWithDistance.length ? 'dx-transporte-no-data' : ''}>{routesWithDistance.length ? `${formatearNumeroTransporte(averageKm)} km` : 'Sin dato'}</strong><span>Distancia promedio</span>
         </div>
       </div>
 
@@ -364,25 +364,29 @@ export function MaestroRutasPage() {
                 </small>
               </span>
               <span>
-                <small>Distancia</small>
-                <strong className={`dx-transporte-distance${route.distancia_km == null ? ' dx-transporte-no-data' : ''}`}>
-                  {route.distancia_km == null ? 'Sin dato' : `${formatearNumeroTransporte(route.distancia_km)} km`}
-                </strong>
-                <small>Duración</small>
-                <strong className={route.duracion_estimada_horas == null ? 'dx-transporte-no-data' : ''}>
-                  {route.duracion_estimada_horas == null
-                    ? 'Sin dato'
-                    : `${route.duracion_estimada_horas} h`}
-                </strong>
+                <span className="dx-transporte-route-pair">
+                  <small className="dx-transporte-card-label">Distancia</small>
+                  <strong className={`dx-transporte-distance${route.distancia_km == null ? ' dx-transporte-no-data' : ''}`}>
+                    {route.distancia_km == null ? 'Sin dato' : `${formatearNumeroTransporte(route.distancia_km)} km`}
+                  </strong>
+                </span>
+                <span className="dx-transporte-route-pair">
+                  <small className="dx-transporte-card-label">Duración</small>
+                  <strong className={route.duracion_estimada_horas == null ? 'dx-transporte-no-data' : ''}>
+                    {route.duracion_estimada_horas == null
+                      ? 'Sin dato'
+                      : `${route.duracion_estimada_horas} h`}
+                  </strong>
+                </span>
               </span>
               <span>
-                <small>Carga</small>
+                <small className="dx-transporte-card-label">Carga</small>
                 <strong className={!route.tipo_carga_habitual ? 'dx-transporte-no-data' : ''}>
                   {route.tipo_carga_habitual || 'Sin dato'}
                 </strong>
               </span>
               <span>
-                <small>Peajes</small>
+                <small className="dx-transporte-card-label">Peajes</small>
                 <strong className={route.peajes_estimados == null ? 'dx-transporte-no-data' : ''}>
                   {route.peajes_estimados == null
                     ? 'Sin dato'
@@ -390,7 +394,7 @@ export function MaestroRutasPage() {
                 </strong>
               </span>
               <span>
-                <small>Tarifas</small>
+                <small className="dx-transporte-card-label">Tarifas</small>
                 <strong>{currentTariffsCount} {currentTariffsCount === 1 ? 'tarifa' : 'tarifas'}</strong>
               </span>
               <span><Pill state={route.estado} /></span>

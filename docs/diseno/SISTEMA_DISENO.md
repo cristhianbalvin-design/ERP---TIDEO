@@ -103,8 +103,12 @@ Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/
 ### Tarjetas KPI
 
 - La fila usa `dx-ui-kpi-row`: grilla `repeat(auto-fit, minmax(168px, 1fr))` con `gap:10px`.
+- En las pantallas de Transporte, la fila KPI mantiene cuatro tarjetas juntas si el contenedor mide al menos 702 px; entre 300 y 701 px usa dos columnas para evitar una KPI huérfana, y por debajo de 300 px usa una columna. Las etiquetas pueden ocupar hasta dos lineas dentro de la tarjeta KPI de 56 px.
+- En la vista de tarjeta de Transporte, cada par etiqueta/valor ocupa su propia celda en una grilla de dos columnas hasta 760 px de contenedor y una columna por debajo de 300 px; las etiquetas permanecen ocultas en la vista de tabla para no duplicar las cabeceras.
+- En las barras de filtros de Transporte, por debajo de 600 px de ancho de tarjeta los controles ocupan una columna completa; el filtro de fecha coloca su etiqueta sobre el control.
 - Cada tarjeta usa `dx-ui-kpi`: flex, `align-items:center`, `gap:8px`, `min-height:56px`, `padding:8px 16px`, radio de 10 px, y el mismo borde y fondo de `dx-ui-chip`.
 - El número va en un elemento `strong`, con Sora a 20 px y peso 700. La etiqueta va en `span` a 12 px.
+- El texto `Sin dato` de una KPI usa 13 px, peso 400 y el gris del sistema; la tarjeta conserva 56 px de alto.
 - Las tarjetas de una fila comparten ancho y alto.
 
 ### Formularios y selectores
