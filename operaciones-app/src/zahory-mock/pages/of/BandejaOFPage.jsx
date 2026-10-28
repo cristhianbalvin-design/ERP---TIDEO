@@ -30,7 +30,7 @@ const ICONOS = {
 
 const Svg = ({ id }) => <svg viewBox="0 0 24 24" aria-hidden="true">{ICONOS[id]}</svg>;
 
-export function BandejaOFPage({ onNav, setCurrentOF }) {
+export function BandejaOFPage({ onNav, setCurrentOF, routeParams = {} }) {
   useCompactWorkMode(true);
   const sesion = useSesionOperativa();
   const { empresaId, sociedadId, sociedadesIdsAlcance, estado: estadoSesion } = sesion;
@@ -40,6 +40,7 @@ export function BandejaOFPage({ onNav, setCurrentOF }) {
   const [filtros, setFiltros] = useState({ buscar: '', estado: '', kpi: '' });
   const [pagina, setPagina] = useState(1);
   const solicitud = useRef(0);
+  const [aviso, setAviso] = useState(routeParams.creada ? `${routeParams.creada} creada en borrador.` : '');
   const hoy = fechaLocalISO();
   const alcanceClave = (sociedadesIdsAlcance || []).join(',');
 
@@ -58,6 +59,15 @@ export function BandejaOFPage({ onNav, setCurrentOF }) {
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, sociedadId, alcanceClave, estadoSesion]);
+
+  useEffect(() => {
+    if (!aviso) return undefined;
+    if (routeParams.creada && window.location.hash.includes('creada=')) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/maestranza-of`);
+    }
+    const t = setTimeout(() => setAviso(''), 5000);
+    return () => clearTimeout(t);
+  }, [aviso]);
 
   const resumen = useMemo(() => resumenBandejaOF(ofs, hoy), [ofs, hoy]);
   const filtradas = useMemo(() => filtrarBandejaOF(ofs, filtros, hoy), [ofs, filtros, hoy]);
@@ -221,6 +231,7 @@ export function BandejaOFPage({ onNav, setCurrentOF }) {
           )}
         </div>
       </div>
+      {aviso && <div className="dx-ofb-toast" role="status">{aviso}</div>}
     </section>
   );
 }

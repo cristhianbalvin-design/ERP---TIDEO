@@ -58,3 +58,27 @@ export async function listarOrdenesFabricacion({ empresaId, sociedadId, sociedad
   }
   return filas.map(normalizarFilaBandejaOF);
 }
+
+// OS de fabricación o mixtas (no anuladas ni cerradas) que pueden originar una OF.
+export async function listarOSElegiblesOF(empresaId) {
+  if (!empresaId) return [];
+  const { data, error } = await getSupabaseClient().rpc('os_elegibles_para_of', { p_empresa_id: empresaId });
+  if (error) throw error;
+  return data || [];
+}
+
+// Lo que crear_of_desde_os copiará de la hoja (misma regla de selección, solo lectura).
+export async function vistaPreviaOF(osId) {
+  const { data, error } = await getSupabaseClient().rpc('vista_previa_of_desde_os', { p_os_id: osId });
+  if (error) throw error;
+  return data;
+}
+
+// Crea la OF en borrador. Devuelve { id, numero }.
+export async function crearOFDesdeOS(osId, copiarHoja) {
+  const sb = getSupabaseClient();
+  const { data: id, error } = await sb.rpc('crear_of_desde_os', { p_os_id: osId, p_copiar_hoja: copiarHoja });
+  if (error) throw error;
+  const { data: of } = await sb.from('ordenes_fabricacion').select('id,numero').eq('id', id).maybeSingle();
+  return { id, numero: of?.numero || '' };
+}
