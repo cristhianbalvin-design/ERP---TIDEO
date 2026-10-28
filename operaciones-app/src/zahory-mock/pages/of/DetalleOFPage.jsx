@@ -37,6 +37,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     if (!id) { setCargando(false); setError('No se indicó qué OF abrir.'); return undefined; }
     setCargando(true);
     setError('');
+    setPestana('ruta');
     obtenerOF(id)
       .then(fila => { if (vivo) { setOf(fila); if (!fila) setError('La OF no existe o no tienes acceso a ella.'); } })
       .catch(err => { if (vivo) setError(err?.message || 'No se pudo cargar la OF.'); })
