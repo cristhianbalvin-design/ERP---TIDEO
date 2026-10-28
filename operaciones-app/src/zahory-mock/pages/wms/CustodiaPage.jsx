@@ -25,9 +25,9 @@ function BuscarMaterial({ empresaId, sociedadId, valor, onElegir }) {
     }, 280);
     return () => { vigente = false; clearTimeout(t); };
   }, [texto, empresaId, sociedadId, valor]);
-  return <div className="dx-w-field"><label htmlFor="dx-wcus-mat">Material</label>
+  return <div className="dx-ui-field"><label htmlFor="dx-wcus-mat">Material<span className="dx-ui-required" aria-hidden="true">*</span></label>
     <input id="dx-wcus-mat" type="search" placeholder="Busca por código o descripción" value={texto} onChange={e => { setTexto(e.target.value); if (valor) onElegir(null); }} />
-    {resultados.length > 0 && <select className="dx-w-sel" size={Math.min(6, resultados.length)} aria-label="Resultados de materiales" onChange={e => { const m = resultados.find(r => r.material_id === e.target.value); if (m) { onElegir(m); setTexto(`${m.codigo} · ${m.descripcion}`); setResultados([]); } }}>
+    {resultados.length > 0 && <select className="dx-ui-select dx-w-listbox" size={Math.min(6, resultados.length)} aria-label="Resultados de materiales" onChange={e => { const m = resultados.find(r => r.material_id === e.target.value); if (m) { onElegir(m); setTexto(`${m.codigo} · ${m.descripcion}`); setResultados([]); } }}>
       {resultados.map(m => <option key={m.material_id} value={m.material_id}>{m.codigo} · {m.descripcion}</option>)}
     </select>}
   </div>;
@@ -99,7 +99,7 @@ export function CustodiaPage() {
 
   return <section className="dx-ui dx-wms dx-wcus">
     <Encabezado titulo="Custodia de terceros" sub="Mercadería de clientes guardada en tus posiciones: no se valoriza como tuya y se cobra por posición-día y por movimiento.">
-      {datos.almacenes.length > 1 && <select className="dx-w-sel" aria-label="Almacén de custodia" value={almacenId} onChange={e => { setAlmacenId(e.target.value); setClienteId(''); }}>{datos.almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} · {a.nombre}</option>)}</select>}
+      {datos.almacenes.length > 1 && <select className="dx-ui-select" aria-label="Almacén de custodia" value={almacenId} onChange={e => { setAlmacenId(e.target.value); setClienteId(''); }}>{datos.almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} · {a.nombre}</option>)}</select>}
       {puede.editar && almacenId && <button type="button" className="dx-btn primary" onClick={() => abrir({ tipo: 'asignar', cuenta_id: clienteId || '', ubicaciones: [] })}>Asignar posiciones</button>}
     </Encabezado>
     <AvisoSoloLectura sesion={sesion} />
@@ -109,10 +109,10 @@ export function CustodiaPage() {
     {cargando && !datos.almacenes.length ? <div className="dx-ui-empty">Cargando custodia…</div>
       : !datos.almacenes.length ? <div className="dx-ui-card"><div className="dx-ui-empty">No hay almacenes con propósito «Custodia de terceros». Asígnalo en Configuración del WMS para empezar a guardar mercadería de clientes.</div></div>
       : <>
-        <div className="dx-ui-summary">
-          <div className="dx-ui-chip"><b>{resumen.clientes}</b><span>Clientes</span></div>
-          <div className="dx-ui-chip"><b>{resumen.ocupadas}/{resumen.posiciones}</b><span>Posiciones ocupadas</span></div>
-          <div className="dx-ui-chip"><b>{libres.length}</b><span>Posiciones libres</span></div>
+        <div className="dx-ui-kpi-row">
+          <div className="dx-ui-kpi"><strong>{resumen.clientes}</strong><span>Clientes</span></div>
+          <div className="dx-ui-kpi"><strong>{resumen.ocupadas}/{resumen.posiciones}</strong><span>Posiciones ocupadas</span></div>
+          <div className="dx-ui-kpi"><strong>{libres.length}</strong><span>Posiciones libres</span></div>
         </div>
         <div className="dx-w-side">
           <div className="dx-ui-card">
@@ -146,9 +146,9 @@ export function CustodiaPage() {
             {!cliente ? <div className="dx-ui-empty">Selecciona un cliente para ver su mercadería y liquidar el almacenaje.</div> : <div className="dx-w-sec">
               <h3>Liquidación de almacenaje</h3>
               <p className="sub">Posiciones ocupadas cada día × tarifa, más los movimientos de ingreso y salida × tarifa.</p>
-              <div className="dx-w-two">
-                <div className="dx-w-field"><label htmlFor="dx-wcus-desde">Desde</label><input id="dx-wcus-desde" type="date" value={rango.desde} onChange={e => setRango({ ...rango, desde: e.target.value })} /></div>
-                <div className="dx-w-field"><label htmlFor="dx-wcus-hasta">Hasta</label><input id="dx-wcus-hasta" type="date" value={rango.hasta} onChange={e => setRango({ ...rango, hasta: e.target.value })} /></div>
+              <div className="dx-ui-form-grid is-2">
+                <div className="dx-ui-field"><label htmlFor="dx-wcus-desde">Desde<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-desde" type="date" value={rango.desde} onChange={e => setRango({ ...rango, desde: e.target.value })} /></div>
+                <div className="dx-ui-field"><label htmlFor="dx-wcus-hasta">Hasta<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-hasta" type="date" value={rango.hasta} onChange={e => setRango({ ...rango, hasta: e.target.value })} /></div>
               </div>
               <button type="button" className="dx-btn" disabled={ocupado || !rango.desde || !rango.hasta} onClick={calcular}>Calcular</button>
               {liq && <>
@@ -169,8 +169,8 @@ export function CustodiaPage() {
     {modal && <div className="dx-w-overlay" onMouseDown={e => { if (e.target === e.currentTarget && !ocupado) setModal(null); }}>
       {modal.tipo === 'asignar' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-asig-t" onSubmit={e => { e.preventDefault(); if (!modal.cuenta_id || !modal.ubicaciones.length) { setErrorModal('Elige el cliente y al menos una posición libre.'); return; } ejecutar(() => asignarPosicionesCustodia({ empresa_id: empresaId, almacen_id: almacenId, cuenta_id: modal.cuenta_id, ubicaciones: modal.ubicaciones }), `${modal.ubicaciones.length} posiciones asignadas.`); }}>
         <h3 id="dx-wcus-asig-t">Asignar posiciones a un cliente</h3>
-        <div className="dx-w-field"><label htmlFor="dx-wcus-cuenta">Cliente</label><select id="dx-wcus-cuenta" value={modal.cuenta_id} onChange={e => setModal({ ...modal, cuenta_id: e.target.value })}><option value="">Selecciona un cliente</option>{datos.cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}</select></div>
-        <div className="dx-w-field"><span>Posiciones libres ({libres.length})</span>
+        <div className="dx-ui-field"><label htmlFor="dx-wcus-cuenta">Cliente<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcus-cuenta" value={modal.cuenta_id} onChange={e => setModal({ ...modal, cuenta_id: e.target.value })}><option value="">Selecciona un cliente</option>{datos.cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}</select></div>
+        <div className="dx-ui-field"><span className="dx-ui-label">Posiciones libres ({libres.length})</span>
           {!libres.length ? <div className="dx-ui-empty">No hay posiciones libres. Crea ubicaciones en el almacén.</div>
             : <div className="dx-w-lines">{libres.map(l => <label key={l.id} className="dx-w-toggle"><input type="checkbox" className="dx-w-check" checked={modal.ubicaciones.includes(l.id)} onChange={() => setModal({ ...modal, ubicaciones: modal.ubicaciones.includes(l.id) ? modal.ubicaciones.filter(x => x !== l.id) : [...modal.ubicaciones, l.id] })} />{l.codigo}</label>)}</div>}
         </div>
@@ -179,21 +179,21 @@ export function CustodiaPage() {
       </form>}
       {modal.tipo === 'tarifa' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-tar-t" onSubmit={e => { e.preventDefault(); const pd = Number(String(modal.tarifa_posicion_dia).replace(',', '.')); const mv = Number(String(modal.tarifa_movimiento).replace(',', '.')); if (!(pd >= 0) || !(mv >= 0)) { setErrorModal('Las tarifas deben ser cero o mayores.'); return; } ejecutar(() => guardarTarifaCustodia({ empresa_id: empresaId, cuenta_id: clienteId, almacen_id: almacenId, tarifa_posicion_dia: pd, tarifa_movimiento: mv, moneda: modal.moneda }), 'Tarifa guardada.'); }}>
         <h3 id="dx-wcus-tar-t">Tarifa de {cliente?.razon_social}</h3>
-        <div className="dx-w-two">
-          <div className="dx-w-field"><label htmlFor="dx-wcus-tpd">Por posición-día</label><input id="dx-wcus-tpd" inputMode="decimal" value={modal.tarifa_posicion_dia} onChange={e => setModal({ ...modal, tarifa_posicion_dia: e.target.value })} /></div>
-          <div className="dx-w-field"><label htmlFor="dx-wcus-tmv">Por movimiento</label><input id="dx-wcus-tmv" inputMode="decimal" value={modal.tarifa_movimiento} onChange={e => setModal({ ...modal, tarifa_movimiento: e.target.value })} /></div>
+        <div className="dx-ui-form-grid is-2">
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-tpd">Por posición-día<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-tpd" inputMode="decimal" value={modal.tarifa_posicion_dia} onChange={e => setModal({ ...modal, tarifa_posicion_dia: e.target.value })} /></div>
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-tmv">Por movimiento<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-tmv" inputMode="decimal" value={modal.tarifa_movimiento} onChange={e => setModal({ ...modal, tarifa_movimiento: e.target.value })} /></div>
         </div>
-        <div className="dx-w-field"><label htmlFor="dx-wcus-mon">Moneda</label><select id="dx-wcus-mon" value={modal.moneda} onChange={e => setModal({ ...modal, moneda: e.target.value })}><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wcus-mon">Moneda</label><select id="dx-wcus-mon" value={modal.moneda} onChange={e => setModal({ ...modal, moneda: e.target.value })}><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select></div>
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setModal(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Guardando…' : 'Guardar tarifa'}</button></div>
       </form>}
       {modal.tipo === 'ingreso' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-ing-t" onSubmit={e => { e.preventDefault(); const q = Number(String(modal.cantidad).replace(',', '.')); if (!modal.material || !(q > 0) || !modal.ubicacion_id) { setErrorModal('Elige posición, material y una cantidad mayor a cero.'); return; } ejecutar(() => registrarIngresoCustodia({ empresa_id: empresaId, ubicacion_id: modal.ubicacion_id, material_id: modal.material.material_id, cantidad: q, sociedad_id: sociedadId, documento: modal.documento.trim() || null }), `Ingreso de ${formatoCantidad(q)} ${modal.material.codigo} registrado.`); }}>
         <h3 id="dx-wcus-ing-t">Ingreso de mercadería · {cliente?.razon_social}</h3>
-        <div className="dx-w-field"><label htmlFor="dx-wcus-ubi">Posición</label><select id="dx-wcus-ubi" value={modal.ubicacion_id} onChange={e => setModal({ ...modal, ubicacion_id: e.target.value })}>{cliente?.ubicaciones.map(u => <option key={u.id} value={u.id}>{u.codigo}</option>)}</select></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wcus-ubi">Posición<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcus-ubi" value={modal.ubicacion_id} onChange={e => setModal({ ...modal, ubicacion_id: e.target.value })}>{cliente?.ubicaciones.map(u => <option key={u.id} value={u.id}>{u.codigo}</option>)}</select></div>
         <BuscarMaterial empresaId={empresaId} sociedadId={sociedadId} valor={modal.material} onElegir={m => setModal(actual => ({ ...actual, material: m }))} />
-        <div className="dx-w-two">
-          <div className="dx-w-field"><label htmlFor="dx-wcus-cant">Cantidad</label><input id="dx-wcus-cant" inputMode="decimal" value={modal.cantidad} onChange={e => setModal({ ...modal, cantidad: e.target.value })} /></div>
-          <div className="dx-w-field"><label htmlFor="dx-wcus-doc">Guía del cliente · opcional</label><input id="dx-wcus-doc" maxLength={40} value={modal.documento} onChange={e => setModal({ ...modal, documento: e.target.value })} /></div>
+        <div className="dx-ui-form-grid is-2">
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-cant">Cantidad<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-cant" inputMode="decimal" value={modal.cantidad} onChange={e => setModal({ ...modal, cantidad: e.target.value })} /></div>
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-doc">Guía del cliente · opcional</label><input id="dx-wcus-doc" maxLength={40} value={modal.documento} onChange={e => setModal({ ...modal, documento: e.target.value })} /></div>
         </div>
         <p className="dx-ui-sub">Entra a costo cero: no suma a tu inventario valorizado.</p>
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
@@ -216,7 +216,7 @@ export function CustodiaPage() {
             const total = stockCliente.filter(x => x.material_id === s.material_id).reduce((a, x) => a + Number(x.disponible), 0);
             return <tr key={s.material_id}><td><b>{s.codigo}</b><small>{s.descripcion}</small></td><td className="num">{formatoCantidad(total)}</td><td className="num"><input className="dx-w-in" inputMode="decimal" aria-label={`Cantidad a retirar de ${s.codigo}`} value={modal.cantidades[s.material_id] ?? ''} onChange={e => setModal({ ...modal, cantidades: { ...modal.cantidades, [s.material_id]: e.target.value } })} /></td></tr>;
           })}</tbody></table>
-        <div className="dx-w-field"><label htmlFor="dx-wcus-obs">Observación · opcional</label><input id="dx-wcus-obs" maxLength={200} value={modal.observacion} onChange={e => setModal({ ...modal, observacion: e.target.value })} /></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wcus-obs">Observación · opcional</label><input id="dx-wcus-obs" maxLength={200} value={modal.observacion} onChange={e => setModal({ ...modal, observacion: e.target.value })} /></div>
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setModal(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Creando…' : 'Crear retiro'}</button></div>
       </form>}

@@ -13,11 +13,11 @@ export const MODULOS = Object.freeze([
   { id: 'custodia', label: 'Custodia de terceros (3PL)', ayuda: 'Posiciones por cliente, ingresos, retiros y liquidación mensual de almacenaje.' },
   { id: 'conteos', label: 'Conteos cíclicos', ayuda: 'Conteos por zona o clase ABC con aprobación de ajustes sobre el umbral.' },
   { id: 'codigos', label: 'Códigos de barras / QR', ayuda: 'Escaneo de ubicación y material en picking y conteos.' },
-  { id: 'lotes', label: 'Lotes y vencimientos (FEFO)', ayuda: 'Disponible en la siguiente entrega.' },
-  { id: 'herramientas', label: 'Préstamo de herramientas', ayuda: 'Disponible en la siguiente entrega.' },
+  { id: 'lotes', label: 'Lotes y vencimientos (FEFO)', ayuda: 'Vencimientos por lote; las salidas toman primero el lote que vence antes.' },
+  { id: 'herramientas', label: 'Préstamo de herramientas', ayuda: 'Préstamo a técnicos con fecha de devolución; la herramienta sigue en el almacén.' },
 ]);
 
-export const MODULOS_PROXIMOS = Object.freeze(['lotes', 'herramientas']);
+export const MODULOS_PROXIMOS = Object.freeze([]);
 
 export const CANALES = Object.freeze({
   ot: { label: 'OT', pill: 'is-violet', destino: 'Entregar a taller' },

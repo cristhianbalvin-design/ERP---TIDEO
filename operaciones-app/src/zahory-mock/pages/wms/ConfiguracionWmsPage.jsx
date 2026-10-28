@@ -66,7 +66,7 @@ export function ConfiguracionWmsPage() {
             <button type="button" className={`dx-w-sw${modulos[m.id] ? ' on' : ''}`} role="switch" aria-checked={Boolean(modulos[m.id])} aria-labelledby={`dx-wcfg-m-${m.id}`} disabled={!puede.editar || proximo} onClick={() => setModulos({ ...modulos, [m.id]: !modulos[m.id] })} />
           </div>;
         })}
-        <div className="dx-w-field dx-w-gap"><label htmlFor="dx-wcfg-umbral">Umbral de aprobación de ajustes (S/)</label><input id="dx-wcfg-umbral" inputMode="decimal" disabled={!puede.editar} value={umbral} onChange={e => setUmbral(e.target.value)} /><small className="dx-ui-sub">Si las diferencias de un conteo superan este monto, otra persona debe aprobar los ajustes.</small></div>
+        <div className="dx-ui-field dx-w-gap"><label htmlFor="dx-wcfg-umbral">Umbral de aprobación de ajustes (S/)<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcfg-umbral" inputMode="decimal" disabled={!puede.editar} value={umbral} onChange={e => setUmbral(e.target.value)} /><small className="dx-ui-field-hint">Si las diferencias de un conteo superan este monto, otra persona debe aprobar los ajustes.</small></div>
       </div></div>
 
       <div className="dx-ui-card"><div className="dx-w-sec">
@@ -75,7 +75,7 @@ export function ConfiguracionWmsPage() {
           const prop = PROPOSITOS.find(p => p.id === propositos[a.id]) || PROPOSITOS[0];
           return <div className="dx-w-mod" key={a.id}>
             <span><b>{a.codigo} · {a.nombre}</b><small>{a.clase === 'periferico' ? 'Periférico · ' : ''}{prop.ayuda}</small></span>
-            <select className="dx-w-sel" aria-label={`Propósito de ${a.codigo}`} disabled={!puede.editar} value={propositos[a.id] || 'consumo_interno'} onChange={e => setPropositos({ ...propositos, [a.id]: e.target.value })}>
+            <select className="dx-ui-select" aria-label={`Propósito de ${a.codigo}`} disabled={!puede.editar} value={propositos[a.id] || 'consumo_interno'} onChange={e => setPropositos({ ...propositos, [a.id]: e.target.value })}>
               {PROPOSITOS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>;
