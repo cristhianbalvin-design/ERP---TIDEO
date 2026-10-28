@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   normalizarDiasAnticipacion, normalizarDiasVencidoMax, validarUmbralMinutos, normalizarHoraEnvio, construirMatrizDestinatarios,
   reglaTieneCambios, etiquetaEstadoEnvio, normalizarCorreosAdicionales, normalizarTelefonoWhatsApp, normalizarTelefonosAdicionales,
-  etiquetaRolDestinatario, etiquetaCanalEnvio, etiquetaRolConfig, etiquetaModuloNotificacion, rolesSeleccionados, alternarRol,
+  etiquetaRolDestinatario, etiquetaCanalEnvio, etiquetaRolConfig, etiquetaModuloNotificacion, rolesSeleccionados, alternarRol, etiquetaEntregaWhatsApp,
 } from './services/notificacionesConfigService.js';
 
 test('resuelve selecciones guardadas y automáticas de roles por evento', () => {
@@ -134,6 +134,20 @@ test('etiqueta estados del historial y omisión por falta de correo', () => {
   assert.deepEqual(etiquetaEstadoEnvio({ estado: 'omitido', motivo: 'sin_correo', destinatario_email: null }), { etiqueta: 'Omitido · sin correo', variante: 'off' });
   assert.deepEqual(etiquetaEstadoEnvio({ estado: 'simulado' }), { etiqueta: 'Simulado (sin credenciales)', variante: 'off' });
   assert.equal(etiquetaCanalEnvio('whatsapp'), 'WhatsApp');
+});
+
+test('etiqueta confirmaciones de entrega de WhatsApp con hora y error', () => {
+  assert.deepEqual(etiquetaEntregaWhatsApp({ canal: 'whatsapp', estado_entrega: 'entregado', entregado_en: '2026-10-26T15:30:00Z' }), {
+    etiqueta: 'Entregado · 10:30', variante: 'ok',
+  });
+  assert.deepEqual(etiquetaEntregaWhatsApp({ canal: 'whatsapp', estado_entrega: 'leido', leido_en: '2026-10-26T15:30:00Z' }), {
+    etiqueta: 'Leído · 10:30', variante: 'ok',
+  });
+  assert.deepEqual(etiquetaEntregaWhatsApp({ canal: 'whatsapp', estado_entrega: 'fallido', error_entrega: 'Número no válido' }), {
+    etiqueta: 'Falló: Número no válido', variante: 'err',
+  });
+  assert.equal(etiquetaEntregaWhatsApp({ canal: 'whatsapp', estado_entrega: null }), null);
+  assert.equal(etiquetaEntregaWhatsApp({ canal: 'correo', estado_entrega: 'leido' }), null);
 });
 
 test('trata los teléfonos adicionales ausentes en reglas antiguas como una lista vacía', () => {
