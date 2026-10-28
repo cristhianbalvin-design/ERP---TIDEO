@@ -63,7 +63,7 @@ export function ConfiguracionWmsPage() {
           const proximo = MODULOS_PROXIMOS.includes(m.id);
           return <div className="dx-w-mod" key={m.id}>
             <span><b id={`dx-wcfg-m-${m.id}`}>{m.label}{proximo && <> <span className="dx-ui-pill is-gray"><i />Próximamente</span></>}</b><small>{m.ayuda}</small></span>
-            <button type="button" className={`dx-w-sw${modulos[m.id] ? ' on' : ''}`} role="switch" aria-checked={Boolean(modulos[m.id])} aria-labelledby={`dx-wcfg-m-${m.id}`} disabled={!puede.editar || proximo} onClick={() => setModulos({ ...modulos, [m.id]: !modulos[m.id] })} />
+            <button type="button" className={`dx-w-sw${modulos[m.id] ? ' on' : ''}`} role="switch" aria-checked={Boolean(modulos[m.id])} aria-labelledby={`dx-wcfg-m-${m.id}`} disabled={!puede.editar || proximo} onClick={() => setModulos(prev => ({ ...prev, [m.id]: !prev[m.id] }))} />
           </div>;
         })}
         <div className="dx-ui-field dx-w-gap"><label htmlFor="dx-wcfg-umbral">Umbral de aprobación de ajustes (S/)<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcfg-umbral" inputMode="decimal" disabled={!puede.editar} value={umbral} onChange={e => setUmbral(e.target.value)} /><small className="dx-ui-field-hint">Si las diferencias de un conteo superan este monto, otra persona debe aprobar los ajustes.</small></div>
