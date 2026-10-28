@@ -27,7 +27,7 @@ function BuscarMaterial({ empresaId, sociedadId, valor, onElegir }) {
   }, [texto, empresaId, sociedadId, valor]);
   return <div className="dx-ui-field"><label htmlFor="dx-wcus-mat">Material<span className="dx-ui-required" aria-hidden="true">*</span></label>
     <input id="dx-wcus-mat" type="search" placeholder="Busca por código o descripción" value={texto} onChange={e => { setTexto(e.target.value); if (valor) onElegir(null); }} />
-    {resultados.length > 0 && <select className="dx-ui-select dx-w-listbox" size={Math.min(6, resultados.length)} aria-label="Resultados de materiales" onChange={e => { const m = resultados.find(r => r.material_id === e.target.value); if (m) { onElegir(m); setTexto(`${m.codigo} · ${m.descripcion}`); setResultados([]); } }}>
+    {resultados.length > 0 && <select className="dx-ui-select dx-w-listbox" size={Math.max(2, Math.min(6, resultados.length))} aria-label="Resultados de materiales" onChange={e => { const m = resultados.find(r => r.material_id === e.target.value); if (m) { onElegir(m); setTexto(`${m.codigo} · ${m.descripcion}`); setResultados([]); } }}>
       {resultados.map(m => <option key={m.material_id} value={m.material_id}>{m.codigo} · {m.descripcion}</option>)}
     </select>}
   </div>;
@@ -116,7 +116,7 @@ export function CustodiaPage() {
         </div>
         <div className="dx-w-side">
           <div className="dx-ui-card">
-            <div className="dx-w-bar"><h2>Clientes en custodia</h2><span className="dx-ui-count">{clientes.length} clientes</span></div>
+            <div className="dx-w-bar"><h2>Clientes en custodia</h2><span className="dx-ui-count">{clientes.length} {clientes.length === 1 ? 'cliente' : 'clientes'}</span></div>
             {!clientes.length ? <div className="dx-ui-empty">Aún no hay posiciones asignadas a clientes en este almacén.</div>
               : <div className="dx-w-scroll"><table className="dx-w-table">
                 <thead><tr><th>Cliente</th><th className="num">Posiciones</th><th className="num dx-w-hide-m">Materiales</th><th className="num dx-w-hide-m">Unidades</th><th className="num">Tarifa / pos-día</th></tr></thead>
