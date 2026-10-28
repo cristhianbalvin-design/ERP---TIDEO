@@ -154,3 +154,68 @@ export function enviarLiquidacionAVentas({ empresa_id, cuenta_id, almacen_id, de
     p_sociedad_id: sociedad_id ?? null,
   });
 }
+
+// Vencimientos y lotes -------------------------------------------------------
+export async function listarLotes({ empresa_id, almacen_id = null }) {
+  return (await ejecutarRpc('wms_lotes', { p_empresa_id: empresa_id, p_almacen_id: almacen_id || null })) || [];
+}
+
+export function moverLoteACuarentena({ empresa_id, stock_id, cantidad = null }) {
+  return ejecutarRpc('wms_lote_a_cuarentena', { p_empresa_id: empresa_id, p_stock_id: stock_id, p_cantidad: cantidad });
+}
+
+// Devoluciones ---------------------------------------------------------------
+export async function listarDevoluciones({ empresa_id }) {
+  const data = await ejecutarRpc('wms_devoluciones_listar', { p_empresa_id: empresa_id });
+  return { devoluciones: [], guias: [], ots: [], ...(data || {}) };
+}
+
+export function registrarDevolucion({ empresa_id, origen, referencia_id, motivo, lineas, observacion = null }) {
+  return ejecutarRpc('wms_devolucion_registrar', {
+    p_empresa_id: empresa_id, p_origen: origen, p_referencia_id: referencia_id, p_motivo: motivo, p_lineas: lineas, p_observacion: observacion,
+  });
+}
+
+export function cerrarDevolucion({ empresa_id, devolucion_id, lineas }) {
+  return ejecutarRpc('wms_devolucion_cerrar', { p_empresa_id: empresa_id, p_devolucion_id: devolucion_id, p_lineas: lineas });
+}
+
+// Préstamo de herramientas ---------------------------------------------------
+export async function obtenerPrestamos({ empresa_id }) {
+  const data = await ejecutarRpc('wms_prestamos_resumen', { p_empresa_id: empresa_id });
+  return { prestamos: [], disponibles: [], personal: [], ots: [], ...(data || {}) };
+}
+
+export function prestarHerramienta({ empresa_id, stock_id, cantidad, personal_id, fecha_devolucion, ot_id = null, observacion = null }) {
+  return ejecutarRpc('wms_prestar', {
+    p_empresa_id: empresa_id, p_stock_id: stock_id, p_cantidad: cantidad, p_personal_id: personal_id,
+    p_fecha_devolucion: fecha_devolucion, p_ot_id: ot_id || null, p_observacion: observacion,
+  });
+}
+
+export function recibirHerramienta({ empresa_id, prestamo_id, cantidad, estado, observacion = null }) {
+  return ejecutarRpc('wms_recibir_prestamo', {
+    p_empresa_id: empresa_id, p_prestamo_id: prestamo_id, p_cantidad: cantidad, p_estado: estado, p_observacion: observacion,
+  });
+}
+
+// Etiquetas ------------------------------------------------------------------
+export function listarUbicacionesEtiqueta({ empresa_id, almacen_id }) {
+  return consultar(
+    getSupabaseClient().from('ubicaciones').select('id, codigo, nombre, uso, es_general').eq('empresa_id', empresa_id).eq('almacen_id', almacen_id).order('codigo'),
+    'No se pudieron leer las ubicaciones.',
+  );
+}
+
+export function buscarMaterialesEtiqueta({ empresa_id, texto = '' }) {
+  let q = getSupabaseClient().from('materiales').select('id, codigo, descripcion, unidad, codigo_barras').eq('empresa_id', empresa_id).order('codigo').limit(200);
+  const termino = texto.trim().replace(/[%_,()]/g, ' ');
+  if (termino) q = q.or(`codigo.ilike.%${termino}%,descripcion.ilike.%${termino}%`);
+  return consultar(q, 'No se pudieron leer los materiales.');
+}
+
+// Reporte valorizado y ABC ---------------------------------------------------
+export async function obtenerReporteValorizado({ empresa_id, almacen_id = null }) {
+  const data = await ejecutarRpc('wms_reporte_valorizado', { p_empresa_id: empresa_id, p_almacen_id: almacen_id || null });
+  return { materiales: [], almacenes: [], ...(data || {}) };
+}

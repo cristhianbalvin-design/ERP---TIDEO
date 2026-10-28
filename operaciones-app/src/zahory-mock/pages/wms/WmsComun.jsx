@@ -19,7 +19,7 @@ export function AvisoSoloLectura({ sesion }) {
 }
 
 export function SelectorAlmacen({ id, almacenes, valor, onCambio, todos = true, etiqueta = 'Almacén' }) {
-  return <select id={id} className="dx-w-sel" aria-label={etiqueta} value={valor} onChange={e => onCambio(e.target.value)}>
+  return <select id={id} className="dx-ui-select" aria-label={etiqueta} value={valor} onChange={e => onCambio(e.target.value)}>
     {todos && <option value="">Todos los almacenes</option>}
     {almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} · {a.nombre}</option>)}
   </select>;

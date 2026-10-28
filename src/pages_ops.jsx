@@ -9,6 +9,7 @@ import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/Selecto
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
+import { DevolucionesNCPendientes } from './components/DevolucionesNCPendientes.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -10680,6 +10681,7 @@ function Remision() {
         </div>
       </div>
 
+      <DevolucionesNCPendientes empresaId={empresa?.id} addToast={addToast} />
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
         {[
           { label: 'Guías emitidas hoy', val: guiasHoy, icon: I.truck, color: 'var(--cyan)' },
