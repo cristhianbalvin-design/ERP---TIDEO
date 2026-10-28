@@ -109,7 +109,7 @@ export function DespachosPage() {
 
   const meta = pedido ? CANALES[pedido.canal] : null;
   const hayFaltante = pedido && pedido.canal !== 'ot' && pedido.lineas.some(l => Number(l.faltante) > 0);
-  const campo = (clave, etiqueta, props = {}) => <div className="dx-w-field"><label htmlFor={`dx-wdesp-${clave}`}>{etiqueta}</label><input id={`dx-wdesp-${clave}`} value={guia[clave]} onChange={e => { const valor = e.target.value; setGuia(actual => ({ ...actual, [clave]: valor })); }} {...props} /></div>;
+  const campo = (clave, etiqueta, props = {}) => <div className="dx-ui-field"><label htmlFor={`dx-wdesp-${clave}`}>{etiqueta}{props.required && <span className="dx-ui-required" aria-hidden="true">*</span>}</label><input id={`dx-wdesp-${clave}`} value={guia[clave]} onChange={e => { const valor = e.target.value; setGuia(actual => ({ ...actual, [clave]: valor })); }} {...props} /></div>;
 
   return <section className="dx-ui dx-wms dx-wdesp">
     <Encabezado titulo="Despachos" sub="Cola única de salida: entregas a taller (OT), ventas con guía y retiros de custodia, preparadas en ruta de picking." >
@@ -117,12 +117,12 @@ export function DespachosPage() {
     </Encabezado>
     <AvisoSoloLectura sesion={sesion} />
     {aviso && <div className="dx-w-note green" role="status">{aviso}</div>}
-    <div className="dx-ui-summary">
-      <div className="dx-ui-chip"><b>{resumen.total}</b><span>Por despachar</span></div>
-      <div className="dx-ui-chip"><b>{resumen.ot}</b><span>A taller (OT)</span></div>
-      <div className="dx-ui-chip"><b>{resumen.venta}</b><span>Ventas</span></div>
-      <div className="dx-ui-chip"><b>{resumen.custodia}</b><span>Retiros de custodia</span></div>
-      <div className="dx-ui-chip"><b>{resumen.parciales}</b><span>Con faltante</span></div>
+    <div className="dx-ui-kpi-row">
+      <div className="dx-ui-kpi"><strong>{resumen.total}</strong><span>Por despachar</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.ot}</strong><span>A taller (OT)</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.venta}</strong><span>Ventas</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.custodia}</strong><span>Retiros de custodia</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.parciales}</strong><span>Con faltante</span></div>
     </div>
     <div className="dx-w-side">
       <div className="dx-ui-card">
@@ -175,13 +175,13 @@ export function DespachosPage() {
           {pedido.canal === 'venta' && <div className="dx-w-sec">
             <h3>Guía de remisión</h3><p className="sub">Se emite al despachar, con el correlativo de la serie T001.</p>
             {campo('llegada_direccion', 'Punto de llegada', { required: true, maxLength: 250 })}
-            <div className="dx-w-two">{campo('fecha_inicio_traslado', 'Fecha de traslado', { type: 'date' })}{campo('peso_bruto_total', 'Peso bruto (kg)', { inputMode: 'decimal' })}</div>
-            <div className="dx-w-field"><label htmlFor="dx-wdesp-modalidad">Modalidad</label><select id="dx-wdesp-modalidad" value={guia.modalidad} onChange={e => { const valor = e.target.value; setGuia(actual => ({ ...actual, modalidad: valor })); }}><option value="remitente">Transporte privado (propio)</option><option value="transportista">Transporte público (transportista)</option></select></div>
+            <div className="dx-ui-form-grid is-2">{campo('fecha_inicio_traslado', 'Fecha de traslado', { type: 'date', required: true })}{campo('peso_bruto_total', 'Peso bruto (kg)', { inputMode: 'decimal', required: true })}</div>
+            <div className="dx-ui-field"><label htmlFor="dx-wdesp-modalidad">Modalidad<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wdesp-modalidad" value={guia.modalidad} onChange={e => { const valor = e.target.value; setGuia(actual => ({ ...actual, modalidad: valor })); }}><option value="remitente">Transporte privado (propio)</option><option value="transportista">Transporte público (transportista)</option></select></div>
             {guia.modalidad === 'remitente'
-              ? <><div className="dx-w-two">{campo('vehiculo_placa', 'Placa del vehículo', { maxLength: 10 })}{campo('conductor_dni', 'DNI del conductor', { maxLength: 12, inputMode: 'numeric' })}</div>{campo('conductor_nombre', 'Nombre del conductor', { maxLength: 120 })}</>
-              : <div className="dx-w-two">{campo('transportista_ruc', 'RUC transportista', { maxLength: 11, inputMode: 'numeric' })}{campo('transportista_razon_social', 'Razón social', { maxLength: 150 })}</div>}
+              ? <><div className="dx-ui-form-grid is-2">{campo('vehiculo_placa', 'Placa del vehículo', { maxLength: 10, required: true })}{campo('conductor_dni', 'DNI del conductor', { maxLength: 12, inputMode: 'numeric', required: true })}</div>{campo('conductor_nombre', 'Nombre del conductor', { maxLength: 120 })}</>
+              : <div className="dx-ui-form-grid is-2">{campo('transportista_ruc', 'RUC transportista', { maxLength: 11, inputMode: 'numeric', required: true })}{campo('transportista_razon_social', 'Razón social', { maxLength: 150 })}</div>}
           </div>}
-          {pedido.canal === 'ot' && <div className="dx-w-sec"><div className="dx-w-field"><label htmlFor="dx-wdesp-recibe">Recibe en taller · opcional</label><input id="dx-wdesp-recibe" maxLength={120} value={recibe} onChange={e => setRecibe(e.target.value)} /></div></div>}
+          {pedido.canal === 'ot' && <div className="dx-w-sec"><div className="dx-ui-field"><label htmlFor="dx-wdesp-recibe">Recibe en taller · opcional</label><input id="dx-wdesp-recibe" maxLength={120} value={recibe} onChange={e => setRecibe(e.target.value)} /></div></div>}
           <div className="dx-w-sec"><div className="dx-w-tools">
             <button type="button" className="dx-btn" onClick={() => setSeleccion('')}>Cerrar</button>
             <button type="button" className="dx-btn primary" disabled={ocupado || !puede.despachar} title={!puede.despachar ? 'No tienes permiso para despachar' : undefined} onClick={despachar}>{ocupado ? 'Procesando…' : meta.destino}</button>

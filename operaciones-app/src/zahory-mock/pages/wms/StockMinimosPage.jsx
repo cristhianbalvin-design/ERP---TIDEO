@@ -95,7 +95,7 @@ export function StockMinimosPage() {
   const previo = estadoPrevio(base, { clase: 'dx-wmin', nombre: 'los mínimos de stock' });
   if (previo) return <PaginaPrevia previo={previo} onReintentar={base.recargarBase} />;
 
-  const num = (k, etiqueta) => <div className="dx-w-field"><label htmlFor={`dx-wmin-${k}`}>{etiqueta}</label><input id={`dx-wmin-${k}`} inputMode="decimal" value={editando[k]} onChange={e => setEditando({ ...editando, [k]: e.target.value })} /></div>;
+  const num = (k, etiqueta) => <div className="dx-ui-field"><label htmlFor={`dx-wmin-${k}`}>{etiqueta}</label><input id={`dx-wmin-${k}`} inputMode="decimal" value={editando[k]} onChange={e => setEditando({ ...editando, [k]: e.target.value })} /></div>;
   const almacenEditado = editando && almacenes.find(a => a.id === editando.almacen_id);
 
   return <section className="dx-ui dx-wms dx-wmin">
@@ -106,12 +106,12 @@ export function StockMinimosPage() {
     <AvisoSoloLectura sesion={sesion} />
     {aviso && <div className="dx-w-note green" role="status">{aviso}</div>}
     {error && <div className="dx-w-note red" role="alert">{error}<button type="button" className="dx-btn sm" onClick={cargar}>Reintentar</button></div>}
-    <div className="dx-ui-summary">
-      <div className="dx-ui-chip"><b>{resumen.quiebre}</b><span>En quiebre</span></div>
-      <div className="dx-ui-chip"><b>{resumen.bajo_minimo}</b><span>Bajo mínimo</span></div>
-      <div className="dx-ui-chip"><b>{resumen.reordenar}</b><span>Por reordenar</span></div>
-      <div className="dx-ui-chip"><b>{resumen.sin_parametro}</b><span>Sin parámetro</span></div>
-      <div className="dx-ui-chip"><b>{formatoMoneda(resumen.valor_sugerido)}</b><span>Reposición sugerida</span></div>
+    <div className="dx-ui-kpi-row">
+      <div className="dx-ui-kpi"><strong>{resumen.quiebre}</strong><span>En quiebre</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.bajo_minimo}</strong><span>Bajo mínimo</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.reordenar}</strong><span>Por reordenar</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.sin_parametro}</strong><span>Sin parámetro</span></div>
+      <div className="dx-ui-kpi"><strong>{formatoMoneda(resumen.valor_sugerido)}</strong><span>Reposición sugerida</span></div>
     </div>
     <div className="dx-ui-card">
       <div className="dx-w-bar">
@@ -150,8 +150,8 @@ export function StockMinimosPage() {
       <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wmin-edit-t" onSubmit={guardarEdicion}>
         <h3 id="dx-wmin-edit-t">{editando.codigo} · {editando.almacen_codigo}</h3>
         <p className="dx-ui-sub">{editando.descripcion}. Disponible: {formatoCantidad(editando.disponible)} {editando.unidad || ''}.</p>
-        <div className="dx-w-two">{num('stock_minimo', 'Stock mínimo')}{num('punto_reorden', 'Punto de reorden')}</div>
-        <div className="dx-w-two">{num('stock_maximo', 'Stock máximo')}{num('stock_seguridad', 'Stock de seguridad')}</div>
+        <div className="dx-ui-form-grid is-2">{num('stock_minimo', 'Stock mínimo')}{num('punto_reorden', 'Punto de reorden')}</div>
+        <div className="dx-ui-form-grid is-2">{num('stock_maximo', 'Stock máximo')}{num('stock_seguridad', 'Stock de seguridad')}</div>
         {almacenEditado?.proposito === 'mixto' && <>{num('protegido_operaciones', 'Protegido para operaciones')}<p className="dx-ui-sub">Cantidad que los pedidos de venta no pueden reservar en este almacén mixto.</p></>}
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setEditando(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Guardando…' : 'Guardar parámetros'}</button></div>
@@ -161,8 +161,8 @@ export function StockMinimosPage() {
     {solpe && <div className="dx-w-overlay" onMouseDown={e => { if (e.target === e.currentTarget && !ocupado) setSolpe(null); }}>
       <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wmin-solpe-t" onSubmit={generarSolpe}>
         <h3 id="dx-wmin-solpe-t">Generar SOLPE de reposición</h3>
-        <div className="dx-w-field"><label htmlFor="dx-wmin-solpe-desc">Descripción</label><input id="dx-wmin-solpe-desc" maxLength={200} value={solpe.descripcion} onChange={e => setSolpe({ ...solpe, descripcion: e.target.value })} /></div>
-        <div className="dx-w-field"><label htmlFor="dx-wmin-solpe-ceco">Centro de costo</label><select id="dx-wmin-solpe-ceco" value={solpe.centro_costo_id} onChange={e => setSolpe({ ...solpe, centro_costo_id: e.target.value })}><option value="">Selecciona un centro de costo</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} · {c.nombre}</option>)}</select></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wmin-solpe-desc">Descripción<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wmin-solpe-desc" maxLength={200} value={solpe.descripcion} onChange={e => setSolpe({ ...solpe, descripcion: e.target.value })} /></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wmin-solpe-ceco">Centro de costo<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wmin-solpe-ceco" value={solpe.centro_costo_id} onChange={e => setSolpe({ ...solpe, centro_costo_id: e.target.value })}><option value="">Selecciona un centro de costo</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} · {c.nombre}</option>)}</select></div>
         <table className="dx-w-table"><thead><tr><th>Material</th><th className="num">Cantidad</th></tr></thead><tbody>{itemsSolpe(elegidas).map(it => <tr key={`${it.material_id}|${it.almacen_id}`}><td><b>{it.codigo}</b><small>{it.descripcion}</small></td><td className="num">{formatoCantidad(it.cantidad)} {it.unidad}</td></tr>)}</tbody></table>
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setSolpe(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Creando…' : 'Crear SOLPE'}</button></div>

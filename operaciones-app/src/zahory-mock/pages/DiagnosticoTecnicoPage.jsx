@@ -46,6 +46,8 @@ import { validarBorradorDiagnostico } from '../../services/validarBorradorDiagno
 import { markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 import { fechaLocalISO } from './fechaLocal.js';
 import { agruparLineasPorTrabajo, datosInicialesValidos, pasoFinal, pasosDeCreacion, pasosDiagnostico, pasoTrabajos, trabajosSinTareas } from './diagnosticoFlujo.js';
+import { FabricacionOrigenNuevo, FabricacionOrigenPaso, FabricacionPiezasPaso, FabricacionPlanoPaso, FabricacionRevisionPaso } from './DiagnosticoFabricacionPasos.jsx';
+import { faltantesPieza, guardarReferenciaCliente, listarPiezasFabricacion } from '../../services/diagnosticoFabricacionService.js';
 
 const EMPTY_FORM = { tipo: '', referencia: null };
 const EMPTY_LINE = {
@@ -161,7 +163,7 @@ async function resolverReferenciasPorTipo(empresaId, tipo, ids) {
 
 async function adjuntarReferencias(empresaId, rows) {
   const idsPorTipo = {
-    mantenimiento: [...new Set(rows.filter(row => row.tipo === 'mantenimiento').map(row => row.recepcion_id).filter(Boolean))],
+    mantenimiento: [...new Set(rows.map(row => row.recepcion_id).filter(Boolean))],
     fabricacion: [...new Set(rows.filter(row => row.tipo === 'fabricacion').map(row => row.oportunidad_id).filter(Boolean))],
   };
   const [mantenimiento, fabricacion] = await Promise.all([
@@ -174,7 +176,7 @@ async function adjuntarReferencias(empresaId, rows) {
   };
   return rows.map(row => ({
     ...row,
-    referencia: referencias[row.tipo].get(row.tipo === 'fabricacion' ? row.oportunidad_id : row.recepcion_id) || null,
+    referencia: (row.recepcion_id ? referencias.mantenimiento.get(row.recepcion_id) : referencias.fabricacion.get(row.oportunidad_id)) || null,
   }));
 }
 
@@ -385,6 +387,11 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [taskPanelHasSelection, setTaskPanelHasSelection] = useState(false);
   const [informePanel, setInformePanel] = useState(false);
   const [workStep, setWorkStep] = useState(4);
+  // Fabricación (653): origen del nuevo diagnóstico y piezas con plano y características.
+  const [fabOrigen, setFabOrigen] = useState('oportunidad');
+  const [fabPiezas, setFabPiezas] = useState([]);
+  const [fabPiezaId, setFabPiezaId] = useState('');
+  const [fabPiezasError, setFabPiezasError] = useState('');
   const [metaOpen, setMetaOpen] = useState(false);
   const [hallazgoView, setHallazgoView] = useState('lista');
   const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
@@ -432,7 +439,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   useEffect(() => {
     setHallazgoView('lista');
     setInformePanel(false);
-    setWorkStep(selected?.tipo === 'fabricacion' ? (selected.estado === 'emitido' ? pasoFinal('fabricacion') : pasoTrabajos('fabricacion')) : 4);
+    setWorkStep(selected?.tipo === 'fabricacion' ? (selected.estado === 'emitido' ? pasoFinal('fabricacion') : 2) : 4);
   }, [selected?.id]);
 
   // Hoja de Costeo vigente creada desde este diagnóstico (trazabilidad).
@@ -514,10 +521,20 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
 
   useEffect(() => {
     let vigente = true;
-    if (form.tipo !== 'mantenimiento' || !access.ver || !empresaId) return () => { vigente = false; };
+    if (!['mantenimiento', 'fabricacion'].includes(form.tipo) || !access.ver || !empresaId) return () => { vigente = false; };
     listarTecnicosDiagnostico(empresaId).then(rows => { if (vigente) setTecnicosInicio(rows); }).catch(() => { if (vigente) setTecnicosInicio([]); });
     return () => { vigente = false; };
   }, [form.tipo, access.ver, empresaId]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (selected?.tipo !== 'fabricacion' || !access.ver || !empresaId) return () => { vigente = false; };
+    setFabPiezasError('');
+    listarPiezasFabricacion(empresaId, selected.id)
+      .then(rows => { if (vigente) { setFabPiezas(rows); setFabPiezaId(current => rows.some(row => row.id === current) ? current : rows[0]?.id || ''); } })
+      .catch(loadError => { if (vigente) setFabPiezasError(errorMessage(loadError)); });
+    return () => { vigente = false; };
+  }, [access.ver, empresaId, selected?.id, selected?.tipo, selected?.estado]);
 
 
   useEffect(() => {
@@ -568,7 +585,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     }
     const timer = window.setTimeout(() => {
       setLoadingReferences(true);
-      listarReferenciasDiagnostico(empresaId, form.tipo, search)
+      listarReferenciasDiagnostico(empresaId, form.tipo === 'fabricacion' && fabOrigen === 'recepcion' ? 'mantenimiento' : form.tipo, search)
         .then(data => { if (vigente) setReferences(data); })
         .catch(loadError => { if (vigente) setError(errorMessage(loadError)); })
         .finally(() => { if (vigente) setLoadingReferences(false); });
@@ -577,14 +594,17 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       vigente = false;
       window.clearTimeout(timer);
     };
-  }, [access.ver, empresaId, form.tipo, search, selected?.estado]);
+  }, [access.ver, empresaId, form.tipo, search, selected?.estado, fabOrigen]);
 
   const openNew = tipo => {
     openRequestRef.current += 1;
     setSelected(null);
     setPendingLineDeletes([]);
     setForm({ ...EMPTY_FORM, tipo });
-    setDatosIniciales({ motivo: '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false });
+    setDatosIniciales({ motivo: '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), referencia_cliente: '', componente_catalogo_id: null, corregirComponente: false });
+    setFabOrigen('oportunidad');
+    setFabPiezas([]);
+    setFabPiezaId('');
     setComponentesInicio([]);
     setDatosInicioError('');
     setEquipoInicio(null);
@@ -623,10 +643,10 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     try {
       const detail = prepararDetalle(await obtenerDiagnosticoTecnico(empresaId, diagnostico.id));
       if (requestId !== openRequestRef.current) return;
-      const referenceId = detail.tipo === 'fabricacion' ? detail.oportunidad_id : detail.recepcion_id;
+      const referenceId = detail.recepcion_id || detail.oportunidad_id;
       let reference = null;
       try {
-        const resolved = await resolverReferenciasPorTipo(empresaId, detail.tipo, [referenceId]);
+        const resolved = await resolverReferenciasPorTipo(empresaId, detail.recepcion_id ? 'mantenimiento' : detail.tipo, [referenceId]);
         if (requestId !== openRequestRef.current) return;
         reference = resolved.find(candidate => candidate.id === referenceId) || null;
       } catch (referenceLoadError) {
@@ -638,10 +658,12 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
         motivo: detail.motivo || '',
         tecnico_id: detail.tecnico_id || '',
         fecha_inspeccion: detail.fecha_inspeccion || '',
+        referencia_cliente: detail.referencia_cliente || '',
       };
       setDatosIniciales(current => ({ ...current, ...initialData, componente_catalogo_id: detail.componente_catalogo_id || null, corregirComponente: false }));
       setDatosInicialesGuardados(initialData);
-      setWorkStep(detail.tipo === 'mantenimiento' ? 1 : detail.estado === 'emitido' ? pasoFinal(detail.tipo) : pasoTrabajos(detail.tipo));
+      setWorkStep(detail.tipo === 'mantenimiento' ? 1 : detail.estado === 'emitido' ? pasoFinal(detail.tipo) : 2);
+      if (detail.tipo === 'fabricacion') { setFabPiezas([]); setFabPiezaId(''); }
       if (typeof window !== 'undefined' && window.location?.hash !== undefined) {
         const query = new URLSearchParams(window.location?.hash?.split('?')[1] || '');
         if (query.get('trabajo') !== detail.id || query.has('nuevo')) {
@@ -690,19 +712,22 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     try {
       const created = await crearDiagnosticoTecnico(empresaId, usuarioId, {
         tipo: form.tipo,
-        oportunidad_id: form.tipo === 'fabricacion' ? selectedReference?.id : null,
-        recepcion_id: form.tipo === 'mantenimiento' ? selectedReference?.id : null,
+        oportunidad_id: form.tipo === 'fabricacion' && fabOrigen === 'oportunidad' ? selectedReference?.id : null,
+        recepcion_id: form.tipo === 'mantenimiento' || fabOrigen === 'recepcion' ? selectedReference?.id : null,
         motivo: datosIniciales.motivo,
         tecnico_id: datosIniciales.tecnico_id,
         fecha_inspeccion: datosIniciales.fecha_inspeccion,
       });
+      if (form.tipo === 'fabricacion' && String(datosIniciales.referencia_cliente || '').trim()) {
+        await guardarReferenciaCliente(empresaId, created.id, datosIniciales.referencia_cliente);
+      }
       if (isActive()) setNotice('Diagnóstico guardado en borrador.');
       await cargarLista();
       if (!isActive()) return;
       const tipoCreado = form.tipo;
       await openExisting(created);
       setWizardStep(1);
-      setWorkStep(tipoCreado === 'fabricacion' ? pasoTrabajos(tipoCreado) : 4);
+      setWorkStep(tipoCreado === 'fabricacion' ? 2 : 4);
     } catch (saveError) {
       if (isActive()) setError(errorMessage(saveError));
     } finally {
@@ -881,21 +906,27 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     if (saved) { if (conInforme) setInformePanel(true); setWorkStep(final); }
   };
 
-  const initialDataDirty = Boolean(selected?.tipo === 'mantenimiento' && (
+  const initialDataDirty = Boolean(['mantenimiento', 'fabricacion'].includes(selected?.tipo) && (
     datosIniciales.motivo !== datosInicialesGuardados.motivo
     || datosIniciales.tecnico_id !== datosInicialesGuardados.tecnico_id
     || datosIniciales.fecha_inspeccion !== datosInicialesGuardados.fecha_inspeccion
+    || (selected?.tipo === 'fabricacion' && (datosIniciales.referencia_cliente || '') !== (datosInicialesGuardados.referencia_cliente || ''))
   ));
   const saveInitialData = async () => {
     if (!selected || !canEditInitialData || !initialDataDirty) return true;
     setSaving(true); setError(''); setNotice('');
     try {
       const saved = await actualizarDatosInicialesDiagnostico(empresaId, selected.id, {
+        ...(selected.tipo === 'fabricacion' ? { tipo: 'fabricacion' } : {}),
         motivo: datosIniciales.motivo,
         tecnico_id: datosIniciales.tecnico_id,
         fecha_inspeccion: datosIniciales.fecha_inspeccion,
       });
       const next = { motivo: saved.motivo || '', tecnico_id: saved.tecnico_id || '', fecha_inspeccion: saved.fecha_inspeccion || '' };
+      if (selected.tipo === 'fabricacion') {
+        const ref = await guardarReferenciaCliente(empresaId, selected.id, datosIniciales.referencia_cliente);
+        next.referencia_cliente = ref.referencia_cliente || '';
+      }
       setDatosIniciales(current => ({ ...current, ...next }));
       setDatosInicialesGuardados(next);
       setSelected(current => current?.id === selected.id ? { ...current, ...next, tecnico_nombre: tecnicosInicio.find(row => row.id === next.tecnico_id)?.nombre || current.tecnico_nombre } : current);
@@ -982,6 +1013,8 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setInformePanel(false);
     setTaskPanel(false);
     setTaskPanelHasSelection(false);
+    setFabPiezas([]);
+    setFabPiezaId('');
     setForm(EMPTY_FORM);
     setSearch('');
     setError('');
@@ -1023,7 +1056,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   };
   const resumenVisible = selected?.resumen_diagnostico || '';
   const hallazgosIncompletosCount = getIncompleteHallazgos(selected?.hallazgos || []).length;
-  const summaryDirty = Boolean(selected?.tipo === 'mantenimiento' && (
+  const summaryDirty = Boolean(['mantenimiento', 'fabricacion'].includes(selected?.tipo) && (
     (selected.resumen_origen || 'auto') !== (selected._origenResumenGuardado || 'auto')
     || resumenVisible !== (selected._resumenGuardado || '')
   ));
@@ -1032,7 +1065,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     : Boolean(form.referencia);
   const modalBusy = saving || Boolean(savingLine) || (selected?.tipo === 'mantenimiento' && hallazgosSaving);
   const canEditInitialData = canEditLines && selected?.datos_iniciales_migracion_disponible !== false;
-  const cambiosSinGuardar = Boolean(selected && !isReadOnly && ((selected.lineas || []).some(line => line._dirty) || pendingLineDeletes.length > 0 || (selected.tipo === 'mantenimiento' && (hallazgosDirty || initialDataDirty)) || summaryDirty));
+  const cambiosSinGuardar = Boolean(selected && !isReadOnly && ((selected.lineas || []).some(line => line._dirty) || pendingLineDeletes.length > 0 || (selected.tipo === 'mantenimiento' && (hallazgosDirty || initialDataDirty)) || (selected.tipo === 'fabricacion' && initialDataDirty) || summaryDirty));
   useEffect(() => {
     if (routeParams.trabajo || routeParams.nuevo || (!selected && !form.tipo)) return;
     if (typeof window === 'undefined' || !window.location) return;
@@ -1075,7 +1108,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const enPasoTrabajos = Boolean(selected) && workStep === pasoTrabajos(selected.tipo) && !informePanel;
   const cambiarResumen = (value, origen = 'editado') => setSelected(current => ({ ...current, resumen_diagnostico: value, resumen_origen: origen }));
   const guardarResumenParaInforme = async () => {
-    if (!selected || selected.tipo !== 'mantenimiento' || !summaryDirty) return;
+    if (!selected || !['mantenimiento', 'fabricacion'].includes(selected.tipo) || !summaryDirty) return;
     const saved = await guardarResumenDiagnostico(empresaId, selected.id, resumenVisible, selected.resumen_origen || 'auto');
     setSelected(current => current?.id === selected.id ? { ...current, ...saved, _resumenGuardado: saved.resumen_diagnostico || '', _origenResumenGuardado: saved.resumen_origen } : current);
   };
@@ -1133,7 +1166,9 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   if (!access.ver) return <AccessState error={access.error} />;
 
   const detailTitle = selected ? `${typeLabel(selected.tipo)} · ${referenceLabel(form.referencia)}` : `Nuevo diagnóstico · ${typeLabel(form.tipo)}`;
-  const initialStepValid = wizardStep === 1
+  const initialStepValid = form.tipo === 'fabricacion'
+    ? Boolean(selectedReference && datosIniciales.tecnico_id)
+    : wizardStep === 1
     ? Boolean(selectedReference)
     : wizardStep === 2
       ? Boolean(equipoInicio && (equipoInicio.activo.tipo_activo === 'maquinaria_completa' || equipoInicio.componente || datosIniciales.componente_catalogo_id))
@@ -1209,7 +1244,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const totalHH = lineasActuales.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
   const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
   const dirtyLineCount = lineasActuales.filter(line => line._dirty).length + pendingLineDeletes.length;
-  const cambiosCount = isReadOnly ? 0 : dirtyLineCount + (selected?.tipo === 'mantenimiento' ? Number(hallazgosDirtySummary.cambios || 0) + Number(initialDataDirty) : 0) + Number(summaryDirty);
+  const cambiosCount = isReadOnly ? 0 : dirtyLineCount + (selected?.tipo === 'mantenimiento' ? Number(hallazgosDirtySummary.cambios || 0) + Number(initialDataDirty) : 0) + (selected?.tipo === 'fabricacion' ? Number(initialDataDirty) : 0) + Number(summaryDirty);
   const normalizedListQuery = normalizeListText(listQuery.trim());
   const filteredDiagnosticos = diagnosticos.filter(row => !normalizedListQuery || normalizeListText([
     row.referencia?.numero,
@@ -1219,6 +1254,42 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   ].join(' ')).includes(normalizedListQuery));
   const borradoresCount = diagnosticos.filter(row => row.estado !== 'emitido').length;
   const emitidosCount = diagnosticos.length - borradoresCount;
+
+  // ---- Fabricación (653): pasos Origen · Piezas · Plano y características · Trabajos · Revisión ----
+  const fabOrigenTexto = {
+    titulo: `${(selected ? selected.recepcion_id : fabOrigen === 'recepcion') ? 'Recepción' : 'Oportunidad'} · ${referenceLabel(form.referencia)}`,
+    detalle: [form.referencia?.cliente, form.referencia?.etapa ? etiquetaEtapa(form.referencia.etapa) : '', form.referencia?.activo].filter(Boolean).join(' · ') || 'Sin cliente',
+  };
+  const fabPiezasIncompletas = !fabPiezas.length || fabPiezas.some(pieza => faltantesPieza(pieza).length > 0);
+  const borradoresDeReferencia = reference => diagnosticos.filter(row => row.tipo === 'fabricacion' && row.estado === 'borrador' && (fabOrigen === 'recepcion' ? row.recepcion_id === reference?.id : row.oportunidad_id === reference?.id));
+  const renderFabNuevo = () => <div className="dx-ui dx-fab dx-fab-body">
+    <FabricacionOrigenNuevo
+      origen={fabOrigen}
+      onOrigen={origen => { setFabOrigen(origen); setForm(current => ({ ...current, referencia: null })); setSearch(''); }}
+      search={search}
+      onSearch={value => { setSearch(value); if (selectedReference) setForm(current => ({ ...current, referencia: null })); }}
+      references={references}
+      loading={loadingReferences}
+      seleccion={selectedReference}
+      onSelect={reference => setForm(current => ({ ...current, referencia: reference }))}
+      tecnicos={tecnicosInicio}
+      datos={datosIniciales}
+      onDatos={cambios => setDatosIniciales(current => ({ ...current, ...cambios }))}
+      etiquetaReferencia={referenceLabel}
+      detalleReferencia={reference => fabOrigen === 'recepcion'
+        ? [reference.cliente, reference.activo].filter(Boolean).join(' · ')
+        : [reference.cliente || 'Cliente', reference.etapa ? etiquetaEtapa(reference.etapa) : '', montoOportunidad(reference)].filter(Boolean).join(' · ')}
+      borradores={reference => borradoresDeReferencia(reference).length}
+      aviso={selectedReference && borradoresDeReferencia(selectedReference).length ? <div className="dx-initial-warning">{fabOrigen === 'recepcion' ? 'Esta recepción' : 'Esta oportunidad'} ya tiene {borradoresDeReferencia(selectedReference).length === 1 ? 'un diagnóstico de fabricación' : `${borradoresDeReferencia(selectedReference).length} diagnósticos de fabricación`} en borrador. Puedes abrir uno de ellos en vez de crear otro. {borradoresDeReferencia(selectedReference).map(row => <button key={row.id} type="button" onClick={() => openExisting(row)}>Abrir borrador</button>)}</div> : null}
+    />
+  </div>;
+  const renderFabPasos = () => workStep === pasoTrabajos('fabricacion') ? null : <div className="dx-ui dx-fab dx-fab-body">
+    {fabPiezasError && <div className="dx-fab-error" role="alert">No se pudieron cargar las piezas: {fabPiezasError}</div>}
+    {workStep === 1 && <FabricacionOrigenPaso origenTexto={fabOrigenTexto} datos={datosIniciales} onDatos={cambios => setDatosIniciales(current => ({ ...current, ...cambios }))} tecnicos={tecnicosInicio} canEdit={canEditInitialData} dirty={initialDataDirty} guardando={saving} onGuardar={saveInitialData} />}
+    {workStep === 2 && <FabricacionPiezasPaso empresaId={empresaId} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} canEdit={canEditLines} nombreSugerido={String(form.referencia?.activo || '').split(' · ').pop()} onVerPlano={piezaId => { setFabPiezaId(piezaId); setWorkStep(3); }} />}
+    {workStep === 3 && <FabricacionPlanoPaso empresaId={empresaId} sociedadId={sesion.sociedadActiva?.id || null} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} piezaId={fabPiezaId} onPiezaId={setFabPiezaId} canEdit={canEditLines} />}
+    {workStep === pasoFinal('fabricacion') && <FabricacionRevisionPaso piezas={fabPiezas} totalTareas={lineasActuales.length} totalHH={totalHH} trabajosIncompletos={trabajosIncompletos.map(group => group.familia.nombre)} cambiosSinGuardar={cambiosSinGuardar} emitido={isReadOnly} origenTexto={fabOrigenTexto} resumen={resumenVisible} onResumen={value => cambiarResumen(value, 'editado')} canEdit={canEditLines} />}
+  </div>;
 
   return (
     <main className="ops-page" style={workPage ? { padding: 0, width: '100%', height: 'calc(100dvh - 68px)', minHeight: 0, overflow: 'hidden' } : { padding: 24, width: '100%' }}>
@@ -1264,7 +1335,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
           ) : !filteredDiagnosticos.length ? (
             <div className="dx-ui-empty">No hay diagnósticos que coincidan con la búsqueda.</div>
           ) : filteredDiagnosticos.map(row => {
-            const referenceType = row.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción';
+            const referenceType = row.recepcion_id ? 'Recepción' : 'Oportunidad';
             const updated = formatListDate(row.updated_at);
             return <div className="dx-ui-row dx-list-cols dx-list-row" key={row.id} role="button" tabIndex={0} onClick={() => openExisting(row)} onKeyDown={event => {
               if (event.key === 'Enter' || event.key === ' ') {
@@ -1300,7 +1371,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
         statusClassName={selected ? 'dx-modal-status' : ''}
         closeClassName={selected ? 'dx-modal-close' : ''}
         title={detailTitle}
-        subtitle={selected ? `${selected.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción'}: ${referenceLabel(form.referencia)}` : 'Completa la referencia para crear un borrador.'}
+        subtitle={selected ? `${selected.recepcion_id ? 'Recepción' : 'Oportunidad'}: ${referenceLabel(form.referencia)}` : 'Completa la referencia para crear un borrador.'}
         status={<span className={statusClass(selected?.estado)}>{statusLabel(selected?.estado)}</span>}
         dirty={!isReadOnly && (detailDirty || initialDataDirty || (taskPanel && taskPanelHasSelection))}
         busy={modalBusy}
@@ -1309,7 +1380,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
           workBackRequestRef.current = requestClose;
           if (!selected) return <><header className="dx-work-identity"><WorkMenuButton /><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" aria-label="Volver a diagnósticos" onClick={requestClose}><span aria-hidden="true">←</span><span className="dx-work-back-label">Diagnósticos</span></button><h1>Nuevo diagnóstico · {typeLabel(form.tipo)}</h1></div><div className="dx-work-identity-status">{selectedReference?.numero && <strong>{selectedReference.numero}</strong>}<span className="dx-ui-pill is-amber"><i />Borrador</span></div></header><div className="dx-work-page-head"><nav className="dx-work-steps" data-pasos={pasos.length} aria-label="Pasos del diagnóstico">{pasos.map((label, index) => <button key={label} type="button" className={wizardStep === index + 1 ? 'is-current' : wizardStep > index + 1 ? 'is-done' : ''} aria-current={wizardStep === index + 1 ? 'step' : undefined} disabled={index >= pasosDeCreacion(form.tipo) || index + 1 > wizardStep} onClick={() => setWizardStep(index + 1)}><i>{wizardStep > index + 1 ? '✓' : index + 1}</i><span>{index + 1} · {label}</span></button>)}</nav></div></>;
           const reference = form.referencia || {};
-          if (selected.tipo === 'fabricacion') return <header className="dx-work-identity is-compact"><WorkMenuButton /><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" aria-label="Volver a diagnósticos" onClick={requestClose}><span aria-hidden="true">←</span><span className="dx-work-back-label"> Diagnósticos</span></button><h1>{reference.numero || 'Oportunidad'}{reference.cliente ? ` · ${reference.cliente}` : ''}</h1></div><div className="dx-work-identity-status"><strong>Fabricación</strong><span className={`dx-ui-pill ${selected.estado === 'emitido' ? 'is-green' : 'is-amber'}`}><i />{statusLabel(selected.estado)}</span></div></header>;
+          if (selected.tipo === 'fabricacion') return <header className="dx-work-identity is-compact"><WorkMenuButton /><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" aria-label="Volver a diagnósticos" onClick={requestClose}><span aria-hidden="true">←</span><span className="dx-work-back-label"> Diagnósticos</span></button><h1>{reference.numero || (selected.recepcion_id ? 'Recepción' : 'Oportunidad')}{reference.cliente ? ` · ${reference.cliente}` : ''}</h1></div><div className="dx-work-identity-status"><strong>Fabricación</strong><span className={`dx-ui-pill ${selected.estado === 'emitido' ? 'is-green' : 'is-amber'}`}><i />{statusLabel(selected.estado)}</span></div></header>;
           const title = `${String(reference.activo || selected.hallazgos?.[0]?.componente_parte || 'Equipo').toLocaleUpperCase('es')} · ${reference.cliente || 'Cliente'}`;
           const motivo = selected.motivo || reference.motivo || reference.observaciones || reference.observacion || reference.descripcion || reference.detalle || '—';
           const tecnico = selected.tecnico_nombre || reference.tecnico_asignado || reference.tecnico_nombre || reference.tecnico || 'Sin asignar';
@@ -1329,9 +1400,9 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {slowSaveWarning && <div className="alert alert-warning dx-footer-floating-alert" role="status"><span>{slowSaveWarning}</span></div>}
             {isReadOnly ? <span role="status">Diagnóstico emitido</span> : cambiosSinGuardar ? <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div> : <span role="status">{notice || 'Borrador guardado'}</span>}
           </div>
-          {workStep === 1 ? <><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => setWorkStep(pasoTrabajos('fabricacion'))} aria-label="Siguiente: Trabajos a realizar"><span className="dx-footer-label-full">Siguiente: Trabajos a realizar</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Trabajos →" /></button></>
-            : workStep === pasoTrabajos('fabricacion') ? <>{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}><span className="dx-footer-label-full">{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label={taskPanel ? 'Cerrar' : '+ Trabajo'} /></button>}{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy}><span className="dx-footer-label-full">{modalBusy ? 'Guardando…' : 'Guardar todo'}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label={modalBusy ? 'Guardando…' : 'Guardar'} /></button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={goInforme} aria-label="Siguiente: Emitir y costear"><span className="dx-footer-label-full">Siguiente: Emitir y costear</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Emitir →" /></button></>
-            : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => setWorkStep(pasoTrabajos('fabricacion'))} aria-label="Volver a trabajos"><span className="dx-footer-label-full">← Volver a trabajos</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Trabajos" /></button><span className="dx-work-spacer" />{!isReadOnly && access.aprobar && Boolean(sesion.permiteEscritura) && <button type="button" className="btn btn-primary dx-action-44" disabled={cambiosSinGuardar || modalBusy || !grupos.length || trabajosIncompletos.length > 0} title={cambiosSinGuardar ? 'Guarda los cambios antes de emitir' : undefined} onClick={() => emitirFabricacionRef.current?.()} aria-label="Emitir diagnóstico"><span className="dx-footer-label-full">Emitir diagnóstico</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Emitir" /></button>}</>}
+          {workStep < pasoTrabajos('fabricacion') ? <>{workStep > 1 && <button type="button" className="btn btn-secondary dx-action-44" onClick={() => setWorkStep(workStep - 1)} aria-label="Anterior"><span className="dx-footer-label-full">← Anterior</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="← Atrás" /></button>}{workStep === 1 && canEditInitialData && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveInitialData} disabled={!initialDataDirty || modalBusy}><span className="dx-footer-label-full">{modalBusy ? 'Guardando…' : 'Guardar cambios'}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label={modalBusy ? 'Guardando…' : 'Guardar'} /></button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={async () => { if (workStep === 1 && initialDataDirty && !(await saveInitialData())) return; setWorkStep(workStep + 1); }} aria-label={`Siguiente: ${pasos[workStep]}`}><span className="dx-footer-label-full">Siguiente: {pasos[workStep]}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Siguiente →" /></button></>
+            : workStep === pasoTrabajos('fabricacion') ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setTaskPanel(false); setWorkStep(workStep - 1); }} aria-label="Anterior"><span className="dx-footer-label-full">← Anterior</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="← Atrás" /></button>{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}><span className="dx-footer-label-full">{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label={taskPanel ? 'Cerrar' : '+ Trabajo'} /></button>}{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy}><span className="dx-footer-label-full">{modalBusy ? 'Guardando…' : 'Guardar todo'}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label={modalBusy ? 'Guardando…' : 'Guardar'} /></button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={goInforme} aria-label="Siguiente: Revisión e informe"><span className="dx-footer-label-full">Siguiente: Revisión e informe</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Revisión →" /></button></>
+            : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => setWorkStep(pasoTrabajos('fabricacion'))} aria-label="Volver a trabajos"><span className="dx-footer-label-full">← Volver a trabajos</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Trabajos" /></button>{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" onClick={async () => { const ok = await saveAll(); if (ok && summaryDirty) await guardarResumenParaInforme(); }} disabled={!cambiosSinGuardar || modalBusy}><span className="dx-footer-label-full">{modalBusy ? 'Guardando…' : 'Guardar cambios'}</span><span className="dx-footer-label-compact" aria-hidden="true" data-label={modalBusy ? 'Guardando…' : 'Guardar'} /></button>}<span className="dx-work-spacer" />{!isReadOnly && access.aprobar && Boolean(sesion.permiteEscritura) && <button type="button" className="btn btn-primary dx-action-44" disabled={cambiosSinGuardar || modalBusy || !grupos.length || trabajosIncompletos.length > 0 || fabPiezasIncompletas} title={cambiosSinGuardar ? 'Guarda los cambios antes de emitir' : fabPiezasIncompletas ? 'Cada pieza necesita material y plano' : undefined} onClick={() => emitirFabricacionRef.current?.()} aria-label="Emitir diagnóstico"><span className="dx-footer-label-full">Emitir diagnóstico</span><span className="dx-footer-label-compact" aria-hidden="true" data-label="Emitir" /></button>}</>}
         </> : <>
           <div style={{ flex: 1 }}>
             {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
@@ -1355,19 +1426,16 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
           </div> : <div className="dx-initial-step">
             <section className="dx-initial-card"><div className="field"><label>Motivo o falla reportada por el cliente *</label><textarea className="input" rows="4" value={datosIniciales.motivo} onChange={event => setDatosIniciales(current => ({ ...current, motivo: event.target.value }))}/></div></section>
             <section className="dx-initial-card dx-initial-grid"><div className="field"><label>Técnico responsable *</label><select className="input" value={datosIniciales.tecnico_id} onChange={event => setDatosIniciales(current => ({ ...current, tecnico_id: event.target.value }))}><option value="">Elige…</option>{tecnicosInicio.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}</select></div><div className="field"><label>Fecha de inspección</label><input className="input" type="date" value={datosIniciales.fecha_inspeccion} onChange={event => setDatosIniciales(current => ({ ...current, fecha_inspeccion: event.target.value }))}/></div></section>
-          </div> : <div className="dx-initial-step">
-            <section className="dx-initial-card"><div className="field"><label htmlFor="dx-buscar-oportunidad">Buscar por oportunidad o cliente…</label><input id="dx-buscar-oportunidad" className="input" aria-label="Buscar por oportunidad o cliente" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por oportunidad o cliente…" /></div></section>
-            <section className="dx-initial-list" role="radiogroup" aria-label="Oportunidades abiertas">{loadingReferences ? <p className="muted">Buscando oportunidades…</p> : references.length ? references.map(reference => { const borradores = diagnosticos.filter(row => row.tipo === 'fabricacion' && row.oportunidad_id === reference.id && row.estado === 'borrador'); const monto = montoOportunidad(reference); return <button key={reference.id} type="button" role="radio" aria-checked={selectedReference?.id === reference.id} className={`dx-initial-receipt${selectedReference?.id === reference.id ? ' is-selected' : ''}`} onClick={() => setForm(current => ({ ...current, referencia: reference }))}><i className="dx-initial-radio"/><span className="dx-initial-receipt-copy"><strong>{reference.numero || 'Oportunidad sin nombre'}</strong><small>{[reference.cliente || 'Cliente', reference.etapa ? etiquetaEtapa(reference.etapa) : ''].filter(Boolean).join(' · ')}</small></span>{borradores.length > 0 && <span className="dx-ui-pill is-amber">{borradores.length} {borradores.length === 1 ? 'borrador' : 'borradores'}</span>}{monto && <span className="dx-ui-pill">{monto}</span>}</button>; }) : <p className="muted">No hay oportunidades abiertas que coincidan.</p>}</section>
-            {selectedReference && (() => { const borradores = diagnosticos.filter(row => row.tipo === 'fabricacion' && row.oportunidad_id === selectedReference.id && row.estado === 'borrador'); return borradores.length ? <div className="dx-initial-warning">Esta oportunidad ya tiene {borradores.length === 1 ? 'un diagnóstico' : `${borradores.length} diagnósticos`} en borrador. Puedes abrir uno de ellos en vez de crear otro. {borradores.map(row => <button key={row.id} type="button" onClick={() => openExisting(row)}>Abrir borrador</button>)}</div> : null; })()}
-          </div>}
+          </div> : renderFabNuevo()}
           {datosInicioError && <div className="alert alert-error" role="alert">{datosInicioError}</div>}
         </form></div>}
-        {selected && <div className={`dx-scope${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-editing-report' : ''}`}>
+        {selected && <div className={`dx-scope${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-editing-report' : ''}${selected.tipo === 'fabricacion' ? ' dx-scope-fab' : ''}`}>
           <div className="dx-work-page-head"><nav className="dx-work-steps" data-pasos={pasos.length} aria-label="Pasos del diagnóstico">
             {pasos.map((label, index) => <button key={label} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} type="button" aria-current={workStep === index + 1 ? 'step' : undefined} onClick={async () => { const step = index + 1; if (step === pasoFinal(selected.tipo)) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><i>{workStep > index + 1 ? '✓' : index + 1}</i><span>{index + 1} · {label}</span></button>)}
           </nav><div className="dx-work-mobile-step" aria-live="polite"><strong>Paso {workStep} de {pasos.length} · {pasos[workStep - 1]}</strong><div className="dx-work-mobile-segments" data-pasos={pasos.length} aria-label="Ir a un paso del diagnóstico">{pasos.map((label, index) => <button key={label} type="button" aria-label={`Paso ${index + 1}: ${label}`} aria-current={workStep === index + 1 ? 'step' : undefined} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} onClick={async () => { const step = index + 1; if (step === pasoFinal(selected.tipo)) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><span>{label}</span></button>)}</div></div></div>
-          {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} permitirEmision={workStep === pasoFinal(selected.tipo)} emitirRef={selected.tipo === 'fabricacion' ? emitirFabricacionRef : undefined} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button> : null} />}
-          {selected.estado === 'emitido' && <div className="dx-inf-open-row"><button type="button" className="btn btn-primary" onClick={generarHojaCosteo} disabled={generandoHojaCosteo} aria-busy={generandoHojaCosteo}>{generandoHojaCosteo ? 'Abriendo Hoja de Costeo…' : hojaVinculada ? `Abrir Hoja de Costeo ${hojaVinculada.numero}` : 'Generar hoja de costeo'}</button>{hojaVinculada?.desfasada && <span className="dx-hc-sync-note">La hoja se creó con una emisión anterior: ábrela para {hojaVinculada.estado === 'aprobada' || hojaVinculada.con_cotizacion ? 'crear una nueva versión' : 'actualizarla'}.</span>}</div>}
+          {selected.tipo === 'fabricacion' && renderFabPasos()}
+          {access.ver && (selected.tipo !== 'fabricacion' || workStep === pasoFinal('fabricacion')) && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} permitirEmision={workStep === pasoFinal(selected.tipo)} emitirRef={selected.tipo === 'fabricacion' ? emitirFabricacionRef : undefined} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button> : null} />}
+          {selected.estado === 'emitido' && (selected.tipo !== 'fabricacion' || workStep === pasoFinal('fabricacion')) && <div className="dx-inf-open-row"><button type="button" className="btn btn-primary" onClick={generarHojaCosteo} disabled={generandoHojaCosteo} aria-busy={generandoHojaCosteo}>{generandoHojaCosteo ? 'Abriendo Hoja de Costeo…' : hojaVinculada ? `Abrir Hoja de Costeo ${hojaVinculada.numero}` : 'Generar hoja de costeo'}</button>{hojaVinculada?.desfasada && <span className="dx-hc-sync-note">La hoja se creó con una emisión anterior: ábrela para {hojaVinculada.estado === 'aprobada' || hojaVinculada.con_cotizacion ? 'crear una nueva versión' : 'actualizarla'}.</span>}</div>}
           {selected.estado !== 'emitido' && hojaVinculada && <div className="dx-hc-sync-info" role="status">Este diagnóstico ya tiene la Hoja de Costeo {hojaVinculada.numero}. Al volver a emitirlo, la hoja mostrará un aviso para traer los cambios.</div>}
           {errorHojaCosteo && <div className="alert alert-error" role="alert">{errorHojaCosteo}</div>}
           {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button></div>}
@@ -1378,23 +1446,6 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {workStep === 1 && <section className="dx-initial-card"><h2>Equipo recibido</h2><dl className="dx-work-reception-grid"><div><dt>Equipo</dt><dd>{form.referencia?.activo || selected.activo_nombre || '—'}</dd></div><div><dt>Cliente</dt><dd>{form.referencia?.cliente || '—'}</dd></div><div><dt>Marca / modelo</dt><dd>{[form.referencia?.marca, form.referencia?.modelo].filter(Boolean).join(' · ') || '—'}</dd></div><div><dt>Serie</dt><dd>{form.referencia?.numero_serie || form.referencia?.placa_serie || '—'}</dd></div><div><dt>Recepción</dt><dd>{form.referencia?.numero || '—'}</dd></div><div><dt>Fecha de ingreso</dt><dd>{form.referencia?.fecha_ingreso ? new Date(form.referencia.fecha_ingreso).toLocaleDateString('es-PE') : '—'}</dd></div></dl></section>}
             {workStep === 2 && <><section className="dx-initial-card"><h2>Equipo recibido</h2><dl className="dx-work-reception-grid"><div><dt>Equipo</dt><dd>{form.referencia?.activo || selected.activo_nombre || '—'}</dd></div><div><dt>Cliente</dt><dd>{form.referencia?.cliente || '—'}</dd></div><div><dt>Marca / modelo</dt><dd>{[form.referencia?.marca, form.referencia?.modelo].filter(Boolean).join(' · ') || '—'}</dd></div><div><dt>Serie</dt><dd>{form.referencia?.numero_serie || form.referencia?.placa_serie || '—'}</dd></div></dl></section><section className="dx-initial-card"><h2>Tipo de componente</h2>{selected.componente_nombre ? <div className="dx-initial-component"><div className="dx-drawing-canvas dx-initial-thumb" dangerouslySetInnerHTML={{ __html: markupDibujoHallazgo(selected.componente_svg || '') }} /><strong>{selected.componente_nombre}</strong></div> : <p>—</p>}</section></>}
             {workStep === 3 && <><section className="dx-initial-card"><div className="field"><label>Motivo o falla reportada por el cliente</label><textarea className="input" rows="4" value={datosIniciales.motivo} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, motivo: event.target.value }))} placeholder="—" /></div></section><section className="dx-initial-card dx-initial-grid"><div className="field"><label>Técnico responsable</label><select className="input" value={datosIniciales.tecnico_id} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, tecnico_id: event.target.value }))}><option value="">{selected.tecnico_nombre || '—'}</option>{tecnicosInicio.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}</select></div><div className="field"><label>Fecha de inspección</label><input className="input" type="date" value={datosIniciales.fecha_inspeccion} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, fecha_inspeccion: event.target.value }))} /></div></section></>}
-          </div>}
-          {selected.tipo === 'fabricacion' && workStep === 1 && <div className="dx-initial-flow dx-existing-initial-flow">
-            <section className="dx-initial-card"><h2>Oportunidad</h2><dl className="dx-work-reception-grid"><div><dt>Oportunidad</dt><dd>{form.referencia?.numero || '—'}</dd></div><div><dt>Cliente</dt><dd>{form.referencia?.cliente || '—'}</dd></div><div><dt>Etapa</dt><dd>{form.referencia?.etapa ? etiquetaEtapa(form.referencia.etapa) : '—'}</dd></div><div><dt>Monto estimado</dt><dd>{montoOportunidad(form.referencia) || '—'}</dd></div></dl></section>
-          </div>}
-          {selected.tipo === 'fabricacion' && workStep === pasoFinal('fabricacion') && <div className="dx-initial-flow dx-existing-initial-flow">
-            <section className="dx-initial-card dx-fab-emitir" aria-labelledby="dx-fab-emitir-title">
-              <h2 id="dx-fab-emitir-title">{isReadOnly ? 'Trabajos emitidos' : 'Resumen para emitir'}</h2>
-              {grupos.length ? <ul className="dx-fab-emitir-list">{grupos.map(group => { const horasGrupo = group.lines.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0); return <li key={group.familia.id}><span>{group.familia.nombre}</span><b>{group.lines.length} tarea{group.lines.length === 1 ? '' : 's'} · {horasGrupo.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h-h</b></li>; })}</ul> : <p className="muted">Aún no hay trabajos. Agrégalos en el paso Trabajos a realizar.</p>}
-            </section>
-            {!isReadOnly && <section className="dx-initial-card dx-fab-emitir" aria-labelledby="dx-fab-checks-title">
-              <h2 id="dx-fab-checks-title">Antes de emitir</h2>
-              <ul className="dx-fab-emitir-checks">
-                <li className={grupos.length && !trabajosIncompletos.length ? 'is-ok' : 'is-warn'}>{!grupos.length ? 'Agrega al menos un trabajo.' : trabajosIncompletos.length ? `Hay trabajos sin actividades ni tareas: ${trabajosIncompletos.map(group => group.familia.nombre).join(', ')}.` : 'Cada trabajo tiene al menos una tarea o actividad costeada.'}</li>
-                <li className={cambiosSinGuardar ? 'is-warn' : 'is-ok'}>{cambiosSinGuardar ? 'Hay cambios sin guardar en los trabajos.' : 'Todos los cambios están guardados.'}</li>
-                <li className="is-info">Al emitir, el diagnóstico queda de solo lectura. Después podrás generar la Hoja de Costeo desde aquí.</li>
-              </ul>
-            </section>}
           </div>}
           <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && (informePanel || workStep <= 3) ? ' dx-work-hidden' : ''}${selected.tipo === 'fabricacion' && workStep !== pasoTrabajos('fabricacion') ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}

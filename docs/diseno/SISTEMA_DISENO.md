@@ -40,7 +40,9 @@ Tipografía: **Sora** para títulos y números destacados, **DM Sans** para text
 | Clase | Qué es |
 |---|---|
 | `dx-ui` | Raíz de la pantalla: variables, fuente, ancho completo |
-| `dx-ui-summary` + `dx-ui-chip` (`b` número, `span` etiqueta) | Tarjetas de resumen arriba del listado |
+| `dx-ui-kpi-row` + `dx-ui-kpi` (`strong` número, `span` etiqueta) | Tarjetas KPI de resumen (sección 10; reemplaza a `dx-ui-summary`/`dx-ui-chip` en pantallas nuevas) |
+| `dx-ui-form-grid` (+ `is-2`), `dx-ui-field`, `dx-ui-select`, `dx-ui-required`, `dx-ui-field-error`, `dx-ui-field-hint` | Formularios: rejilla de 3 (o 2) columnas, campos y selects de 40 px, asterisco y errores por campo |
+| `dx-ui-summary` + `dx-ui-chip` (`b` número, `span` etiqueta) | Resumen heredado (pantallas antiguas) |
 | `dx-ui-card` | Tarjeta principal; es el contenedor de la consulta de ancho (`@container`) |
 | `dx-ui-toolbar` (`h2`), `dx-ui-count`, `dx-ui-search` (`input`) | Barra superior: título, contador y buscador |
 | `dx-ui-head`, `dx-ui-row` | Cabecera y filas en cuadrícula; las columnas salen de `--dx-ui-cols` |
@@ -121,6 +123,10 @@ Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/
 - El error aparece justo debajo del control en 12 px rojo, con `role="alert"` o `aria-describedby`; el control lleva `aria-invalid` y borde rojo.
 - El desplegable de un selector de referencia nunca altera la altura del campo: se posiciona bajo el control y admite scroll.
 - La validación devuelve los errores por campo en una sola pasada; cada error se muestra bajo su control y el foco va al primer campo inválido. El pie del modal queda reservado para errores del servidor.
+- `dx-ui-form-grid is-2` fija dos columnas; ambas variantes pasan a una columna bajo 480 px de contenedor o 600 px de ventana.
+- La etiqueta puede ser el primer `span` o un `<label>` hijo directo (o `.dx-ui-label` si agrupa controles); ambas formas comparten estilo.
+- `dx-ui-field-hint` es el texto de ayuda gris de 12 px bajo el control.
+- Pantallas que ya usan el estándar: Transporte y WMS (Despachos, Stock mínimos, Conteos, Custodia, Configuración, Vencimientos, Devoluciones, Herramientas, Etiquetas, Reporte valorizado).
 
 ### Familias KPI existentes por migrar
 

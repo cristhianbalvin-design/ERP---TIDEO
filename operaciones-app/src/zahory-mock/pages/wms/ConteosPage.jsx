@@ -117,10 +117,10 @@ export function ConteosPage() {
     {!config.modulos.conteos && <div className="dx-w-note amber" role="status">El módulo de conteos está desactivado en Configuración del WMS.</div>}
     {aviso && <div className="dx-w-note green" role="status">{aviso}</div>}
     {error && <div className="dx-w-note red" role="alert">{error}</div>}
-    <div className="dx-ui-summary">
-      <div className="dx-ui-chip"><b>{enCurso}</b><span>En proceso</span></div>
-      <div className="dx-ui-chip"><b>{porAprobar}</b><span>Por aprobar</span></div>
-      <div className="dx-ui-chip"><b>{formatoMoneda(config.umbral_aprobacion_ajuste)}</b><span>Umbral de aprobación</span></div>
+    <div className="dx-ui-kpi-row">
+      <div className="dx-ui-kpi"><strong>{enCurso}</strong><span>En proceso</span></div>
+      <div className="dx-ui-kpi"><strong>{porAprobar}</strong><span>Por aprobar</span></div>
+      <div className="dx-ui-kpi"><strong>{formatoMoneda(config.umbral_aprobacion_ajuste)}</strong><span>Umbral de aprobación</span></div>
     </div>
     <div className="dx-w-side">
       <div className="dx-ui-card">
@@ -191,11 +191,11 @@ export function ConteosPage() {
     {form && <div className="dx-w-overlay" onMouseDown={e => { if (e.target === e.currentTarget && !ocupado) setForm(null); }}>
       <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcnt-nuevo-t" onSubmit={crear}>
         <h3 id="dx-wcnt-nuevo-t">Nuevo conteo</h3>
-        <div className="dx-w-field"><label htmlFor="dx-wcnt-alm">Almacén</label><select id="dx-wcnt-alm" value={form.almacen_id} onChange={e => setForm({ ...form, almacen_id: e.target.value })}>{almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} · {a.nombre}</option>)}</select></div>
-        <div className="dx-w-field"><span>Tipo de conteo</span><div className="dx-w-seg" role="group" aria-label="Tipo de conteo">{Object.entries(TIPOS).map(([id, label]) => <button key={id} type="button" className={form.tipo === id ? 'on' : ''} aria-pressed={form.tipo === id} onClick={() => setForm({ ...form, tipo: id })}>{label}</button>)}</div></div>
-        {form.tipo === 'zona' && <div className="dx-w-field"><label htmlFor="dx-wcnt-zona">Ubicaciones que empiezan por</label><input id="dx-wcnt-zona" placeholder="Ej.: A-01" maxLength={30} value={form.ubicacion_prefijo} onChange={e => setForm({ ...form, ubicacion_prefijo: e.target.value })} /></div>}
-        {form.tipo === 'ciclico' && <div className="dx-w-field"><label htmlFor="dx-wcnt-clase">Clase ABC (por consumo valorizado del último año)</label><select id="dx-wcnt-clase" value={form.clase} onChange={e => setForm({ ...form, clase: e.target.value })}><option value="A">A · 80% del consumo</option><option value="B">B · siguiente 15%</option><option value="C">C · resto</option></select></div>}
-        <div className="dx-w-field"><label htmlFor="dx-wcnt-nombre">Nombre · opcional</label><input id="dx-wcnt-nombre" maxLength={120} value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wcnt-alm">Almacén<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcnt-alm" value={form.almacen_id} onChange={e => setForm({ ...form, almacen_id: e.target.value })}>{almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} · {a.nombre}</option>)}</select></div>
+        <div className="dx-ui-field"><span className="dx-ui-label">Tipo de conteo<span className="dx-ui-required" aria-hidden="true">*</span></span><div className="dx-w-seg" role="group" aria-label="Tipo de conteo">{Object.entries(TIPOS).map(([id, label]) => <button key={id} type="button" className={form.tipo === id ? 'on' : ''} aria-pressed={form.tipo === id} onClick={() => setForm({ ...form, tipo: id })}>{label}</button>)}</div></div>
+        {form.tipo === 'zona' && <div className="dx-ui-field"><label htmlFor="dx-wcnt-zona">Ubicaciones que empiezan por</label><input id="dx-wcnt-zona" placeholder="Ej.: A-01" maxLength={30} value={form.ubicacion_prefijo} onChange={e => setForm({ ...form, ubicacion_prefijo: e.target.value })} /></div>}
+        {form.tipo === 'ciclico' && <div className="dx-ui-field"><label htmlFor="dx-wcnt-clase">Clase ABC (por consumo valorizado del último año)</label><select id="dx-wcnt-clase" value={form.clase} onChange={e => setForm({ ...form, clase: e.target.value })}><option value="A">A · 80% del consumo</option><option value="B">B · siguiente 15%</option><option value="C">C · resto</option></select></div>}
+        <div className="dx-ui-field"><label htmlFor="dx-wcnt-nombre">Nombre · opcional</label><input id="dx-wcnt-nombre" maxLength={120} value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></div>
         {error && <div className="dx-w-note red" role="alert">{error}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setForm(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Creando…' : 'Crear conteo'}</button></div>
       </form>

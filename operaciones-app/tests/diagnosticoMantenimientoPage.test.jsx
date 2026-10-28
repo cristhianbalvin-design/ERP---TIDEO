@@ -45,7 +45,8 @@ describe('Flujo de mantenimiento en página', () => {
     expect(page).toContain('const pasos = pasosDiagnostico(tipoActual);');
     expect(flow).toContain("'Trabajos a realizar'");
     expect(flow).toContain("'Diagn\\u00f3stico e informe'");
-    expect(flow).toContain("'Emitir y costear'");
+    expect(flow).toContain("'Plano y caracter\\u00edsticas'");
+    expect(flow).toContain("'Revisi\\u00f3n e informe'");
   });
   it('restablece estado temporal del panel de tareas al abrir un borrador', () => {
     const start = page.indexOf('const openExisting = async diagnostico => {');

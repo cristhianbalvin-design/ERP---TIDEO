@@ -22,10 +22,16 @@ import { StockMinimosPage } from '../pages/wms/StockMinimosPage.jsx';
 import { ConteosPage } from '../pages/wms/ConteosPage.jsx';
 import { CustodiaPage } from '../pages/wms/CustodiaPage.jsx';
 import { ConfiguracionWmsPage } from '../pages/wms/ConfiguracionWmsPage.jsx';
+import { VencimientosPage } from '../pages/wms/VencimientosPage.jsx';
+import { DevolucionesPage } from '../pages/wms/DevolucionesPage.jsx';
+import { HerramientasPage } from '../pages/wms/HerramientasPage.jsx';
+import { EtiquetasPage } from '../pages/wms/EtiquetasPage.jsx';
+import { ReporteValorizadoPage } from '../pages/wms/ReporteValorizadoPage.jsx';
 
 export const supplyAdministrationRouteIds = new Set([
   'solicitudes', 'almacen-inventario', 'almacen-reservas', 'almacen-alertas', 'almacen-ubicaciones', 'almacen-gemelo', 'almacen-minas',
   'almacen-despachos', 'almacen-conteos', 'almacen-custodia', 'almacen-config',
+  'almacen-vencimientos', 'almacen-devoluciones', 'almacen-herramientas', 'almacen-etiquetas', 'almacen-reportes',
   'compras-proveedores', 'compras-cotizaciones', 'compras-oc',
   'compras-importaciones', 'compras-recepciones',
   'consolidado', 'finanzas-cxc', 'finanzas-cxp', 'finanzas-tesoreria',
@@ -54,6 +60,11 @@ export function renderSupplyAdministrationRoute(route, context) {
     case 'almacen-conteos': return <ConteosPage />;
     case 'almacen-custodia': return <CustodiaPage />;
     case 'almacen-config': return <ConfiguracionWmsPage />;
+    case 'almacen-vencimientos': return <VencimientosPage />;
+    case 'almacen-devoluciones': return <DevolucionesPage />;
+    case 'almacen-herramientas': return <HerramientasPage />;
+    case 'almacen-etiquetas': return <EtiquetasPage />;
+    case 'almacen-reportes': return <ReporteValorizadoPage />;
     case 'almacen-ubicaciones': return <UbicacionesPage />;
     case 'almacen-gemelo': return <GemeloAlmacenPage />;
     case 'almacen-minas': return <MinasProyectosPage />;

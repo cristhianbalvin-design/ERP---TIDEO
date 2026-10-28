@@ -15,7 +15,25 @@ export async function guardarNotificacionConfig({ empresaId, evento, activo, par
 
 export async function listarEnviosNotificaciones(empresaId, limite = 100) {
   const sb = await getSupabaseClient();
-  return sb.rpc('notif_envios_listar', { p_empresa_id: empresaId, p_limite: limite });
+  return sb.rpc('notif_envios_listar_v2', { p_empresa_id: empresaId, p_limite: limite });
+}
+
+export function etiquetaEntregaWhatsApp(row = {}) {
+  if (row.canal !== 'whatsapp') return null;
+  if (row.estado_entrega === 'fallido') {
+    return { etiqueta: `Falló: ${String(row.error_entrega || 'Error de entrega')}`, variante: 'err' };
+  }
+  const entregas = {
+    entregado: ['Entregado', row.entregado_en],
+    leido: ['Leído', row.leido_en],
+  };
+  const entrega = entregas[row.estado_entrega];
+  if (!entrega) return null;
+  const [etiqueta, momento] = entrega;
+  const hora = momento ? new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(momento)) : '';
+  return { etiqueta: hora ? `${etiqueta} · ${hora}` : etiqueta, variante: 'ok' };
 }
 
 export async function ejecutarNotificacionesAhora(empresaId) {
