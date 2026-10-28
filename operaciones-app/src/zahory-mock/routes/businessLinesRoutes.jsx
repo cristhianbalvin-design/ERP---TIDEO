@@ -27,13 +27,13 @@ import {
 import { BandejaOFPage } from '../pages/of/BandejaOFPage.jsx';
 import {
   DashboardTransporte,
-  MonitorViajes,
-  CrearOVPage,
   HojaDeRuta,
   LiquidacionTransporte,
 } from '../pages/TransportePages.jsx';
 import { MaestroRutasPage } from '../pages/transporte/MaestroRutasPage.jsx';
 import { TarifasTransportePage } from '../pages/transporte/TarifasTransportePage.jsx';
+import { MonitorViajesPage } from '../pages/transporte/MonitorViajesPage.jsx';
+import { OrdenViajePage } from '../pages/transporte/OrdenViajePage.jsx';
 import {
   DashboardRepuestos,
   PedidosVenta,
@@ -88,8 +88,8 @@ export function renderBusinessLinesRoute(route, context) {
     case 'monitoreo-equipos': return <PlaceholderPage title="Monitoreo de Equipos" />;
 
     case 'dashboard-transporte': return <DashboardTransporte onNav={onNavigate} />;
-    case 'transporte-viajes': return <MonitorViajes onNav={onNavigate} setCurrentOV={setCurrentOV} />;
-    case 'transporte-crear-ov': return <CrearOVPage onNav={onNavigate} />;
+    case 'transporte-viajes': return <MonitorViajesPage onNav={onNavigate} />;
+    case 'transporte-crear-ov': return <OrdenViajePage onNav={onNavigate} />;
     case 'transporte-ruta': return <HojaDeRuta onNav={onNavigate} ovId={currentOV} />;
     case 'transporte-tarifas': return <MaestroRutasPage />;
     case 'transporte-liquidacion': return <LiquidacionTransporte onNav={onNavigate} />;

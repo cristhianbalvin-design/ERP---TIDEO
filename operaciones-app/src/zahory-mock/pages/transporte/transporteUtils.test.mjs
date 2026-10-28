@@ -141,3 +141,82 @@ test('búsqueda normaliza tildes y exige todos los términos en todos los campos
   assert.equal(busqueda.filtrarBusquedaInteligente([{ nombre: 'José Pérez' }], 'jose perez').length, 1);
   assert.equal(busqueda.filtrarBusquedaInteligente(rows, 'lima lejos').length, 0);
 });
+
+test('cantidad facturable e ingreso estimado siguen la regla SQL del viaje', () => {
+  assert.equal(utils.cantidadFacturableViaje('viaje', {}), 1);
+  assert.equal(utils.cantidadFacturableViaje('km', { distancia_km: '12.5' }), 12.5);
+  assert.equal(utils.cantidadFacturableViaje('tonelada', { peso_toneladas: 2 }), 2);
+  assert.equal(utils.cantidadFacturableViaje('hora', { duracion_estimada_horas: null }), null);
+  assert.equal(utils.ingresoEstimadoViaje(2.125, 3, 10), 10);
+  assert.equal(utils.ingresoEstimadoViaje(2.125, 3, 0), 6.38);
+  assert.equal(utils.ingresoEstimadoViaje(null, 1, 0), null);
+});
+
+test('agrupa estados, etiqueta y colorea el viaje; conserva las transiciones SQL', () => {
+  assert.equal(utils.grupoEstadoViaje('despachado'), 'en_curso');
+  assert.equal(utils.grupoEstadoViaje('con_incidente'), 'en_curso');
+  assert.equal(utils.grupoEstadoViaje('cancelado'), 'cerrados');
+  assert.equal(utils.etiquetaEstadoViaje('en_liquidacion'), 'En liquidación');
+  assert.equal(utils.colorEstadoViaje('entregado'), 'is-green');
+  assert.deepEqual(utils.accionesPermitidasViaje('borrador'), ['programado','cancelado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('programado'), ['despachado','borrador','cancelado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('despachado'), ['en_ruta','cancelado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('en_ruta'), ['con_incidente','entregado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('con_incidente'), ['en_ruta','entregado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('entregado'), ['en_liquidacion']);
+  assert.deepEqual(utils.accionesPermitidasViaje('en_liquidacion'), ['cerrado','entregado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('cerrado'), []);
+  assert.deepEqual(utils.accionesPermitidasViaje('cancelado'), []);
+});
+
+test('valida formulario de viaje por campo y ordena paradas renumerando secuencia', () => {
+  const invalid = utils.validarFormularioViaje({ moneda:'EUR', modalidad:'otro', paradas:[{nombre:''}] });
+  assert.ok(invalid.cuenta_id);
+  assert.ok(invalid.origen_nombre);
+  assert.ok(invalid.moneda);
+  assert.ok(invalid.modalidad);
+  assert.ok(invalid.parada_0);
+  assert.deepEqual(utils.ordenarParadasViaje([{secuencia:3,nombre:'C'},{secuencia:1,nombre:'A'}]), [
+    {secuencia:1,nombre:'A'},{secuencia:2,nombre:'C'},
+  ]);
+});
+
+test('normaliza referencias y números opcionales vacíos del payload del viaje a null', () => {
+  const payload = utils.normalizarPayloadViaje({
+    os_cliente_id: '', cotizacion_id: '', ruta_id: '', tarifa_id: '', sociedad_id: '',
+    transportista_id: '', vehiculo_id: '', conductor_id: '',
+    distancia_km: '', duracion_estimada_horas: '', peso_toneladas: '', volumen_m3: '',
+    tarifa_unitaria: '', minimo_facturable: '', cantidad_facturable: '',
+    paradas: [{ tipo: 'origen', guia_remision_id: '' }],
+  });
+  for (const key of ['os_cliente_id','cotizacion_id','ruta_id','tarifa_id','sociedad_id','transportista_id','vehiculo_id','conductor_id','distancia_km','duracion_estimada_horas','peso_toneladas','volumen_m3','tarifa_unitaria','minimo_facturable','cantidad_facturable']) assert.equal(payload[key], null, key);
+  assert.equal(payload.paradas[0].guia_remision_id, null);
+  assert.equal(utils.normalizarPayloadViaje({ distancia_km: '12.5' }).distancia_km, 12.5);
+});
+
+test('sincroniza paradas de origen y destino, y mantiene ambas ancladas al ordenar', () => {
+  const stops = utils.sincronizarParadasViaje([{ tipo: 'destino', nombre: '' }, { tipo: 'recojo', nombre: 'B' }, { tipo: 'origen', nombre: '' }], 'Lima', 'Cusco');
+  assert.deepEqual(stops.map(stop => [stop.tipo, stop.nombre]), [['origen','Lima'],['recojo','B'],['destino','Cusco']]);
+  const manual = utils.sincronizarParadasViaje([{ tipo: 'origen', nombre: 'Almacén', nombre_manual: true }, { tipo: 'destino', nombre: 'Cusco' }], 'Lima', 'Arequipa');
+  assert.deepEqual(manual.map(stop => [stop.tipo, stop.nombre]), [['origen','Almacén'],['destino','Arequipa']]);
+});
+
+test('estima ingreso mensual solo para compromisos y separa monedas usando el mes local', () => {
+  const referencia = new Date(2026, 9, 15, 12);
+  const viajes = [
+    { estado:'programado', fecha_programada:'2026-10-02', moneda:'PEN', ingreso_estimado:1000 },
+    { estado:'cancelado', fecha_programada:'2026-10-03', moneda:'PEN', ingreso_estimado:3232 },
+    { estado:'borrador', fecha_programada:'2026-10-04', moneda:'PEN', ingreso_estimado:500 },
+    { estado:'en_ruta', fecha_programada:'2026-10-05', moneda:'USD', ingreso_estimado:250 },
+    { estado:'entregado', fecha_programada:'2026-09-30', moneda:'PEN', ingreso_estimado:99 },
+  ];
+
+  assert.deepEqual(utils.ingresoEstimadoMesViajes(viajes, referencia), { PEN:1000, USD:250 });
+});
+
+test('convierte hora UTC a hora local y de regreso con offset explícito, sin usar zona de la máquina', () => {
+  const utc = '2026-10-28T13:00:00Z';
+  const local = utils.fechaUtcAFechaLocalInput(utc, -300);
+  assert.equal(local, '2026-10-28T08:00');
+  assert.equal(utils.fechaLocalInputAFechaUtc(local, -300), '2026-10-28T13:00:00.000Z');
+});

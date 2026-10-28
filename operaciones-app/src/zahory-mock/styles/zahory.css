@@ -2433,6 +2433,8 @@ a { color: var(--cyan); text-decoration: none; }
   background:#020617; color:#F8FAFC;
 }
 
+
+
 [data-theme='dark'] .dx-summary-chips > span { border-color:var(--dx-ui-line); background:var(--dx-ui-card); color:var(--dx-ui-gray); }
 [data-theme='dark'] .dx-modal .diagnostico-modal-footer { border-color:var(--dx-ui-line); background:var(--dx-ui-card); }
 [data-theme='dark'] .dx-inf-missing-diagnosis { color:#FDBA74; }
@@ -6145,8 +6147,8 @@ width:20px;height:20px}
 .dx-ui.dx-transporte { container-type:inline-size; padding:24px 28px 60px; }
 .dx-transporte .dx-ui-kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .dx-transporte .dx-ui-kpi { min-width:0; padding-inline:10px; }
-.dx-transporte .dx-ui-kpi strong { flex:none; white-space:nowrap; }
-.dx-transporte .dx-ui-kpi span { display:-webkit-box; min-width:0; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:14px; white-space:normal; }
+.dx-transporte .dx-ui-kpi strong { flex:none; min-width:0; white-space:nowrap; }
+.dx-transporte .dx-ui-kpi span { display:-webkit-box; flex:1 1 auto; min-width:104px; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:14px; white-space:normal; }
 @container (min-width:702px) {
   .dx-transporte .dx-ui-kpi-row { grid-template-columns:repeat(4,minmax(0,1fr)); }
 }
@@ -6156,6 +6158,10 @@ width:20px;height:20px}
 .dx-transporte .dx-ui-kpi { height:56px; min-height:56px; }
 .dx-transporte .dx-ui-kpi strong { white-space:nowrap; }
 .dx-transporte .dx-ui-kpi .dx-transporte-no-data { color:var(--dx-ui-gray); font:400 13px 'DM Sans',sans-serif; }
+@container (min-width:702px) and (max-width:1100px), (max-width:600px) {
+  .dx-transporte .dx-ui-kpi { align-items:flex-start; flex-direction:column; justify-content:center; gap:2px; padding-block:0; }
+  .dx-transporte .dx-ui-kpi span { flex:none; width:100%; min-width:0; }
+}
 .dx-transporte .dx-transporte-form-section { grid-column:1/-1; margin:4px 0 -6px; padding-bottom:6px; border-bottom:1px solid var(--dx-ui-line); color:var(--dx-ui-navy); font:700 13px 'Sora',sans-serif; }
 .dx-transporte .dx-transporte-distance { white-space:nowrap; }
 .dx-transporte input[type="date"] { color-scheme:light; }
@@ -6218,8 +6224,8 @@ width:20px;height:20px}
   .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-segment,
   .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-date { box-sizing:border-box; width:100%; min-width:0; }
   .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-select { height:40px; min-height:40px; }
-  .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-segment { min-height:40px; align-items:center; }
-  .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-segment button { flex:1; min-height:32px; }
+  .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-segment { min-height:40px; align-items:center; flex-wrap:wrap; border-radius:12px; }
+  .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-segment button { flex:1 1 30%; min-width:0; min-height:32px; padding-inline:6px; white-space:normal; }
   .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-date { align-items:stretch; flex-direction:column; gap:6px; padding:8px 10px; }
   .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-date>span { white-space:nowrap; }
   .dx-transporte .dx-transporte-list .dx-ui-toolbar>.dx-ui-date input { box-sizing:border-box; width:100%; min-width:0; height:40px; }
@@ -6234,6 +6240,71 @@ width:20px;height:20px}
 [data-theme='dark'] .dx-transporte-modal > .card-header .dx-modal-close,:host([data-theme='dark']) .dx-transporte-modal > .card-header .dx-modal-close { background:var(--dx-ui-card); color:var(--dx-ui-ink); border-color:var(--dx-ui-line); }
 [data-theme='dark'] .dx-transporte-modal .diagnostico-modal-footer .btn-secondary,:host([data-theme='dark']) .dx-transporte-modal .diagnostico-modal-footer .btn-secondary { background:var(--dx-ui-card); color:var(--dx-ui-ink); border-color:var(--dx-ui-line); }
 /* Diagnóstico · flujo único: paso «Emitir y costear» de Fabricación y líneas emitidas como texto */
+/* Transporte Comercial · monitor y orden de viaje */
+.dx-transporte-viajes .dx-transporte-list .dx-ui-toolbar { flex-wrap:wrap; }
+.dx-transporte .dx-transporte-trip-cols { --dx-ui-cols:minmax(78px,.7fr) minmax(82px,1fr) minmax(90px,1.2fr) minmax(96px,.8fr) minmax(82px,1fr) minmax(100px,.9fr) minmax(82px,.8fr); }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols { cursor:pointer; }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols:hover { background:var(--dx-ui-hover,rgba(14,165,233,.05)); }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols strong,.dx-transporte .dx-ui-row.dx-transporte-trip-cols>span { min-width:0; }
+.dx-transporte .dx-ui-head.dx-transporte-trip-cols>:first-child,.dx-transporte .dx-ui-head.dx-transporte-trip-cols>:nth-child(4) { white-space:nowrap; }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols>:nth-child(2),.dx-transporte .dx-ui-row.dx-transporte-trip-cols>:nth-child(3) { min-width:0; overflow:hidden; }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols>:nth-child(2)>b,.dx-transporte .dx-ui-row.dx-transporte-trip-cols>:nth-child(3) { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; text-overflow:ellipsis; }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols>:nth-child(2)>small:not(.dx-transporte-card-label) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dx-transporte .dx-transporte-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 20px; margin:0; }
+.dx-transporte .dx-transporte-detail-grid>div { min-width:0; }
+.dx-transporte .dx-transporte-detail-grid dt { color:var(--dx-ui-gray); font-size:11px; font-weight:700; text-transform:uppercase; }
+.dx-transporte .dx-transporte-detail-grid dd { margin:3px 0 0; color:var(--dx-ui-ink); overflow-wrap:anywhere; }
+.dx-transporte .dx-transporte-stops,.dx-transporte .dx-transporte-events { display:grid; gap:8px; padding-left:22px; }
+.dx-transporte .dx-transporte-stops li,.dx-transporte .dx-transporte-events li { display:grid; gap:3px; padding:8px 10px; border:1px solid var(--dx-ui-line); border-radius:8px; }
+.dx-transporte .dx-transporte-next { margin-top:16px; padding:12px; border-radius:9px; background:var(--dx-ui-cyan-bg); }
+.dx-transporte .dx-transporte-next p { margin:4px 0 0; }
+.dx-transporte-stop-edit { grid-column:1/-1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:12px; border:1px solid var(--dx-ui-line); border-radius:10px; }
+.dx-transporte-stop-edit>b { grid-column:1/-1; }
+.dx-transporte-detail-actions { display:flex; flex-wrap:wrap; gap:8px; }
+@container (max-width:760px) {
+  .dx-transporte .dx-ui-head.dx-transporte-trip-cols { display:none; }
+  .dx-transporte .dx-ui-row.dx-transporte-trip-cols { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; padding:14px; }
+  .dx-transporte .dx-ui-row.dx-transporte-trip-cols>:first-child,.dx-transporte .dx-ui-row.dx-transporte-trip-cols>:nth-child(3) { grid-column:1/-1; }
+  .dx-transporte .dx-ui-row.dx-transporte-trip-cols .dx-transporte-card-label { display:block; margin-bottom:2px; color:var(--dx-ui-gray); font-size:10px; font-weight:700; text-transform:uppercase; }
+  .dx-transporte .dx-transporte-detail-grid { grid-template-columns:minmax(0,1fr); }
+}
+@container (max-width:480px) { .dx-transporte-stop-edit { grid-template-columns:minmax(0,1fr); } }
+.dx-transporte .dx-transporte-form-block { margin:0 0 22px; }
+.dx-transporte .dx-transporte-form-block:last-child { margin-bottom:0; }
+.dx-transporte .dx-transporte-form-block>.dx-transporte-form-section { margin:0 0 14px; }
+.dx-transporte-tariff-search { display:grid; align-content:start; gap:6px; }
+.dx-transporte-tariff-search>span { min-height:15px; }
+.dx-transporte-tariff-search .dx-btn { height:40px; justify-self:start; }
+.dx-transporte .dx-transporte-income { display:grid; align-content:center; gap:5px; min-height:70px; padding:12px 14px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-cyan-bg); }
+.dx-transporte-income>span,.dx-transporte-tariff-origin>span { color:var(--dx-ui-gray); font-size:11px; font-weight:700; text-transform:uppercase; }
+.dx-transporte-income>strong { color:var(--dx-ui-navy); font:700 19px 'Sora',sans-serif; }
+.dx-transporte-tariff-origin { display:grid; align-content:center; gap:5px; min-height:70px; }
+.dx-transporte-tariff-origin>strong { color:var(--dx-ui-ink); }
+.dx-transporte-tariff-origin>small { color:var(--dx-ui-gray); }
+.dx-transporte-stops-block>.dx-ui-form-grid { grid-template-columns:minmax(0,1fr); }
+.dx-transporte-stop-actions { display:flex; align-items:center; gap:6px; }
+.dx-transporte-stop-actions .dx-btn.sm { min-width:34px; height:32px; padding:0 9px; }
+.dx-transporte-add-stops { display:flex; flex-wrap:wrap; gap:8px; }
+.dx-transporte .dx-ui-field-full { grid-column:1/-1; }
+.dx-transporte .dx-transporte-form,.dx-transporte .dx-transporte-detail { box-sizing:border-box; min-width:0; max-width:100%; }
+.dx-transporte .dx-transporte-form :is(form,.dx-ui-form-grid,.dx-ui-field,.dx-ui-reference,.dx-transporte-stop-edit),.dx-transporte .dx-transporte-detail :is(section,dl,ol,li) { box-sizing:border-box; min-width:0; max-width:100%; }
+.dx-transporte .dx-transporte-form :is(input,select,textarea),.dx-transporte-detail-actions input { box-sizing:border-box; min-width:0; max-width:100%; }
+.dx-transporte .dx-transporte-stops li>*,.dx-transporte .dx-transporte-events li>* { min-width:0; overflow-wrap:anywhere; }
+.dx-transporte .dx-transporte-detail-actions input { flex:1 1 180px; }
+.dx-transporte-detail h3 { margin:20px 0 10px; color:var(--dx-ui-navy); font:700 14px 'Sora',sans-serif; }
+.dx-transporte-detail .dx-transporte-detail-grid { padding-bottom:4px; }
+/* Transporte: equal reference selector baselines and compact trip rows. */
+.dx-transporte .dx-ui-reference > label { box-sizing:border-box; height:18px; line-height:18px; }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols > .dx-transporte-code { white-space:nowrap; }
+.dx-transporte .dx-ui-row.dx-transporte-trip-cols > .dx-transporte-unit { display:flex; min-width:0; flex-direction:column; gap:2px; overflow:hidden; }
+.dx-transporte-unit>b,.dx-transporte-unit>small { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dx-transporte-detail .dx-transporte-next { color:var(--dx-ui-ink); }
+[data-theme='dark'] .dx-transporte .dx-transporte-income { background:var(--dx-ui-card); }
+[data-theme='dark'] .dx-transporte .dx-transporte-income>strong,[data-theme='dark'] .dx-transporte-detail h3 { color:var(--dx-ui-ink); }
+@container (max-width:480px) {
+  .dx-transporte-tariff-search { grid-column:1/-1; }
+  .dx-transporte .dx-transporte-income,.dx-transporte .dx-transporte-tariff-origin { grid-column:1/-1; }
+}
 .dx-work-page .dx-fab-emitir-list,.dx-work-page .dx-fab-emitir-checks{display:grid;gap:0;margin:0;padding:0;list-style:none}
 .dx-work-page .dx-fab-emitir-list li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 0;border-top:1px solid var(--dx-ui-line-soft);color:var(--dx-ui-ink)}
 .dx-work-page .dx-fab-emitir-list li:first-child{border-top:0}
