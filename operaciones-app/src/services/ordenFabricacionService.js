@@ -84,3 +84,79 @@ export async function crearOFDesdeOS(osId, copiarHoja) {
   const { data: of } = await sb.from('ordenes_fabricacion').select('id,numero').eq('id', id).maybeSingle();
   return { id, numero: of?.numero || '' };
 }
+
+const COLUMNAS_FICHA = [
+  'id,numero,estado,descripcion,fecha_apertura,fecha_compromiso,moneda,costo_estimado,costo_real,avance_pct,created_at,',
+  'os:os_clientes(id,numero,nombre,tipo_ejecucion),',
+  'cuenta:cuentas(id,razon_social,nombre_comercial),',
+  'activo:activos(id,codigo,nombre),',
+  'hoja:hojas_costeo(id,numero),',
+  'operaciones:of_operaciones(id,secuencia,titulo,horas_estimadas,horas_maquina,horas_reales,costo_estimado,estado,avance_pct,',
+  'trabajo:familia_trabajo(nombre),',
+  'actividad:tipos_servicio_interno!of_operaciones_actividad_id_fkey(nombre),',
+  'cargo:cargos_empresa(nombre),',
+  'equipo:activos(codigo,nombre),',
+  'bahia:planner_bahias(nombre)),',
+  'materiales:of_materiales(id,descripcion,unidad,cantidad_plan,cantidad_real,costo_unitario,origen,no_planificado,operacion_id)',
+].join('');
+
+const nombreActivo = a => (a ? [a.codigo !== a.nombre ? a.codigo : null, a.nombre].filter(Boolean).join(' · ') : '');
+
+export function normalizarFichaOF(fila) {
+  const operaciones = [...(fila.operaciones || [])]
+    .sort((a, b) => (a.secuencia || 0) - (b.secuencia || 0))
+    .map(op => ({
+      id: op.id,
+      linea_id: op.id,
+      secuencia: op.secuencia,
+      trabajo: op.trabajo?.nombre || '',
+      actividad: op.actividad?.nombre || '',
+      tarea: op.titulo,
+      cargo: op.cargo?.nombre || '',
+      horas: Number(op.horas_estimadas) || 0,
+      horas_maquina: Number(op.horas_maquina) || 0,
+      horas_reales: Number(op.horas_reales) || 0,
+      costo: Number(op.costo_estimado) || 0,
+      equipo: nombreActivo(op.equipo),
+      bahia: op.bahia?.nombre || '',
+      estado: op.estado,
+      avance_pct: Number(op.avance_pct) || 0,
+    }));
+  const materiales = (fila.materiales || []).map(m => ({
+    id: m.id,
+    descripcion: m.descripcion || 'Material',
+    unidad: m.unidad || '',
+    cantidad: Number(m.cantidad_plan) || 0,
+    cantidad_real: m.cantidad_real == null ? null : Number(m.cantidad_real),
+    costo_unitario: Number(m.costo_unitario) || 0,
+    subtotal: Math.round((Number(m.cantidad_plan) || 0) * (Number(m.costo_unitario) || 0) * 100) / 100,
+    origen: m.origen,
+    no_planificado: Boolean(m.no_planificado),
+  }));
+  return {
+    id: fila.id,
+    numero: fila.numero,
+    estado: fila.estado,
+    descripcion: fila.descripcion || '',
+    fecha_apertura: fila.fecha_apertura,
+    fecha_compromiso: fila.fecha_compromiso,
+    moneda: fila.moneda || 'PEN',
+    costo_estimado: Number(fila.costo_estimado) || 0,
+    costo_real: Number(fila.costo_real) || 0,
+    avance_pct: Math.max(0, Math.min(100, Number(fila.avance_pct) || 0)),
+    os: fila.os || null,
+    cliente: fila.cuenta?.nombre_comercial || fila.cuenta?.razon_social || '',
+    componente: nombreActivo(fila.activo),
+    hoja: fila.hoja || null,
+    operaciones,
+    materiales,
+  };
+}
+
+// Ficha de una OF con su ruta y sus materiales (solo lectura en F2).
+export async function obtenerOF(id) {
+  const { data, error } = await getSupabaseClient().from('ordenes_fabricacion')
+    .select(COLUMNAS_FICHA).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? normalizarFichaOF(data) : null;
+}
