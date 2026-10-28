@@ -10,6 +10,7 @@ import { porcentajeBaseComision, resolverVendedorComision } from './lib/comision
 import { campanasService } from './services/campanasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
+import { ETIQUETA_ESTADO_OF, listarOFDeOS, urlOperaciones } from './services/ordenesFabricacionAdminService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
   PHONE_PATTERN,
@@ -5023,6 +5024,18 @@ function OSCliente() {
   const [guardandoFormularioOS, setGuardandoFormularioOS] = useState(false);
   const [modalEliminarOS, setModalEliminarOS] = useState(null);
   const [eliminandoOS, setEliminandoOS] = useState(false);
+  const [ofsOS, setOfsOS] = useState([]);
+  const [errorOfsOS, setErrorOfsOS] = useState('');
+  useEffect(() => {
+    let vivo = true;
+    setOfsOS([]);
+    setErrorOfsOS('');
+    if (!activeParams?.detail) return undefined;
+    listarOFDeOS(activeParams.detail)
+      .then(filas => { if (vivo) setOfsOS(filas); })
+      .catch(err => { if (vivo) setErrorOfsOS(err?.message || 'No se pudieron cargar las OF.'); });
+    return () => { vivo = false; };
+  }, [activeParams?.detail]);
 
   useEffect(() => {
     setMenuAccionesOS(false);
@@ -5059,6 +5072,8 @@ function OSCliente() {
     const query = new URLSearchParams({ os: os.id, ...(os.cuenta_id ? { cliente: os.cuenta_id } : {}) });
     window.location.assign(`${base}#/crear-ot?${query.toString()}`);
   };
+  const abrirNuevaOFEnOperaciones = os => window.location.assign(urlOperaciones('produccion-crear-of', { os: os.id }));
+  const abrirOFEnOperaciones = of => window.location.assign(urlOperaciones('produccion-detalle-of', { id: of.id }));
   const normOS = valor =>String(valor ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
   // Buscador inteligente, moneda y fecha de emisión exacta; los chips de estado se aplican aparte para contar.
@@ -5361,7 +5376,7 @@ function OSCliente() {
       cotizaciones,
       modoVistaSociedadOSCliente.sociedadIdEscritura,
     ).filter(c => c.cuenta_id === os.cuenta_id && c.estado === 'aprobada' && c.id !== os.cotizacion_id && !c.os_cliente_id);
-    const tabs = ['Cotizaciones', 'OTs', ...(canCost ? ['Control de Costos'] : []), 'Valorizaciones', 'Facturas', 'Historial'];
+    const tabs = ['Cotizaciones', 'OTs', ...(permiteOF(os) || ofsOS.length ? ['OF'] : []), ...(canCost ? ['Control de Costos'] : []), 'Valorizaciones', 'Facturas', 'Historial'];
     const activeTab = activeParams.tab || 'OTs';
     const cerrada = ['cerrada', 'anulada'].includes(os.estado);
 
@@ -5430,7 +5445,7 @@ function OSCliente() {
             {os.cotizacion_especial_id && <button type="button" className="dx-osc-ghost" onClick={() => navigate('cotizaciones', { especial:'detalle', especial_id:os.cotizacion_especial_id })}>{I.file} Ver cotización especial</button>}
             {!cerrada && <button type="button" className="dx-osc-ghost" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button>}
             <button type="button" className="dx-osc-ghost" aria-haspopup="menu" aria-expanded={menuAccionesOS} onClick={() => setMenuAccionesOS(v => !v)}>Más acciones {I.chev}</button>
-            {!cerrada && permiteOF(os) && <button type="button" className="dx-osc-ghost" disabled title="La Orden de Fabricación estará disponible pronto">{I.plus} Crear OF · Disponible pronto</button>}
+            {!cerrada && permiteOF(os) && <button type="button" className={permiteOT(os) ? 'dx-osc-ghost' : 'dx-osc-primary'} onClick={() => abrirNuevaOFEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Crear OF</button>}
             {!cerrada && permiteOT(os) && <button type="button" className="dx-osc-primary" onClick={() => abrirNuevaOTEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Crear OT</button>}
             {menuAccionesOS && <>
               <div className="dx-osc-menu-back" onClick={() => setMenuAccionesOS(false)} />
@@ -5549,7 +5564,7 @@ function OSCliente() {
 
         <div className="dx-osc-tabs" role="tablist" aria-label="Secciones de la OS">
           {tabs.map(t => {
-            const cuenta = { 'Cotizaciones': osCotz.length, 'OTs': osOts.length, 'Valorizaciones': osVals.length, 'Facturas': osFacts.length }[t];
+            const cuenta = { 'Cotizaciones': osCotz.length, 'OTs': osOts.length, 'OF': ofsOS.length, 'Valorizaciones': osVals.length, 'Facturas': osFacts.length }[t];
             return (
               <button type="button" role="tab" aria-selected={activeTab===t} key={t} className={`dx-osc-tab${activeTab===t ? ' is-on' : ''}`} onClick={() => navigate('os_cliente', { detail: os.id, tab: t })}>
                 {t}{cuenta > 0 && <b>{cuenta}</b>}
@@ -5581,6 +5596,34 @@ function OSCliente() {
                       </tr>
                     ))}
                     {osCotz.length === 0 && <tr><td colSpan="6" style={{textAlign:'center', padding:32, color:'var(--fg-muted)'}}>Sin cotizaciones vinculadas.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>}
+
+            {activeTab === 'OF' && <>
+              <div className="card-head" style={{justifyContent:'space-between'}}>
+                <h3>Órdenes de Fabricación</h3>
+                {!cerrada && permiteOF(os) && <button className="btn btn-primary os-local-action" style={{fontSize:12}} onClick={() => abrirNuevaOFEnOperaciones(os)} title="Se abre en la app de Operaciones">{I.plus} Nueva OF</button>}
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>OF</th><th>Descripción</th><th>Estado</th><th className="num">Avance</th><th className="num">Costo est.</th><th className="num">Costo real</th><th>Compromiso</th><th></th></tr></thead>
+                  <tbody>
+                    {ofsOS.map(of => (
+                      <tr key={of.id} className="hover-row" onClick={() => abrirOFEnOperaciones(of)} style={{cursor:'pointer'}} title="Se abre en la app de Operaciones">
+                        <td className="mono" style={{fontWeight:600}}>{of.numero}</td>
+                        <td>{of.descripcion || 'Sin dato'}</td>
+                        <td><span className={'badge ' + (['entregada','cerrada'].includes(of.estado) ? 'badge-green' : of.estado === 'anulada' ? 'badge-red' : of.estado === 'borrador' ? 'badge-gray' : 'badge-navy')}>{ETIQUETA_ESTADO_OF[of.estado] || of.estado}</span></td>
+                        <td className="num">{Math.round(Number(of.avance_pct) || 0)} %</td>
+                        <td className="num">{moneyCurrency(Number(of.costo_estimado) || 0, of.moneda)}</td>
+                        <td className="num">{moneyCurrency(Number(of.costo_real) || 0, of.moneda)}</td>
+                        <td>{of.fecha_compromiso || 'Sin dato'}</td>
+                        <td><button className="icon-btn" aria-label={`Abrir ${of.numero} en Operaciones`}>{I.chev}</button></td>
+                      </tr>
+                    ))}
+                    {errorOfsOS && <tr><td colSpan="8" role="alert" style={{textAlign:'center', padding:24, color:'var(--danger)'}}>{errorOfsOS}</td></tr>}
+                    {!errorOfsOS && ofsOS.length === 0 && <tr><td colSpan="8" style={{textAlign:'center', padding:32, color:'var(--fg-muted)'}}>Sin órdenes de fabricación. Créalas con el botón "Crear OF".</td></tr>}
                   </tbody>
                 </table>
               </div>
