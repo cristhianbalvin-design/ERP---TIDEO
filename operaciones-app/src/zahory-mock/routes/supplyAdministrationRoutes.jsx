@@ -17,9 +17,15 @@ import { GemeloAlmacenPage } from '../pages/gemelo/GemeloAlmacenPage.jsx';
 import { InventarioKardexPage } from '../pages/InventarioKardexPage.jsx';
 import { ReservaRepuestosPage } from '../pages/ReservaRepuestosPage.jsx';
 import { MinasProyectosPage } from '../pages/MinasProyectosPage.jsx';
+import { DespachosPage } from '../pages/wms/DespachosPage.jsx';
+import { StockMinimosPage } from '../pages/wms/StockMinimosPage.jsx';
+import { ConteosPage } from '../pages/wms/ConteosPage.jsx';
+import { CustodiaPage } from '../pages/wms/CustodiaPage.jsx';
+import { ConfiguracionWmsPage } from '../pages/wms/ConfiguracionWmsPage.jsx';
 
 export const supplyAdministrationRouteIds = new Set([
   'solicitudes', 'almacen-inventario', 'almacen-reservas', 'almacen-alertas', 'almacen-ubicaciones', 'almacen-gemelo', 'almacen-minas',
+  'almacen-despachos', 'almacen-conteos', 'almacen-custodia', 'almacen-config',
   'compras-proveedores', 'compras-cotizaciones', 'compras-oc',
   'compras-importaciones', 'compras-recepciones',
   'consolidado', 'finanzas-cxc', 'finanzas-cxp', 'finanzas-tesoreria',
@@ -43,7 +49,11 @@ export function renderSupplyAdministrationRoute(route, context) {
     case 'almacen-inventario': return <InventarioKardexPage />;
     case 'solicitudes': return <><AdministrativeAppLinkPage title="Solicitudes SOLPE" adminRoute="solpe" /><SolicitudesPage onNav={onNavigate} /></>;
     case 'almacen-reservas': return <ReservaRepuestosPage />;
-    case 'almacen-alertas': return <><AdministrativeAppLinkPage title="Stock Mínimos y Alertas" adminRoute="inventario" /><PlaceholderPage title="Stock Mínimos & Alertas" /></>;
+    case 'almacen-alertas': return <StockMinimosPage />;
+    case 'almacen-despachos': return <DespachosPage />;
+    case 'almacen-conteos': return <ConteosPage />;
+    case 'almacen-custodia': return <CustodiaPage />;
+    case 'almacen-config': return <ConfiguracionWmsPage />;
     case 'almacen-ubicaciones': return <UbicacionesPage />;
     case 'almacen-gemelo': return <GemeloAlmacenPage />;
     case 'almacen-minas': return <MinasProyectosPage />;

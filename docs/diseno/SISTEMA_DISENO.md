@@ -86,3 +86,49 @@ Tipografía: **Sora** para títulos y números destacados, **DM Sans** para text
 - No agregar librerías, fuentes ni colores fuera de la sección 2 sin aprobación.
 - No cambiar clases ni estilos de otras pantallas mientras se trabaja una.
 - No afirmar un resultado visual sin haberlo medido o visto en el navegador.
+
+## 9. Componentes dx compartidos adicionales
+
+Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/dx/` y usan clases `dx-ui-*`:
+
+- `filtrarBusquedaInteligente(registros, consulta)` normaliza a minúsculas sin tildes, separa términos y exige que todos aparezcan entre los valores del registro.
+- `<DxBuscador value={texto} onChange={setTexto} placeholder="Buscar…" label="Buscar registros" />` es la caja accesible de búsqueda.
+- `<DxFechaExacta value={fecha} onChange={setFecha} label="Vigentes en la fecha" />` permite elegir o limpiar una fecha exacta.
+- `<DxFiltroMoneda value={moneda} onChange={setMoneda} />` ofrece Todas, PEN y USD. Los importes de resumen siempre se mantienen separados por moneda.
+- `<DxReferenceSelector label="Ruta" options={rutas} value={rutaId} onChange={setRutaId} getLabel={ruta => ruta.nombre} loading={cargando} optionalLabel="Todas las rutas" />` busca, selecciona y limpia una referencia; presenta estados de carga y sin resultados.
+
+
+## 10. Estándar de tarjetas KPI y formularios
+
+### Tarjetas KPI
+
+- La fila usa `dx-ui-kpi-row`: grilla `repeat(auto-fit, minmax(168px, 1fr))` con `gap:10px`.
+- En las pantallas de Transporte, la fila KPI mantiene cuatro tarjetas juntas si el contenedor mide al menos 702 px; entre 300 y 701 px usa dos columnas para evitar una KPI huérfana, y por debajo de 300 px usa una columna. Las etiquetas pueden ocupar hasta dos lineas dentro de la tarjeta KPI de 56 px.
+- En la vista de tarjeta de Transporte, cada par etiqueta/valor ocupa su propia celda en una grilla de dos columnas hasta 760 px de contenedor y una columna por debajo de 300 px; las etiquetas permanecen ocultas en la vista de tabla para no duplicar las cabeceras.
+- En las barras de filtros de Transporte, por debajo de 600 px de ancho de tarjeta los controles ocupan una columna completa; el filtro de fecha coloca su etiqueta sobre el control.
+- Cada tarjeta usa `dx-ui-kpi`: flex, `align-items:center`, `gap:8px`, `min-height:56px`, `padding:8px 16px`, radio de 10 px, y el mismo borde y fondo de `dx-ui-chip`.
+- El número va en un elemento `strong`, con Sora a 20 px y peso 700. La etiqueta va en `span` a 12 px.
+- El texto `Sin dato` de una KPI usa 13 px, peso 400 y el gris del sistema; la tarjeta conserva 56 px de alto.
+- Las tarjetas de una fila comparten ancho y alto.
+
+### Formularios y selectores
+
+- `dx-ui-form-grid` tiene tres columnas, `gap:16px 20px` y `align-items:start`; los cortes por contenedor son 760 px (dos columnas) y 480 px (una columna).
+- `dx-ui-field` es una columna con `gap:6px`. La etiqueta mide 12 px, peso 600 y `min-height:18px`.
+- Inputs, selects y el control de referencia miden exactamente 40 px, con radio de 10 px. El textarea ocupa toda la fila.
+- Los selects usan `dx-ui-select`, `appearance:none` y una flecha dibujada en CSS.
+- El asterisco de cada campo obligatorio usa `dx-ui-required`.
+- El error aparece justo debajo del control en 12 px rojo, con `role="alert"` o `aria-describedby`; el control lleva `aria-invalid` y borde rojo.
+- El desplegable de un selector de referencia nunca altera la altura del campo: se posiciona bajo el control y admite scroll.
+- La validación devuelve los errores por campo en una sola pasada; cada error se muestra bajo su control y el foco va al primer campo inválido. El pie del modal queda reservado para errores del servidor.
+
+### Familias KPI existentes por migrar
+
+| Familia actual | Estado |
+|---|---|
+| `kpi` | Por migrar |
+| `report-kpi-grid` | Por migrar |
+| `dx-ui-chip` / `dx-ui-summary` | Por migrar |
+| `dx-otb-kpi` | Por migrar |
+| `dx-acta-kpi` | Por migrar |
+| `dx-inf-summary-card` | Por migrar |

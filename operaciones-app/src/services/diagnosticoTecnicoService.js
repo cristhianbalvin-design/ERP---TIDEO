@@ -566,10 +566,28 @@ export async function listarReferenciasDiagnostico(empresaId, tipo, busqueda = '
     p_busqueda: String(busqueda || '').trim() || null,
   });
   if (error) throw error;
+  if (tipo === 'fabricacion') return completarOportunidades(empresaId, data || []);
   if (tipo !== 'mantenimiento' || !data?.length) return data || [];
   const detalle = await resolverReferenciasDiagnostico(empresaId, tipo, data.map(reference => reference.id));
   const byId = new Map(detalle.map(reference => [reference.id, reference]));
   return data.map(reference => ({ ...byId.get(reference.id), ...reference, ...byId.get(reference.id) }));
+}
+
+// Etapa y monto estimado de la oportunidad para mostrarlos al elegirla o en el paso Oportunidad.
+// Si la consulta falla, la referencia se muestra igual sin esos datos.
+async function completarOportunidades(empresaId, references) {
+  if (!references.length) return references;
+  const { data, error } = await getSupabaseClient()
+    .from('oportunidades')
+    .select('id,etapa,monto_estimado,moneda')
+    .eq('empresa_id', empresaId)
+    .in('id', references.map(reference => reference.id));
+  if (error) return references;
+  const byId = new Map((data || []).map(row => [row.id, row]));
+  return references.map(reference => {
+    const extra = byId.get(reference.id);
+    return extra ? { ...reference, etapa: extra.etapa || null, monto_estimado: extra.monto_estimado ?? null, moneda: extra.moneda || null } : reference;
+  });
 }
 
 export async function resolverReferenciasDiagnostico(empresaId, tipo, ids) {
@@ -582,6 +600,7 @@ export async function resolverReferenciasDiagnostico(empresaId, tipo, ids) {
   });
   if (error) throw error;
   const references = data || [];
+  if (tipo === 'fabricacion') return completarOportunidades(empresaId, references);
   if (tipo !== 'mantenimiento' || !references.length) return references;
   const { data: receipts, error: receiptError } = await getSupabaseClient()
     .from('recepciones_activos_cliente')

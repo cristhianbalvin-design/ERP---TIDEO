@@ -6,7 +6,6 @@ import {
 } from '../../services/diagnosticoFabricacionService.js';
 
 // Diagnóstico de fabricación en página (mock docs/diseno/fabricacion/DiagnosticoFabricacion.dc.html).
-export const PASOS_FABRICACION = ['Origen', 'Piezas', 'Plano y características', 'Trabajos a realizar', 'Revisión e informe'];
 
 const etiquetaTipo = tipo => TIPOS_CARACTERISTICA.find(item => item.id === tipo)?.etiqueta || 'Otro';
 const textoMaterial = material => (material ? [material.descripcion, material.codigo, material.unidad].filter(Boolean).join(' · ') : '');
@@ -14,31 +13,6 @@ const formatoCantidad = valor => Number(valor || 0).toLocaleString('es-PE', { ma
 const conSigno = (valor, signo) => (valor === null || valor === undefined || valor === '' ? '' : `${signo}${String(valor).replace(/^[-+−]\s*/, '')}`);
 export const textoTolerancia = item => [conSigno(item.tolerancia_menos, '−'), conSigno(item.tolerancia_mas, '+')].filter(Boolean).join(' / ');
 const textoValor = item => [item.nominal, textoTolerancia(item), item.unidad].filter(Boolean).join(' ');
-
-export function PasosFabricacion({ paso, onPaso, bloqueados = [] }) {
-  return (
-    <div className="dx-work-page-head">
-      <nav className="dx-work-steps" aria-label="Pasos del diagnóstico de fabricación">
-        {PASOS_FABRICACION.map((label, index) => {
-          const numero = index + 1;
-          return (
-            <button key={label} type="button" className={paso === numero ? 'is-current' : paso > numero ? 'is-done' : ''} aria-current={paso === numero ? 'step' : undefined} disabled={bloqueados.includes(numero)} onClick={() => onPaso(numero)}>
-              <i>{paso > numero ? '✓' : numero}</i><span>{numero} · {label}</span>
-            </button>
-          );
-        })}
-      </nav>
-      <div className="dx-work-mobile-step" aria-live="polite">
-        <strong>Paso {paso} de {PASOS_FABRICACION.length} · {PASOS_FABRICACION[paso - 1]}</strong>
-        <div className="dx-work-mobile-segments" aria-label="Ir a un paso del diagnóstico">
-          {PASOS_FABRICACION.map((label, index) => (
-            <button key={label} type="button" aria-label={`Paso ${index + 1}: ${label}`} aria-current={paso === index + 1 ? 'step' : undefined} disabled={bloqueados.includes(index + 1)} className={paso === index + 1 ? 'is-current' : paso > index + 1 ? 'is-done' : ''} onClick={() => onPaso(index + 1)}><span>{label}</span></button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function CampoDatos({ datos, onDatos, tecnicos, disabled }) {
   return (
@@ -65,7 +39,7 @@ function CampoDatos({ datos, onDatos, tecnicos, disabled }) {
   );
 }
 
-export function FabricacionOrigenNuevo({ origen, onOrigen, search, onSearch, references, loading, seleccion, onSelect, tecnicos, datos, onDatos, etiquetaReferencia }) {
+export function FabricacionOrigenNuevo({ origen, onOrigen, search, onSearch, references, loading, seleccion, onSelect, tecnicos, datos, onDatos, etiquetaReferencia, detalleReferencia, borradores, aviso = null }) {
   return (
     <>
       <section className="dx-fab-card">
@@ -90,13 +64,14 @@ export function FabricacionOrigenNuevo({ origen, onOrigen, search, onSearch, ref
             return (
               <button key={reference.id} type="button" role="radio" aria-checked={on} className={`dx-fab-ref${on ? ' is-on' : ''}`} onClick={() => onSelect(reference)}>
                 <span className="dx-ui-icon is-cyan" aria-hidden="true">◎</span>
-                <span><b>{etiquetaReferencia(reference)}</b><small>{[reference.cliente, origen === 'recepcion' ? reference.activo : 'Oportunidad'].filter(Boolean).join(' · ')}</small></span>
-                {on && <span className="dx-ui-pill is-cyan"><i />Elegida</span>}
+                <span><b>{etiquetaReferencia(reference)}</b><small>{detalleReferencia ? detalleReferencia(reference) : [reference.cliente, origen === 'recepcion' ? reference.activo : 'Oportunidad'].filter(Boolean).join(' · ')}</small></span>
+                {on ? <span className="dx-ui-pill is-cyan"><i />Elegida</span> : borradores?.(reference) > 0 ? <span className="dx-ui-pill is-amber">{borradores(reference)} {borradores(reference) === 1 ? 'borrador' : 'borradores'}</span> : null}
               </button>
             );
           })}
         </div>
       </section>
+      {aviso}
       {origen === 'recepcion' && <div className="dx-fab-note">Desde una recepción, el activo recibido sirve de muestra: queda ligado al diagnóstico y la primera pieza toma su nombre.</div>}
       <CampoDatos datos={datos} onDatos={onDatos} tecnicos={tecnicos} />
     </>
@@ -409,7 +384,7 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
   );
 }
 
-export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, origenTexto, resumen, onResumen, canEdit, children }) {
+export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, trabajosIncompletos = [], cambiosSinGuardar = false, emitido = false, origenTexto, resumen, onResumen, canEdit, children }) {
   const datos = resumenFabricacion(piezas);
   const incompletas = piezas.filter(pieza => faltantesPieza(pieza).length);
   return (
@@ -431,6 +406,9 @@ export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, origenTe
               return <li key={pieza.id} className={faltan.length ? 'is-warn' : ''}>{pieza.nombre}: {faltan.length ? `falta ${faltan.join(' y ')}` : `material y plano con ${pieza.caracteristicas.length} característica${pieza.caracteristicas.length === 1 ? '' : 's'}`}</li>;
             })}
             <li className={totalTareas && totalHH > 0 ? '' : 'is-warn'}>{!totalTareas ? 'Sin trabajos a realizar' : totalHH > 0 ? `${totalTareas} tarea${totalTareas === 1 ? '' : 's'} con horas` : `${totalTareas} tarea${totalTareas === 1 ? '' : 's'} sin horas-hombre`}</li>
+            {trabajosIncompletos.length > 0 && <li className="is-warn">Hay trabajos sin actividades ni tareas: {trabajosIncompletos.join(', ')}</li>}
+            {!emitido && cambiosSinGuardar && <li className="is-warn">Hay cambios sin guardar</li>}
+            {!emitido && <li className="is-info">Al emitir, el diagnóstico queda de solo lectura. Después podrás generar la Hoja de Costeo desde aquí.</li>}
           </ul>
           <div className="dx-fab-pad"><div className="dx-fab-field"><label htmlFor="fab-conclusion">Conclusión para el cliente</label><textarea id="fab-conclusion" className="dx-fab-input dx-fab-textarea" value={resumen} disabled={!canEdit} placeholder="Factibilidad, consideraciones de fabricación y control…" onChange={event => onResumen(event.target.value)} /></div></div>
         </section>

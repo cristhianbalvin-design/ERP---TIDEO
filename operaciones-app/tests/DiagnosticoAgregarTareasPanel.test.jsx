@@ -67,7 +67,8 @@ describe('DiagnosticoAgregarTareasPanel', () => {
     await act(async () => { input('Buscar tarea').props.onChange({ target: { value: 'b-02' } }); });
     expect(text(renderer.root)).toContain('Ajuste bomba');
     expect(text(renderer.root)).not.toContain('Cambio filtro');
-    const checkbox = renderer.root.findAllByType('input').find(node => node.props.type === 'checkbox');
+    const taskRow = renderer.root.findAll(node => node.props.className?.includes?.('dx-cascada-task-row')).find(row => text(row).includes('Ajuste bomba'));
+    const checkbox = taskRow.findAllByType('input').find(node => node.props.type === 'checkbox');
     await act(async () => { checkbox.props.onChange(); });
     expect(buttonContaining('Agregar a la lista').props.disabled).toBe(false);
     await act(async () => { buttonContaining('Agregar a la lista').props.onClick(); });
@@ -85,6 +86,45 @@ describe('DiagnosticoAgregarTareasPanel', () => {
     expect(text(renderer.root)).toContain('Ajuste bomba');
     await act(async () => { buttonContaining('Agregar a la lista').props.onClick(); });
     expect(onAdd).toHaveBeenCalledWith([expect.objectContaining({ tarea_id: 't-2', horas_mano_obra: 2 })], 1);
+  });
+
+  it('con receta permite buscar y sumar otra tarea del catálogo en ambos tipos', async () => {
+    for (const tipoDiagnostico of ['fabricacion', 'mantenimiento']) {
+      const onAdd = vi.fn();
+      renderer?.unmount();
+      renderer = renderPanel({ onAdd, tipoDiagnostico });
+      await act(async () => { buttonContaining('Inspección').props.onClick(); });
+      await act(async () => { input('Buscar tarea').props.onChange({ target: { value: 'Tarea 5' } }); });
+      expect(text(renderer.root)).toContain('Otras tareas del catálogo');
+      const row = renderer.root.findAll(node => node.props.className?.includes?.('dx-cascada-task-row')).find(item => text(item).includes('Tarea 5'));
+      await act(async () => { row.findAllByType('input').find(node => node.props.type === 'checkbox').props.onChange(); });
+      await act(async () => { buttonContaining('Agregar a la lista').props.onClick(); });
+      expect(onAdd).toHaveBeenCalledWith([
+        expect.objectContaining({ tarea_id: 't-1', horas_mano_obra: 1 }),
+        expect.objectContaining({ tarea_id: 't-2', horas_mano_obra: 2 }),
+        expect.objectContaining({ tarea_id: 't-5', actividad_id: 'act-a' }),
+      ], 0);
+    }
+  });
+
+  it('una tarea creada con la receta cargada se agrega a la lista', async () => {
+    const onAdd = vi.fn();
+    const onCreateType = vi.fn(async nombre => ({ id: 't-nueva', nombre, rol: 'tarea' }));
+    renderer = renderPanel({ onAdd, onCreateType });
+    await act(async () => { buttonContaining('Inspección').props.onClick(); });
+    await act(async () => { buttonContaining('+ Crear tarea').props.onClick(); });
+    await act(async () => { input('Nombre').props.onChange({ target: { value: 'Rectificado' } }); });
+    const form = renderer.root.findAllByType('form').at(-1);
+    await act(async () => { await form.props.onSubmit({ preventDefault: vi.fn() }); });
+    await act(async () => { buttonContaining('Agregar a la lista').props.onClick(); });
+    expect(onAdd.mock.calls[0][0].map(row => row.tarea_id)).toEqual(['t-1', 't-2', 't-nueva']);
+  });
+
+  it('ofrece costear solo la actividad también en Fabricación', async () => {
+    const onAdd = vi.fn();
+    renderer = renderPanel({ onAdd, tipoDiagnostico: 'fabricacion' });
+    await act(async () => { buttonContaining('Inspección').props.onClick(); });
+    expect(text(renderer.root)).toContain('Costear solo la actividad');
   });
 
   it('mantiene horas de equipo deshabilitadas sin un activo propio', async () => {
