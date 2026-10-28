@@ -72,7 +72,8 @@ export function CrearOFPage({ onNav, routeParams = {} }) {
   const copiar = modo !== 'adicional';
   const totales = totalesVistaPrevia(vista, copiar);
   const ruta = useMemo(() => agruparRuta(copiar ? vista?.operaciones : []), [vista, copiar]);
-  const moneda = vista?.os?.moneda || 'PEN';
+  // Con la hoja copiada, la OF y su costo van en la moneda de la hoja.
+  const moneda = (copiar && vista?.hoja && vista?.os?.moneda_hoja) || vista?.os?.moneda || 'PEN';
 
   const elegir = os => {
     setOsId(os.id);

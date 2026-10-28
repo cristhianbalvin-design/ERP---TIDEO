@@ -33,7 +33,9 @@ export function normalizarFilaBandejaOF(fila) {
     os_id: fila.os?.id || null,
     os_numero: fila.os?.numero || '',
     cliente: fila.cuenta?.nombre_comercial || fila.cuenta?.razon_social || '',
-    componente: activo ? [activo.codigo, activo.nombre].filter(Boolean).join(' · ') : (fila.descripcion || ''),
+    componente: activo
+      ? [activo.codigo !== activo.nombre ? activo.codigo : null, activo.nombre].filter(Boolean).join(' · ')
+      : (fila.descripcion || ''),
     operaciones_total: operaciones.length,
     operaciones_sin_bahia: operaciones.filter(op => !op.bahia_id).length,
   };

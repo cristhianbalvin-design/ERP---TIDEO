@@ -63,5 +63,6 @@ describe('bandeja de órdenes de fabricación', () => {
     expect(textoSinBahia(fila)).toBe('2 sin bahía');
     expect(textoOperaciones({ operaciones_total: 1 })).toBe('1 operación');
     expect(textoSinBahia({ operaciones_total: 0, operaciones_sin_bahia: 0 })).toBe('');
+    expect(normalizarFilaBandejaOF({ id: 'y', activo: { codigo: 'MOTOR', nombre: 'MOTOR' } }).componente).toBe('MOTOR');
   });
 });
