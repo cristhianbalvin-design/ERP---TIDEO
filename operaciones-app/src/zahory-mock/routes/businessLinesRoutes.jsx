@@ -8,7 +8,6 @@ import {
 import {
   AnalisisSOS,
   DashboardProduccion,
-  BandejaOFs,
   CrearOFPage,
   DetalleOFPage,
   PlanificacionOFPage,
@@ -25,6 +24,7 @@ import {
   AreaProcesoPage,
   TrazabilidadOF,
 } from '../pages/ProduccionPages.jsx';
+import { BandejaOFPage } from '../pages/of/BandejaOFPage.jsx';
 import {
   DashboardTransporte,
   MonitorViajes,
@@ -97,7 +97,7 @@ export function renderBusinessLinesRoute(route, context) {
 
     case 'dashboard-produccion': return <DashboardProduccion onNav={onNavigate} setCurrentOF={setCurrentOF} />;
     case 'produccion-of':
-    case 'maestranza-of': return <BandejaOFs onNav={onNavigate} setCurrentOF={setCurrentOF} />;
+    case 'maestranza-of': return <BandejaOFPage onNav={onNavigate} setCurrentOF={setCurrentOF} />;
     case 'produccion-crear-of': return <CrearOFPage onNav={onNavigate} />;
     case 'produccion-detalle-of': return <DetalleOFPage onNav={onNavigate} ofId={currentOF} />;
     case 'produccion-planificacion':

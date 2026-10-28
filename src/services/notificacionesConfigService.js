@@ -15,7 +15,25 @@ export async function guardarNotificacionConfig({ empresaId, evento, activo, par
 
 export async function listarEnviosNotificaciones(empresaId, limite = 100) {
   const sb = await getSupabaseClient();
-  return sb.rpc('notif_envios_listar', { p_empresa_id: empresaId, p_limite: limite });
+  return sb.rpc('notif_envios_listar_v2', { p_empresa_id: empresaId, p_limite: limite });
+}
+
+export function etiquetaEntregaWhatsApp(row = {}) {
+  if (row.canal !== 'whatsapp') return null;
+  if (row.estado_entrega === 'fallido') {
+    return { etiqueta: `Falló: ${String(row.error_entrega || 'Error de entrega')}`, variante: 'err' };
+  }
+  const entregas = {
+    entregado: ['Entregado', row.entregado_en],
+    leido: ['Leído', row.leido_en],
+  };
+  const entrega = entregas[row.estado_entrega];
+  if (!entrega) return null;
+  const [etiqueta, momento] = entrega;
+  const hora = momento ? new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(momento)) : '';
+  return { etiqueta: hora ? `${etiqueta} · ${hora}` : etiqueta, variante: 'ok' };
 }
 
 export async function ejecutarNotificacionesAhora(empresaId) {
@@ -26,6 +44,11 @@ export async function ejecutarNotificacionesAhora(empresaId) {
 export async function listarTelefonosUsuariosNotificaciones(empresaId) {
   const sb = await getSupabaseClient();
   return sb.rpc('notif_telefonos_usuarios', { p_empresa_id: empresaId });
+}
+
+export async function listarRolesEmpresaNotificaciones(empresaId) {
+  const sb = await getSupabaseClient();
+  return sb.rpc('notif_roles_empresa', { p_empresa_id: empresaId });
 }
 
 export async function guardarTelefonoUsuarioNotificaciones(empresaId, userId, telefono) {
@@ -130,7 +153,24 @@ export function construirMatrizDestinatarios(destinatarios = {}, rolesSoportados
   }
   matriz.correos_adicionales = normalizarCorreosAdicionales(destinatarios?.correos_adicionales);
   if (canales.has('whatsapp')) matriz.telefonos_adicionales = normalizarTelefonosAdicionales(destinatarios?.telefonos_adicionales);
+  for (const clave of ['roles_rrhh', 'roles_operaciones']) {
+    if (Array.isArray(destinatarios?.[clave])) matriz[clave] = [...new Set(destinatarios[clave].map(String))].sort((a, b) => a.localeCompare(b));
+  }
   return matriz;
+}
+
+export function rolesSeleccionados(destinatarios = {}, clave, roles = []) {
+  if (Array.isArray(destinatarios?.[clave])) return [...new Set(destinatarios[clave].map(String))].sort((a, b) => a.localeCompare(b));
+  const propiedadAuto = clave === 'roles_rrhh' ? 'auto_rrhh' : clave === 'roles_operaciones' ? 'auto_operaciones' : null;
+  return propiedadAuto ? roles.filter(rol => rol.es_admin || rol[propiedadAuto]).map(rol => String(rol.id)).sort((a, b) => a.localeCompare(b)) : [];
+}
+
+export function alternarRol(lista = [], id) {
+  const seleccionados = new Set((Array.isArray(lista) ? lista : []).map(String));
+  const rolId = String(id);
+  if (seleccionados.has(rolId)) seleccionados.delete(rolId);
+  else seleccionados.add(rolId);
+  return [...seleccionados].sort((a, b) => a.localeCompare(b));
 }
 
 export function reglaTieneCambios(regla) {
