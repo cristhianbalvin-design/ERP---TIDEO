@@ -8,7 +8,6 @@ import {
 import {
   AnalisisSOS,
   DashboardProduccion,
-  DetalleOFPage,
   PlanificacionOFPage,
   ControlProduccion,
   TiemposMTMPage,
@@ -25,6 +24,7 @@ import {
 } from '../pages/ProduccionPages.jsx';
 import { BandejaOFPage } from '../pages/of/BandejaOFPage.jsx';
 import { CrearOFPage } from '../pages/of/CrearOFPage.jsx';
+import { DetalleOFPage } from '../pages/of/DetalleOFPage.jsx';
 import {
   DashboardTransporte,
   HojaDeRuta,
@@ -74,7 +74,7 @@ export const businessLinesRouteIds = new Set([
 ]);
 
 export function renderBusinessLinesRoute(route, context) {
-  const { onNavigate, routeParams = {}, currentOT, setCurrentOT, currentOF, setCurrentOF, currentOV, setCurrentOV, currentPV, setCurrentPV } = context;
+  const { onNavigate, routeParams = {}, currentOT, setCurrentOT, setCurrentOF, currentOV, setCurrentOV, currentPV, setCurrentPV } = context;
 
   switch (route) {
     case 'dashboard-rental': return <DashboardRentalPage onNav={onNavigate} />;
@@ -99,7 +99,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'produccion-of':
     case 'maestranza-of': return <BandejaOFPage onNav={onNavigate} setCurrentOF={setCurrentOF} routeParams={routeParams} />;
     case 'produccion-crear-of': return <CrearOFPage onNav={onNavigate} routeParams={routeParams} />;
-    case 'produccion-detalle-of': return <DetalleOFPage onNav={onNavigate} ofId={currentOF} />;
+    case 'produccion-detalle-of': return <DetalleOFPage onNav={onNavigate} routeParams={routeParams} />;
     case 'produccion-planificacion':
     case 'of-planificacion': return <PlanificacionOFPage onNav={onNavigate} />;
     case 'produccion-control':

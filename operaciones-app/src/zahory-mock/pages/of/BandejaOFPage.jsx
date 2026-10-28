@@ -78,7 +78,7 @@ export function BandejaOFPage({ onNav, setCurrentOF, routeParams = {} }) {
   const hayFiltros = Boolean(filtros.buscar || filtros.estado || filtros.kpi);
 
   const setFiltro = (clave, valor) => { setPagina(1); setFiltros(actual => ({ ...actual, [clave]: valor })); };
-  const abrir = of => { setCurrentOF?.(of.id); onNav?.('produccion-detalle-of'); };
+  const abrir = of => { setCurrentOF?.(of.id); onNav?.('produccion-detalle-of', { id: of.id }); };
   const teclaFila = (evento, of) => {
     if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); abrir(of); }
   };
