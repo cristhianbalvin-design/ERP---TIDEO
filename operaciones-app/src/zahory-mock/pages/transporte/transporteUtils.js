@@ -48,8 +48,60 @@ export function formatearFechaTransporte(fecha, vacio = 'Sin dato') {
   return year && month && day ? `${day}/${month}/${year}` : 'Sin dato';
 }
 
+// offsetMinutes follows ISO convention: Lima (UTC-5) is -300.
+export function fechaUtcAFechaLocalInput(fecha, offsetMinutes = -new Date().getTimezoneOffset()) {
+  if (!fecha) return '';
+  const instant = new Date(fecha);
+  if (!Number.isFinite(instant.getTime())) return '';
+  return new Date(instant.getTime() + offsetMinutes * 60_000).toISOString().slice(0, 16);
+}
+
+export function fechaLocalInputAFechaUtc(fecha, offsetMinutes = -new Date().getTimezoneOffset()) {
+  if (!fecha) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(fecha);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second = '0'] = match;
+  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)) - offsetMinutes * 60_000).toISOString();
+}
+
+export function formatearFechaHoraTransporte(fecha, locale = 'es-PE') {
+  if (!fecha) return 'Sin dato';
+  const instant = new Date(fecha);
+  if (!Number.isFinite(instant.getTime())) return 'Sin dato';
+  const pad = value => String(value).padStart(2, '0');
+  return `${pad(instant.getDate())}/${pad(instant.getMonth() + 1)}/${instant.getFullYear()} ${pad(instant.getHours())}:${pad(instant.getMinutes())}`;
+}
+
 export function etiquetaContador(cantidad, singular, plural = `${singular}s`) {
   return `${cantidad} ${cantidad === 1 ? singular : plural}`;
+}
+
+export function normalizarPayloadViaje(payload = {}) {
+  const references = ['os_cliente_id', 'cotizacion_id', 'ruta_id', 'tarifa_id', 'sociedad_id', 'transportista_id', 'vehiculo_id', 'conductor_id'];
+  const numbers = ['distancia_km', 'duracion_estimada_horas', 'peso_toneladas', 'volumen_m3', 'tarifa_unitaria', 'minimo_facturable', 'cantidad_facturable'];
+  const normalized = { ...payload };
+  for (const key of references) if (normalized[key] === '') normalized[key] = null;
+  for (const key of numbers) {
+    if (normalized[key] === '') normalized[key] = null;
+    else if (normalized[key] != null && Number.isFinite(Number(normalized[key]))) normalized[key] = Number(normalized[key]);
+  }
+  if (Array.isArray(normalized.paradas)) normalized.paradas = normalized.paradas.map(stop => ({
+    ...stop,
+    guia_remision_id: stop.guia_remision_id === '' ? null : stop.guia_remision_id ?? null,
+  }));
+  return normalized;
+}
+
+export function sincronizarParadasViaje(stops = [], origen = '', destino = '') {
+  const current = Array.isArray(stops) ? stops : [];
+  const origin = current.find(stop => stop.tipo === 'origen') || { tipo: 'origen', nombre: '' };
+  const final = current.find(stop => stop.tipo === 'destino') || { tipo: 'destino', nombre: '' };
+  const movable = current.filter(stop => !['origen', 'destino'].includes(stop.tipo));
+  return [
+    { ...origin, nombre: origin.nombre_manual ? origin.nombre : origen },
+    ...movable,
+    { ...final, nombre: final.nombre_manual ? final.nombre : destino },
+  ];
 }
 
 export function unificarTiposUnidad(defaults = [], catalogo = []) {
@@ -152,5 +204,56 @@ export function validarFormularioTarifa(form) {
     errors.vigente_hasta = 'La fecha final no puede ser anterior al inicio.';
   }
 
+  return errors;
+}
+
+export const ESTADOS_VIAJE = Object.freeze(['borrador','programado','despachado','en_ruta','con_incidente','entregado','en_liquidacion','cerrado','cancelado']);
+export const ESTADO_VIAJE_LABEL = Object.freeze({ borrador:'Borrador', programado:'Programado', despachado:'Despachado', en_ruta:'En ruta', con_incidente:'Con incidente', entregado:'Entregado', en_liquidacion:'En liquidación', cerrado:'Cerrado', cancelado:'Cancelado' });
+export const ESTADO_VIAJE_COLOR = Object.freeze({ borrador:'is-gray', programado:'is-cyan', despachado:'is-cyan', en_ruta:'is-cyan', con_incidente:'is-amber', entregado:'is-green', en_liquidacion:'is-violet', cerrado:'is-gray', cancelado:'is-red' });
+export const TRANSICIONES_VIAJE = Object.freeze({ borrador:['programado','cancelado'], programado:['despachado','borrador','cancelado'], despachado:['en_ruta','cancelado'], en_ruta:['con_incidente','entregado'], con_incidente:['en_ruta','entregado'], entregado:['en_liquidacion'], en_liquidacion:['cerrado','entregado'], cerrado:[], cancelado:[] });
+export const etiquetaEstadoViaje = estado => ESTADO_VIAJE_LABEL[estado] || 'Sin dato';
+export const etiquetaTipoParada = tipo => ({ origen: 'Origen', recojo: 'Recojo', entrega: 'Entrega', destino: 'Destino' })[tipo] || 'Sin dato';
+export const etiquetaEstadoParada = estado => ({ pendiente: 'Pendiente', completada: 'Completada', omitida: 'Omitida' })[estado] || 'Sin dato';
+export const colorEstadoViaje = estado => ESTADO_VIAJE_COLOR[estado] || 'is-gray';
+export const accionesPermitidasViaje = estado => TRANSICIONES_VIAJE[estado] || [];
+export const grupoEstadoViaje = estado => estado === 'borrador' ? 'borrador' : estado === 'programado' ? 'programados' : ['despachado','en_ruta','con_incidente'].includes(estado) ? 'en_curso' : estado === 'entregado' ? 'entregados' : ['en_liquidacion','cerrado','cancelado'].includes(estado) ? 'cerrados' : 'todos';
+export function cantidadFacturableViaje(modalidad, values = {}) {
+  const amount = modalidad === 'viaje' ? 1 : modalidad === 'km' ? values.distancia_km : modalidad === 'tonelada' ? values.peso_toneladas : modalidad === 'hora' ? values.duracion_estimada_horas : null;
+  return amount == null || amount === '' || !Number.isFinite(Number(amount)) ? null : Number(amount);
+}
+export function ingresoEstimadoViaje(tarifa, cantidad, minimo = 0) {
+  if (tarifa == null || tarifa === '' || cantidad == null || cantidad === '' || !Number.isFinite(Number(tarifa)) || !Number.isFinite(Number(cantidad))) return null;
+  return Math.round(Math.max(Number(tarifa) * Number(cantidad), Number(minimo) || 0) * 100) / 100;
+}
+const ESTADOS_COMPROMISO_INGRESO = new Set(['programado','despachado','en_ruta','con_incidente','entregado','en_liquidacion','cerrado']);
+function mesLocalFecha(fecha) {
+  if (!fecha) return null;
+  const value = String(fecha);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value.slice(0, 7);
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+}
+export function ingresoEstimadoMesViajes(viajes = [], fechaReferencia = new Date()) {
+  const mes = `${fechaReferencia.getFullYear()}-${String(fechaReferencia.getMonth() + 1).padStart(2, '0')}`;
+  return viajes.reduce((totales, viaje) => {
+    if (!ESTADOS_COMPROMISO_INGRESO.has(viaje.estado) || mesLocalFecha(viaje.fecha_programada) !== mes || viaje.ingreso_estimado == null || !Number.isFinite(Number(viaje.ingreso_estimado))) return totales;
+    const moneda = viaje.moneda || 'Sin moneda';
+    totales[moneda] = Math.round(((totales[moneda] || 0) + Number(viaje.ingreso_estimado)) * 100) / 100;
+    return totales;
+  }, {});
+}
+export function esFechaViajeMesLocal(fecha, fechaReferencia = new Date()) {
+  return mesLocalFecha(fecha) === `${fechaReferencia.getFullYear()}-${String(fechaReferencia.getMonth() + 1).padStart(2, '0')}`;
+}
+export const ordenarParadasViaje = stops => [...(stops || [])].sort((a, b) => Number(a.secuencia || 0) - Number(b.secuencia || 0)).map((stop, index) => ({ ...stop, secuencia: index + 1 }));
+export function validarFormularioViaje(form = {}) {
+  const errors = {};
+  for (const key of ['cuenta_id','fecha_programada','origen_nombre','destino_nombre','tipo_unidad']) if (!String(form[key] || '').trim()) errors[key] = 'Este campo es obligatorio.';
+  if (!['viaje','km','tonelada','hora'].includes(form.modalidad)) errors.modalidad = 'Selecciona una modalidad.';
+  if (!['PEN','USD'].includes(form.moneda)) errors.moneda = 'Selecciona PEN o USD.';
+  for (const key of ['distancia_km','duracion_estimada_horas','peso_toneladas','volumen_m3','cantidad_facturable','tarifa_unitaria','minimo_facturable']) {
+    if (form[key] !== '' && form[key] != null && (!Number.isFinite(Number(form[key])) || Number(form[key]) < 0)) errors[key] = 'Ingresa un número igual o mayor que cero.';
+  }
+  (form.paradas || []).forEach((stop, index) => { if (!String(stop.nombre || '').trim()) errors[`parada_${index}`] = 'Indica el nombre de esta parada.'; });
   return errors;
 }
