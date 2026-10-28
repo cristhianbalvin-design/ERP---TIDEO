@@ -290,28 +290,21 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
     };
   };
   const zonaPorId = id => (componente?.zonas || []).find(zona => zona.id === id) || null;
-  const puntoDeZona = (nodo, zonaId, excluirId) => {
-    const caja = lienzoRef.current?.getBoundingClientRect();
-    const zona = nodo.getBoundingClientRect();
-    if (!caja?.width || !caja?.height) return null;
-    // Varias características en la misma parte: se reparten a lo ancho para que los pines no se tapen.
-    const enZona = pieza.caracteristicas.filter(item => item.zona_id === zonaId && item.id !== excluirId).length;
-    const paso = Math.min(28, zona.width / 4);
-    const x = zona.left + zona.width / 2 + (enZona ? (enZona % 2 ? 1 : -1) * Math.ceil(enZona / 2) * paso : 0);
-    const y = zona.top + zona.height / 2;
-    return {
-      pos_x: Math.round(Math.min(100, Math.max(0, ((x - caja.left) / caja.width) * 100)) * 100) / 100,
-      pos_y: Math.round(Math.min(100, Math.max(0, ((y - caja.top) / caja.height) * 100)) * 100) / 100,
-    };
+  // La parte bajo el dedo, aunque se toque un detalle del dibujo (rosca, línea de centro) que no es la parte.
+  const zonaBajoElPunto = event => {
+    const directa = event.target.closest?.('[data-z]');
+    if (directa) return directa;
+    const raiz = lienzoRef.current?.getRootNode?.();
+    const pila = raiz?.elementsFromPoint?.(event.clientX, event.clientY) || [];
+    return pila.map(nodo => nodo.closest?.('[data-z]')).find(nodo => nodo && lienzoRef.current?.contains(nodo)) || null;
   };
   const tocarPlano = event => {
     if (!canEdit || event.target.closest?.('.dx-fab-pin')) return;
     if (pieza.plano_origen === 'catalogo') {
-      const nodo = event.target.closest?.('[data-z]');
-      const zonaId = nodo?.getAttribute('data-z');
+      const zonaId = zonaBajoElPunto(event)?.getAttribute('data-z');
       if (!zonaId) { setError('Toca una parte del dibujo (camisa, vástago, tapas…).'); return; }
       setError('');
-      const punto = puntoDeZona(nodo, zonaId, borrador?.id);
+      const punto = posicion(event);
       if (!punto) return;
       if (borrador && (mover || !borrador.id)) {
         setBorrador(current => ({ ...current, ...punto, zona_id: zonaId, medida_id: current.zona_id === zonaId ? current.medida_id : null }));
