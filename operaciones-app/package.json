@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run && npm run test:node",
-    "test:node": "node --test src/services/emisionInformeFlujo.test.js src/services/emisorPersonal.test.js src/zahory-mock/pages/dibujoHallazgoLogic.test.mjs src/zahory-mock/pages/informeSnapshotDibujo.test.mjs tests/hallazgosValidation.test.mjs tests/informeFotosFilas.native.test.js tests/informeSnapshot.native.test.js tests/validarBorradorDiagnostico.test.js"
+    "test:node": "node --test src/services/emisionInformeFlujo.test.js src/services/emisorPersonal.test.js src/zahory-mock/pages/dibujoHallazgoLogic.test.mjs src/zahory-mock/pages/informeSnapshotDibujo.test.mjs src/zahory-mock/pages/transporte/transporteUtils.test.mjs tests/hallazgosValidation.test.mjs tests/informeFotosFilas.native.test.js tests/informeSnapshot.native.test.js tests/validarBorradorDiagnostico.test.js"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
@@ -18,7 +18,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.186.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
