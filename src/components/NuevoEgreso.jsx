@@ -13,12 +13,28 @@ import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js'
 import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
 import { validarSociedadActivaParaEscritura } from '../services/sociedadEscrituraService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from '../lib/metodosPago.js';
+import {
+  categoriaAlSeleccionarTipo,
+  categoriaEgresoValida,
+  categoriaInicialEgreso,
+  derivarCategoriasEgresoDesdeTipos,
+  MENSAJE_CATEGORIA_EGRESO_REQUERIDA,
+  pasoInicialNuevoEgreso,
+  resolverCategoriaEgreso,
+} from '../utils/egresoCategoria.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
     ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
     : opciones
 );
+
+const ETIQUETAS_SECCION_ER = {
+  costo_ventas: 'Costo de ventas',
+  costos_ventas: 'Costo de ventas',
+  gastos_operativos: 'Gastos operativos',
+  gastos_financieros: 'Gastos financieros',
+};
 
 const etiquetaOT = (ot) => ot?.numero || ot?.codigo || ot?.codigo_ot || 'OT sin código';
 
@@ -317,17 +333,27 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     [preconfig, registroEditar?.id],
   );
 
-  const [paso, setPaso]           = useState(esEdicion ? 2 : (draft?.paso || preconfig?.paso || 1));
+  const [paso, setPaso]           = useState(() => pasoInicialNuevoEgreso({ registroEditar, draft, preconfig }));
   const [tipoSel, setTipoSel]     = useState(
     registroEditar
       ? {
           id: `edit_${registroEditar.id}`,
           nombre: registroEditar.categoria || 'Gasto existente',
-          categoria_er: registroEditar.categoria || 'Administrativos',
+          categoria_er: registroEditar.categoria || '',
           es_capitalizacion: Boolean(registroEditar.es_activo_fijo),
         }
       : (draft?.tipoSel || preconfig?.tipoSel || null),
   );
+  const [categoriaER, setCategoriaER] = useState(() => categoriaInicialEgreso({
+    registroEditar,
+    draft,
+    preconfig,
+    tipoSel: registroEditar ? null : (draft?.tipoSel || preconfig?.tipoSel),
+  }));
+  const [errorCategoriaER, setErrorCategoriaER] = useState(false);
+  const [categoriasER, setCategoriasER] = useState([]);
+  const [categoriasERCargadas, setCategoriasERCargadas] = useState(false);
+  const [catalogoERDisponible, setCatalogoERDisponible] = useState(false);
   const [tiposGasto, setTiposGasto] = useState([]);
   const [buscarTipo, setBuscarTipo] = useState('');
   const [tc, setTc]               = useState(null);
@@ -375,8 +401,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // Persistir borrador en sessionStorage mientras el usuario llena el formulario
   useEffect(() => {
     if (preconfig || registroEditar) return;
-    try { sessionStorage.setItem(NUEVO_EGRESO_DRAFT_KEY, JSON.stringify({ paso, tipoSel, form })); } catch { /* quota */ }
-  }, [paso, tipoSel, form, preconfig, registroEditar]);
+    try { sessionStorage.setItem(NUEVO_EGRESO_DRAFT_KEY, JSON.stringify({ paso, tipoSel, categoria: categoriaER, form })); } catch { /* quota */ }
+  }, [paso, tipoSel, categoriaER, form, preconfig, registroEditar]);
 
   const setF = (k, v) => {
     if (edicionPagoBloqueada && ['ya_pagado', 'metodo_pago'].includes(k)) return;
@@ -484,7 +510,15 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     mensajeSinOrigen: 'Selecciona una OT o CECO para resolver la sociedad destino del egreso.',
   });
 
-  const esCapitalizacion = !!tipoSel?.es_capitalizacion;
+  const categoriaERSeleccionada = categoriasER.find(categoria => categoria.nombre === categoriaER);
+  const tipoCategoriaFallback = !catalogoERDisponible
+    ? tiposGasto.find(tipo => tipo.categoria_er === categoriaER)
+    : null;
+  const esCapitalizacion = Boolean(
+    categoriaERSeleccionada?.es_capitalizacion
+      ?? tipoCategoriaFallback?.es_capitalizacion
+      ?? (esEdicion && registroEditar?.es_activo_fijo),
+  );
   const fondoCajaSeleccionado = fondosCaja.find(f => f.id === form.fondo_caja_chica_id) || fondoCajaChicaFijo;
   const fondoCajaChicaFijado = Boolean(fondoCajaChicaFijoId);
   const esPagoCajaChica = Boolean(form.ya_pagado && form.metodo_pago === 'Caja chica');
@@ -556,24 +590,38 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             .eq('activo', true)
             .order('orden');
           if (origen === 'caja_chica') tiposQuery.eq('aplica_caja_chica', true);
-          const [{ data: tiposData, error: tiposError }, { data: catsData }] = await Promise.all([
+          const [{ data: tiposData, error: tiposError }, { data: catsData, error: categoriasError }] = await Promise.all([
             tiposQuery,
-            sb.from('er_categorias').select('nombre, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true),
+            sb.from('er_categorias').select('id, nombre, seccion, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true).order('orden'),
           ]);
           if (tiposError) throw tiposError;
-          const capMap = Object.fromEntries((catsData || []).map(c => [c.nombre, !!c.es_capitalizacion]));
-          const tipos = (tiposData?.length ? tiposData : TIPOS_GASTO_DEFECTO)
-            .filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false)
-            .map(t => ({
+          const catalogoDisponible = !categoriasError && Boolean(catsData?.length);
+          const tiposBase = (tiposData?.length ? tiposData : TIPOS_GASTO_DEFECTO)
+            .filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+          const capMap = Object.fromEntries((catalogoDisponible ? catsData : []).map(c => [c.nombre, !!c.es_capitalizacion]));
+          const tipos = tiposBase.map(t => ({
               ...t,
-              es_capitalizacion: capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'),
+              es_capitalizacion: catalogoDisponible
+                ? (capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'))
+                : Boolean(t.es_capitalizacion),
             }));
           setTiposGasto(tipos);
+          setCatalogoERDisponible(catalogoDisponible);
+          setCategoriasER(catalogoDisponible ? catsData : derivarCategoriasEgresoDesdeTipos(tipos));
+          setCategoriasERCargadas(true);
         } catch {
-          setTiposGasto(TIPOS_GASTO_DEFECTO);
+          const tiposFallback = TIPOS_GASTO_DEFECTO.filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+          setCategoriasER(derivarCategoriasEgresoDesdeTipos(tiposFallback));
+          setCatalogoERDisponible(false);
+          setCategoriasERCargadas(true);
+          setTiposGasto(tiposFallback);
         }
       } else {
-        setTiposGasto(TIPOS_GASTO_DEFECTO);
+        const tiposFallback = TIPOS_GASTO_DEFECTO.filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+        setCategoriasER(derivarCategoriasEgresoDesdeTipos(tiposFallback));
+        setCatalogoERDisponible(false);
+        setCategoriasERCargadas(true);
+        setTiposGasto(tiposFallback);
       }
       try {
         const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
@@ -589,6 +637,14 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     const tipoExistente = tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
     if (tipoExistente && tipoSel?.id !== tipoExistente.id) setTipoSel(tipoExistente);
   }, [registroEditar?.id, registroEditar?.categoria, tiposGasto, tipoSel?.id]);
+
+  useEffect(() => {
+    if (!categoriasERCargadas || esEdicion) return;
+    const categoriaBorrador = resolverCategoriaEgreso(categoriaER, categoriasER);
+    const categoriaTipo = categoriaAlSeleccionarTipo(tipoSel, categoriasER);
+    const siguiente = categoriaBorrador || categoriaTipo;
+    if (siguiente !== categoriaER) setCategoriaER(siguiente);
+  }, [esEdicion, categoriasERCargadas, categoriasER, categoriaER, tipoSel]);
 
   useEffect(() => {
     let mounted = true;
@@ -627,6 +683,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   const seleccionarTipo = t => {
     setTipoSel(t);
+    // Si cambia el tipo, la categoría elegida manualmente vuelve a la sugerida por el tipo nuevo.
+    setCategoriaER(categoriaAlSeleccionarTipo(t, categoriasER, tiposGasto));
     // Prellena el concepto con el nombre del tipo (editable); no pisa un concepto que el usuario ya haya escrito.
     setForm(p => (p.concepto.trim() ? p : { ...p, concepto: t.nombre }));
     setPaso(2);
@@ -635,7 +693,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const renderPaso1 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
-        Selecciona el tipo de gasto. La categoría ER se asignará automáticamente.
+        Selecciona el tipo de gasto. Podrás revisar y cambiar su categoría ER en el siguiente paso.
       </div>
 
       <input
@@ -752,6 +810,28 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <div style={{ height: 1, background: 'var(--border-subtle)' }} />
         </>
       )}
+
+      <div className="input-group">
+        <label>Categoría del Estado de Resultados <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <select
+          className={`select${errorCategoriaER ? ' input-error' : ''}`}
+          value={categoriaER}
+          onChange={e => { setCategoriaER(e.target.value); setErrorCategoriaER(false); setErrorGuardado(''); }}
+        >
+          <option value="">Selecciona una categoría</option>
+          {categoriasER.map(categoria => (
+            <option key={categoria.id || categoria.nombre} value={categoria.nombre}>
+              {categoria.nombre}{ETIQUETAS_SECCION_ER[categoria.seccion] ? ` · ${ETIQUETAS_SECCION_ER[categoria.seccion]}` : ''}
+            </option>
+          ))}
+          {esEdicion && categoriaER && !categoriasER.some(categoria => categoria.nombre === categoriaER) && (
+            <option value={categoriaER}>{categoriaER} · fuera del catálogo</option>
+          )}
+        </select>
+        {(errorCategoriaER || !categoriaEgresoValida(categoriaER)) && (
+          <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{MENSAJE_CATEGORIA_EGRESO_REQUERIDA}</div>
+        )}
+      </div>
 
       {/* Concepto */}
       <div className="input-group">
@@ -1189,6 +1269,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             if (esCompraConOc && !form.orden_compra_id) { setErrOrdenCompra('Selecciona la Orden de Compra de origen.'); ok = false; }
             if (esCompraConOc && form.orden_compra_id && !ordenCompraSeleccionada) { setErrOrdenCompra('La Orden de Compra seleccionada ya no está disponible para vincular esta CxP.'); ok = false; }
             if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
+            if (!categoriaEgresoValida(categoriaER)) { setErrorCategoriaER(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
             if (ok) setPaso(3);
           }}
@@ -1202,7 +1283,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Paso 3: confirmar ─────────────────────────────────────────────────────
   const renderPaso3 = () => {
     const monto    = parseFloat(form.monto) || 0;
-    const categoria = tipoSel?.categoria_er || 'Administrativos';
+    const categoria = categoriaER;
     const cecoNombre = cecos.find(c => c.id === form.centro_costo_id)?.nombre || '—';
     const fondoCajaSel = fondoCajaSeleccionado;
     const cuentaPagoSel = cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id);
@@ -1214,7 +1295,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       ['Tipo de gasto',  tipoSel?.nombre || '—'],
       ['Categoría ER',   esCapitalizacion
         ? <><strong>{categoria}</strong> <span className="badge badge-orange" style={{fontSize:10}}>Capitalización</span></>
-        : <><strong>{categoria}</strong> <span className="badge badge-cyan" style={{fontSize:10}}>automático</span></>],
+        : <strong>{categoria || '—'}</strong>],
       esCapitalizacion ? ['Tipo de activo', ACTIVO_TIPOS_WIZ.find(t => t.value === activoTipo)?.label || activoTipo] : null,
       esCapitalizacion && activoSerie ? ['N° serie / placa', activoSerie] : null,
       esCapitalizacion ? ['Vida útil', `${activoVidaUtil} años`] : null,
@@ -1285,7 +1366,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <button
             className="btn btn-primary"
             type="button"
-            disabled={guardando}
+            disabled={guardando || (!esEdicion && !categoriaEgresoValida(categoriaER))}
             onClick={handleGuardar}
           >
             {guardando ? 'Guardando...' : <>{I.save} {esEdicion ? 'Guardar cambios' : 'Guardar egreso'}</>}
@@ -1298,6 +1379,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Lógica de persistencia ────────────────────────────────────────────────
   const handleGuardar = async () => {
     setErrorGuardado('');
+    if (!categoriaEgresoValida(categoriaER)) {
+      setErrorCategoriaER(true);
+      setErrorGuardado(MENSAJE_CATEGORIA_EGRESO_REQUERIDA);
+      setPaso(2);
+      return;
+    }
     if (esCompraConOc && !form.orden_compra_id) {
       setErrOrdenCompra('Selecciona la Orden de Compra de origen.');
       setPaso(2);
@@ -1350,7 +1437,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
       if (esEdicion) {
         const montoEdicion = parseFloat(form.monto) || 0;
-        const categoriaEdicion = tipoSel?.categoria_er || registroEditar.categoria || 'Administrativos';
+        const categoriaEdicion = categoriaER;
         const proveedorEdicion = form.proveedor_id
           ? provsActivos.find(p => p.id === form.proveedor_id)
           : null;
@@ -1387,7 +1474,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       }
 
       const monto     = parseFloat(form.monto) || 0;
-      const categoria = tipoSel?.categoria_er || 'Administrativos';
+      const categoria = categoriaER;
       const tcVal     = form.moneda !== 'PEN' && tc
         ? (form.moneda === 'USD' ? tc.usd : tc.eur)
         : null;
