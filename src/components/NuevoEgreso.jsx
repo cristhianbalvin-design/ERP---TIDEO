@@ -12,6 +12,7 @@ import { SearchSelect } from './SearchSelect.jsx';
 import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
 import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
 import { validarSociedadActivaParaEscritura } from '../services/sociedadEscrituraService.js';
+import { sugerirCategoriaEgreso } from '../services/sugerirCategoriaEgresoService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from '../lib/metodosPago.js';
 import {
   categoriaAlSeleccionarTipo,
@@ -353,6 +354,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   }));
   const [errorCategoriaER, setErrorCategoriaER] = useState(false);
   const [categoriasER, setCategoriasER] = useState([]);
+  const [sugerenciaCategoriaIA, setSugerenciaCategoriaIA] = useState(null);
+  const [cargandoSugerenciaCategoriaIA, setCargandoSugerenciaCategoriaIA] = useState(false);
+  const [errorSugerenciaCategoriaIA, setErrorSugerenciaCategoriaIA] = useState('');
   const [categoriasERCargadas, setCategoriasERCargadas] = useState(false);
   const [catalogoERDisponible, setCatalogoERDisponible] = useState(false);
   const [tiposGasto, setTiposGasto] = useState([]);
@@ -740,6 +744,26 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   );
 
   // ── Paso 2: detalle y pago ────────────────────────────────────────────────
+  const pedirSugerenciaCategoriaIA = async () => {
+    if (!form.concepto.trim() || cargandoSugerenciaCategoriaIA) return;
+    setCargandoSugerenciaCategoriaIA(true);
+    setErrorSugerenciaCategoriaIA('');
+    setSugerenciaCategoriaIA(null);
+    try {
+      const sugerencia = await sugerirCategoriaEgreso({
+        empresaId: empresa?.id,
+        descripcion: form.concepto,
+        tipoGasto: tipoSel?.nombre || '',
+        categoriasActivas: categoriasER.filter(c => c.activo !== false).map(c => c.nombre),
+      });
+      setSugerenciaCategoriaIA(sugerencia);
+    } catch {
+      setErrorSugerenciaCategoriaIA('No se pudo generar la sugerencia. Puedes continuar normalmente.');
+    } finally {
+      setCargandoSugerenciaCategoriaIA(false);
+    }
+  };
+
   const renderPaso2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -836,12 +860,39 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
       {/* Concepto */}
       <div className="input-group">
-        <label>Concepto / descripción <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <label>Concepto / descripción <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <button
+            className="btn btn-ghost" type="button" title="Sugerir categoría con IA"
+            aria-label="Sugerir categoría con IA"
+            disabled={!form.concepto.trim() || cargandoSugerenciaCategoriaIA || categoriasER.length === 0}
+            onClick={pedirSugerenciaCategoriaIA}
+            style={{ fontSize: 12, padding: '4px 8px', whiteSpace: 'nowrap' }}
+          >
+            ✨ {cargandoSugerenciaCategoriaIA ? 'Consultando…' : 'Sugerir categoría'}
+          </button>
+        </div>
         <input
           className="input" value={form.concepto}
-          onChange={e => setF('concepto', e.target.value)}
+          onChange={e => { setF('concepto', e.target.value); setSugerenciaCategoriaIA(null); setErrorSugerenciaCategoriaIA(''); }}
           placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
         />
+        {cargandoSugerenciaCategoriaIA && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">Buscando una categoría…</div>
+        )}
+        {errorSugerenciaCategoriaIA && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">{errorSugerenciaCategoriaIA}</div>
+        )}
+        {sugerenciaCategoriaIA && (
+          <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-alt)' }}>
+            <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Sugerencia de IA</div>
+            <div style={{ fontSize: 13, marginTop: 3 }}><strong>{sugerenciaCategoriaIA.categoria}</strong> · {sugerenciaCategoriaIA.razon}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn btn-ghost" type="button" onClick={() => setSugerenciaCategoriaIA(null)}>Descartar</button>
+              <button className="btn btn-secondary" type="button" onClick={() => { setCategoriaER(sugerenciaCategoriaIA.categoria); setErrorCategoriaER(false); setSugerenciaCategoriaIA(null); }}>Aplicar</button>
+            </div>
+          </div>
+        )}
       </div>
       {/* Fecha del gasto */}
       <div className="input-group">
