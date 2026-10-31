@@ -5,6 +5,7 @@ import {
   categoriaEgresoValida,
   categoriaInicialEgreso,
   derivarCategoriasEgresoDesdeTipos,
+  mensajeDestinoEgreso,
   pasoInicialNuevoEgreso,
   resolverCategoriaEgreso,
 } from './egresoCategoria.js';
@@ -31,6 +32,13 @@ test('la categoría vacía o espacios no pasa validación', () => {
   assert.equal(categoriaEgresoValida('Materiales'), true);
   assert.equal(categoriaEgresoValida('  '), false);
   assert.equal(categoriaEgresoValida(null), false);
+});
+
+test('el resumen del paso final refleja alta, pago y edición', () => {
+  assert.equal(mensajeDestinoEgreso(), 'Alta: gasto registrado en compras_gastos + CxP pendiente creada.');
+  assert.equal(mensajeDestinoEgreso({ yaPagado: true, metodoPago: 'Caja chica' }), 'Alta: gasto registrado en compras_gastos + registro en caja_chica.');
+  assert.equal(mensajeDestinoEgreso({ yaPagado: true, metodoPago: 'Transferencia' }), 'Alta pagada: gasto registrado + CxP pagada + movimiento de tesorería.');
+  assert.equal(mensajeDestinoEgreso({ edicion: true, yaPagado: false }), 'Gasto existente actualizado; no se crea una CxP nueva.');
 });
 
 test('al prellenar usa el nombre exacto del catálogo con coincidencia normalizada', () => {

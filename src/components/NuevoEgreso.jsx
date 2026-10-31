@@ -19,6 +19,7 @@ import {
   categoriaInicialEgreso,
   derivarCategoriasEgresoDesdeTipos,
   MENSAJE_CATEGORIA_EGRESO_REQUERIDA,
+  mensajeDestinoEgreso,
   pasoInicialNuevoEgreso,
   resolverCategoriaEgreso,
 } from '../utils/egresoCategoria.js';
@@ -1317,11 +1318,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       archivoUrl ? ['Archivo', '✓ Adjunto cargado'] : null,
     ].filter(Boolean);
 
-    const destinoFinal = form.ya_pagado
-      ? (form.metodo_pago === 'Caja chica'
-          ? 'Gasto en compras_gastos + registro en caja_chica'
-          : 'Gasto registrado + CxP pagada + movimiento de tesoreria')
-      : 'Gasto registrado en compras_gastos + CxP pendiente creada';
+    const destinoFinal = mensajeDestinoEgreso({
+      edicion: esEdicion,
+      yaPagado: form.ya_pagado,
+      metodoPago: form.metodo_pago,
+    });
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

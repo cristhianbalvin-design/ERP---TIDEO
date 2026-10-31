@@ -60,4 +60,11 @@ export function categoriaEgresoValida(categoria) {
   return Boolean(String(categoria || '').trim());
 }
 
+export function mensajeDestinoEgreso({ edicion = false, yaPagado = false, metodoPago = '' } = {}) {
+  if (edicion) return 'Gasto existente actualizado; no se crea una CxP nueva.';
+  if (!yaPagado) return 'Alta: gasto registrado en compras_gastos + CxP pendiente creada.';
+  if (metodoPago === 'Caja chica') return 'Alta: gasto registrado en compras_gastos + registro en caja_chica.';
+  return 'Alta pagada: gasto registrado + CxP pagada + movimiento de tesorería.';
+}
+
 export const MENSAJE_CATEGORIA_EGRESO_REQUERIDA = 'Selecciona una categoría del Estado de Resultados para registrar el egreso.';
