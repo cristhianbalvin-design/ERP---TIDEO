@@ -860,23 +860,27 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
       {/* Concepto */}
       <div className="input-group">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <label>Concepto / descripción <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>Concepto / descripción <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <div style={{ position: 'relative' }}>
+          <input
+            className="input" value={form.concepto}
+            onChange={e => { setF('concepto', e.target.value); setSugerenciaCategoriaIA(null); setErrorSugerenciaCategoriaIA(''); }}
+            placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
+            style={{ paddingRight: 42 }}
+          />
           <button
             className="btn btn-ghost" type="button" title="Sugerir categoría con IA"
             aria-label="Sugerir categoría con IA"
             disabled={!form.concepto.trim() || cargandoSugerenciaCategoriaIA || categoriasER.length === 0}
             onClick={pedirSugerenciaCategoriaIA}
-            style={{ fontSize: 12, padding: '4px 8px', whiteSpace: 'nowrap' }}
+            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', padding: '4px 6px', lineHeight: 1 }}
           >
-            ✨ {cargandoSugerenciaCategoriaIA ? 'Consultando…' : 'Sugerir categoría'}
+            {cargandoSugerenciaCategoriaIA ? '…' : '✨'}
           </button>
         </div>
-        <input
-          className="input" value={form.concepto}
-          onChange={e => { setF('concepto', e.target.value); setSugerenciaCategoriaIA(null); setErrorSugerenciaCategoriaIA(''); }}
-          placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
-        />
+        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+          ✨ Sugerir categoría: úsalo solo si no estás seguro y quieres una revisión adicional.
+        </div>
         {cargandoSugerenciaCategoriaIA && (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">Buscando una categoría…</div>
         )}
