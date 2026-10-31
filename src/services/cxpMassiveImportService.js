@@ -194,7 +194,7 @@ export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNo
     [],
     ['12', 'Tributo: tributo_tipo + tributo_periodo AAAA-MM + formulario; no requiere proveedor y no devenga ER.'],
     ['13', 'Distribucion de utilidades: socio_nombre + periodo_utilidades AAAA + acta_referencia; no requiere proveedor y no devenga ER.'],
-    ['14', 'Viaticos: personal_id; se registra como reembolso al colaborador y no requiere proveedor.'],
+    ['14', 'Viaticos: personal_id + categoria_er obligatoria (categoría ER activa de la hoja de categorías); se registra como reembolso al colaborador y no requiere proveedor.'],
     ['15', 'Compra SPOT: codigo_spot valida porcentaje, vigencia y umbral; una CxP con SPOT no puede venir pagada.'],
     ['16', 'Formato de fechas: DD/MM/AAAA o AAAA-MM-DD.'],
     [],
@@ -303,7 +303,6 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
     const tipo_cambio_detraccion = numero(source.tipo_cambio_detraccion);
     const tipo_cambio_fuente = texto(source.tipo_cambio_fuente).toLowerCase() || null;
     if (esTributo && !categoriaInput) categoria = categorias.find(item => mismoTexto(item.nombre, 'Tributos')) || null;
-    if (esViatico && !categoriaInput) categoria = categorias.find(item => mismoTexto(item.nombre, 'Administrativos')) || null;
 
     if (requiereProveedor && !/^\d{11}$/.test(ruc_emisor)) errores.push('RUC emisor inválido: debe tener 11 dígitos.');
     if (requiereProveedor && !razon_social) errores.push('Razón social obligatoria.');
@@ -342,7 +341,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       if (!personal_id) errores.push('personal_id obligatorio para viaticos.');
       else if (!personal) errores.push('personal_id inexistente en el maestro del tenant.');
       else if (personal.estado === 'inactivo') errores.push('personal_id inactivo para viaticos.');
-      if (!categoria) errores.push('Debe existir una categoria ER activa llamada Administrativos.');
+      if (!categoria) errores.push(`Categoría ER obligatoria para viáticos; "${categoriaInput || '-'}" no es una categoría activa.`);
     } else if (esRhe) {
       const esInterno = Boolean(personal_id);
       if (!numero_rhe) errores.push('Número RHE obligatorio para carga masiva.');

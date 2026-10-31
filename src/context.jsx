@@ -7187,6 +7187,9 @@ export function AppProvider({ children }) {
   };
 
   const registrarEgresoCajaChica = async (datos) => {
+    if (!String(datos.categoria || '').trim()) {
+      throw new Error('La categoría ER es obligatoria para registrar el egreso de caja chica.');
+    }
     if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
       throw new Error('Selecciona una sociedad para el egreso de caja chica.');
     }
@@ -7199,7 +7202,7 @@ export function AppProvider({ children }) {
       empresa_id: empresa.id,
       tipo: 'gasto',
       descripcion: datos.concepto,
-      categoria: datos.categoria || 'Administrativos',
+      categoria: datos.categoria,
       monto: Number(datos.monto),
       moneda: datos.moneda || 'PEN',
       fecha,
@@ -7234,7 +7237,7 @@ export function AppProvider({ children }) {
       moneda: datos.moneda || 'PEN',
       responsable_nombre: datos.responsable_nombre || authUser?.email || null,
       ceco_id: datos.ceco_id || null,
-      categoria: datos.categoria || 'Administrativos',
+      categoria: datos.categoria,
       num_comprobante: datos.num_comprobante || null,
       estado: 'registrado',
       gasto_id: gastoId,
