@@ -1808,6 +1808,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
+          tipo_gasto:        tipoSel?.nombre?.trim() || null,
           centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
