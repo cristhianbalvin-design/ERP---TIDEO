@@ -31,6 +31,20 @@ test('distribuye una fila a un solo CECO', () => {
   );
 });
 
+test('propaga el tipo de gasto como subcategoria del devengo CxP', () => {
+  assert.deepEqual(
+    crearEntradasDevengoCxp(cxp(25, { tipo_gasto: '  Movilidad  ' }), [{ ceco_id: 'ceco-a', monto: 25 }]),
+    [{ cecoId: 'ceco-a', amount: 25, distributed: true, subcategoria: '  Movilidad  ' }],
+  );
+});
+
+test('no agrega subcategoria cuando la CxP no tiene tipo de gasto', () => {
+  assert.deepEqual(
+    crearEntradasDevengoCxp(cxp(25), [{ ceco_id: 'ceco-a', monto: 25 }]),
+    [{ cecoId: 'ceco-a', amount: 25, distributed: true }],
+  );
+});
+
 test('distribuye varias filas proporcionalmente', () => {
   assert.deepEqual(
     crearEntradasDevengoCxp(cxp(90), [
