@@ -639,9 +639,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   useEffect(() => {
     if (!registroEditar?.id || !tiposGasto.length) return;
-    const tipoExistente = tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
+    const tipoExistente = tiposGasto.find(tipo => tipo.activo !== false && tipo.nombre === registroEditar.subcategoria)
+      || tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
     if (tipoExistente && tipoSel?.id !== tipoExistente.id) setTipoSel(tipoExistente);
-  }, [registroEditar?.id, registroEditar?.categoria, tiposGasto, tipoSel?.id]);
+  }, [registroEditar?.id, registroEditar?.categoria, registroEditar?.subcategoria, tiposGasto, tipoSel?.id]);
 
   useEffect(() => {
     if (!categoriasERCargadas || esEdicion) return;
@@ -754,6 +755,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         empresaId: empresa?.id,
         descripcion: form.concepto,
         tipoGasto: tipoSel?.nombre || '',
+        cajaChica: origen === 'caja_chica' || esPagoCajaChica,
+        tiposActivos: tiposGasto,
         categoriasActivas: categoriasER.filter(c => c.activo !== false).map(c => c.nombre),
       });
       setSugerenciaCategoriaIA(sugerencia);
@@ -888,14 +891,29 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">{errorSugerenciaCategoriaIA}</div>
         )}
         {sugerenciaCategoriaIA && (
+          sugerenciaCategoriaIA.tipo_gasto_id ? (
           <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-alt)' }}>
             <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Sugerencia de IA</div>
-            <div style={{ fontSize: 13, marginTop: 3 }}><strong>{sugerenciaCategoriaIA.categoria}</strong> · {sugerenciaCategoriaIA.razon}</div>
+            <div style={{ fontSize: 13, marginTop: 3 }}>Tipo: <strong>{sugerenciaCategoriaIA.tipo_gasto}</strong> · Categoría: <strong>{sugerenciaCategoriaIA.categoria}</strong> · {sugerenciaCategoriaIA.razon}</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn btn-ghost" type="button" onClick={() => setSugerenciaCategoriaIA(null)}>Descartar</button>
-              <button className="btn btn-secondary" type="button" onClick={() => { setCategoriaER(sugerenciaCategoriaIA.categoria); setErrorCategoriaER(false); setSugerenciaCategoriaIA(null); }}>Aplicar</button>
+              {tiposGasto.some(tipo => tipo.id === sugerenciaCategoriaIA.tipo_gasto_id) && (
+                <button className="btn btn-secondary" type="button" onClick={() => {
+                  const tipoSugerido = tiposGasto.find(tipo => tipo.id === sugerenciaCategoriaIA.tipo_gasto_id);
+                  if (!tipoSugerido) return;
+                  setTipoSel(tipoSugerido);
+                  setCategoriaER(categoriaAlSeleccionarTipo(tipoSugerido, categoriasER, tiposGasto));
+                  setErrorCategoriaER(false);
+                  setSugerenciaCategoriaIA(null);
+                }}>Aplicar</button>
+              )}
             </div>
           </div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">
+              La IA no encontró un tipo de gasto claro. Puedes elegirlo tú.
+            </div>
+          )
         )}
       </div>
       {/* Fecha del gasto */}
@@ -1503,6 +1521,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const camposEdicion = {
           descripcion: form.concepto.trim(),
           categoria: categoriaEdicion,
+          subcategoria: tipoSel?.nombre || null,
           monto: montoEdicion,
           moneda: form.moneda,
           fecha: form.fecha,
@@ -1549,6 +1568,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         tipo:               'gasto',
         descripcion:        form.concepto.trim(),
         categoria,
+        ...(form.ya_pagado ? { subcategoria: tipoSel?.nombre || null } : {}),
         categoria_er:       categoria,
         monto,
         moneda:             form.moneda,
@@ -1589,6 +1609,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           tipo:             'gasto',
           descripcion:      form.concepto.trim(),
           categoria,
+          ...(form.ya_pagado ? { subcategoria: tipoSel?.nombre || null } : {}),
           monto,
           moneda:           form.moneda,
           fecha:            form.fecha,
