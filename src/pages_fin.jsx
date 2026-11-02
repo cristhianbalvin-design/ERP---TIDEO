@@ -16,6 +16,7 @@ import {
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
+import { agruparDetallesPorTipoGasto } from './utils/erAgrupacionTipoGasto.js';
 import { crearResumenRealPresupuesto, crearTotalesConsolidadosReferencialesPEN, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
@@ -4136,6 +4137,7 @@ function Resultados({ role }) {
   const [error, setError] = useState('');
   const [erData, setErData] = useState(null);
   const [detalleCategoria, setDetalleCategoria] = useState(null);
+  const [tiposDetalleExpandidos, setTiposDetalleExpandidos] = useState({});
   const [tcPeriodo, setTcPeriodo] = useState(null);
   const [scopeMode, setScopeMode] = useState(() => (
     multisociedadActiva && !modoVistaSociedadERInicial.permiteEscritura
@@ -4315,10 +4317,11 @@ function Resultados({ role }) {
           role={it.details?.length ? 'button' : undefined}
           tabIndex={it.details?.length ? 0 : undefined}
           title={it.details?.length ? 'Ver gastos que componen esta categoría' : undefined}
-          onClick={() => it.details?.length && setDetalleCategoria({ label: it.label, totals: it.totals, details: it.details })}
+          onClick={() => it.details?.length && (setTiposDetalleExpandidos({}), setDetalleCategoria({ label: it.label, totals: it.totals, details: it.details }))}
           onKeyDown={event => {
             if (it.details?.length && (event.key === 'Enter' || event.key === ' ')) {
               event.preventDefault();
+              setTiposDetalleExpandidos({});
               setDetalleCategoria({ label: it.label, totals: it.totals, details: it.details });
             }
           }}
@@ -4475,7 +4478,24 @@ function Resultados({ role }) {
                     <tr><th>Fecha</th><th>Concepto</th><th>CECO</th><th>Origen</th><th>Documento / tercero</th><th className="num">Importe</th></tr>
                   </thead>
                   <tbody>
-                    {detalleCategoria.details?.map((detail, index) => (
+                    {agruparDetallesPorTipoGasto(detalleCategoria.details).map(grupo => (
+                      <React.Fragment key={grupo.tipoGasto}>
+                        <tr>
+                          <td colSpan={6} style={{ padding:0, background:'var(--bg-subtle)' }}>
+                            <button
+                              type="button"
+                              aria-expanded={Boolean(tiposDetalleExpandidos[grupo.tipoGasto])}
+                              onClick={() => setTiposDetalleExpandidos(prev => ({ ...prev, [grupo.tipoGasto]: !prev[grupo.tipoGasto] }))}
+                              style={{ width:'100%', display:'flex', alignItems:'center', gap:8, padding:'10px 12px', border:0, background:'transparent', color:'var(--fg)', textAlign:'left', cursor:'pointer' }}
+                            >
+                              <span aria-hidden="true" style={{ display:'inline-flex', transform:tiposDetalleExpandidos[grupo.tipoGasto]?'rotate(0)':'rotate(-90deg)', color:'var(--fg-muted)' }}>{I.chev}</span>
+                              <strong style={{ flex:1 }}>{grupo.tipoGasto}</strong>
+                              <span className="text-muted" style={{ fontSize:11 }}>{grupo.details.length} gasto{grupo.details.length === 1 ? '' : 's'}</span>
+                              {ER_CURRENCIES.map(currency => <strong key={currency} className="num" style={{ minWidth:95 }}>{erMoney(grupo.totals, currency)}</strong>)}
+                            </button>
+                          </td>
+                        </tr>
+                        {tiposDetalleExpandidos[grupo.tipoGasto] && grupo.details.map((detail, index) => (
                       <tr key={`${detail.id || detail.concepto || 'detalle'}-${index}`}>
                         <td className="text-muted">{detail.fecha || '-'}</td>
                         <td>
@@ -4498,6 +4518,8 @@ function Resultados({ role }) {
                         <td className="text-muted">{detail.documento || detail.tercero || detail.subcategoria || detail.origen || '-'}</td>
                         <td className="num" style={{ fontWeight:700 }}>{moneyCurrency(detail.amount, detail.currency || 'PEN')}</td>
                       </tr>
+                        ))}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
