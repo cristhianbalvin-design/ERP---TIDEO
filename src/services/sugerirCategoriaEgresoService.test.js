@@ -25,7 +25,7 @@ test('acepta tipo y categoría activos coincidentes con razón breve', () => {
   assert.deepEqual(validarRespuestaSugerenciaCategoriaEgreso(
     { tipo_gasto_id: 't1', tipo_gasto: 'Materiales e insumos', categoria: 'Materiales', razon: 'Describe compra de insumos.' },
     tiposActivos, ['Materiales', 'Servicios'],
-  ), { tipo_gasto_id: 't1', tipo_gasto: 'Materiales e insumos', categoria: 'Materiales', razon: 'Describe compra de insumos.' });
+  ), { tipo_gasto_id: 't1', tipo_gasto: 'Materiales e insumos', categoria: 'Materiales', razon: 'Describe compra de insumos.', flujo_sugerido: null });
 });
 
 test('rechaza tipos inventados, categoría que no coincide, categoría inactiva y tipo no elegible para caja chica', () => {
@@ -40,7 +40,27 @@ test('rechaza tipos inventados, categoría que no coincide, categoría inactiva 
 test('acepta una respuesta sin coincidencia representada con todos los campos nulos', () => {
   assert.deepEqual(validarRespuestaSugerenciaCategoriaEgreso(
     { tipo_gasto_id: null, tipo_gasto: null, categoria: null, razon: null }, tiposActivos, ['Materiales'],
-  ), { tipo_gasto_id: null, tipo_gasto: null, categoria: null, razon: null });
+  ), { tipo_gasto_id: null, tipo_gasto: null, categoria: null, razon: null, flujo_sugerido: null });
+});
+
+test('acepta flujos permitidos con gasto nulo y razón válida, incluso sin enviar flujo en respuestas antiguas', () => {
+  const flujo = validarRespuestaSugerenciaCategoriaEgreso(
+    { tipo_gasto_id: null, tipo_gasto: null, categoria: null, razon: 'El principal recibido corresponde a un préstamo.', flujo_sugerido: 'prestamo' },
+    tiposActivos, ['Materiales'],
+  );
+  assert.deepEqual(flujo, { tipo_gasto_id: null, tipo_gasto: null, categoria: null, razon: 'El principal recibido corresponde a un préstamo.', flujo_sugerido: 'prestamo' });
+  assert.deepEqual(validarRespuestaSugerenciaCategoriaEgreso(
+    { tipo_gasto_id: 't1', tipo_gasto: 'Materiales e insumos', categoria: 'Materiales', razon: 'Compra de materiales.' },
+    tiposActivos, ['Materiales'],
+  ), { tipo_gasto_id: 't1', tipo_gasto: 'Materiales e insumos', categoria: 'Materiales', razon: 'Compra de materiales.', flujo_sugerido: null });
+});
+
+test('rechaza flujos no permitidos, mezclados con gasto o sin razón válida', () => {
+  const base = { tipo_gasto_id: null, tipo_gasto: null, categoria: null, razon: 'Movimiento de fondos propios.' };
+  assert.equal(validarRespuestaSugerenciaCategoriaEgreso({ ...base, flujo_sugerido: 'inventado' }, tiposActivos, ['Materiales']), null);
+  assert.equal(validarRespuestaSugerenciaCategoriaEgreso({ ...base, tipo_gasto: 'Materiales e insumos', flujo_sugerido: 'transferencia' }, tiposActivos, ['Materiales']), null);
+  assert.equal(validarRespuestaSugerenciaCategoriaEgreso({ ...base, razon: ' ', flujo_sugerido: 'cambio_moneda' }, tiposActivos, ['Materiales']), null);
+  assert.equal(validarRespuestaSugerenciaCategoriaEgreso({ ...base, razon: 'x'.repeat(301), flujo_sugerido: 'prestamo' }, tiposActivos, ['Materiales']), null);
 });
 
 test('propaga de forma controlada errores de red de la invocación', async () => {
