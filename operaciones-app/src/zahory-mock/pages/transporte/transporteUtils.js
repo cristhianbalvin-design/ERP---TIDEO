@@ -77,8 +77,14 @@ export function etiquetaContador(cantidad, singular, plural = `${singular}s`) {
 }
 
 export function normalizarPayloadViaje(payload = {}) {
-  const references = ['os_cliente_id', 'cotizacion_id', 'ruta_id', 'tarifa_id', 'sociedad_id', 'transportista_id', 'vehiculo_id', 'conductor_id'];
-  const numbers = ['distancia_km', 'duracion_estimada_horas', 'peso_toneladas', 'volumen_m3', 'tarifa_unitaria', 'minimo_facturable', 'cantidad_facturable'];
+  const references = [
+    'os_cliente_id', 'cotizacion_id', 'ruta_id', 'tarifa_id', 'sociedad_id',
+    'transportista_id', 'vehiculo_id', 'conductor_id', 'contacto_id',
+  ];
+  const numbers = [
+    'distancia_km', 'duracion_estimada_horas', 'peso_toneladas', 'volumen_m3',
+    'tarifa_unitaria', 'minimo_facturable', 'cantidad_facturable', 'carga_bultos',
+  ];
   const normalized = { ...payload };
   for (const key of references) if (normalized[key] === '') normalized[key] = null;
   for (const key of numbers) {
@@ -88,9 +94,89 @@ export function normalizarPayloadViaje(payload = {}) {
   if (Array.isArray(normalized.paradas)) normalized.paradas = normalized.paradas.map(stop => ({
     ...stop,
     guia_remision_id: stop.guia_remision_id === '' ? null : stop.guia_remision_id ?? null,
+    lugar_id: stop.lugar_id === '' ? null : stop.lugar_id ?? null,
+    ventana_inicio: stop.ventana_inicio === '' ? null : stop.ventana_inicio ?? null,
+    ventana_fin: stop.ventana_fin === '' ? null : stop.ventana_fin ?? null,
   }));
+  for (const key of ['referencia_cliente', 'carga_unidad_bultos', 'tipo_carga']) if (normalized[key] === '') normalized[key] = null;
   return normalized;
 }
+
+export function armarParadasDesdeRuta(ruta, lugares = []) {
+  const porId = new Map(lugares.map(lugar => [lugar.id, lugar]));
+  return ['origen', 'destino'].map(tipo => {
+    const origen = tipo === 'origen'; const id = origen ? ruta?.origen_lugar_id : ruta?.destino_lugar_id;
+    const lugar = porId.get(id); const prefix = origen ? 'origen' : 'destino';
+    return {
+      tipo,
+      lugar_id: lugar?.id || null,
+      nombre: lugar?.nombre || ruta?.[`${prefix}_nombre`] || '',
+      direccion: lugar?.direccion || ruta?.[`${prefix}_direccion`] || null,
+      latitud: lugar?.latitud ?? ruta?.[`${prefix}_latitud`] ?? null,
+      longitud: lugar?.longitud ?? ruta?.[`${prefix}_longitud`] ?? null,
+    };
+  });
+}
+
+export function validarPasoViaje(paso, form = {}) {
+  if (paso === 1) return Object.fromEntries(
+    ['cuenta_id', 'fecha_programada']
+      .filter(key => !String(form[key] || '').trim())
+      .map(key => [key, 'Este campo es obligatorio.']),
+  );
+  if (paso === 2) return Object.fromEntries([
+    ['ruta_id', 'Selecciona una ruta activa.'], ['origen_nombre', 'Este campo es obligatorio.'],
+    ['destino_nombre', 'Este campo es obligatorio.'],
+  ].filter(([key]) => !String(form[key] || '').trim()));
+  if (paso === 3) return Object.fromEntries([
+    ['carga_descripcion', 'Describe la carga.'], ['peso_toneladas', 'Indica el peso.'],
+    ['tipo_unidad', 'Selecciona un tipo de unidad.'],
+  ].filter(([key]) => !String(form[key] || '').trim()));
+  return validarFormularioViaje(form);
+}
+
+export function precioManualValido(form = {}) {
+  return form.procedencia_tarifa === 'manual' && Number(form.tarifa_unitaria) > 0;
+}
+
+export function puedeProgramarViaje(form = {}) {
+  return precioManualValido(form)
+    || (Number(form.tarifa_unitaria) > 0 && Boolean(form.tarifa_id)
+      && ['cliente', 'base'].includes(form.procedencia_tarifa));
+}
+
+export function debeCambiarEstadoAlProgramar(estado = 'borrador') {
+  return estado === 'borrador';
+}
+
+export function incluirOSActual(os = [], osActual = null) {
+  if (!osActual || os.some(item => item.id === osActual.id)) return os;
+  return [osActual, ...os];
+}
+
+export function validarVentanaParada(parada = {}) {
+  if (!parada.ventana_inicio || !parada.ventana_fin) return '';
+  return parada.ventana_fin > parada.ventana_inicio
+    ? '' : 'La hora final debe ser posterior a la hora de inicio.';
+}
+
+export function diasParaVencimientoTarifa(tarifa, fechaReferencia = fechaHoyLocal()) {
+  if (!tarifa?.vigente_hasta || estadoVigencia(tarifa, fechaReferencia) !== 'vigente') return null;
+  const today = new Date(`${fechaReferencia}T00:00:00Z`);
+  const end = new Date(`${tarifa.vigente_hasta}T00:00:00Z`);
+  return Math.max(0, Math.round((end - today) / 86400000));
+}
+
+export function llegadaEstimadaViaje(salida, duracionHoras) {
+  if (!salida || duracionHoras == null || duracionHoras === '' || !Number.isFinite(Number(duracionHoras))) return null;
+  const start = new Date(salida);
+  if (!Number.isFinite(start.getTime())) return null;
+  return new Date(start.getTime() + Number(duracionHoras) * 3600000);
+}
+
+export const mapearRequisitosViaje = values => (values || []).map(value => ({
+  gps: 'GPS', epp: 'EPP', sctr: 'SCTR', escolta: 'Escolta', refrigerado: 'Refrigerado',
+}[value] || value));
 
 export function sincronizarParadasViaje(stops = [], origen = '', destino = '') {
   const current = Array.isArray(stops) ? stops : [];
@@ -249,6 +335,9 @@ export const ordenarParadasViaje = stops => [...(stops || [])].sort((a, b) => Nu
 export function validarFormularioViaje(form = {}) {
   const errors = {};
   for (const key of ['cuenta_id','fecha_programada','origen_nombre','destino_nombre','tipo_unidad']) if (!String(form[key] || '').trim()) errors[key] = 'Este campo es obligatorio.';
+  for (const [key, message] of [['carga_descripcion', 'Describe la carga.'], ['peso_toneladas', 'Indica el peso.']]) {
+    if (!String(form[key] || '').trim()) errors[key] = message;
+  }
   if (!['viaje','km','tonelada','hora'].includes(form.modalidad)) errors.modalidad = 'Selecciona una modalidad.';
   if (!['PEN','USD'].includes(form.moneda)) errors.moneda = 'Selecciona PEN o USD.';
   for (const key of ['distancia_km','duracion_estimada_horas','peso_toneladas','volumen_m3','cantidad_facturable','tarifa_unitaria','minimo_facturable']) {

@@ -103,6 +103,7 @@ export const SIDEBAR_ZONES = [
         roles: ['gerente'],
         items: [
           { id: 'transporte-viajes',       label: 'Monitor de Viajes',  icon: 'mine' },
+          { id: 'transporte-lugares',      label: 'Lugares',            icon: 'map' },
           { id: 'transporte-ruta',         label: 'Hoja de Ruta',       icon: 'arrow' },
           { id: 'transporte-tarifas',      label: 'Maestro de Rutas',   icon: 'rates' },
           { id: 'transporte-tarifas-config', label: 'Tarifas Transporte', icon: 'rates' },

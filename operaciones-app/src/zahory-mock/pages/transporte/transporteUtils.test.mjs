@@ -16,6 +16,74 @@ test('estado de vigencia distingue inactiva, futura, vigente y vencida', () => {
   assert.equal(utils.estadoVigencia({ ...base, vigente_hasta: '2026-10-22' }, '2026-10-23'), 'vencida');
 });
 
+test('arma origen y destino desde lugares vinculados y conserva rutas antiguas', () => {
+  const route = { origen_lugar_id: 'a', destino_lugar_id: null, origen_nombre: 'Depósito', destino_nombre: 'Obra antigua', destino_direccion: 'Km 4' };
+  assert.deepEqual(utils.armarParadasDesdeRuta(route, [{ id: 'a', nombre: 'Almacén', direccion: 'Calle 1', latitud: -12 }]), [
+    { tipo: 'origen', lugar_id: 'a', nombre: 'Almacén', direccion: 'Calle 1', latitud: -12, longitud: null },
+    { tipo: 'destino', lugar_id: null, nombre: 'Obra antigua', direccion: 'Km 4', latitud: null, longitud: null },
+  ]);
+});
+
+test('calcula llegada estimada y valida los campos requeridos por paso', () => {
+  assert.equal(utils.llegadaEstimadaViaje('2026-10-28T08:00:00-05:00', 16).toISOString(),
+    '2026-10-29T05:00:00.000Z');
+  assert.deepEqual(utils.validarPasoViaje(1, {}), {
+    cuenta_id: 'Este campo es obligatorio.', fecha_programada: 'Este campo es obligatorio.',
+  });
+  assert.deepEqual(utils.validarPasoViaje(3, {}), {
+    carga_descripcion: 'Describe la carga.', peso_toneladas: 'Indica el peso.',
+    tipo_unidad: 'Selecciona un tipo de unidad.',
+  });
+});
+
+test('programa viajes con tarifa resuelta o precio manual y solo transiciona borradores', () => {
+  assert.equal(utils.puedeProgramarViaje({ tarifa_id: 't1', tarifa_unitaria: 15,
+    procedencia_tarifa: 'cliente' }), true);
+  assert.equal(utils.puedeProgramarViaje({ tarifa_unitaria: 15, procedencia_tarifa: 'manual' }), true);
+  assert.equal(utils.puedeProgramarViaje({ tarifa_unitaria: 0, procedencia_tarifa: 'manual' }), false);
+  assert.equal(utils.puedeProgramarViaje({ tarifa_unitaria: 0, procedencia_tarifa: 'base' }), false);
+  assert.equal(utils.debeCambiarEstadoAlProgramar('borrador'), true);
+  assert.equal(utils.debeCambiarEstadoAlProgramar('programado'), false);
+});
+
+test('conserva en la lista la OS guardada aunque su estado no sea seleccionable', () => {
+  const rows = [{ id: 'os-activa', estado: 'activa' }];
+  assert.deepEqual(utils.incluirOSActual(rows, { id: 'os-guardada', estado: 'en_pausa' }), [
+    { id: 'os-guardada', estado: 'en_pausa' }, rows[0],
+  ]);
+  assert.deepEqual(utils.incluirOSActual(rows, rows[0]), rows);
+});
+
+test('valida que la ventana de parada termine después de su inicio', () => {
+  assert.equal(utils.validarVentanaParada({ ventana_inicio: '08:00', ventana_fin: '09:00' }), '');
+  assert.match(utils.validarVentanaParada({ ventana_inicio: '09:00', ventana_fin: '08:00' }),
+    /posterior/);
+  assert.match(utils.validarVentanaParada({ ventana_inicio: '08:00', ventana_fin: '08:00' }),
+    /posterior/);
+});
+
+test('muestra vencimiento próximo solo dentro de la vigencia actual', () => {
+  const tarifa = { estado: 'activa', vigente_desde: '2026-10-01', vigente_hasta: '2026-10-07' };
+  assert.equal(utils.diasParaVencimientoTarifa(tarifa, '2026-10-01'), 6);
+  assert.equal(utils.diasParaVencimientoTarifa(tarifa, '2026-10-07'), 0);
+  assert.equal(utils.diasParaVencimientoTarifa(tarifa, '2026-10-08'), null);
+});
+
+test('preserva lugar y ventanas en paradas normalizadas', () => {
+  const payload = utils.normalizarPayloadViaje({ paradas: [{ tipo: 'recojo', nombre: 'Almacén',
+    lugar_id: 'place-1', ventana_inicio: '08:00', ventana_fin: '10:30' }] });
+  assert.deepEqual(payload.paradas[0], { tipo: 'recojo', nombre: 'Almacén', lugar_id: 'place-1',
+    ventana_inicio: '08:00', ventana_fin: '10:30', guia_remision_id: null });
+});
+
+test('valida campos por paso y mapea requisitos del asistente', () => {
+  assert.deepEqual(utils.validarPasoViaje(1, {}), { cuenta_id: 'Este campo es obligatorio.', fecha_programada: 'Este campo es obligatorio.' });
+  assert.deepEqual(utils.validarPasoViaje(3, {
+    tipo_unidad: 'Camión', carga_descripcion: 'Carga', peso_toneladas: '2',
+  }), {});
+  assert.deepEqual(utils.mapearRequisitosViaje(['gps', 'epp']), ['GPS', 'EPP']);
+});
+
 test('formateo, modalidad y validaci\u00f3n de tarifa correcta', () => {
   assert.equal(utils.formatearImporte(4.1234, 'PEN', 'km'), 'S/ 4.1234');
   assert.equal(utils.etiquetaModalidad('viaje'), 'Por viaje');

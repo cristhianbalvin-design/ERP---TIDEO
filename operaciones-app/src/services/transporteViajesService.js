@@ -1,8 +1,17 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { resolverTarifa } from './transporteTarifasService.js';
-import { normalizarPayloadViaje } from '../zahory-mock/pages/transporte/transporteUtils.js';
+import { incluirOSActual, normalizarPayloadViaje } from '../zahory-mock/pages/transporte/transporteUtils.js';
 
-const VIAJE_COLUMNS = 'id,empresa_id,sociedad_id,codigo,cuenta_id,os_cliente_id,cotizacion_id,ruta_id,origen_nombre,destino_nombre,distancia_km,duracion_estimada_horas,tipo_unidad,modalidad,carga_descripcion,peso_toneladas,volumen_m3,cantidad_facturable,tarifa_id,tarifa_unitaria,moneda,minimo_facturable,ingreso_estimado,fecha_programada,transportista_id,vehiculo_id,conductor_id,estado,motivo_cancelacion,observaciones,created_by,created_at,updated_at';
+const VIAJE_COLUMNS = [
+  'id', 'empresa_id', 'sociedad_id', 'codigo', 'cuenta_id', 'os_cliente_id', 'cotizacion_id',
+  'ruta_id', 'origen_nombre', 'destino_nombre', 'distancia_km', 'duracion_estimada_horas',
+  'tipo_unidad', 'modalidad', 'carga_descripcion', 'peso_toneladas', 'volumen_m3',
+  'cantidad_facturable', 'tarifa_id', 'tarifa_unitaria', 'moneda', 'minimo_facturable',
+  'ingreso_estimado', 'fecha_programada', 'transportista_id', 'vehiculo_id', 'conductor_id',
+  'estado', 'motivo_cancelacion', 'observaciones', 'referencia_cliente', 'contacto_id',
+  'tipo_carga', 'carga_bultos', 'carga_unidad_bultos', 'requisitos', 'created_by', 'created_at',
+  'updated_at',
+].join(',');
 const ERROR_MESSAGES = [
   [/No tienes permiso/i, 'No tienes permiso para realizar esta acción en Transporte Comercial.'],
   [/La OS cliente debe pertenecer/i, 'La orden de servicio debe pertenecer al cliente y empresa del viaje.'],
@@ -53,6 +62,9 @@ const payloadParadas = (empresaId, viajeId, stops = []) => stops.map((stop, inde
   longitud: stop.longitud === '' ? null : stop.longitud ?? null,
   guia_remision_id: stop.guia_remision_id || null,
   observaciones: stop.observaciones || null,
+  lugar_id: stop.lugar_id || null,
+  ventana_inicio: stop.ventana_inicio || null,
+  ventana_fin: stop.ventana_fin || null,
 }));
 
 export async function crearViaje(empresaId, payload) {
@@ -86,10 +98,30 @@ export async function eliminarViajeBorrador(empresaId, viajeId) {
   return data;
 }
 
-export async function listarOSCliente(empresaId, cuentaId) {
+export async function listarOSCliente(empresaId, cuentaId, osActualId = null) {
   if (!cuentaId) return [];
-  const { data, error } = await getSupabaseClient().from('os_clientes').select('id,numero,tipo_cobro,cuenta_id,empresa_id')
-    .eq('empresa_id', empresaId).eq('cuenta_id', cuentaId).order('created_at', { ascending: false });
+  const { data, error } = await getSupabaseClient().from('os_clientes')
+    .select('id,numero,tipo_cobro,cuenta_id,empresa_id,estado')
+    .eq('empresa_id', empresaId).eq('cuenta_id', cuentaId).neq('estado', 'anulada')
+    .order('created_at', { ascending: false });
+  check(error);
+  const rows = data || [];
+  if (osActualId && !rows.some(row => row.id === osActualId)) {
+    const { data: saved, error: savedError } = await getSupabaseClient().from('os_clientes')
+      .select('id,numero,tipo_cobro,cuenta_id,empresa_id,estado')
+      .eq('empresa_id', empresaId).eq('cuenta_id', cuentaId).eq('id', osActualId).maybeSingle();
+    check(savedError);
+    return incluirOSActual(rows, saved);
+  }
+  return rows;
+}
+
+export async function listarContactosTransporte(cuentaId) {
+  if (!cuentaId) return [];
+  const { data, error } = await getSupabaseClient().from('contactos')
+    .select('id,cuenta_id,nombre,cargo,telefono,email,es_principal,estado')
+    .eq('cuenta_id', cuentaId).eq('estado', 'activo')
+    .order('es_principal', { ascending: false }).order('nombre');
   check(error);
   return data || [];
 }
