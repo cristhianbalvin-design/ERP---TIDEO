@@ -178,7 +178,7 @@ export const SIDEBAR_ZONES = [
         id: 'venta-repuestos', label: 'Venta de Repuestos', emoji: '🛒',
         roles: ['gerente'],
         items: [
-          { id: 'catalogo',               label: 'Catálogo CAT',        icon: 'box' },
+          { id: 'catalogo',               label: 'Catálogo de venta',   icon: 'box' },
           { id: 'repuestos-cotizaciones', label: 'Cotizaciones Venta',  icon: 'report' },
           { id: 'repuestos-ordenes',      label: 'Órdenes de Venta',    icon: 'orders' },
           { id: 'repuestos-despachos',    label: 'Guías & Despachos',   icon: 'download' },

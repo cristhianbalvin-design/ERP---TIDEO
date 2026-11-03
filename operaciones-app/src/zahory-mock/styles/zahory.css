@@ -7119,3 +7119,22 @@ width:20px;height:20px}
   .dx-ofd-fields { grid-template-columns:minmax(0,1fr); }
   .dx-ofd-right { margin-left:0; flex-basis:100%; }
 }
+
+/* Catálogo de venta (dx-wcat): popover de materiales, resumen del producto y filas editables */
+.dx-wms .dx-wcat-buscar { position:relative; }
+.dx-wms .dx-wcat-pop { position:absolute; top:calc(18px + 6px + 40px + 4px); left:0; right:0; z-index:5; max-height:240px; overflow:auto; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); box-shadow:0 10px 24px rgba(15,27,48,.16); }
+.dx-wms .dx-wcat-pop button { display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; padding:9px 12px; border:0; border-bottom:1px solid var(--dx-ui-line-soft); background:transparent; color:var(--dx-ui-ink); font:13px 'DM Sans',sans-serif; text-align:left; cursor:pointer; }
+.dx-wms .dx-wcat-pop button:hover:not(:disabled), .dx-wms .dx-wcat-pop button:focus-visible { background:var(--dx-ui-hover); outline:none; }
+.dx-wms .dx-wcat-pop button:disabled { opacity:.55; cursor:default; }
+.dx-wms .dx-wcat-pop b { color:var(--dx-ui-navy); }
+.dx-wms .dx-wcat-pop small { flex:none; color:var(--dx-ui-gray); font-size:12px; }
+.dx-wms .dx-wcat-resumen { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; padding:12px; border-radius:10px; background:var(--dx-ui-head); }
+.dx-wms .dx-wcat-resumen span { display:block; color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.dx-wms .dx-wcat-resumen b { color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }
+.dx-wms .dx-wcat-row { cursor:pointer; }
+.dx-wms .dx-wcat-row:hover td { background:var(--dx-ui-hover); }
+.dx-wms .dx-wcat-row:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-wms .dx-wcat-pie { margin:0; padding:12px 20px; }
+@container (max-width:480px) { .dx-wms .dx-wcat-resumen { grid-template-columns:minmax(0,1fr); } .dx-wms .dx-wcat-pop small { display:none; } }
+@container dx-wms (max-width:700px) { .dx-wms.dx-wcat .dx-w-hide-m { display:none; } .dx-wms.dx-wcat .dx-w-table td.mat { min-width:150px; } }
+@container dx-wms (max-width:420px) { .dx-wms.dx-wcat .dx-w-table th, .dx-wms.dx-wcat .dx-w-table td { padding-inline:8px; } .dx-wms.dx-wcat .dx-w-table th { white-space:normal; letter-spacing:.02em; } .dx-wms.dx-wcat .dx-w-table td.mat { min-width:96px; } }
