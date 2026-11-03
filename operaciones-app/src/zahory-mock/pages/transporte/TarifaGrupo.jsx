@@ -22,7 +22,8 @@ export function TarifaGrupo({ ruta, tarifas, today, onCreate, onEdit }) {
         const due = diasParaVencimientoTarifa(tariff, today);
         return <article className="dx-transporte-tariff-row" key={tariff.id}>
           <span className="dx-transporte-tariff-client" data-label="Aplica a">
-            <b>{tariff.cuenta_name}</b><small>{tariff.cuenta_id ? 'Tarifa de cliente' : 'Todos los clientes'}</small>
+            <b>{tariff.cuenta_id ? tariff.cuenta_name || 'Sin dato' : 'Tarifa base'}</b>
+            <small>{tariff.cuenta_id ? 'Tarifa de cliente' : 'Todos los clientes'}</small>
           </span>
           <span data-label="Unidad">{tariff.tipo_unidad}</span>
           <span data-label="Modalidad">{etiquetaModalidad(tariff.modalidad)}</span>

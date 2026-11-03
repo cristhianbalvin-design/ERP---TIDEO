@@ -6431,7 +6431,7 @@ width:20px;height:20px}
   color:var(--cyf);
 }
 .dx-transporte-simulator-result>* { flex:1 1 240px; }
-.dx-transporte-wizard { container-type:inline-size; padding-bottom:88px; }
+.dx-transporte-wizard { container-type:inline-size; padding-bottom:128px; }
 .dx-transporte-stepper { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:0 0 16px; }
 .dx-transporte-step  {
   display:flex;
@@ -6457,7 +6457,9 @@ width:20px;height:20px}
   font-style:normal;
   font-weight:700;
 }
-.dx-transporte-step span { min-width:0; overflow:hidden; font-size:12px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+.dx-transporte-step-copy { display:flex; min-width:0; flex-direction:column; gap:3px; }
+.dx-transporte-step-copy strong { overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.dx-transporte-step-copy small { overflow:hidden; color:var(--gr); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 .dx-transporte-step.is-current { border-color:var(--cy); box-shadow:0 0 0 1px var(--cy); }
 .dx-transporte-step.is-current i { background:var(--n); color:var(--card); }
 .dx-transporte-step.is-complete i { background:var(--cyb); color:var(--cyf); }
@@ -6481,6 +6483,19 @@ width:20px;height:20px}
   background:var(--cyb);
 }
 .dx-transporte-picked strong { overflow-wrap:anywhere; }
+.dx-transporte-picked-initials {
+  display:grid;
+  flex:none;
+  width:38px;
+  height:38px;
+  place-items:center;
+  border-radius:50%;
+  background:var(--n);
+  color:var(--card);
+  font-weight:700;
+}
+.dx-transporte-picked-copy { display:flex; min-width:0; flex:1; flex-direction:column; gap:2px; }
+.dx-transporte-picked-copy small { color:var(--gr); }
 .dx-transporte-route-tiles,.dx-transporte-unit-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:9px; }
 .dx-transporte-route-tile,.dx-transporte-unit-tiles button  {
   display:flex;
@@ -6500,6 +6515,8 @@ width:20px;height:20px}
   background:var(--cyb);
 }
 .dx-transporte-route-tile strong { overflow-wrap:anywhere; }
+.dx-transporte-route-empty { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:18px; }
+.dx-transporte-route-prompt { margin:0; padding:12px; border-radius:9px; background:var(--hd); color:var(--gr); }
 .dx-transporte-route-tile span,.dx-transporte-route-tile small { color:var(--gr); }
   .dx-transporte-route-tile .dx-transporte-route-rate-pill {
     align-self:flex-start;
@@ -6620,11 +6637,14 @@ width:20px;height:20px}
   .dx-transporte-wizard-grid { grid-template-columns:minmax(0,1fr); }
   .dx-transporte-summary { position:static; }
 }
+@container (max-width:760px) {
+  .dx-transporte-step-copy small { display:none; }
+}
 @container (max-width:700px) {
   .dx-transporte-stepper { display:flex; }
-  .dx-transporte-step { flex:none; }
-  .dx-transporte-step.is-current { flex:1 1 auto; }
-  .dx-transporte-step:not(.is-current) span { display:none; }
+  .dx-transporte-step { flex:0 0 44px; justify-content:center; padding-inline:6px; }
+  .dx-transporte-step.is-current { flex:1 1 auto; justify-content:flex-start; }
+  .dx-transporte-step:not(.is-current) .dx-transporte-step-copy { display:none; }
 }
 @container (max-width:520px) {
   .dx-transporte-savebar { right:8px; left:8px; }
@@ -6744,7 +6764,14 @@ width:20px;height:20px}
   }
 .dx-transporte-requirements legend { padding:0 6px; color:var(--dx-ui-gray); font-size:12px; font-weight:700; }
 .dx-transporte-requirements label { display:inline-flex; align-items:center; gap:6px; }
-.dx-transporte-stepper { display:flex; gap:8px; margin:0 0 20px; padding:0 0 12px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-transporte-stepper {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin:0 0 20px;
+  padding:0 0 12px;
+  border-bottom:1px solid var(--dx-ui-line);
+}
   .dx-transporte-stepper button {
     display:flex;
     align-items:center;
@@ -6758,7 +6785,23 @@ width:20px;height:20px}
   }
 .dx-transporte-stepper button.active { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-weight:700; }
 .dx-transporte-stepper button:disabled { cursor:default; }
-.dx-transporte-stepper button span { display:grid; width:24px; height:24px; place-items:center; border-radius:50%; background:var(--dx-ui-head); }
+.dx-transporte-stepper button > span:not(.dx-transporte-step-copy) {
+  display:grid;
+  width:24px;
+  height:24px;
+  place-items:center;
+  border-radius:50%;
+  background:var(--dx-ui-head);
+}
+@container (max-width:760px) {
+  .dx-transporte-step-copy small { display:none; }
+}
+@container (max-width:700px) {
+  .dx-transporte-stepper { display:flex; }
+  .dx-transporte-step { flex:0 0 44px; justify-content:center; padding-inline:6px; }
+  .dx-transporte-step.is-current { flex:1 1 auto; justify-content:flex-start; }
+  .dx-transporte-step:not(.is-current) .dx-transporte-step-copy { display:none; }
+}
 .dx-transporte-lugares,.dx-transporte-rutas { container-type:inline-size; }
 .dx-transporte-lugares-layout,.dx-transporte-rutas-layout { display:grid; grid-template-columns:minmax(280px,.85fr) minmax(0,1.4fr); gap:16px; }
 .dx-transporte-lugares-list,.dx-transporte-lugares-detail,.dx-transporte-rutas-list,.dx-transporte-rutas-detail { min-width:0; padding:16px; }
@@ -6816,7 +6859,18 @@ width:20px;height:20px}
 .dx-transporte-lugares-map a { color:var(--dx-ui-cyan-fg); }
 .dx-transporte-lugares-info { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:0; }
 .dx-transporte-lugares-info>div { min-width:0; }
-.dx-transporte-lugares-info dt,.dx-transporte-rutas-facts dt { color:var(--dx-ui-gray); font-size:12px; font-weight:700; }
+.dx-transporte-lugares-info>.is-wide { grid-column:1/-1; }
+.dx-transporte-lugares-info dt { color:var(--dx-ui-gray); font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-transporte-lugares-info .dx-transporte-no-data { color:var(--dx-ui-gray); }
+.dx-transporte-lugares-empty { display:flex; flex-direction:column; align-items:center; gap:10px; padding:28px 18px; text-align:center; }
+.dx-transporte-lugares-empty p { max-width:300px; margin:0; color:var(--dx-ui-gray); }
+.dx-transporte-lugares-info dt,.dx-transporte-rutas-facts dt {
+  color:var(--dx-ui-gray);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
 .dx-transporte-lugares-info dd,.dx-transporte-rutas-facts dd { margin:4px 0 0; color:var(--dx-ui-ink); overflow-wrap:anywhere; }
   .dx-transporte-lugares-usage {
     display:flex;
@@ -6860,16 +6914,51 @@ width:20px;height:20px}
 .dx-transporte-rutas-tariffs { margin-top:18px; }
 .dx-transporte-rutas-tariffs>header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .dx-transporte-rutas-tariffs h3 { margin:0; color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }
-.dx-transporte-rutas-table-wrap { overflow-x:auto; }
-.dx-transporte-rutas-table-wrap table { width:100%; border-collapse:collapse; text-align:left; }
-.dx-transporte-rutas-table-wrap th,.dx-transporte-rutas-table-wrap td { padding:9px 8px; border-bottom:1px solid var(--dx-ui-line-soft); white-space:nowrap; }
+.dx-transporte-rutas-tariff-table { container-type:inline-size; }
+.dx-transporte-route-tariff-row {
+  display:grid;
+  grid-template-columns:var(--dx-route-tariff-columns);
+  gap:10px;
+  align-items:center;
+  min-height:52px;
+  padding:9px 8px;
+  border-bottom:1px solid var(--dx-ui-line-soft);
+}
+.dx-transporte-route-tariff-row>* { min-width:0; overflow-wrap:anywhere; }
+.dx-transporte-route-tariff-row.is-heading { color:var(--dx-ui-gray); font-size:10px; font-weight:700; text-transform:uppercase; }
+.dx-transporte-route-tariff-row .is-right { text-align:right; font-variant-numeric:tabular-nums; }
+@container (max-width:860px) {
+  .dx-transporte-route-tariff-row.is-heading { display:none; }
+  .dx-transporte-route-tariff-row {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px 14px;
+    margin:8px 0;
+    padding:12px;
+    border:1px solid var(--dx-ui-line);
+    border-radius:10px;
+  }
+  .dx-transporte-route-tariff-row [data-label]::before {
+    display:block;
+    margin-bottom:2px;
+    color:var(--dx-ui-gray);
+    content:attr(data-label);
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+  }
+  .dx-transporte-route-tariff-row .dx-transporte-tariff-client { grid-column:1/-1; }
+  .dx-transporte-route-tariff-row .is-right { text-align:left; }
+}
 .dx-transporte-rutas-place-picker { display:grid; align-content:start; gap:6px; }
 .dx-transporte-rutas-place-picker>.dx-btn { justify-self:start; }
 @container (max-width:900px) {
   .dx-transporte-lugares-layout,.dx-transporte-rutas-layout { grid-template-columns:minmax(0,1fr); }
 }
-@container (max-width:560px) {
+@container (max-width:520px) {
   .dx-transporte-lugares-info { grid-template-columns:minmax(0,1fr); }
+  .dx-transporte-lugares-info>.is-wide { grid-column:auto; }
+}
+@container (max-width:560px) {
   .dx-transporte-rutas-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .dx-transporte-lugares-detail-head,.dx-transporte-rutas-detail-head { flex-wrap:wrap; }
 }

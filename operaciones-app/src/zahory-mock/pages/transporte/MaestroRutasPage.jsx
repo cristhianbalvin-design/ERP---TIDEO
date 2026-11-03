@@ -10,7 +10,10 @@ import { actualizarRuta, cambiarEstadoRuta, crearRuta, listarRutas } from '../..
 import { listarTarifas } from '../../../services/transporteTarifasService.js';
 import { listarLugares } from '../../../services/transporteLugaresService.js';
 import { listarViajes } from '../../../services/transporteViajesService.js';
-import { formatearImporte, formatearNumeroTransporte, validarFormularioRuta } from './transporteUtils.js';
+import {
+  diasParaVencimientoTarifa, estadoVigencia, etiquetaModalidad, formatearFechaTransporte,
+  formatearImporte, formatearNumeroTransporte, validarFormularioRuta,
+} from './transporteUtils.js';
 import { LugarEditorModal } from './LugarEditorModal.jsx';
 
 const BLANK = {
@@ -239,9 +242,9 @@ export function MaestroRutasPage() {
           <h1 className="dx-ui-title">Maestro de Rutas</h1>
           <p className="dx-ui-sub">Administra los trayectos, sus puntos y tarifas relacionadas.</p>
         </div>
-        {access.crear && <button type="button" className="dx-btn primary" onClick={() => open()}>
+        <div className="dx-ui-actions">{access.crear && <button type="button" className="dx-btn primary" onClick={() => open()}>
           Nueva ruta
-        </button>}
+        </button>}</div>
       </header>
 
       {notice && <div className="dx-transporte-notice" role="status">
@@ -330,18 +333,29 @@ export function MaestroRutasPage() {
               <header><h3>Tarifas de la ruta</h3>
                 <a className="dx-btn" href="#/transporte-tarifas-config">Ver en Tarifas</a>
               </header>
-              {selectedTariffs.length ? <div className="dx-transporte-rutas-table-wrap">
-                <table><thead><tr><th>Cliente</th><th>Unidad</th><th>Modalidad</th>
-                  <th>Tarifa</th><th>Vigencia</th><th>Estado</th></tr></thead>
-                  <tbody>{selectedTariffs.map(tariff => <tr key={tariff.id}>
-                    <td>{tariff.cuenta?.nombre_comercial || tariff.cuenta?.razon_social
-                      || (tariff.cuenta_id ? 'Cliente' : 'General')}</td>
-                    <td>{tariff.tipo_unidad}</td><td>{tariff.modalidad}</td>
-                    <td>{formatearImporte(tariff.tarifa, tariff.moneda, tariff.modalidad)}</td>
-                    <td>{tariff.vigente_desde || 'Sin inicio'} – {tariff.vigente_hasta || 'Sin fin'}</td>
-                    <td>{tariff.estado || 'Sin estado'}</td>
-                  </tr>)}</tbody>
-                </table>
+              {selectedTariffs.length ? <div className="dx-transporte-rutas-tariff-table"
+                style={{ '--dx-route-tariff-columns': 'minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) minmax(120px,.8fr) minmax(0,1.2fr) minmax(120px,.9fr)' }}>
+                <div className="dx-transporte-route-tariff-row is-heading"><span>Aplica a</span><span>Unidad</span>
+                  <span>Modalidad</span><span className="is-right">Precio</span><span>Vigencia</span><span>Estado</span></div>
+                {selectedTariffs.map(tariff => {
+                  const state = estadoVigencia(tariff);
+                  const due = diasParaVencimientoTarifa(tariff);
+                  const stateText = due !== null && due <= 7 ? `Vence en ${due} días`
+                    : ({ vigente: 'Vigente', futura: 'Futura', vencida: 'Vencida', inactiva: 'Inactiva' })[state];
+                  return <article className="dx-transporte-route-tariff-row" key={tariff.id}>
+                    <span className="dx-transporte-tariff-client" data-label="Aplica a">
+                      <b>{tariff.cuenta?.nombre_comercial || tariff.cuenta?.razon_social
+                        || (tariff.cuenta_id ? 'Sin dato' : 'Tarifa base')}</b>
+                      <small>{tariff.cuenta_id ? 'Tarifa de cliente' : 'Todos los clientes'}</small></span>
+                    <span data-label="Unidad">{tariff.tipo_unidad || 'Sin dato'}</span>
+                    <span data-label="Modalidad">{etiquetaModalidad(tariff.modalidad)}</span>
+                    <strong className="is-right" data-label="Precio">{formatearImporte(tariff.tarifa, tariff.moneda, tariff.modalidad)}</strong>
+                    <span data-label="Vigencia">{tariff.vigente_desde
+                      ? `${formatearFechaTransporte(tariff.vigente_desde)} – ${formatearFechaTransporte(tariff.vigente_hasta, 'Sin fecha final')}`
+                      : 'Sin dato'}</span>
+                    <span data-label="Estado"><span className={`dx-transporte-state is-${state}`}>{stateText}</span></span>
+                  </article>;
+                })}
               </div> : <p className="dx-ui-empty">Esta ruta aún no tiene tarifas.</p>}
             </section>
           </>}

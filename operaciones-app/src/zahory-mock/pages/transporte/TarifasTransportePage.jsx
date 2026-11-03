@@ -173,7 +173,7 @@ export function TarifasTransportePage() {
     <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Transporte Comercial</div>
       <h1 className="dx-ui-title">Tarifas</h1>
       <p className="dx-ui-sub">Precios por ruta, unidad y cliente. La tarifa del cliente tiene prioridad.</p>
-    </div>{access.crear && <button className="dx-btn primary" onClick={() => open()}>Nueva tarifa</button>}</header>
+    </div><div className="dx-ui-actions">{access.crear && <button className="dx-btn primary" onClick={() => open()}>Nueva tarifa</button>}</div></header>
     <section className="dx-ui-card dx-transporte-simulator"><h2>¿Cuánto cobro?</h2>
       <p>Simula la tarifa aplicable para un viaje.</p><form className="dx-ui-form-grid" onSubmit={simulate}>
         <DxReferenceSelector label="Ruta" options={rutas} value={probe.ruta_id}

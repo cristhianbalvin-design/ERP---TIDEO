@@ -21,7 +21,10 @@ import {
 } from './transporteUtils.js';
 import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 
-const STEPS = ['Cliente y fecha', 'Ruta y paradas', 'Carga y unidad', 'Tarifa'];
+const STEPS = [
+  ['Quién y cuándo', 'Cliente y fecha'], ['Por dónde', 'Ruta y paradas'],
+  ['Qué y en qué', 'Carga y unidad'], ['Cuánto y confirmar', 'Tarifa e ingreso'],
+];
 const blank = () => ({ cuenta_id: '', os_cliente_id: '', fecha_programada: `${fechaActualLocal()}T08:00`,
   ruta_id: '', origen_nombre: '', destino_nombre: '', distancia_km: '', duracion_estimada_horas: '',
   tipo_unidad: '', modalidad: 'viaje', carga_descripcion: '', peso_toneladas: '', volumen_m3: '',
@@ -29,6 +32,8 @@ const blank = () => ({ cuenta_id: '', os_cliente_id: '', fecha_programada: `${fe
   contacto_id: '', cantidad_facturable: '1', tarifa_id: null, tarifa_unitaria: '', moneda: 'PEN',
   minimo_facturable: '', observaciones: '', procedencia_tarifa: '', paradas: [] });
 const labelCuenta = account => account.nombre_comercial || account.razon_social || account.ruc || account.id;
+const initialsCuenta = account => labelCuenta(account).trim().split(/\s+/)
+  .slice(0, 2).map(word => word[0]).join('').toLocaleUpperCase('es');
 
 export function OrdenViajePage({ onNav }) {
   const sesion = useSesionOperativa();
@@ -324,8 +329,8 @@ export function OrdenViajePage({ onNav }) {
       <h1 className="dx-ui-title">{viajeId ? 'Editar orden de viaje' : 'Nueva orden de viaje'}</h1>
       <p className="dx-ui-sub">Completa los cuatro pasos para preparar el viaje.</p></div></header>
     <nav className="dx-transporte-stepper" aria-label="Pasos de la orden">
-      {STEPS.map((title, index) => <WizardStep key={title} number={index + 1} title={title}
-        current={step} onSelect={() => setStep(index + 1)} />)}
+      {STEPS.map(([title, subtitle], index) => <WizardStep key={title} number={index + 1}
+        title={title} subtitle={subtitle} current={step} onSelect={() => setStep(index + 1)} />)}
     </nav>
     <div className="dx-transporte-wizard-grid">
       <main className="dx-ui-card dx-transporte-wizard-form">
@@ -337,8 +342,8 @@ export function OrdenViajePage({ onNav }) {
               setOriginMode('directo'); assign('os_cliente_id', '');
             }}>Viaje directo</button>
           </div>
-          {cuenta ? <div className="dx-transporte-picked"><strong>{labelCuenta(cuenta)}</strong>
-            <span>RUC {cuenta.ruc || 'No registrado'}</span>
+          {cuenta ? <div className="dx-transporte-picked"><span className="dx-transporte-picked-initials">{initialsCuenta(cuenta)}</span>
+            <span className="dx-transporte-picked-copy"><strong>{labelCuenta(cuenta)}</strong><small>RUC {cuenta.ruc || 'No registrado'}</small></span>
             <button type="button" className="dx-btn sm" onClick={() => assign('cuenta_id', '')}>Cambiar</button></div>
             : <DxReferenceSelector label="Cliente" name="cuenta_id" required options={cuentas}
               value={form.cuenta_id} onChange={value => assign('cuenta_id', value || '')}
@@ -368,7 +373,10 @@ export function OrdenViajePage({ onNav }) {
           </div>
         </section>}
         {step === 2 && <section className="dx-transporte-wizard-section">
-          <h2>Ruta y paradas</h2><div className="dx-transporte-route-tiles">
+          <h2>Ruta y paradas</h2>{!rutas.some(item => item.estado === 'activa')
+            ? <div className="dx-ui-empty dx-transporte-route-empty"><strong>No hay rutas activas</strong>
+              <a className="dx-btn" href="#/transporte-tarifas">Ir al Maestro de Rutas</a></div>
+            : <><div className="dx-transporte-route-tiles">
           {rutas.filter(item => item.estado === 'activa').map(item => {
             const rate = routeMatches[item.id] || 'Sin tarifa';
             const rateClass = rate === 'Tarifa de cliente' ? 'is-client'
@@ -380,11 +388,13 @@ export function OrdenViajePage({ onNav }) {
               <small className={`dx-transporte-route-rate-pill ${rateClass}`}>{rate}</small></button>;
           })}</div>
           {errors.ruta_id && <small className="dx-ui-field-error">{errors.ruta_id}</small>}
-          <StopsEditor stops={form.paradas} errors={errors} onEdit={stopsEdit} onMove={moveStop}
+          {route ? <StopsEditor stops={form.paradas} errors={errors} onEdit={stopsEdit} onMove={moveStop}
             onRemove={removeStop} onAdd={addStop} placePicker={placePicker}
             places={clientPlaces} search={placeSearch} setSearch={setPlaceSearch}
             onSelectPlace={selectPlace} onCreatePlace={() => setPlaceModal(true)}
             onOpenPlacePicker={openPlacePicker} onClosePlacePicker={closePlacePicker} />
+            : <p className="dx-transporte-route-prompt">Elige una ruta para ver el origen y el destino</p>}
+          </>}
         </section>}
         {step === 3 && <ChargeFields form={form} assign={assign} errors={errors} types={tipos} />}
         {step === 4 && <section className="dx-transporte-wizard-section">

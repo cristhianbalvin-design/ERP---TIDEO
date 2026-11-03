@@ -1,8 +1,8 @@
 import React from 'react';
 import { TIPOS_LUGAR } from './LugarEditorModal.jsx';
 
-function InfoItem({ label, children }) {
-  return <div><dt>{label}</dt><dd>{children || 'Sin dato'}</dd></div>;
+function InfoItem({ label, children, className = '' }) {
+  return <div className={className}><dt>{label}</dt><dd>{children || <span className="dx-transporte-no-data">Sin dato</span>}</dd></div>;
 }
 
 export function LugarDetalle({ lugar, cuentaNombre, viajesMes, rutasCount, onEdit, canEdit }) {
@@ -37,16 +37,17 @@ export function LugarDetalle({ lugar, cuentaNombre, viajesMes, rutasCount, onEdi
       </section>
 
       <dl className="dx-transporte-lugares-info">
-        <InfoItem label="Dirección">{lugar.direccion}</InfoItem>
-        <InfoItem label="Referencia">{lugar.referencia}</InfoItem>
-        <InfoItem label="Distrito / provincia">{location}</InfoItem>
-        <InfoItem label="Departamento">{lugar.departamento}</InfoItem>
-        <InfoItem label="Ubigeo">{lugar.ubigeo}</InfoItem>
+        <InfoItem label="Direcci?n" className="is-wide">{lugar.direccion}</InfoItem>
+        <InfoItem label="Referencia" className="is-wide">{lugar.referencia}</InfoItem>
         <InfoItem label="Horario">{lugar.horario_atencion}</InfoItem>
         <InfoItem label="Contacto">{lugar.contacto_nombre}</InfoItem>
-        <InfoItem label="Teléfono">{lugar.contacto_telefono}</InfoItem>
-        <InfoItem label="Requisitos de acceso">{lugar.requisitos_acceso}</InfoItem>
-        <InfoItem label="Restricciones">{lugar.restricciones}</InfoItem>
+        <InfoItem label="Tel?fono">{lugar.contacto_telefono}</InfoItem>
+        <InfoItem label="Requisitos">{lugar.requisitos_acceso}</InfoItem>
+        <InfoItem label="Restricci?n">{lugar.restricciones}</InfoItem>
+        <InfoItem label="Distrito / provincia / departamento">
+          {[lugar.distrito, lugar.provincia, lugar.departamento].filter(Boolean).join(' / ')}
+        </InfoItem>
+        <InfoItem label="Ubigeo">{lugar.ubigeo}</InfoItem>
       </dl>
 
       <footer className="dx-transporte-lugares-usage">

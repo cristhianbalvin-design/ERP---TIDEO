@@ -125,9 +125,9 @@ export function LugaresPage() {
           <h1 className="dx-ui-title">Lugares</h1>
           <p className="dx-ui-sub">Administra almacenes, plantas y puntos de recojo o entrega.</p>
         </div>
-        {access.crear && <button type="button" className="dx-btn primary" onClick={() => setEditor({ lugar: null })}>
+        <div className="dx-ui-actions">{access.crear && <button type="button" className="dx-btn primary" onClick={() => setEditor({ lugar: null })}>
           Nuevo lugar
-        </button>}
+        </button>}</div>
       </header>
 
       {notice && <div className="dx-transporte-notice" role="status">
@@ -158,6 +158,7 @@ export function LugaresPage() {
             {loading ? <div className="dx-ui-empty" role="status">Cargando lugares…</div> : null}
             {isEmpty && <div className="dx-ui-empty dx-transporte-lugares-empty">
               <strong>Aún no hay lugares</strong>
+              <p>Guarda almacenes, plantas y puntos de recojo o entrega.</p>
               {access.crear && <button type="button" className="dx-btn primary"
                 onClick={() => setEditor({ lugar: null })}>Nuevo lugar</button>}
             </div>}

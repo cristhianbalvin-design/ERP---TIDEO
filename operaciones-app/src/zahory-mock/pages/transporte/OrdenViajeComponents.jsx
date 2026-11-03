@@ -4,12 +4,12 @@ import { formatearFechaHoraTransporte, formatearImporte } from './transporteUtil
 
 const stopLabels = { origen: 'Origen', recojo: 'Recojo', entrega: 'Entrega', destino: 'Destino' };
 
-export function WizardStep({ number, title, current, onSelect }) {
+export function WizardStep({ number, title, subtitle, current, onSelect }) {
   const completed = number < current;
   return <button type="button" className={`dx-transporte-step ${number === current ? 'is-current' : ''}`
     + `${completed ? ' is-complete' : ''}`} disabled={!completed && number !== current}
     onClick={onSelect} aria-current={number === current ? 'step' : undefined}>
-    <i>{number}</i><span>{title}</span>
+    <i>{number}</i><span className="dx-transporte-step-copy"><strong>{title}</strong><small>{subtitle}</small></span>
   </button>;
 }
 
@@ -21,7 +21,7 @@ export function TripSummary({ form, cuenta, ruta, os, arrival, ingreso }) {
       <dt>Salida</dt><dd>{value(form.fecha_programada
         ? formatearFechaHoraTransporte(new Date(form.fecha_programada).toISOString()) : '')}</dd>
       <dt>Llegada estimada</dt><dd>{value(arrival ? formatearFechaHoraTransporte(arrival.toISOString()) : '')}</dd>
-      <dt>Ruta y paradas</dt><dd>{value(ruta?.nombre || `${form.origen_nombre} → ${form.destino_nombre}`)}
+      <dt>Ruta y paradas</dt><dd>{value(ruta?.nombre || (form.ruta_id ? `${form.origen_nombre} → ${form.destino_nombre}` : ''))}
         <small>{form.paradas.filter(stop => stop.tipo === 'recojo' || stop.tipo === 'entrega')
           .map(stop => stop.nombre).filter(Boolean).join(' · ') || 'Sin paradas intermedias'}</small></dd>
       <dt>Carga</dt><dd>{value(form.carga_descripcion)}
