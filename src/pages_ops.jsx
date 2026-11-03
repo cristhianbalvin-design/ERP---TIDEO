@@ -708,7 +708,10 @@ function Cuentas() {
     return contactosPorCuenta;
   }, [contactos]);
 
-  const cuentasBase = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
+  const cuentasDelTenant = isSupabaseConfigured() && empresa?.id
+    ? cuentas.filter(c => c?.empresa_id === empresa.id)
+    : cuentas;
+  const cuentasBase = cuentasDelTenant.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
   const cxcPorCuentaMoneda = useMemo(() => {
     const mapa = new Map();
     const facturasPorId = new Map((facturas || []).map(factura => [factura.id, factura]));

@@ -337,6 +337,7 @@ export function AppProvider({ children }) {
   const [membresiaCargando, setMembresiaCargando] = useState(isSupabaseConfigured());
   const [membresiaError, setMembresiaError] = useState('');
   const membresiaLoadRequestRef = useRef(0);
+  const crmLoadRequestRef = useRef(0);
   const [perfilSociedad, setPerfilSociedad] = useState(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
   const [sociedadesIdsAlcance, setSociedadesIdsAlcance] = useState(null);
   const [sociedadActiva, setSociedadActiva] = useState(null);
@@ -989,6 +990,7 @@ export function AppProvider({ children }) {
     setCuentas([]);
     // ... (opcional otras listas)
 
+    const requestId = ++crmLoadRequestRef.current;
     let mounted = true;
     const loadCrm = async () => {
       try {
@@ -1030,11 +1032,11 @@ export function AppProvider({ children }) {
         setEvaluacionRespObjetivos([]);
 
         const data = await loadCrmFromSupabase(supabase, empresa.id);
-        if (!data || !mounted) return;
+        if (!data || !mounted || requestId !== crmLoadRequestRef.current) return;
         const agendaData = data.agendaEventos || [];
         const actividadesData = data.actividades || [];
         const leadsCalculados = recalcularDiasSinActividadLeads(data.leads || [], actividadesData, agendaData);
-        setCuentas(data.cuentas || []);
+        setCuentas((data.cuentas || []).filter(cuenta => cuenta?.empresa_id === empresa.id));
         setLeads(leadsCalculados);
         Promise.all(
           leadsCalculados
@@ -1391,7 +1393,10 @@ export function AppProvider({ children }) {
     setIsDataLoaded(false);
     setIsRrhhLoaded(false);
     loadCrm();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      if (crmLoadRequestRef.current === requestId) crmLoadRequestRef.current += 1;
+    };
   }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
 
   const cargarSociedadesDeEmpresa = async (empresaResuelta, permitirConsolidadoOverride = null) => {
@@ -1568,6 +1573,8 @@ export function AppProvider({ children }) {
     setMembresiaError('');
     setMembresiaCargando(true);
     const requestId = ++membresiaLoadRequestRef.current;
+    setCuentas([]);
+    setContactos([]);
     const membresiaCargada = await cargarMembresiaCompleta(mem, requestId);
     if (!membresiaCargada) return;
     if (isSupabaseConfigured() && mem.rol?.es_superadmin && !mem.empresa?.es_plataforma) {
@@ -2196,7 +2203,8 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearCuenta = (cuenta) => {
+  const crearCuenta = async (cuenta) => {
+    const cuentaTenant = { ...cuenta, empresa_id: empresa.id };
     const contactoPrincipal = cuenta.nombre_contacto ? {
       id: generateId('con'),
       empresa_id: empresa.id,
@@ -2210,13 +2218,25 @@ export function AppProvider({ children }) {
       estado: 'activo',
     } : null;
 
-    setCuentas(prev => [...prev, cuenta]);
-    if (contactoPrincipal) setContactos(prev => [...prev, contactoPrincipal]);
-    crmSync(async sb => {
-      await persistirCuenta(sb, empresa.id, cuenta);
-      if (contactoPrincipal) await persistirContacto(sb, empresa.id, contactoPrincipal);
-    });
-    auditSync({ modulo: 'crm', entidad: 'cuentas', entidad_id: cuenta.id, accion: 'crear', valor_nuevo: cuenta });
+    try {
+      await crmPersist(sb => persistirCuenta(sb, empresa.id, cuentaTenant));
+    } catch (error) {
+      const message = error?.message || 'No se pudo guardar la cuenta.';
+      addNotificacion(`No se creó la cuenta: ${message}`);
+      throw error;
+    }
+
+    setCuentas(prev => [...prev.filter(item => item.id !== cuentaTenant.id), cuentaTenant]);
+    if (contactoPrincipal) {
+      setContactos(prev => [...prev.filter(item => item.id !== contactoPrincipal.id), contactoPrincipal]);
+      try {
+        await crmPersist(sb => persistirContacto(sb, empresa.id, contactoPrincipal));
+      } catch (error) {
+        addNotificacion(`La cuenta se creó, pero no se pudo guardar el contacto principal: ${error?.message || 'Error desconocido'}`);
+      }
+    }
+    auditSync({ modulo: 'crm', entidad: 'cuentas', entidad_id: cuenta.id, accion: 'crear', valor_nuevo: cuentaTenant });
+    return cuentaTenant;
   };
 
   const actualizarCuenta = async (cuentaId, datos) => {
@@ -11946,6 +11966,10 @@ export function AppProvider({ children }) {
     superadmin_plataforma: esSuperadminPlataforma,
   } : null;
 
+  const cuentasDelTenant = useSupabase && empresa?.id
+    ? cuentas.filter(cuenta => cuenta?.empresa_id === empresa.id)
+    : cuentas;
+
   const contextValue = {
     isDataLoaded,
     isRrhhLoaded,
@@ -11968,7 +11992,7 @@ export function AppProvider({ children }) {
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
     leads, setLeads, updateLeadState, historialEstados,
     campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
-    cuentas, setCuentas, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta,
+    cuentas: cuentasDelTenant, setCuentas, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
     oportunidades, setOportunidades, oppHistorialEtapas,
     actividades, setActividades,
