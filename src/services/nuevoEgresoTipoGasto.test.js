@@ -40,3 +40,23 @@ test('la creación del gasto guarda subcategoria sin depender de si ya fue pagad
   assert.doesNotMatch(gastoBase, /ya_pagado[\s\S]{0,100}subcategoria|subcategoria[\s\S]{0,100}ya_pagado/);
   assert.doesNotMatch(gastoPayload, /ya_pagado[\s\S]{0,100}subcategoria|subcategoria[\s\S]{0,100}ya_pagado/);
 });
+
+test('la creación excluye del ER solo los tipos no gasto y marca su CxP pendiente', () => {
+  const gastoBaseStart = source.indexOf('const gastoBase = {');
+  const gastoPayloadStart = source.indexOf('const gastoPayload = {', gastoBaseStart);
+  const gastoBase = source.slice(gastoBaseStart, gastoPayloadStart);
+  const gastoPayloadEnd = source.indexOf('\n        };', gastoPayloadStart);
+  const gastoPayload = source.slice(gastoPayloadStart, gastoPayloadEnd);
+  const pendingStart = source.indexOf('} else if (!form.ya_pagado) {');
+  const pendingCxp = extraerCxpRecord(pendingStart);
+  const paidStart = source.indexOf('const tcPago = await getTipoCambioPorFecha(fechaPago, sb)');
+  const paidCxp = extraerCxpRecord(paidStart);
+
+  assert.match(gastoBase, /tipoSel\?\.es_no_gasto\s*\?\s*\{\s*excluir_de_er:\s*true\s*\}\s*:\s*\{\s*\}/);
+  assert.match(gastoPayload, /tipoSel\?\.es_no_gasto\s*\?\s*\{\s*excluir_de_er:\s*true\s*\}\s*:\s*\{\s*\}/);
+  assert.match(pendingCxp, /tipoSel\?\.es_no_gasto\s*\?\s*\{\s*no_devengar_er:\s*true\s*\}\s*:\s*\{\s*\}/);
+  assert.match(paidCxp, /no_devengar_er:\s*true/);
+  assert.match(gastoPayload, /excluir_de_er/);
+  assert.match(source, /\.select\('\*'\)/);
+  assert.match(source, /es_no_gasto:\s*false/);
+});

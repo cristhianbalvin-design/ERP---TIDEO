@@ -42,13 +42,13 @@ const etiquetaOT = (ot) => ot?.numero || ot?.codigo || ot?.codigo_ot || 'OT sin 
 
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
-  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package', aplica_caja_chica: true  },
-  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench',  aplica_caja_chica: true  },
-  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building', aplica_caja_chica: true  },
-  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck',   aplica_caja_chica: true  },
-  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt', aplica_caja_chica: true  },
-  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck',   aplica_caja_chica: true  },
-  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', aplica_caja_chica: true, es_capitalizacion: true },
+  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package', aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench',  aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building', aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck',   aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt', aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck',   aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', aplica_caja_chica: true, es_capitalizacion: true, es_no_gasto: false },
 ];
 
 const ACTIVO_TIPOS_WIZ = [
@@ -1600,6 +1600,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         archivo_factura_url: archivoUrl || null,
         origen_registro:    'backoffice',
         estado:             'registrado',
+        ...(tipoSel?.es_no_gasto ? { excluir_de_er: true } : {}),
         estado_pago:        form.ya_pagado ? 'pagado' : 'pendiente',
         metodo_pago:        form.ya_pagado ? form.metodo_pago : null,
         referencia_pago:    form.ya_pagado ? (form.referencia_pago || null) : null,
@@ -1632,6 +1633,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           fecha:            form.fecha,
           origen_registro:  'backoffice',
           estado:           'registrado',
+          ...(tipoSel?.es_no_gasto ? { excluir_de_er: true } : {}),
           estado_pago:      form.ya_pagado ? 'pagado' : 'pendiente',
           metodo_pago:      form.ya_pagado ? form.metodo_pago : null,
           referencia_pago:  form.ya_pagado ? (form.referencia_pago || null) : null,
@@ -1814,6 +1816,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           gasto_id:          gastoId,
           orden_compra_id:   esCompraConOc ? form.orden_compra_id : null,
           origen:            'gasto',
+          ...(tipoSel?.es_no_gasto ? { no_devengar_er: true } : {}),
           estado:            'por_pagar',
           monto_pagado:      0,
           saldo:             monto,
@@ -1935,7 +1938,7 @@ export function TiposGastoAdmin() {
   const [loading, setLoading] = useState(true);
   const [panel, setPanel]     = useState(false);
   const [editando, setEditando] = useState(null);
-  const [form, setForm]       = useState({ nombre: '', categoria_er: '', icono: 'receipt', activo: true, orden: 0 });
+  const [form, setForm]       = useState({ nombre: '', categoria_er: '', icono: 'receipt', activo: true, orden: 0, es_no_gasto: false });
   const [guardando, setGuardando] = useState(false);
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -1965,13 +1968,13 @@ export function TiposGastoAdmin() {
 
   const abrirNuevo = () => {
     setEditando(null);
-    setForm({ nombre: '', categoria_er: catOpts[0] || '', icono: 'receipt', activo: true, orden: tipos.length });
+    setForm({ nombre: '', categoria_er: catOpts[0] || '', icono: 'receipt', activo: true, orden: tipos.length, es_no_gasto: false });
     setPanel(true);
   };
 
   const abrirEditar = (t) => {
     setEditando(t);
-    setForm({ nombre: t.nombre, categoria_er: t.categoria_er, icono: t.icono, activo: t.activo, orden: t.orden });
+    setForm({ nombre: t.nombre, categoria_er: t.categoria_er, icono: t.icono, activo: t.activo, orden: t.orden, es_no_gasto: Boolean(t.es_no_gasto) });
     setPanel(true);
   };
 
@@ -2094,6 +2097,10 @@ export function TiposGastoAdmin() {
                   </div>
                 )}
               </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+                <input type="checkbox" checked={Boolean(form.es_no_gasto)} onChange={e => setF('es_no_gasto', e.target.checked)} />
+                <span>No es gasto: no afecta el Estado de Resultados</span>
+              </label>
               <div className="input-group">
                 <label>Ícono</label>
                 <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 2 }}>
