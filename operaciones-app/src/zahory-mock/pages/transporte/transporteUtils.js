@@ -275,7 +275,8 @@ export function validarComposerRuta(form, tarifaActiva = true) {
   if (!String(form.nombre || '').trim()) errors.nombre = 'Ingresa un nombre.';
   if (tarifaActiva) {
     for (const key of ['tipo_unidad', 'modalidad', 'tarifa', 'moneda', 'vigente_desde']) {
-      if (!String(form.tarifa?.[key] || '').trim()) errors[`tarifa.${key}`] = 'Completa este campo.';
+      if (!String(form.tarifa?.[key] || '').trim()) errors[`tarifa.${key}`] = key === 'tarifa'
+        ? 'Indica el precio de la tarifa base.' : 'Completa este campo.';
     }
     if (form.tarifa?.tarifa !== '' && Number(form.tarifa?.tarifa) <= 0) {
       errors['tarifa.tarifa'] = 'El precio debe ser mayor que cero.';
@@ -300,6 +301,18 @@ export function formatearImporte(valor, moneda, modalidad) {
   });
 
   return `${symbol} ${formatted}`.trim();
+}
+
+export function formatearValorUnidad(valor, unidad = '') {
+  if (valor === '' || valor == null || !Number.isFinite(Number(valor))) return 'Sin dato';
+  const formatted = Number(valor).toLocaleString('es-PE', { maximumFractionDigits: 1 });
+  return unidad ? `${formatted} ${unidad}` : formatted;
+}
+
+export function encontrarRutaDuplicada(rutas = [], origenId, destinoId) {
+  if (!origenId || !destinoId) return null;
+  return rutas.find(ruta => ruta.estado === 'activa'
+    && ruta.origen_lugar_id === origenId && ruta.destino_lugar_id === destinoId) || null;
 }
 
 export function enriquecerTarifas(tarifas = [], rutas = [], cuentas = []) {

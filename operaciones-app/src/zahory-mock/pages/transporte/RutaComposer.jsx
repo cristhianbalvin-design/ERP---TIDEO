@@ -5,7 +5,7 @@ import { crearLugar } from '../../../services/transporteLugaresService.js';
 import { siguienteCodigoRuta, guardarRutaCompuesta } from '../../../services/transporteRutasService.js';
 import {
   catalogoTiposUnidad, estimarTrayecto, fechaActualLocal, parsearCoordenadasMaps,
-  validarComposerRuta,
+  encontrarRutaDuplicada, formatearImporte, formatearValorUnidad, validarComposerRuta,
 } from './transporteUtils.js';
 
 const CARGAS = ['General', 'Refrigerada', 'Peligrosa', 'Granel', 'Sobredimensionada'];
@@ -61,12 +61,13 @@ function PlaceSearch({ side, places, accounts, value, onSelect, onCreate, error,
     setQuery('');
     setOpen(false);
   }
-  return <div className="dx-transporte-composer-stop">
+  return <div className={`dx-transporte-composer-stop${open ? ' is-open' : ''}`}>
     <span className={`dx-transporte-composer-pin ${side}`} aria-hidden="true">
       {side === 'origen' ? 'A' : 'B'}
     </span>
     <div className="dx-transporte-composer-search">
-      <label className="dx-ui-field"><span>{title}<b className="dx-ui-required"> *</b></span>
+      <div className="dx-ui-field">
+        <label htmlFor={`composer-${side}_lugar_id`}>{title}<b className="dx-ui-required"> *</b></label>
         <div className={`dx-transporte-composer-combo${error ? ' is-invalid' : ''}`}>
           <span className="dx-transporte-composer-search-icon" aria-hidden="true">⌕</span>
           <input ref={inputRef} id={`composer-${side}_lugar_id`} aria-label={title}
@@ -114,7 +115,7 @@ function PlaceSearch({ side, places, accounts, value, onSelect, onCreate, error,
             </button>
           </div>}
         </div>
-      </label>
+      </div>
       {selected && <small className="dx-transporte-composer-address">
         {selected.direccion || 'Sin dirección'}{selected.ciudad ? ` · ${selected.ciudad}` : ''}
       </small>}
@@ -164,7 +165,7 @@ function NewPlace({ side, accounts, form, setForm, onDirty, onCancel, onSave, sa
             Mover el punto
           </button></> : <b>Haz clic en el mapa para marcar el punto</b>}
       </div>
-      <Field label="" name="lugar-maps" value={form.map_url || ''}
+      <Field label="Enlace de Google Maps" name="lugar-maps" value={form.map_url || ''}
         placeholder="https://maps.google.com/…@-13.71,-76.20" onChange={useLink} />
       {!form.latitud && <small className="dx-transporte-composer-hint">
         El punto se puede arrastrar en el mapa para afinarlo.
@@ -189,8 +190,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   const [placeForm, setPlaceForm] = useState(NEW_PLACE);
   const [placeError, setPlaceError] = useState('');
   const [placeSaving, setPlaceSaving] = useState(false);
-  const [duplicate, setDuplicate] = useState(null);
-  const [forceDuplicate, setForceDuplicate] = useState(false);
+  const [duplicateDismissed, setDuplicateDismissed] = useState(false);
   const [tarifaActiva, setTarifaActiva] = useState(true);
   const [regreso, setRegreso] = useState(true);
   const [manualEstimate, setManualEstimate] = useState(false);
@@ -198,6 +198,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   const [lastCode, setLastCode] = useState('');
   const [saveError, setSaveError] = useState('');
   const [nameEdited, setNameEdited] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const mapNode = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -226,6 +227,8 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   const mapPoint = showPlace && placeForm.latitud !== '' && placeForm.longitud !== '' ? {
     lat: Number(placeForm.latitud), lng: Number(placeForm.longitud),
   } : null;
+  const activeDuplicate = encontrarRutaDuplicada(routes, form.origen_lugar_id,
+    form.destino_lugar_id);
   showPlaceRef.current = showPlace;
 
   useEffect(() => {
@@ -239,11 +242,13 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     if (!hasGps) return;
     const estimate = estimarTrayecto(origin, destination);
     if (!estimate) return;
-    setForm(current => ({ ...current,
-      distancia_km: manualEstimate ? current.distancia_km : String(estimate.distancia_km),
+    const next = { ...form,
+      distancia_km: manualEstimate ? form.distancia_km : String(estimate.distancia_km),
       duracion_estimada_horas: manualEstimate
-        ? current.duracion_estimada_horas : String(estimate.duracion_estimada_horas),
-    }));
+        ? form.duracion_estimada_horas : String(estimate.duracion_estimada_horas),
+    };
+    setForm(next);
+    if (submitted) setErrors(validateValues(next));
   }, [hasGps, origin?.latitud, origin?.longitud, destination?.latitud,
     destination?.longitud, manualEstimate]);
 
@@ -304,31 +309,38 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     }
     const points = [...pointData.map(item => item.point)];
     if (showPlace && mapPoint) points.push([mapPoint.lat, mapPoint.lng]);
-    if (points.length === 1) map.setView(points[0], 9);
-    if (points.length > 1) map.fitBounds(points, { padding: [32, 32], maxZoom: 10 });
+    if (points.length === 1) map.setView(points[0], 10, { animate: false });
+    if (points.length > 1) map.fitBounds(points, { padding: [40, 40], maxZoom: 10,
+      animate: false });
     if (!points.length) map.setView([-12.6, -75.5], 6);
   }, [originPoint?.[0], originPoint?.[1], destinationPoint?.[0], destinationPoint?.[1],
     showPlace, mapPoint?.lat, mapPoint?.lng]);
 
   useEffect(() => {
     if (!origin || !destination || nameEdited) return;
-    setForm(current => ({ ...current,
+    const next = { ...form,
       nombre: `${origin.nombre} → ${destination.nombre}`,
       nombre_regreso: `${destination.nombre} → ${origin.nombre}`,
-    }));
+    };
+    setForm(next);
+    if (submitted) setErrors(validateValues(next));
   }, [origin, destination, nameEdited]);
 
   function update(key, value) {
     setDirty(true);
-    setErrors(current => ({ ...current, [key]: '' }));
-    setForm(current => ({ ...current, [key]: value }));
+    const next = { ...form, [key]: value };
+    setForm(next);
+    setErrors(submitted ? validateValues(next) : current => ({ ...current, [key]: '' }));
   }
   function updateTarifa(key, value) {
     setDirty(true);
-    setErrors(current => ({ ...current, [`tarifa.${key}`]: '' }));
-    setForm(current => ({ ...current, tarifa: { ...current.tarifa, [key]: value } }));
+    const next = { ...form, tarifa: { ...form.tarifa, [key]: value } };
+    setForm(next);
+    setErrors(submitted ? validateValues(next)
+      : current => ({ ...current, [`tarifa.${key}`]: '' }));
   }
   function select(side, place) {
+    setDuplicateDismissed(false);
     setManualEstimate(false);
     update(`${side}_lugar_id`, place?.id || '');
     if (place) setRecents(current => [place.id, ...current.filter(id => id !== place.id)].slice(0, 5));
@@ -357,12 +369,22 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     } finally { setPlaceSaving(false); }
   }
 
-  function validate() {
-    const next = validarComposerRuta(form, tarifaActiva);
-    if (!hasGps && !form.distancia_km) next.distancia_km = 'Ingresa la distancia sin GPS.';
-    if (!hasGps && !form.duracion_estimada_horas) {
+  function validateValues(values, includeTarifa = tarifaActiva) {
+    const next = validarComposerRuta(values, includeTarifa);
+    const from = places.find(place => place.id === values.origen_lugar_id);
+    const to = places.find(place => place.id === values.destino_lugar_id);
+    const gpsAvailable = from?.latitud != null && from?.longitud != null
+      && to?.latitud != null && to?.longitud != null;
+    const missingGps = Boolean(from && to && !gpsAvailable);
+    if (missingGps && !values.distancia_km) next.distancia_km = 'Ingresa la distancia sin GPS.';
+    if (missingGps && !values.duracion_estimada_horas) {
       next.duracion_estimada_horas = 'Ingresa la duración sin GPS.';
     }
+    return next;
+  }
+  function validate() {
+    setSubmitted(true);
+    const next = validateValues(form);
     setErrors(next);
     const order = ['origen_lugar_id', 'destino_lugar_id', 'distancia_km',
       'duracion_estimada_horas', 'nombre', 'codigo', 'numero_peajes',
@@ -389,12 +411,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   async function save(event) {
     event.preventDefault();
     if (!validate()) return;
-    if (!forceDuplicate) {
-      const match = routes.find(route => route.estado === 'activa'
-        && route.origen_lugar_id === form.origen_lugar_id
-        && route.destino_lugar_id === form.destino_lugar_id);
-      if (match) { setDuplicate(match); return; }
-    }
+    if (activeDuplicate && !duplicateDismissed) return;
     setSaving(true);
     setSaveError('');
     const ruta = {
@@ -456,6 +473,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
               <button type="button" className="dx-btn icon dx-transporte-composer-swap"
                 aria-label="Invertir origen y destino" onClick={() => {
                   const nextOrigin = form.destino_lugar_id;
+                  setDuplicateDismissed(false);
                   setManualEstimate(false);
                   update('destino_lugar_id', form.origen_lugar_id);
                   update('origen_lugar_id', nextOrigin);
@@ -469,15 +487,15 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     {showPlace && <NewPlace side={showPlace} accounts={accounts} form={placeForm} setForm={setPlaceForm}
               onDirty={() => setDirty(true)} onCancel={() => setShowPlace('')}
               onSave={savePlace} saving={placeSaving} error={placeError} />}
-            {duplicate && <div className="dx-transporte-composer-duplicate" role="status">
-              <span>Ya existe {duplicate.codigo} · {duplicate.nombre} ({duplicate.distancia_km} km,
-                {duplicate.duracion_estimada_horas} h).</span>
+            {activeDuplicate && !duplicateDismissed && <div className="dx-transporte-composer-duplicate" role="status">
+              <span>Ya existe <b>{activeDuplicate.codigo}</b> · {activeDuplicate.nombre} (
+                {formatearValorUnidad(activeDuplicate.distancia_km, 'km')},
+                {formatearValorUnidad(activeDuplicate.duracion_estimada_horas, 'h')}).
+                ¿Quieres usarla en vez de crear otra?</span>
               <button type="button" className="dx-btn link"
-                onClick={() => onViewRoute(duplicate.id)}>Ver ruta</button>
-              <button type="button" className="dx-btn" onClick={() => {
-                setForceDuplicate(true); setDuplicate(null);
-                requestAnimationFrame(() => document.getElementById('composer-form').requestSubmit());
-              }}>Crear igual</button>
+                onClick={() => onViewRoute(activeDuplicate.id)}>Ver ruta</button>
+              <button type="button" className="dx-btn link"
+                onClick={() => setDuplicateDismissed(true)}>Crear igual</button>
             </div>}
 
           </section>
@@ -554,11 +572,12 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
               value={form.notas} onChange={event => update('notas', event.target.value)} /></label>
           </details>
           <section className="dx-transporte-composer-section">
-            <label className="dx-transporte-composer-switch"><input type="checkbox"
-              checked={tarifaActiva} onChange={event => {
+            <h3><i>4</i><label className="dx-transporte-composer-switch">
+              <input type="checkbox" checked={tarifaActiva} onChange={event => {
                 setTarifaActiva(event.target.checked); setDirty(true);
-              }} /><span><i>4</i> Agregar tarifa base ahora
-              <small>evita que la ruta nazca «sin tarifa»</small></span></label>
+                if (submitted) setErrors(validateValues(form, event.target.checked));
+              }} /><span>Agregar tarifa base ahora</span></label>
+              <small>evita que la ruta nazca «sin tarifa»</small></h3>
             {tarifaActiva && <div className="dx-transporte-composer-grid">
               <label className="dx-ui-field"><span>Tipo de unidad<b className="dx-ui-required"> *</b></span>
                 <select ref={unitInput} id="composer-tarifa-tipo_unidad"
@@ -612,7 +631,10 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
             <div ref={mapNode} className="dx-transporte-composer-leaflet" />
             <div className="dx-transporte-composer-map-hint">{showPlace
               ? 'Haz clic en el mapa para marcar el nuevo lugar'
-              : 'Elige origen y destino para ver el trayecto'}</div></div>
+              : origin && destination && hasGps
+                ? `Línea punteada = recorrido estimado (${formatearValorUnidad(form.distancia_km, 'km')} por carretera)`
+                : origin && destination ? 'Un lugar no tiene GPS: completa la distancia a mano'
+                  : 'Elige origen y destino para ver el trayecto'}</div></div>
           {showPlace && mapPoint && <p className="dx-transporte-composer-coords">
             Ubicación: {mapPoint.lat.toFixed(5)}, {mapPoint.lng.toFixed(5)}</p>}
           <section className="dx-transporte-composer-preview">
@@ -627,14 +649,15 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
                     {place && <small>{place.direccion || 'Sin dirección'}</small>}</span></div>)}
             </div>
             <div className="dx-transporte-composer-metrics">
-              <div><small>Distancia</small><b>{form.distancia_km || 'Sin dato'} km</b></div>
-              <div><small>Duración</small><b>{form.duracion_estimada_horas || 'Sin dato'} h</b></div>
-              <div><small>Peajes</small><b>{form.numero_peajes || 'Sin dato'}</b></div></div>
-            <div className="dx-transporte-composer-preview-tariff"><span>Tarifa base ·
-              {form.tarifa.tipo_unidad || 'Sin unidad'}</span>
-              <b>{tarifaActiva && form.tarifa.tarifa
-                ? (form.tarifa.moneda === 'USD' ? 'US$ ' : 'S/ ') + form.tarifa.tarifa
-                  + ' / ' + LABELS[form.tarifa.modalidad] : 'Sin dato'}</b></div>
+              <div><small>Distancia</small><b>{formatearValorUnidad(form.distancia_km, 'km')}</b></div>
+              <div><small>Duración</small><b>{formatearValorUnidad(form.duracion_estimada_horas, 'h')}</b></div>
+              <div><small>Peajes</small><b>{formatearValorUnidad(form.numero_peajes, '')}</b></div></div>
+            <div className="dx-transporte-composer-preview-tariff">{tarifaActiva
+              ? <><span>Tarifa base · {form.tarifa.tipo_unidad || 'Sin unidad'}</span>
+                <b>{form.tarifa.tarifa
+                  ? `${formatearImporte(form.tarifa.tarifa, form.tarifa.moneda, 'viaje')} / ${LABELS[form.tarifa.modalidad]}`
+                  : 'Sin dato'}</b></>
+              : <><span>Sin tarifa base</span><small>La ruta quedará «sin tarifa»</small></>}</div>
           </section>
           {regreso && origin && destination && <p className="dx-transporte-composer-return-note">
             También se creará {form.codigo_regreso} · {destination.nombre} → {origin.nombre}

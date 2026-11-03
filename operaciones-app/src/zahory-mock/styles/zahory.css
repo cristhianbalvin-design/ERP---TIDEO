@@ -8332,9 +8332,9 @@ width:20px;height:20px}
   box-shadow:0 2px 7px rgba(0,0,0,.35);
   transform:rotate(-45deg);
 }
-[data-theme='dark'] .dx-transporte-composer .leaflet-tile,
-:host([data-theme='dark']) .dx-transporte-composer .leaflet-tile,
-.dark .dx-transporte-composer .leaflet-tile {
+[data-theme='dark'] .dx-transporte-composer .leaflet-tile-pane,
+:host([data-theme='dark']) .dx-transporte-composer .leaflet-tile-pane,
+.dark .dx-transporte-composer .leaflet-tile-pane {
   filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.9);
 }
 /* Ajustes de fidelidad del composer Nueva ruta. */
@@ -8635,3 +8635,24 @@ width:20px;height:20px}
   padding:12px;
 }
 }
+/* Composer route fidelity and interaction fixes. */
+.dx-transporte-composer-stop { position:relative; }
+.dx-transporte-composer-stop.is-open { z-index:4; }
+.dx-transporte-composer-preview-head { text-align:left; }
+.dx-transporte-composer-stops { display:grid; grid-template-columns:minmax(0,1fr); }
+.dx-transporte-composer-preview-tariff { align-items:flex-start; text-align:left; }
+.dx-transporte-composer-preview-tariff b { color:var(--dx-ui-navy); font-family:"Sora",sans-serif; text-align:right; }
+.dx-transporte-composer-preview-tariff small { color:var(--dx-ui-gray); }
+.dx-transporte-composer-section h3 .dx-transporte-composer-switch { gap:8px; color:var(--dx-ui-navy); font:inherit; }
+.dx-transporte-composer-switch span { display:inline; color:inherit; font:inherit; }
+.dx-transporte-composer-switch input { position:relative; width:36px; height:20px; flex:none; appearance:none; border:0; border-radius:999px; background:var(--dx-ui-border); cursor:pointer; }
+.dx-transporte-composer-switch input::after { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; content:""; transition:left .15s; }
+.dx-transporte-composer-switch input:checked { background:var(--dx-ui-cyan); }
+.dx-transporte-composer-switch input:checked::after { left:18px; }
+.dx-transporte-composer-withunit { min-width:0; width:100%; overflow:hidden; }
+.dx-transporte-composer-withunit input { flex:1 1 0; width:0; }
+.dx-transporte-composer-withunit em { flex:0 0 auto; white-space:nowrap; }
+.dx-transporte-composer-segmented { width:100%; flex-wrap:wrap; }
+.dx-transporte-composer-segmented button { flex:1 1 auto; min-width:max-content; white-space:nowrap; }
+.dx-transporte-composer-duplicate>span { flex:1 1 100%; }
+.dx-transporte-composer-duplicate .dx-btn.link { min-height:0; padding:0; border:0; background:transparent; color:inherit; font-weight:600; }

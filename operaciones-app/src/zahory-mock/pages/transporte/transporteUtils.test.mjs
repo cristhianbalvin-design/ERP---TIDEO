@@ -348,3 +348,33 @@ test('valida los campos requeridos del composer de ruta y tarifa base', () => {
     duracion_estimada_horas: '1', codigo: 'R-001', nombre: 'A ? B',
   }, false), {});
 });
+
+test('la vista previa no pega la unidad a un valor vacío', () => {
+  assert.equal(utils.formatearValorUnidad('', 'km'), 'Sin dato');
+  assert.equal(utils.formatearValorUnidad(null, 'h'), 'Sin dato');
+  assert.match(utils.formatearValorUnidad(3400, 'km'), /3,400 km/);
+});
+
+test('la tarifa base lleva separador de miles y céntimos', () => {
+  assert.match(utils.formatearImporte(3400, 'PEN', 'viaje'), /S\/ 3,400\.00/);
+});
+
+test('el precio vacío usa el mensaje propio del composer', () => {
+  const errors = utils.validarComposerRuta({
+    origen_lugar_id: 'A', destino_lugar_id: 'B', distancia_km: 10,
+    duracion_estimada_horas: 1, codigo: 'R-012', nombre: 'A a B',
+    tarifa: { tipo_unidad: 'Tracto', modalidad: 'viaje', tarifa: '', moneda: 'PEN',
+      vigente_desde: '2026-11-03' },
+  });
+  assert.equal(errors['tarifa.tarifa'], 'Indica el precio de la tarifa base.');
+});
+
+test('el duplicado solo considera rutas activas en el mismo sentido', () => {
+  const routes = [
+    { id: 'inactive', estado: 'inactiva', origen_lugar_id: 'A', destino_lugar_id: 'B' },
+    { id: 'active', estado: 'activa', origen_lugar_id: 'A', destino_lugar_id: 'B' },
+  ];
+  assert.equal(utils.encontrarRutaDuplicada(routes, 'A', 'B').id, 'active');
+  assert.equal(utils.encontrarRutaDuplicada(routes, 'B', 'A'), null);
+  assert.equal(utils.encontrarRutaDuplicada(routes, '', 'B'), null);
+});
