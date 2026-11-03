@@ -15,6 +15,7 @@ import {
   formatearImporte, formatearNumeroTransporte, validarFormularioRuta,
 } from './transporteUtils.js';
 import { LugarEditorModal } from './LugarEditorModal.jsx';
+import { RutaComposer } from './RutaComposer.jsx';
 
 const BLANK = {
   codigo: '', nombre: '', origen_nombre: '', origen_lugar_id: null,
@@ -88,8 +89,9 @@ export function MaestroRutasPage() {
   const [notice, setNotice] = useState('');
   const [routeConfirm, setRouteConfirm] = useState(false);
   const [placeSide, setPlaceSide] = useState('');
+  const [composerOpen, setComposerOpen] = useState(false);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (preferredId = '') => {
     if (!empresaId || !access.ver) return;
     setLoading(true);
     setError('');
@@ -103,8 +105,8 @@ export function MaestroRutasPage() {
       setCuentas(accounts);
       setLugares(places);
       setViajes(trips);
-      setSelectedId(current => routes.some(route => route.id === current)
-        ? current : routes[0]?.id || '');
+      setSelectedId(current => routes.some(route => route.id === preferredId)
+        ? preferredId : routes.some(route => route.id === current) ? current : routes[0]?.id || '');
     } catch (loadError) {
       setError(loadError.message || 'No se pudieron cargar las rutas.');
     } finally {
@@ -131,6 +133,10 @@ export function MaestroRutasPage() {
   if (access.motivo) return <AccesoTransporte acceso={access} />;
 
   function open(route = null) {
+    if (!route) {
+      setComposerOpen(true);
+      return;
+    }
     setForm(route ? {
       ...BLANK, ...route,
       distancia_km: route.distancia_km ?? '',
@@ -236,6 +242,23 @@ export function MaestroRutasPage() {
       [`${prefix}_longitud`]: place.longitud ?? '',
     }));
     setPlaceSide('');
+  }
+
+  async function handleComposerCreated(result, placeCreated = false) {
+    if (placeCreated) {
+      setLugares(current => [...current.filter(item => item.id !== result.id), result]);
+      return;
+    }
+    setComposerOpen(false);
+    await reload(result.ruta_id);
+    setNotice(`Ruta ${result.codigo} creada${result.codigo_regreso
+      ? ` y su regreso ${result.codigo_regreso}` : ''}.`);
+  }
+
+  function viewDuplicateRoute(routeId) {
+    setComposerOpen(false);
+    setQuery('');
+    setSelectedId(routeId);
   }
 
   return (
@@ -365,6 +388,10 @@ export function MaestroRutasPage() {
           </>}
         </article>
       </div>
+
+      {composerOpen && <RutaComposer empresaId={empresaId} places={lugares}
+        accounts={cuentas} routes={rutas} onClose={() => setComposerOpen(false)}
+        onCreated={handleComposerCreated} onViewRoute={viewDuplicateRoute} />}
 
       <ModalShell open={Boolean(modal)}
         title={modal?.id ? `Editar ruta ${modal.codigo}` : 'Nueva ruta'}

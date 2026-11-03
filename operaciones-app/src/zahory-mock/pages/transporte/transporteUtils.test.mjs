@@ -303,3 +303,48 @@ test('convierte hora UTC a hora local y de regreso con offset explícito, sin us
   assert.equal(local, '2026-10-28T08:00');
   assert.equal(utils.fechaLocalInputAFechaUtc(local, -300), '2026-10-28T13:00:00.000Z');
 });
+
+
+test('estima distancia con haversine, factor de ruta y redondeos aprobados', () => {
+  const estimate = utils.estimarTrayecto({ latitud: 0, longitud: 0 }, { latitud: 1, longitud: 0 });
+  assert.deepEqual(estimate, { distancia_km: 145, duracion_estimada_horas: 2.5 });
+  assert.equal(utils.estimarTrayecto({ latitud: null, longitud: null }, {}), null);
+});
+
+test('extrae coordenadas v\u00e1lidas de enlaces de Google Maps', () => {
+  assert.deepEqual(utils.parsearCoordenadasMaps('https://maps.google.com/@-12.0464,-77.0428,15z'), {
+    latitud: -12.0464, longitud: -77.0428,
+  });
+  assert.deepEqual(utils.parsearCoordenadasMaps('https://maps.google.com/data=!3d-12.0464!4d-77.0428'), {
+    latitud: -12.0464, longitud: -77.0428,
+  });
+  assert.equal(utils.parsearCoordenadasMaps('https://maps.google.com/@91,181,15z'), null);
+  assert.equal(utils.parsearCoordenadasMaps('sin coordenadas'), null);
+});
+
+test('valida los campos requeridos del composer de ruta y tarifa base', () => {
+  const errors = utils.validarComposerRuta({ tarifa: {} });
+  assert.ok(errors.origen_lugar_id);
+  assert.ok(errors.destino_lugar_id);
+  assert.ok(errors.distancia_km);
+  assert.ok(errors.duracion_estimada_horas);
+  assert.ok(errors.codigo);
+  assert.ok(errors.nombre);
+  assert.ok(errors['tarifa.tipo_unidad']);
+  assert.ok(errors['tarifa.modalidad']);
+  assert.ok(errors['tarifa.tarifa']);
+  assert.ok(errors['tarifa.moneda']);
+  assert.ok(errors['tarifa.vigente_desde']);
+  const invalidOptional = utils.validarComposerRuta({
+    numero_peajes: '-1', peajes_estimados: '-1',
+    tarifa: { tipo_unidad: 'Camión', modalidad: 'viaje', tarifa: '10', moneda: 'PEN',
+      minimo_facturable: '-1', vigente_desde: '2026-11-03' },
+  });
+  assert.ok(invalidOptional.numero_peajes);
+  assert.ok(invalidOptional.peajes_estimados);
+  assert.ok(invalidOptional['tarifa.minimo_facturable']);
+  assert.deepEqual(utils.validarComposerRuta({
+    origen_lugar_id: 'a', destino_lugar_id: 'b', distancia_km: '10',
+    duracion_estimada_horas: '1', codigo: 'R-001', nombre: 'A ? B',
+  }, false), {});
+});

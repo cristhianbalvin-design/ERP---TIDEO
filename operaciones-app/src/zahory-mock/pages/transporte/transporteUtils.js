@@ -224,6 +224,70 @@ export function catalogoTiposUnidad(tiposVehiculo = [], tarifas = [], tipoActual
   ]);
 }
 
+export function estimarTrayecto(origen, destino) {
+  if ([origen?.latitud, origen?.longitud, destino?.latitud, destino?.longitud]
+    .some(value => value == null || value === '')) return null;
+  const lat1 = Number(origen?.latitud);
+  const lng1 = Number(origen?.longitud);
+  const lat2 = Number(destino?.latitud);
+  const lng2 = Number(destino?.longitud);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
+  const rad = grados => grados * Math.PI / 180;
+  const deltaLat = rad(lat2 - lat1);
+  const deltaLng = rad(lng2 - lng1);
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(deltaLng / 2) ** 2;
+  const km = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1.3;
+  const distancia = Math.round(km / 5) * 5;
+  return { distancia_km: distancia, duracion_estimada_horas: Math.round((distancia / 55) * 2) / 2 };
+}
+
+export function parsearCoordenadasMaps(value = '') {
+  const match = String(value).match(/(?:@|!3d)?(-?\d{1,2}\.\d+)(?:,|!4d)\s*(-?\d{1,3}\.\d+)/);
+  if (!match) return null;
+  const latitud = Number(match[1]);
+  const longitud = Number(match[2]);
+  if (latitud < -90 || latitud > 90 || longitud < -180 || longitud > 180) return null;
+  return { latitud, longitud };
+}
+
+export function validarComposerRuta(form, tarifaActiva = true) {
+  const errors = {};
+  if (!form.origen_lugar_id) errors.origen_lugar_id = 'Selecciona un lugar de origen.';
+  if (!form.destino_lugar_id) errors.destino_lugar_id = 'Selecciona un lugar de destino.';
+  if (form.origen_lugar_id && form.origen_lugar_id === form.destino_lugar_id) {
+    errors.destino_lugar_id = 'El origen y destino deben ser distintos.';
+  }
+  for (const key of ['distancia_km', 'duracion_estimada_horas']) {
+    if (form[key] === '' || !Number.isFinite(Number(form[key])) || Number(form[key]) <= 0) {
+      errors[key] = 'Ingresa un valor mayor que cero.';
+    }
+  }
+  if (form.numero_peajes !== '' && form.numero_peajes != null
+    && (!Number.isInteger(Number(form.numero_peajes)) || Number(form.numero_peajes) < 0)) {
+    errors.numero_peajes = 'Ingresa un número entero igual o mayor que cero.';
+  }
+  if (form.peajes_estimados !== '' && form.peajes_estimados != null
+    && (!Number.isFinite(Number(form.peajes_estimados)) || Number(form.peajes_estimados) < 0)) {
+    errors.peajes_estimados = 'Ingresa un monto igual o mayor que cero.';
+  }
+  if (!String(form.codigo || '').trim()) errors.codigo = 'Ingresa un código.';
+  if (!String(form.nombre || '').trim()) errors.nombre = 'Ingresa un nombre.';
+  if (tarifaActiva) {
+    for (const key of ['tipo_unidad', 'modalidad', 'tarifa', 'moneda', 'vigente_desde']) {
+      if (!String(form.tarifa?.[key] || '').trim()) errors[`tarifa.${key}`] = 'Completa este campo.';
+    }
+    if (form.tarifa?.tarifa !== '' && Number(form.tarifa?.tarifa) <= 0) {
+      errors['tarifa.tarifa'] = 'El precio debe ser mayor que cero.';
+    }
+    if (form.tarifa?.minimo_facturable !== '' && form.tarifa?.minimo_facturable != null
+      && Number(form.tarifa.minimo_facturable) < 0) {
+      errors['tarifa.minimo_facturable'] = 'El mínimo no puede ser negativo.';
+    }
+  }
+  return errors;
+}
+
 export function formatearImporte(valor, moneda, modalidad) {
   if (valor === '' || valor == null || !Number.isFinite(Number(valor))) return '—';
 
