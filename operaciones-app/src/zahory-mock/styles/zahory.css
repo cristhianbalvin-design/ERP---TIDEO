@@ -8337,6 +8337,257 @@ width:20px;height:20px}
 .dark .dx-transporte-composer .leaflet-tile {
   filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.9);
 }
+/* Ajustes de fidelidad del composer Nueva ruta. */
+.dx-transporte-composer-head {
+  align-items:center;
+}
+.dx-transporte-composer-head>div {
+  min-width:0;
+}
+.dx-transporte-composer-head p {
+  max-width:620px;
+}
+.dx-transporte-composer-form {
+  gap:18px;
+}
+.dx-transporte-composer-route {
+  padding:14px 58px 14px 14px;
+}
+.dx-transporte-composer-route>.dx-transporte-composer-stop {
+  position:relative;
+  z-index:1;
+}
+.dx-transporte-composer-rail {
+  position:absolute;
+  top:48px;
+  bottom:48px;
+  left:27px;
+  border-left:2px dashed var(--dx-ui-cyan);
+}
+.dx-transporte-composer-pin {
+  position:relative;
+  z-index:1;
+}
+.dx-transporte-composer-details summary>i,.dx-transporte-composer-switch span>i {
+  display:inline-grid;
+  width:22px;
+  height:22px;
+  place-items:center;
+  margin-right:2px;
+  border-radius:50%;
+  background:var(--dx-ui-cyan-bg);
+  color:var(--dx-ui-cyan);
+  font:700 12px 'DM Sans',sans-serif;
+  font-style:normal;
+}
+.dx-transporte-composer-switch span {
+  display:grid;
+  gap:3px;
+  color:var(--dx-ui-navy);
+  font-weight:700;
+}
+.dx-transporte-composer-switch span>small {
+  color:var(--dx-ui-gray);
+  font-size:12px;
+  font-weight:400;
+}
+.dx-transporte-composer-withunit {
+  display:flex;
+  min-height:40px;
+  align-items:center;
+  border:1px solid var(--dx-ui-border);
+  border-radius:8px;
+  background:var(--dx-ui-card);
+}
+.dx-transporte-composer-withunit input {
+  width:100%;
+  min-width:0;
+  height:38px;
+  padding:8px 11px;
+  border:0;
+  outline:0;
+  background:transparent;
+  font:14px 'DM Sans',sans-serif;
+}
+.dx-transporte-composer-withunit em {
+  padding:0 11px;
+  color:var(--dx-ui-gray);
+  font-size:12px;
+  font-style:normal;
+}
+.dx-transporte-composer-segmented {
+  display:flex;
+  min-height:40px;
+}
+.dx-transporte-composer-segmented button {
+  flex:1;
+  min-width:0;
+  padding:7px 8px;
+  border:1px solid var(--dx-ui-line);
+  background:var(--dx-ui-card);
+  color:var(--dx-ui-ink);
+  cursor:pointer;
+}
+.dx-transporte-composer-segmented button:first-child {
+  border-radius:8px 0 0 8px;
+}
+.dx-transporte-composer-segmented button:last-child {
+  border-radius:0 8px 8px 0;
+}
+.dx-transporte-composer-segmented button+button {
+  border-left:0;
+}
+.dx-transporte-composer-segmented button.is-on {
+  background:var(--dx-ui-cyan-bg);
+  color:var(--dx-ui-cyan);
+  font-weight:700;
+}
+.dx-transporte-composer-tag {
+  display:inline-block;
+  margin-left:5px;
+  padding:2px 7px;
+  vertical-align:1px;
+  font-style:normal;
+  text-transform:none;
+}
+.dx-transporte-composer-hint {
+  display:block;
+  margin-top:5px;
+}
+.dx-transporte-composer-hint .dx-btn.link {
+  min-height:0;
+  padding:0 3px;
+}
+.dx-transporte-composer-leaflet {
+  width:100%;
+  height:100%;
+}
+.dx-transporte-composer-preview-head>span {
+  color:var(--dx-ui-cyan);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.dx-transporte-composer-stops {
+  display:grid;
+  gap:10px;
+}
+.dx-transporte-composer-preview-stop {
+  display:grid;
+  grid-template-columns:24px minmax(0,1fr);
+  gap:9px;
+}
+.dx-transporte-composer-preview-stop>i {
+  display:grid;
+  width:24px;
+  height:24px;
+  place-items:center;
+  border-radius:50%;
+  background:var(--dx-ui-cyan-bg);
+  color:var(--dx-ui-cyan);
+  font-size:11px;
+  font-style:normal;
+  font-weight:700;
+}
+.dx-transporte-composer-preview-stop+ .dx-transporte-composer-preview-stop>i {
+  background:var(--dx-ui-navy);
+  color:var(--dx-ui-card);
+}
+.dx-transporte-composer-preview-stop span {
+  display:grid;
+  gap:2px;
+}
+.dx-transporte-composer-preview-stop small,.dx-transporte-composer-metrics small {
+  color:var(--dx-ui-gray);
+  font-size:11px;
+}
+.dx-transporte-composer-metrics {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+.dx-transporte-composer-metrics>div {
+  display:grid;
+  gap:3px;
+}
+.dx-transporte-composer-preview-tariff {
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  padding-top:10px;
+  border-top:1px solid var(--dx-ui-line);
+}
+.dx-transporte-composer-marker span {
+  display:grid;
+  width:28px;
+  height:28px;
+  place-items:center;
+  border:2px solid #fff;
+  border-radius:50%;
+  background:var(--dx-ui-cyan);
+  color:#fff;
+  box-shadow:0 2px 7px rgba(0,0,0,.35);
+  transform:none;
+}
+.dx-transporte-composer-marker b {
+  font:700 12px 'DM Sans',sans-serif;
+}
+.dx-transporte-composer-marker.is-new span {
+  background:var(--dx-ui-amber);
+}
+.dx-transporte-composer-search-icon { position:absolute; left:12px; z-index:1; color:var(--dx-ui-gray); }
+.dx-transporte-composer-combo input { padding-left:32px; }
+.dx-transporte-composer-change { margin:0 10px; border:0; background:transparent; color:var(--dx-ui-cyan); font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-transporte-composer-return-note { margin:0; color:var(--dx-ui-gray); font-size:12px; }
+@container (max-width:860px) {
+  .dx-transporte-composer-body {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .dx-transporte-composer-aside {
+    order:-1;
+  }
+  .dx-transporte-composer-map {
+    height:200px;
+  }
+  .dx-transporte-composer-preview {
+    display:none;
+  }
+  .dx-transporte-composer-footer {
+    position:sticky;
+    bottom:0;
+    z-index:2;
+    background:var(--dx-ui-card);
+  }
+}
+@container (max-width:520px) {
+  .dx-transporte-composer-grid {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .dx-transporte-composer-route {
+    padding-right:48px;
+  }
+  .dx-transporte-composer-segmented button {
+    padding-inline:4px;
+    font-size:12px;
+  }
+}
+
+.dx-transporte-composer-marker.is-b span { background:var(--dx-ui-cyan); }
+.dx-transporte-composer-marker.is-a span { background:var(--dx-ui-cyan); }
+.dx-transporte-composer-marker.is-b span { background:var(--dx-ui-navy); }
+.dx-transporte-composer-map-link {
+  width:100%;
+  min-height:40px;
+  padding:8px 11px;
+  border:1px solid var(--dx-ui-border);
+  border-radius:8px;
+  background:var(--dx-ui-card);
+  color:var(--dx-ui-ink);
+  font:14px 'DM Sans',sans-serif;
+}
+.dx-transporte-composer-coord-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0; }
+
 @container (max-width:860px) {
   .dx-transporte-composer-body {
   grid-template-columns:minmax(0,1fr);

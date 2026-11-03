@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import leafletCss from 'leaflet/dist/leaflet.css?inline';
 import { crearLugar } from '../../../services/transporteLugaresService.js';
@@ -12,44 +11,23 @@ import {
 const CARGAS = ['General', 'Refrigerada', 'Peligrosa', 'Granel', 'Sobredimensionada'];
 const PLACE_TYPES = {
   almacen: 'Almacén', planta: 'Planta', obra: 'Obra', mina: 'Mina',
-  puerto: 'Puerto', cliente: 'Cliente', otro: 'Otro',
+  puerto: 'Puerto', cliente: 'Local de cliente', otro: 'Otro',
 };
 const PLACE_ICONS = {
   almacen: '▦', planta: '⚙', obra: '⌖', mina: '◆', puerto: '⚓', cliente: '♙', otro: '⌖',
 };
-const ICON = L.divIcon({
-  className: 'dx-transporte-composer-marker',
-  html: '<span></span>', iconSize: [24, 32], iconAnchor: [12, 30],
-});
 const BLANK = {
   origen_lugar_id: '', destino_lugar_id: '', codigo: '', nombre: '', codigo_regreso: '',
   nombre_regreso: '', distancia_km: '', duracion_estimada_horas: '', tipo_carga_habitual: '',
   numero_peajes: '', peajes_estimados: '', moneda_peajes: 'PEN', notas: '',
-  tarifa: { tipo_unidad: '', modalidad: 'viaje', tarifa: '', moneda: 'PEN',
+  tarifa: { tipo_unidad: 'Tracto 30 t', modalidad: 'viaje', tarifa: '', moneda: 'PEN',
     minimo_facturable: '', vigente_desde: fechaActualLocal() },
 };
 const NEW_PLACE = {
   nombre: '', tipo: 'otro', cuenta_id: '', direccion: '', latitud: '', longitud: '',
 };
 
-function MapClick({ onPick }) {
-  useMapEvents({ click: event => onPick(event.latlng) });
-  return null;
-}
-
-function FitRoute({ points }) {
-  const map = useMap();
-  const previous = useRef('');
-  useEffect(() => {
-    if (!points.length) return;
-    const key = points.map(point => point.join(',')).join('|');
-    if (key === previous.current) return;
-    previous.current = key;
-    if (points.length === 1) map.flyTo(points[0], Math.max(map.getZoom(), 8));
-    else map.fitBounds(points, { padding: [32, 32], maxZoom: 10 });
-  }, [map, points]);
-  return null;
-}
+const LABELS = { viaje: 'viaje', km: 'km', tonelada: 't', hora: 'h' };
 
 function Field({ label, name, value, onChange, error, required, type = 'text', ...props }) {
   const id = `composer-${name.replaceAll('.', '-')}`;
@@ -63,7 +41,7 @@ function Field({ label, name, value, onChange, error, required, type = 'text', .
   </label>;
 }
 
-function PlaceSearch({ side, places, accounts, value, onSelect, onCreate, error, recents }) {
+function PlaceSearch({ side, places, accounts, value, onSelect, onCreate, error, recents, inputRef }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -90,11 +68,14 @@ function PlaceSearch({ side, places, accounts, value, onSelect, onCreate, error,
     <div className="dx-transporte-composer-search">
       <label className="dx-ui-field"><span>{title}<b className="dx-ui-required"> *</b></span>
         <div className={`dx-transporte-composer-combo${error ? ' is-invalid' : ''}`}>
-          <input id={`composer-${side}_lugar_id`} aria-label={title}
+          <span className="dx-transporte-composer-search-icon" aria-hidden="true">⌕</span>
+          <input ref={inputRef} id={`composer-${side}_lugar_id`} aria-label={title}
             aria-required="true" aria-invalid={Boolean(error)}
             aria-describedby={error ? `composer-${side}-error` : undefined}
             value={selected ? selected.nombre : query}
-            placeholder="Buscar lugar..." onClick={() => setOpen(true)}
+            placeholder={side === 'origen'
+              ? 'Busca almacén, planta, puerto o cliente…' : 'Busca el lugar de entrega…'}
+            onClick={() => setOpen(true)}
             onChange={event => {
               if (selected) onSelect(null);
               setQuery(event.target.value);
@@ -112,34 +93,37 @@ function PlaceSearch({ side, places, accounts, value, onSelect, onCreate, error,
               }
               if (event.key === 'Escape') setOpen(false);
             }} />
-          {selected && <button type="button" className="dx-transporte-composer-clear"
-            aria-label={`Quitar ${side}`} onClick={() => { onSelect(null); setQuery(''); }}>×</button>}
+          {selected && <button type="button" className="dx-transporte-composer-change"
+            onClick={() => { onSelect(null); setQuery(''); setOpen(true); }}>Cambiar</button>}
           {open && <div className="dx-transporte-composer-pop" role="listbox">
             {groups.map(([group, rows]) => <div key={group}>
               <div className="dx-transporte-composer-group">{group}</div>
               {rows.map(place => <button type="button" role="option" key={place.id}
                 aria-selected={value === place.id} className="dx-transporte-composer-option"
                 onMouseDown={event => event.preventDefault()} onClick={() => choose(place)}>
-                <span aria-hidden="true">{PLACE_ICONS[place.tipo] || '⌖'}</span>
+              <span aria-hidden="true">{PLACE_ICONS[place.tipo] || '⌖'}</span>
                 <span><b>{place.nombre}</b><small>{place.direccion || 'Sin dirección'}</small></span>
                 {place.latitud == null || place.longitud == null ? <em>Sin GPS</em> : null}
               </button>)}
             </div>)}
             {!options.length && <p className="dx-transporte-composer-empty">No encontramos lugares.</p>}
             <button type="button" className="dx-transporte-composer-option is-new"
-              onMouseDown={event => event.preventDefault()} onClick={() => { setOpen(false); onCreate(); }}>
+              onMouseDown={event => event.preventDefault()}
+              onClick={() => { setOpen(false); onCreate(query); }}>
               <span aria-hidden="true">＋</span><b>Crear lugar</b>
             </button>
           </div>}
         </div>
       </label>
-      {selected && <small className="dx-transporte-composer-address">{selected.direccion || 'Sin dirección'}</small>}
+      {selected && <small className="dx-transporte-composer-address">
+        {selected.direccion || 'Sin dirección'}{selected.ciudad ? ` · ${selected.ciudad}` : ''}
+      </small>}
       {error && <small id={`composer-${side}-error`} className="dx-ui-field-error">{error}</small>}
     </div>
   </div>;
 }
 
-function NewPlace({ accounts, form, setForm, onDirty, onCancel, onSave, saving, error }) {
+function NewPlace({ side, accounts, form, setForm, onDirty, onCancel, onSave, saving, error }) {
   function set(key, value) {
     onDirty();
     setForm(current => ({ ...current, [key]: value }));
@@ -149,8 +133,9 @@ function NewPlace({ accounts, form, setForm, onDirty, onCancel, onSave, saving, 
     const point = parsearCoordenadasMaps(value);
     if (point) setForm(current => ({ ...current, map_url: value, ...point }));
   }
-  return <section className="dx-transporte-composer-new-place">
-    <h3>Crear lugar <button type="button" aria-label="Cancelar creación de lugar"
+  return <section className="dx-transporte-composer-new-place" aria-label="Crear lugar">
+    <h3>＋ Nuevo lugar para {side === 'origen' ? 'el origen (A)' : 'el destino (B)'}
+      <button type="button" aria-label="Cancelar creación de lugar"
       className="dx-transporte-composer-clear" onClick={onCancel}>×</button></h3>
     <Field label="Nombre" name="lugar-nombre" value={form.nombre} required
       onChange={value => set('nombre', value)} />
@@ -162,7 +147,7 @@ function NewPlace({ accounts, form, setForm, onDirty, onCancel, onSave, saving, 
       </label>
       <label className="dx-ui-field"><span>Cliente (opcional)</span>
         <select value={form.cuenta_id} onChange={event => set('cuenta_id', event.target.value)}>
-          <option value="">Lugar general</option>
+          <option value="">Lugar general (sin cliente)</option>
           {accounts.map(account => <option key={account.id} value={account.id}>
             {account.nombre_comercial || account.razon_social}
           </option>)}
@@ -170,10 +155,21 @@ function NewPlace({ accounts, form, setForm, onDirty, onCancel, onSave, saving, 
       </label>
     </div>
     <Field label="Dirección" name="lugar-direccion" value={form.direccion}
+      placeholder="Calle, número, distrito"
       onChange={value => set('direccion', value)} />
-    <Field label="Enlace de Google Maps" name="lugar-maps" value={form.map_url || ''}
-      placeholder="Pega un enlace con coordenadas" onChange={useLink} />
-    {!form.latitud && <small className="dx-ui-field-error">Marca la ubicación en el mapa.</small>}
+    <div className="dx-ui-field"><span>Ubicación <b className="dx-ui-required">*</b></span>
+      <div className="dx-transporte-composer-coord-row">
+        {form.latitud ? <><b>{Number(form.latitud).toFixed(5)}, {Number(form.longitud).toFixed(5)}</b>
+          <button type="button" className="dx-btn link" onClick={() => set('latitud', '')}>
+            Mover el punto
+          </button></> : <b>Haz clic en el mapa para marcar el punto</b>}
+      </div>
+      <Field label="" name="lugar-maps" value={form.map_url || ''}
+        placeholder="https://maps.google.com/…@-13.71,-76.20" onChange={useLink} />
+      {!form.latitud && <small className="dx-transporte-composer-hint">
+        El punto se puede arrastrar en el mapa para afinarlo.
+      </small>}
+    </div>
     <div className="dx-transporte-composer-place-actions">
       <button type="button" className="dx-btn" onClick={onCancel}>Cancelar</button>
       <button type="button" className="dx-btn primary" disabled={saving}
@@ -202,13 +198,35 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   const [lastCode, setLastCode] = useState('');
   const [saveError, setSaveError] = useState('');
   const [nameEdited, setNameEdited] = useState(false);
+  const mapNode = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const lineRef = useRef(null);
+  const routeLayersRef = useRef(null);
+  const showPlaceRef = useRef(showPlace);
+  const originInput = useRef(null);
+  const destinationInput = useRef(null);
+  const kmInput = useRef(null);
+  const hoursInput = useRef(null);
+  const unitInput = useRef(null);
+  const modalityInput = useRef(null);
+  const priceInput = useRef(null);
+  const currencyInput = useRef(null);
+  const nameDetails = useRef(null);
+  const operationDetails = useRef(null);
   const origin = places.find(place => place.id === form.origen_lugar_id);
   const destination = places.find(place => place.id === form.destino_lugar_id);
   const hasGps = origin?.latitud != null && origin?.longitud != null
     && destination?.latitud != null && destination?.longitud != null;
-  const types = useMemo(() => catalogoTiposUnidad(), []);
-  const center = origin?.latitud != null && origin?.longitud != null
-    ? [Number(origin.latitud), Number(origin.longitud)] : [-12.0464, -77.0428];
+  const types = useMemo(() => catalogoTiposUnidad([], [], 'Tracto 30 t'), []);
+  const originPoint = origin?.latitud != null && origin?.longitud != null
+    ? [Number(origin.latitud), Number(origin.longitud)] : null;
+  const destinationPoint = destination?.latitud != null && destination?.longitud != null
+    ? [Number(destination.latitud), Number(destination.longitud)] : null;
+  const mapPoint = showPlace && placeForm.latitud !== '' && placeForm.longitud !== '' ? {
+    lat: Number(placeForm.latitud), lng: Number(placeForm.longitud),
+  } : null;
+  showPlaceRef.current = showPlace;
 
   useEffect(() => {
     siguienteCodigoRuta(empresaId).then(code => {
@@ -228,6 +246,69 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     }));
   }, [hasGps, origin?.latitud, origin?.longitud, destination?.latitud,
     destination?.longitud, manualEstimate]);
+
+  useEffect(() => {
+    if (!mapNode.current || mapRef.current) return undefined;
+    const map = L.map(mapNode.current, { scrollWheelZoom: true })
+      .setView([-12.6, -75.5], 6);
+    mapRef.current = map;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '© OpenStreetMap',
+    }).addTo(map);
+    map.on('click', event => {
+      if (showPlaceRef.current) pickPoint(event.latlng);
+    });
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(mapNode.current);
+    requestAnimationFrame(() => map.invalidateSize());
+    return () => {
+      observer.disconnect();
+      markerRef.current?.remove();
+      lineRef.current?.remove();
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    markerRef.current?.remove();
+    lineRef.current?.remove();
+    routeLayersRef.current?.clearLayers();
+    markerRef.current = null;
+    lineRef.current = null;
+    const pointData = [
+      originPoint && { point: originPoint, label: 'A' },
+      destinationPoint && { point: destinationPoint, label: 'B' },
+    ].filter(Boolean);
+    pointData.forEach(({ point, label }) => L.marker(point, {
+      icon: L.divIcon({
+        className: `dx-transporte-composer-marker is-${label.toLowerCase()}`,
+        html: `<span><b>${label}</b></span>`, iconSize: [30, 30], iconAnchor: [15, 15],
+      }), title: label === 'A' ? origin?.nombre : destination?.nombre,
+    }).addTo(routeLayersRef.current || (routeLayersRef.current = L.layerGroup().addTo(map))));
+    if (pointData.length === 2) {
+      lineRef.current = L.polyline([originPoint, destinationPoint], {
+        color: '#00ACC1', weight: 3, dashArray: '6 8',
+      }).addTo(map);
+    }
+    if (showPlace && mapPoint) {
+      markerRef.current = L.marker([mapPoint.lat, mapPoint.lng], {
+        icon: L.divIcon({
+          className: 'dx-transporte-composer-marker is-new',
+          html: '<span>＋</span>', iconSize: [30, 30], iconAnchor: [15, 15],
+        }), draggable: true,
+      }).addTo(map);
+      markerRef.current.on('dragend', event => dragPoint(event));
+    }
+    const points = [...pointData.map(item => item.point)];
+    if (showPlace && mapPoint) points.push([mapPoint.lat, mapPoint.lng]);
+    if (points.length === 1) map.setView(points[0], 9);
+    if (points.length > 1) map.fitBounds(points, { padding: [32, 32], maxZoom: 10 });
+    if (!points.length) map.setView([-12.6, -75.5], 6);
+  }, [originPoint?.[0], originPoint?.[1], destinationPoint?.[0], destinationPoint?.[1],
+    showPlace, mapPoint?.lat, mapPoint?.lng]);
 
   useEffect(() => {
     if (!origin || !destination || nameEdited) return;
@@ -283,9 +364,25 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
       next.duracion_estimada_horas = 'Ingresa la duración sin GPS.';
     }
     setErrors(next);
-    const first = Object.keys(next)[0];
-    if (first) requestAnimationFrame(() => document.getElementById(
-      `composer-${first.replaceAll('.', '-')}`)?.focus());
+    const order = ['origen_lugar_id', 'destino_lugar_id', 'distancia_km',
+      'duracion_estimada_horas', 'nombre', 'codigo', 'numero_peajes',
+      'peajes_estimados', 'tarifa.tipo_unidad', 'tarifa.modalidad',
+      'tarifa.tarifa', 'tarifa.moneda', 'tarifa.minimo_facturable', 'tarifa.vigente_desde'];
+    const first = order.find(key => next[key]);
+    if (first) {
+      if (['nombre', 'codigo'].includes(first)) nameDetails.current.open = true;
+      if (['numero_peajes', 'peajes_estimados'].includes(first)) {
+        operationDetails.current.open = true;
+      }
+      requestAnimationFrame(() => {
+        const refs = { origen_lugar_id: originInput, destino_lugar_id: destinationInput,
+          distancia_km: kmInput, duracion_estimada_horas: hoursInput,
+          'tarifa.tipo_unidad': unitInput, 'tarifa.modalidad': modalityInput,
+          'tarifa.tarifa': priceInput, 'tarifa.moneda': currencyInput };
+        (refs[first]?.current || document.getElementById(
+          `composer-${first.replaceAll('.', '-')}`))?.focus();
+      });
+    }
     return !Object.keys(next).length;
   }
 
@@ -322,16 +419,11 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     } finally { setSaving(false); }
   }
 
-  const mapPoint = showPlace && placeForm.latitud !== '' && placeForm.longitud !== '' ? {
-    lat: Number(placeForm.latitud), lng: Number(placeForm.longitud),
-  } : null;
   function pickPoint(point) {
-    if (showPlace) {
-      setDirty(true);
-      setPlaceForm(current => ({ ...current,
-        latitud: String(point.lat), longitud: String(point.lng),
-      }));
-    }
+    setDirty(true);
+    setPlaceForm(current => ({ ...current,
+      latitud: String(point.lat), longitud: String(point.lng),
+    }));
   }
   function dragPoint(event) {
     const point = event.target.getLatLng();
@@ -346,25 +438,21 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
       aria-labelledby="composer-title">
       <style>{leafletCss}</style>
       <header className="dx-transporte-composer-head">
-        <div><span className="dx-ui-eyebrow">Transporte Comercial</span>
-          <h2 id="composer-title">Nueva ruta</h2>
-          <p>Define el trayecto y prepara su operación.</p></div>
-        <button type="button" className="dx-btn icon" aria-label="Cerrar composer" onClick={close}>×</button>
+        <div><h2 id="composer-title">Nueva ruta</h2>
+          <p>Elige de dónde sale y a dónde va; el resto se calcula y puedes ajustarlo.</p></div>
+        <button type="button" className="dx-btn icon" aria-label="Cerrar" onClick={close}>×</button>
       </header>
       <div className="dx-transporte-composer-body">
-        <form id="composer-form" className="dx-transporte-composer-form"
-          noValidate onSubmit={save}>
+        <form id="composer-form" className="dx-transporte-composer-form" noValidate onSubmit={save}>
           <section className="dx-transporte-composer-section">
-            <h3><i>1</i> Trayecto <small>Selecciona los lugares de salida y llegada.</small></h3>
+            <h3><i>1</i> Trayecto <small>obligatorio</small></h3>
             <div className="dx-transporte-composer-route">
+              <div className="dx-transporte-composer-rail" aria-hidden="true" />
               <PlaceSearch side="origen" places={places} accounts={accounts}
                 value={form.origen_lugar_id} onSelect={place => select('origen', place)}
-                onCreate={() => {
-                  setShowPlace('origen');
-                  setPlaceError('');
-                  setPlaceForm(NEW_PLACE);
-                }}
-                recents={recents} error={errors.origen_lugar_id} />
+                onCreate={name => { setShowPlace('origen'); setPlaceError('');
+                  setPlaceForm({ ...NEW_PLACE, nombre: name || '' }); }}
+                recents={recents} error={errors.origen_lugar_id} inputRef={originInput} />
               <button type="button" className="dx-btn icon dx-transporte-composer-swap"
                 aria-label="Invertir origen y destino" onClick={() => {
                   const nextOrigin = form.destino_lugar_id;
@@ -374,191 +462,198 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
                 }}>⇅</button>
               <PlaceSearch side="destino" places={places} accounts={accounts}
                 value={form.destino_lugar_id} onSelect={place => select('destino', place)}
-                onCreate={() => {
-                  setShowPlace('destino');
-                  setPlaceError('');
-                  setPlaceForm(NEW_PLACE);
-                }}
-                recents={recents} error={errors.destino_lugar_id} />
+                onCreate={name => { setShowPlace('destino'); setPlaceError('');
+                  setPlaceForm({ ...NEW_PLACE, nombre: name || '' }); }}
+                recents={recents} error={errors.destino_lugar_id} inputRef={destinationInput} />
             </div>
-            {showPlace && <NewPlace accounts={accounts} form={placeForm}
-              setForm={setPlaceForm} onDirty={() => setDirty(true)}
-              onCancel={() => setShowPlace('')} onSave={savePlace}
-              saving={placeSaving} error={placeError} />}
-            <details className="dx-transporte-composer-details"
+    {showPlace && <NewPlace side={showPlace} accounts={accounts} form={placeForm} setForm={setPlaceForm}
+              onDirty={() => setDirty(true)} onCancel={() => setShowPlace('')}
+              onSave={savePlace} saving={placeSaving} error={placeError} />}
+            {duplicate && <div className="dx-transporte-composer-duplicate" role="status">
+              <span>Ya existe {duplicate.codigo} · {duplicate.nombre} ({duplicate.distancia_km} km,
+                {duplicate.duracion_estimada_horas} h).</span>
+              <button type="button" className="dx-btn link"
+                onClick={() => onViewRoute(duplicate.id)}>Ver ruta</button>
+              <button type="button" className="dx-btn" onClick={() => {
+                setForceDuplicate(true); setDuplicate(null);
+                requestAnimationFrame(() => document.getElementById('composer-form').requestSubmit());
+              }}>Crear igual</button>
+            </div>}
+
+          </section>
+          <section className="dx-transporte-composer-section">
+            <h3><i>2</i> Distancia y tiempo
+              <small>estimados por GPS · puedes ajustarlos</small></h3>
+            <div className="dx-transporte-composer-grid">
+              <label className="dx-ui-field"><span>Distancia <b className="dx-ui-required">*</b>
+                {form.distancia_km !== '' && <i className="dx-transporte-composer-tag">
+                  {manualEstimate ? 'ajustado' : 'estimado'}</i>}</span>
+                <div className="dx-transporte-composer-withunit">
+                  <input ref={kmInput} id="composer-distancia_km" type="number" min="0" step="1"
+                    value={form.distancia_km} aria-invalid={Boolean(errors.distancia_km)}
+                    onChange={event => { setManualEstimate(true);
+                      update('distancia_km', event.target.value); }} /><em>km</em></div>
+                {errors.distancia_km && <small className="dx-ui-field-error">{errors.distancia_km}</small>}
+                <small className="dx-transporte-composer-hint">Línea recta × 1,3 (factor de carretera).
+                  {manualEstimate && <button type="button" className="dx-btn link"
+                    onClick={() => { setManualEstimate(false); setDirty(true); }}>Volver al estimado</button>}
+                </small>
+              </label>
+              <label className="dx-ui-field"><span>Duración <b className="dx-ui-required">*</b>
+                {form.duracion_estimada_horas !== '' && <i className="dx-transporte-composer-tag">
+                  {manualEstimate ? 'ajustado' : 'estimado'}</i>}</span>
+                <div className="dx-transporte-composer-withunit">
+                  <input ref={hoursInput} id="composer-duracion_estimada_horas" type="number"
+                    min="0" step="0.5" value={form.duracion_estimada_horas}
+                    aria-invalid={Boolean(errors.duracion_estimada_horas)}
+                    onChange={event => { setManualEstimate(true);
+                      update('duracion_estimada_horas', event.target.value); }} /><em>h</em></div>
+                {errors.duracion_estimada_horas && <small className="dx-ui-field-error">
+                  {errors.duracion_estimada_horas}</small>}
+                <small className="dx-transporte-composer-hint">
+                  Usada para la agenda de despacho (velocidad promedio 55 km/h).
+                </small>
+              </label>
+            </div>
+            <details ref={nameDetails} className="dx-transporte-composer-details"
               open={Boolean(errors.nombre || errors.codigo)}>
-              <summary>Nombre y código <small>Se completan automáticamente; puedes editarlos.</small></summary>
+              <summary>Nombre y código <small>{form.nombre && form.codigo
+                ? form.codigo + ' · ' + form.nombre : 'Se generan solos'}</small></summary>
               <div className="dx-transporte-composer-grid">
                 <Field label="Nombre" name="nombre" value={form.nombre} required
-                  error={errors.nombre} onChange={value => { setNameEdited(true); update('nombre', value); }} />
+                  error={errors.nombre} placeholder="Origen → Destino"
+                  onChange={value => { setNameEdited(true); update('nombre', value); }} />
                 <Field label="Código" name="codigo" value={form.codigo} required
                   error={errors.codigo} onChange={value => update('codigo', value)} />
               </div>
-              {regreso && <div className="dx-transporte-composer-grid">
-                <Field label="Nombre de regreso" name="nombre-regreso" value={form.nombre_regreso}
-                  onChange={value => update('nombre_regreso', value)} />
-                <Field label="Código de regreso" name="codigo-regreso" value={form.codigo_regreso}
-                  onChange={value => update('codigo_regreso', value)} />
-              </div>}
             </details>
           </section>
-          <section className="dx-transporte-composer-section">
-            <h3><i>2</i> Estimación <small>Calculada desde las coordenadas.</small></h3>
-            <div className="dx-transporte-composer-estimate">
-              <span className={`dx-transporte-composer-tag${manualEstimate ? ' is-adjusted' : ''}`}>
-                {manualEstimate ? 'Ajustado' : 'Estimado'}
-              </span>
-              {manualEstimate && hasGps && <button type="button" className="dx-btn link"
-                onClick={() => { setManualEstimate(false); setDirty(true); }}>Volver al estimado</button>}
-            </div>
-            {!hasGps && <p className="dx-transporte-composer-hint">Un lugar no tiene GPS. Completa distancia y duración.</p>}
+          <details ref={operationDetails} className="dx-transporte-composer-details">
+            <summary><i>3</i> Operación <small>opcional · peajes, carga y notas</small></summary>
             <div className="dx-transporte-composer-grid">
-              <Field label="Distancia (km)" name="distancia_km" type="number" min="0.1"
-                value={form.distancia_km} error={errors.distancia_km} required
-                onChange={value => { setManualEstimate(true); update('distancia_km', value); }} />
-              <Field label="Duración" name="duracion_estimada_horas" type="number" min="0.5"
-                step="0.5" value={form.duracion_estimada_horas}
-                error={errors.duracion_estimada_horas} required onChange={value => {
-                  setManualEstimate(true); update('duracion_estimada_horas', value);
-                }} />
-            </div>
-          </section>
-          <details className="dx-transporte-composer-details">
-            <summary>Operación <small>Opcional</small></summary>
-            <div className="dx-transporte-composer-grid">
-              <Field label="Número de peajes" name="numero_peajes" type="number" min="0"
+              <Field label="N.º de peajes" name="numero_peajes" type="number" min="0"
                 value={form.numero_peajes} error={errors.numero_peajes}
                 onChange={value => update('numero_peajes', value)} />
               <Field label="Monto de peajes" name="peajes_estimados" type="number" min="0"
-                step="0.01" value={form.peajes_estimados} error={errors.peajes_estimados}
+                step="0.01" placeholder="0.00" value={form.peajes_estimados}
+                error={errors.peajes_estimados}
                 onChange={value => update('peajes_estimados', value)} />
-              <label className="dx-ui-field"><span>Moneda de peajes</span>
-                <select value={form.moneda_peajes}
-                  onChange={event => update('moneda_peajes', event.target.value)}>
-                  <option value="PEN">PEN · S/</option><option value="USD">USD · US$</option>
-                </select>
-              </label>
+              <label className="dx-ui-field"><span>Moneda</span>
+                <select value={form.moneda_peajes} onChange={event =>
+                  update('moneda_peajes', event.target.value)}>
+                  <option>PEN</option><option>USD</option></select></label>
             </div>
             <div><span className="dx-transporte-composer-label">Carga habitual</span>
               <div className="dx-transporte-composer-chips">{CARGAS.map(item => <button key={item}
                 type="button" className={form.tipo_carga_habitual === item ? 'is-on' : ''}
                 aria-pressed={form.tipo_carga_habitual === item}
                 onClick={() => update('tipo_carga_habitual',
-                  form.tipo_carga_habitual === item ? '' : item)}>{item}</button>)}</div>
-            </div>
-            <label className="dx-ui-field"><span>Notas</span>
-              <textarea rows="3" value={form.notas} onChange={event => update('notas', event.target.value)} />
-            </label>
+                  form.tipo_carga_habitual === item ? '' : item)}>{item}</button>)}</div></div>
+            <label className="dx-ui-field"><span>Notas</span><textarea rows="3"
+              placeholder="Restricciones de horario, permisos de ingreso, ventanas de carga…"
+              value={form.notas} onChange={event => update('notas', event.target.value)} /></label>
           </details>
           <section className="dx-transporte-composer-section">
-            <h3><i>3</i> Tarifa base <small>Aplica a todos los clientes.</small></h3>
             <label className="dx-transporte-composer-switch"><input type="checkbox"
-              checked={tarifaActiva} onChange={event => { setTarifaActiva(event.target.checked); setDirty(true); }} />
-              Crear tarifa base</label>
+              checked={tarifaActiva} onChange={event => {
+                setTarifaActiva(event.target.checked); setDirty(true);
+              }} /><span><i>4</i> Agregar tarifa base ahora
+              <small>evita que la ruta nazca «sin tarifa»</small></span></label>
             {tarifaActiva && <div className="dx-transporte-composer-grid">
               <label className="dx-ui-field"><span>Tipo de unidad<b className="dx-ui-required"> *</b></span>
-                <select id="composer-tarifa-tipo_unidad" value={form.tarifa.tipo_unidad}
-                  aria-invalid={Boolean(errors['tarifa.tipo_unidad'])}
+                <select ref={unitInput} id="composer-tarifa-tipo_unidad"
+                  value={form.tarifa.tipo_unidad} aria-invalid={Boolean(errors['tarifa.tipo_unidad'])}
                   onChange={event => updateTarifa('tipo_unidad', event.target.value)}>
-                  <option value="">Selecciona unidad</option>
+                  <option value="">Seleccionar…</option>
                   {types.map(type => <option key={type} value={type}>{type}</option>)}
                 </select>{errors['tarifa.tipo_unidad'] && <small className="dx-ui-field-error">
                   {errors['tarifa.tipo_unidad']}</small>}</label>
               <label className="dx-ui-field"><span>Cobro por<b className="dx-ui-required"> *</b></span>
-                <select id="composer-tarifa-modalidad" value={form.tarifa.modalidad}
-                  onChange={event => updateTarifa('modalidad', event.target.value)}>
-                  {['viaje', 'km', 'tonelada', 'hora'].map(item => <option key={item} value={item}>
-                    {{ viaje: 'Por viaje', km: 'Por km', tonelada: 'Por tonelada', hora: 'Por hora' }[item]}
-                  </option>)}</select></label>
-              <Field label="Precio" name="tarifa.tarifa" type="number" min="0.01" step="0.01"
-                value={form.tarifa.tarifa} error={errors['tarifa.tarifa']} required
-                onChange={value => updateTarifa('tarifa', value)} />
+                <div className="dx-transporte-composer-segmented">
+                  {['viaje', 'km', 'tonelada', 'hora'].map(item => <button key={item} type="button"
+                    ref={item === 'viaje' ? modalityInput : undefined}
+                    className={form.tarifa.modalidad === item ? 'is-on' : ''}
+                    aria-pressed={form.tarifa.modalidad === item}
+                    onClick={() => updateTarifa('modalidad', item)}>
+                    {{ viaje: 'Viaje', km: 'Km', tonelada: 'Tonelada', hora: 'Hora' }[item]}
+                  </button>)}</div>
+                {errors['tarifa.modalidad'] && <small className="dx-ui-field-error">
+                  {errors['tarifa.modalidad']}</small>}</label>
+              <label className="dx-ui-field"><span>Precio<b className="dx-ui-required"> *</b></span>
+                <div className="dx-transporte-composer-withunit">
+                  <input ref={priceInput} id="composer-tarifa-tarifa" type="number" min="0"
+                    step="0.01" placeholder="0.00" value={form.tarifa.tarifa}
+                    aria-invalid={Boolean(errors['tarifa.tarifa'])}
+                    onChange={event => updateTarifa('tarifa', event.target.value)} />
+                  <em>/{LABELS[form.tarifa.modalidad]}</em></div>
+                {errors['tarifa.tarifa'] && <small className="dx-ui-field-error">
+                  {errors['tarifa.tarifa']}</small>}</label>
               <label className="dx-ui-field"><span>Moneda<b className="dx-ui-required"> *</b></span>
-                <select value={form.tarifa.moneda} onChange={event => updateTarifa('moneda', event.target.value)}>
-                  <option value="PEN">PEN · S/</option><option value="USD">USD · US$</option>
-                </select></label>
+                <select ref={currencyInput} id="composer-tarifa-moneda"
+                  value={form.tarifa.moneda} onChange={event =>
+                  updateTarifa('moneda', event.target.value)}><option>PEN</option>
+                  <option>USD</option></select>
+                {errors['tarifa.moneda'] && <small className="dx-ui-field-error">
+                  {errors['tarifa.moneda']}</small>}</label>
               <Field label="Mínimo facturable" name="tarifa.minimo_facturable" type="number"
-                min="0" value={form.tarifa.minimo_facturable}
+                min="0" placeholder="Opcional" value={form.tarifa.minimo_facturable}
                 error={errors['tarifa.minimo_facturable']}
                 onChange={value => updateTarifa('minimo_facturable', value)} />
               <Field label="Vigente desde" name="tarifa.vigente_desde" type="date"
-                value={form.tarifa.vigente_desde} required
-                onChange={value => updateTarifa('vigente_desde', value)} />
-            </div>}
+                value={form.tarifa.vigente_desde} required error={errors['tarifa.vigente_desde']}
+                onChange={value => updateTarifa('vigente_desde', value)} /></div>}
           </section>
           <label className="dx-transporte-composer-return"><input type="checkbox" checked={regreso}
             onChange={event => { setRegreso(event.target.checked); setDirty(true); }} />
-            <span><b>Crear también la ruta de regreso</b><small>Usará la misma distancia, duración y tarifa base.</small></span>
-          </label>
-          {duplicate && <div className="dx-transporte-composer-duplicate" role="alert">
-            <b>Ya existe {duplicate.codigo} · {duplicate.nombre} ({duplicate.distancia_km} km, {duplicate.duracion_estimada_horas} h)</b>
-            <button type="button" className="dx-btn" onClick={() => onViewRoute(duplicate.id)}>Ver ruta</button>
-            <button type="button" className="dx-btn primary" onClick={() => {
-              setForceDuplicate(true); setDuplicate(null);
-              requestAnimationFrame(() => document.getElementById('composer-form').requestSubmit());
-            }}>Crear igual</button>
-          </div>}
-          {saveError && <p className="dx-transporte-error" role="alert">{saveError}</p>}
+            <b>Crear también la ruta de regreso</b></label>
         </form>
-        <aside className="dx-transporte-composer-aside">
+        <aside className="dx-transporte-composer-aside" aria-label="Vista previa">
           <div className="dx-transporte-composer-map">
-            <MapContainer center={center} zoom={origin ? 9 : 5} scrollWheelZoom
-              style={{ width: '100%', height: '100%' }}>
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="&copy; OpenStreetMap contributors" />
-              <MapClick onPick={pickPoint} />
-              <FitRoute points={[
-                origin?.latitud != null && origin?.longitud != null
-                  ? [Number(origin.latitud), Number(origin.longitud)] : null,
-                destination?.latitud != null && destination?.longitud != null
-                  ? [Number(destination.latitud), Number(destination.longitud)] : null,
-                mapPoint ? [mapPoint.lat, mapPoint.lng] : null,
-              ].filter(Boolean)} />
-              {origin?.latitud != null && origin?.longitud != null && <Marker
-                position={[Number(origin.latitud), Number(origin.longitud)]} icon={ICON} />}
-              {destination?.latitud != null && destination?.longitud != null && <Marker
-                position={[Number(destination.latitud), Number(destination.longitud)]} icon={ICON} />}
-              {origin?.latitud != null && origin?.longitud != null
-                && destination?.latitud != null && destination?.longitud != null
-                && <Polyline positions={[
-                  [Number(origin.latitud), Number(origin.longitud)],
-                  [Number(destination.latitud), Number(destination.longitud)],
-                ]} pathOptions={{ color: 'var(--dx-ui-cyan)', dashArray: '6 8', weight: 3 }} />}
-              {mapPoint && <Marker position={[mapPoint.lat, mapPoint.lng]}
-                icon={ICON} draggable eventHandlers={{ dragend: dragPoint }} />}
-            </MapContainer>
-            {showPlace && <small className="dx-transporte-composer-map-hint">
-              Haz clic para marcar; arrastra el marcador para ajustar.</small>}
-          </div>
-          {showPlace && placeForm.latitud !== '' && placeForm.longitud !== ''
-            && <p className="dx-transporte-composer-coords">
-            Ubicación: {Number(placeForm.latitud).toFixed(5)}, {Number(placeForm.longitud).toFixed(5)}
-          </p>}
+            <div ref={mapNode} className="dx-transporte-composer-leaflet" />
+            <div className="dx-transporte-composer-map-hint">{showPlace
+              ? 'Haz clic en el mapa para marcar el nuevo lugar'
+              : 'Elige origen y destino para ver el trayecto'}</div></div>
+          {showPlace && mapPoint && <p className="dx-transporte-composer-coords">
+            Ubicación: {mapPoint.lat.toFixed(5)}, {mapPoint.lng.toFixed(5)}</p>}
           <section className="dx-transporte-composer-preview">
-            <span className="dx-ui-eyebrow">Vista previa en vivo</span>
-            <h3>{form.nombre || 'Nombre de la ruta'}</h3>
-            <p>{origin?.nombre || 'Origen'} → {destination?.nombre || 'Destino'}</p>
-            <div><b>{form.codigo || lastCode || 'R-000'}</b>
-              <span>{form.distancia_km || '—'} km · {form.duracion_estimada_horas || '—'} h</span></div>
-            {regreso && <small>Regreso: {form.codigo_regreso || 'R-000'}</small>}
+            <div className="dx-transporte-composer-preview-head">
+              <span>{form.codigo || lastCode || 'R-000'} · NUEVA</span>
+              <h3>{form.nombre || 'Origen → Destino'}</h3></div>
+            <div className="dx-transporte-composer-stops">
+              {[['A', origin], ['B', destination]].map(([letter, place]) =>
+                <div className="dx-transporte-composer-preview-stop" key={letter}>
+                  <i>{letter}</i><span><b>{place?.nombre ||
+                    ('Elige el ' + (letter === 'A' ? 'origen' : 'destino'))}</b>
+                    {place && <small>{place.direccion || 'Sin dirección'}</small>}</span></div>)}
+            </div>
+            <div className="dx-transporte-composer-metrics">
+              <div><small>Distancia</small><b>{form.distancia_km || 'Sin dato'} km</b></div>
+              <div><small>Duración</small><b>{form.duracion_estimada_horas || 'Sin dato'} h</b></div>
+              <div><small>Peajes</small><b>{form.numero_peajes || 'Sin dato'}</b></div></div>
+            <div className="dx-transporte-composer-preview-tariff"><span>Tarifa base ·
+              {form.tarifa.tipo_unidad || 'Sin unidad'}</span>
+              <b>{tarifaActiva && form.tarifa.tarifa
+                ? (form.tarifa.moneda === 'USD' ? 'US$ ' : 'S/ ') + form.tarifa.tarifa
+                  + ' / ' + LABELS[form.tarifa.modalidad] : 'Sin dato'}</b></div>
           </section>
+          {regreso && origin && destination && <p className="dx-transporte-composer-return-note">
+            También se creará {form.codigo_regreso} · {destination.nombre} → {origin.nombre}
+            {tarifaActiva ? ' con la misma tarifa base.' : '.'}
+          </p>}
         </aside>
       </div>
       <footer className="dx-transporte-composer-footer">
-        {saveError && <span className="dx-transporte-error" role="alert">{saveError}</span>}
+        {saveError && <p className="dx-transporte-error" role="alert">{saveError}</p>}
         <button type="button" className="dx-btn" onClick={close}>Cancelar</button>
         <button type="submit" form="composer-form" className="dx-btn primary" disabled={saving}>
-          {saving ? 'Guardando…' : regreso ? 'Guardar 2 rutas' : 'Guardar ruta'}
-        </button>
+          {saving ? 'Guardando…' : regreso ? 'Guardar 2 rutas' : 'Guardar ruta'}</button>
       </footer>
       {discard && <div className="dx-transporte-composer-confirm">
         <section role="alertdialog" aria-modal="true" aria-labelledby="composer-discard-title">
-          <h3 id="composer-discard-title">¿Salir sin guardar?</h3>
-          <p>Se perderán los cambios de esta ruta.</p>
+          <h3 id="composer-discard-title">¿Salir sin guardar?</h3><p>Se perderán los cambios de esta ruta.</p>
           <button type="button" className="dx-btn" onClick={() => setDiscard(false)}>Seguir editando</button>
           <button type="button" className="dx-btn primary" onClick={onClose}>Salir</button>
-        </section>
-      </div>}
+        </section></div>}
     </section>
   </div>;
 }
