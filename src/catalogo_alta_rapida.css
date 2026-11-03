@@ -1,0 +1,27 @@
+/* Alta rápida de producto del catálogo de venta (Admin › Nueva OV). Prefijo dx-catr-. */
+.modal.dx-catr { width:min(600px, 96vw); margin:0; padding:0; overflow:visible; }
+.dx-catr .modal-body { overflow:visible; }
+.dx-catr .dx-ui-sub { margin:0 0 14px; color:var(--dx-ui-gray); }
+.dx-catr-buscar { position:relative; }
+.dx-catr-pop { position:absolute; top:calc(18px + 6px + 40px + 4px); left:0; right:0; z-index:5; max-height:240px; overflow:auto; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); box-shadow:0 10px 24px rgba(15,27,48,.16); }
+.dx-catr-pop button { display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; padding:9px 12px; border:0; border-bottom:1px solid var(--dx-ui-line-soft); background:transparent; color:var(--dx-ui-ink); font:13px 'DM Sans',sans-serif; text-align:left; cursor:pointer; }
+.dx-catr-pop button:hover:not(:disabled), .dx-catr-pop button:focus-visible { background:var(--dx-ui-hover); outline:none; }
+.dx-catr-pop button:disabled { opacity:.55; cursor:default; }
+.dx-catr-pop b { color:var(--dx-ui-navy); }
+.dx-catr-pop small { flex:none; color:var(--dx-ui-gray); font-size:12px; }
+.dx-catr-grid { margin-top:14px; }
+.dx-catr-resumen { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; padding:12px; border-radius:10px; background:var(--dx-ui-head); }
+.dx-catr-resumen span { display:block; color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.dx-catr-resumen b { color:var(--dx-ui-navy); font:700 15px 'Sora',sans-serif; }
+.dx-catr-note { margin-top:12px; padding:10px 14px; border-radius:10px; font-size:13px; }
+.dx-catr-note.amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-catr-note.red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-catr-foot { padding:0 22px 18px; }
+@media (max-width:520px) { .dx-catr-resumen { grid-template-columns:minmax(0,1fr); } .dx-catr-pop small { display:none; } }
+
+/* Enlaces bajo el selector de catálogo en la Nueva OV */
+.dx-catr-links { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-top:6px; color:var(--fg-muted, #6B7280); font-size:12px; }
+.dx-catr-links button, .dx-catr-links a { padding:0; border:0; background:none; color:var(--cyan, #00ACC1); font:600 12px 'DM Sans',sans-serif; cursor:pointer; text-decoration:none; }
+.dx-catr-links button:hover, .dx-catr-links a:hover { text-decoration:underline; }
+.dx-catr-vacio { margin-bottom:8px; padding:10px 12px; border-radius:10px; background:#FFF3E0; color:#8A4B00; font-size:13px; }
+.dark .dx-catr-vacio { background:#3A2810; color:#FDBA74; }

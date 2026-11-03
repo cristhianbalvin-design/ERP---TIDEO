@@ -48,7 +48,7 @@ import {
   OrdenesVenta,
   GuiasDespachos,
 } from '../pages/RepuestosVentaPages.jsx';
-import { CatalogoPage } from '../pages/pages2_v2.jsx';
+import { CatalogoVentaPage } from '../pages/wms/CatalogoVentaPage.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 
@@ -147,7 +147,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'repuestos-detalle-pedido': return <DetallePedidoPage onNav={onNavigate} pvId={currentPV} />;
     case 'catalogo-precios': return <CatalogoPrecios />;
     case 'despachos-repuestos': return <DespachosRepuestos onNav={onNavigate} setCurrentPV={setCurrentPV} />;
-    case 'catalogo': return <CatalogoPage onNav={onNavigate} />;
+    case 'catalogo': return <CatalogoVentaPage />;
     case 'repuestos-cotizaciones': return <CotizacionesVenta setCurrent={onNavigate} />;
     case 'repuestos-ordenes': return <OrdenesVenta setCurrent={onNavigate} />;
     case 'repuestos-despachos': return <><AdministrativeAppLinkPage title="Guías y Despachos" adminRoute="remision" /><GuiasDespachos /></>;
