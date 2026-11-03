@@ -8250,11 +8250,6 @@ width:20px;height:20px}
 .dx-transporte-composer-preview p,.dx-transporte-composer-preview small {
   color:var(--dx-ui-gray);
 }
-.dx-transporte-composer-preview>div {
-  display:flex;
-  justify-content:space-between;
-  gap:8px;
-}
 .dx-transporte-composer-new-place {
   display:grid;
   gap:12px;
@@ -8638,9 +8633,10 @@ width:20px;height:20px}
 /* Composer route fidelity and interaction fixes. */
 .dx-transporte-composer-stop { position:relative; }
 .dx-transporte-composer-stop.is-open { z-index:4; }
-.dx-transporte-composer-preview-head { text-align:left; }
+.dx-transporte-composer-preview-head { display:block; text-align:left; }
 .dx-transporte-composer-stops { display:grid; grid-template-columns:minmax(0,1fr); }
-.dx-transporte-composer-preview-tariff { align-items:flex-start; text-align:left; }
+.dx-transporte-composer-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.dx-transporte-composer-preview-tariff { display:flex; justify-content:space-between; align-items:center; text-align:left; }
 .dx-transporte-composer-preview-tariff b { color:var(--dx-ui-navy); font-family:"Sora",sans-serif; text-align:right; }
 .dx-transporte-composer-preview-tariff small { color:var(--dx-ui-gray); }
 .dx-transporte-composer-section h3 .dx-transporte-composer-switch { gap:8px; color:var(--dx-ui-navy); font:inherit; }
