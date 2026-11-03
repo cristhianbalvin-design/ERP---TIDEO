@@ -16,6 +16,14 @@ const pick = (source, keys) => keys.reduce((acc, key) => {
   return acc;
 }, {});
 
+// Solo los CEBEs de tipo cliente pueden conservar una cuenta vinculada.
+// La base de datos aplica la misma regla para cubrir importaciones y otros
+// consumidores del servicio.
+export const normalizarCuentaCebe = (cebe = {}) => ({
+  ...cebe,
+  cuenta_id: cebe.tipo === 'cliente' ? (cebe.cuenta_id || null) : null,
+});
+
 // Mantiene el criterio de la migracion 205: trim, espacios internos, minusculas y
 // sin diacriticos. PostgREST no permite aplicar `unaccent` en un filtro, por eso se
 // recuperan los cargos del tenant y se comparan aqui antes de cualquier insercion.
@@ -522,16 +530,17 @@ export const maestrosService = {
   },
   crearCentroBeneficio: async (empresaId, cebe) => {
     const supabase = await getSupabaseClient();
+    const cebeNormalizado = normalizarCuentaCebe(cebe);
     const { sociedadId } = await validarSociedadActivaParaEscritura(
       supabase,
       empresaId,
-      cebe?.sociedad_id,
+      cebeNormalizado?.sociedad_id,
       'La sociedad es obligatoria para crear el CEBE.',
     );
     const payload = {
-      id: cebe.id || makeId('cebe'),
+      id: cebeNormalizado.id || makeId('cebe'),
       empresa_id: empresaId,
-      ...pick(cebe, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      ...pick(cebeNormalizado, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
       sociedad_id: sociedadId,
     };
     const { data, error } = await supabase.from('centros_beneficio').insert([payload]).select().single();
@@ -540,7 +549,18 @@ export const maestrosService = {
   },
   actualizarCentroBeneficio: async (cebeId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
+    const { data: actual, error: errorActual } = await supabase
+      .from('centros_beneficio')
+      .select('tipo')
+      .eq('id', cebeId)
+      .single();
+    if (errorActual) throw errorActual;
+    const payloadNormalizado = normalizarCuentaCebe({
+      ...actual,
+      ...payload,
+      tipo: payload.tipo ?? actual.tipo,
+    });
+    const { data, error } = await supabase.from('centros_beneficio').update(pick(payloadNormalizado, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
     if (error) throw error;
     return data;
   },
@@ -556,7 +576,7 @@ export const maestrosService = {
       supabase,
       tabla: 'centros_beneficio',
       empresaId,
-      filas: filasValidadas,
+      filas: filasValidadas.map(normalizarCuentaCebe),
       prefijoId: 'cebe',
       campos: ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
     });

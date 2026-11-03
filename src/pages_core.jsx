@@ -5109,6 +5109,13 @@ function OSCliente() {
     const editandoOS = modalFormularioOS && modalFormularioOS !== 'crear';
     const monto = Number(formularioOS.monto_aprobado || 0);
     if (!formularioOS.cuenta_id) return setErrorFormularioOS('Selecciona el cliente de la OS.');
+    const cuentaSeleccionada = (cuentas || []).find(cuenta => (
+      cuenta.id === formularioOS.cuenta_id && cuenta.empresa_id === empresa?.id
+    ));
+    if (!cuentaSeleccionada) {
+      setFormularioOS(actual => ({ ...actual, cuenta_id: '' }));
+      return setErrorFormularioOS(`La cuenta seleccionada no pertenece a ${empresa?.nombre_comercial || empresa?.razon_social || 'la empresa activa'} o no terminó de guardarse. Recarga la pantalla y vuelve a seleccionarla.`);
+    }
     if (!formularioOS.nombre.trim()) return setErrorFormularioOS('Ingresa el nombre o alcance de la OS.');
     if (!Number.isFinite(monto) || monto < 0) return setErrorFormularioOS('El monto aprobado debe ser un importe válido.');
     if (formularioOS.fecha_inicio && formularioOS.fecha_fin && formularioOS.fecha_fin < formularioOS.fecha_inicio) {
@@ -5164,6 +5171,9 @@ function OSCliente() {
       else await crearOSClienteManual(datos);
       setModalFormularioOS(null);
     } catch (error) {
+      if (String(error?.message || '').includes('cuenta seleccionada no existe')) {
+        setFormularioOS(actual => ({ ...actual, cuenta_id: '' }));
+      }
       setErrorFormularioOS(error?.message || 'No se pudo guardar la OS Cliente.');
     } finally {
       setGuardandoFormularioOS(false);
@@ -5257,7 +5267,7 @@ function OSCliente() {
             <section className="dx-osc-sec">
               <h4><b>1</b>Cliente y alcance</h4>
               <div className="dx-osc-grid">
-                <div className="input-group dx-osc-full"><label>Cliente *</label><select className="select" value={formularioOS.cuenta_id} onChange={e => actualizarFormularioOS('cuenta_id', e.target.value)} required><option value="">Selecciona un cliente</option>{(cuentas || []).filter(c => c.estado !== 'inactivo').map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial || c.id}</option>)}</select></div>
+                <div className="input-group dx-osc-full"><label>Cliente *</label><select className="select" value={formularioOS.cuenta_id} onChange={e => actualizarFormularioOS('cuenta_id', e.target.value)} required><option value="">Selecciona un cliente</option>{(cuentas || []).filter(c => c.empresa_id === empresa?.id && c.estado !== 'inactivo').map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial || c.id}</option>)}</select></div>
                 <div className="input-group dx-osc-full"><label>Nombre / alcance de la OS *</label><input className="input" value={formularioOS.nombre} onChange={e => actualizarFormularioOS('nombre', e.target.value)} placeholder="Ej. Alquiler de equipo" required autoFocus /></div>
                 {modalFormularioOS === 'crear' && <div className="input-group"><label>N° OS interno</label><input className="input" value={formularioOS.numero} onChange={e => actualizarFormularioOS('numero', e.target.value)} placeholder="Automático si se deja vacío" /></div>}
                 <div className="input-group"><label>N° OS del cliente</label><input className="input" value={formularioOS.numero_doc_cliente} onChange={e => actualizarFormularioOS('numero_doc_cliente', e.target.value)} placeholder="Opcional" /></div>

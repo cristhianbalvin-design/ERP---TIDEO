@@ -456,6 +456,19 @@ export async function siguienteNumeroOSCliente(supabase, empresaId) {
 }
 
 export async function persistirOSCliente(supabase, empresaId, osc) {
+  if (osc.cuenta_id) {
+    const cuentaResult = await supabase
+      .from('cuentas')
+      .select('id')
+      .eq('id', osc.cuenta_id)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    if (cuentaResult.error) throw cuentaResult.error;
+    if (!cuentaResult.data) {
+      throw new Error('La cuenta seleccionada no existe en la empresa activa. Recarga la pantalla y vuelve a seleccionarla.');
+    }
+  }
+
   const row = {
     id: osc.id,
     empresa_id: empresaId,
@@ -801,7 +814,9 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
   });
 
   return {
-    cuentas: (cuentasR.data || []).map(normalizarCuenta),
+    cuentas: (cuentasR.data || [])
+      .filter(cuenta => cuenta?.empresa_id === empresaId)
+      .map(normalizarCuenta),
     leads: (leadsR.data || []).map(normalizarLead),
     contactos: (contactosR.data || []).map(normalizarContacto),
     oportunidades: (oppsR.data || []).map(normalizarOportunidad),
