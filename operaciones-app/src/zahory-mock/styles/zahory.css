@@ -7136,3 +7136,4 @@ width:20px;height:20px}
 .dx-wms .dx-wcat-row:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
 .dx-wms .dx-wcat-pie { margin:0; padding:12px 20px; }
 @container (max-width:480px) { .dx-wms .dx-wcat-resumen { grid-template-columns:minmax(0,1fr); } .dx-wms .dx-wcat-pop small { display:none; } }
+@container dx-wms (max-width:700px) { .dx-wms.dx-wcat .dx-w-hide-m { display:none; } .dx-wms.dx-wcat .dx-w-table td.mat { min-width:150px; } }
