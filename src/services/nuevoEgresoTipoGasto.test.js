@@ -22,3 +22,21 @@ test('ambas ramas del wizard guardan el tipo de gasto recortado o null en la CxP
   assert.match(extraerCxpRecord(paidStart), expectedField);
   assert.match(extraerCxpRecord(pendingStart), expectedField);
 });
+
+test('la creación del gasto guarda subcategoria sin depender de si ya fue pagado', () => {
+  const gastoBaseStart = source.indexOf('const gastoBase = {');
+  const gastoPayloadStart = source.indexOf('const gastoPayload = {', gastoBaseStart);
+  assert.notEqual(gastoBaseStart, -1, 'debe existir el gastoBase de creación');
+  assert.notEqual(gastoPayloadStart, -1, 'debe existir el gastoPayload de creación');
+
+  const gastoBase = source.slice(gastoBaseStart, gastoPayloadStart);
+  const gastoPayloadEnd = source.indexOf('\n        };', gastoPayloadStart);
+  assert.notEqual(gastoPayloadEnd, -1, 'debe cerrarse el gastoPayload');
+  const gastoPayload = source.slice(gastoPayloadStart, gastoPayloadEnd);
+  const expectedField = /subcategoria:\s*tipoSel\?\.nombre\s*\|\|\s*null,/;
+
+  assert.match(gastoBase, expectedField);
+  assert.match(gastoPayload, expectedField);
+  assert.doesNotMatch(gastoBase, /ya_pagado[\s\S]{0,100}subcategoria|subcategoria[\s\S]{0,100}ya_pagado/);
+  assert.doesNotMatch(gastoPayload, /ya_pagado[\s\S]{0,100}subcategoria|subcategoria[\s\S]{0,100}ya_pagado/);
+});
