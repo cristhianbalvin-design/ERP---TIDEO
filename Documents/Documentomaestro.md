@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS — Última actualización: 18/09/2026 (Auditoría Técnica y Sincronización Integral)
+### Arquitectura Multitenant SaaS — Última actualización: 10/10/2026 (Auditoría Técnica y Sincronización Integral - Versión 2.1.0)
 
 ---
 
@@ -10,11 +10,11 @@
 **Especialidad:** Transformación digital, automatización de procesos, analítica, inteligencia artificial aplicada y desarrollo de plataformas empresariales a medida.  
 **Enfoque:** Primero se diseña el proceso comercial, operativo y financiero; luego se implementa la tecnología que lo soporta.  
 **Contacto:** cristhianbalvin@gmail.com | **Web:** cristhianbalvin.com  
-**Stack:** React 18 + Vite 5 · Supabase · Vercel · Context API · Agentes de IA.  
+**Stack:** React 18 + Vite 5 · Supabase · Vercel · Context API · Asistente Aria (Agente IA conversacional RAG).  
 **Modelo comercial:** SaaS multitenant — usuarios ilimitados según plan contratado por empresa.  
 **Ecosistema de Frontends:** Dos aplicaciones web desacopladas:
-1. **Frontend Web Administrativo / Backoffice (`src/`):** Plataforma central para gestión comercial, operativa, RRHH, logística, finanzas y configuración.
-2. **Frontend Operativo de Campo y Taller (`operaciones-app/`):** Aplicación optimizada para ejecución técnica, gestión de flota en alquiler, partes de taller y asignación de cuadrillas.
+1. **Frontend Web Administrativo / Backoffice (`src/`):** Plataforma central para gestión comercial, operativa, RRHH, logística, compras con bandeja de sourcing, finanzas con SPOT y extractos bancarios, configuración y panel global de Asistente Aria.
+2. **Frontend Operativo de Campo y Taller (`operaciones-app/`):** Aplicación optimizada para ejecución técnica: Diagnóstico Técnico de Taller con generación de informes y fotos, recepción física de OCs, gestión de ubicaciones WMS, recepción de activos de clientes, gestión de flota en alquiler, partes de taller y asignación de cuadrillas.
 
 ---
 
@@ -24,31 +24,31 @@ Este documento es la **fuente de verdad técnica, funcional y de arquitectura** 
 
 Documenta:
 - Qué está construido y verificado en código en ambos frontends (`src/` y `operaciones-app/`).
-- El estado real del esquema en base de datos hasta la migración local `540_importacion_extractos_bancarios.sql` (+ migraciones con timestamp).
-- Cómo interactúan los módulos entre sí (cadena comercial → operaciones → logística → finanzas).
+- El estado real del esquema en base de datos hasta la migración local `618_asistente_erp_resumen_mensual.sql` y migraciones con timestamp hasta `20261010100000_wms_ubicaciones_tipo_piso_uso.sql` (704 archivos SQL en total).
+- Cómo interactúan los módulos entre sí (cadena comercial → operaciones/taller → logística/WMS → finanzas).
 - La arquitectura multitenant y multisociedad con aislamiento por RLS.
-- Las reglas de negocio que el código ejecuta estrictamente (fórmulas, validaciones, candados de inmutabilidad y bloqueos transaccionales).
+- Las reglas de negocio que el código ejecuta estrictamente (fórmulas, validaciones, candados de inmutabilidad, bloqueos transaccionales y exclusiones tributarias).
 - Las decisiones arquitectónicas, convenciones técnicas, deuda técnica identificada y desconexiones detectadas.
 
 > [!IMPORTANT]
-> **POLÍTICA DE SINCRONIZACIÓN Y AUDITORÍA CONTINUA (18/09/2026):**  
-> Todo contenido documentado en este maestro debe estar respaldado por código fuente existente o migraciones efectivas en el repositorio `cristhianbalvin-design/ERP---TIDEO`. Funcionalidades discontinuadas o modelos previos no se eliminan silenciosamente; se señalan explícitamente como `[OBSOLETO / HISTÓRICO - CORTE 18/08/2026]` para mantener la trazabilidad de decisiones pasadas.
+> **POLÍTICA DE SINCRONIZACIÓN Y AUDITORÍA CONTINUA (10/10/2026):**  
+> Todo contenido documentado en este maestro está respaldado por código fuente existente o migraciones efectivas en el repositorio `cristhianbalvin-design/ERP---TIDEO`. Funcionalidades discontinuadas o modelos previos no se eliminan silenciosamente; se señalan explícitamente como `[OBSOLETO / HISTÓRICO]` para mantener la trazabilidad de decisiones pasadas.
 
 ---
 
-## 3. Estado de desarrollo — 18/09/2026
+## 3. Estado de desarrollo — 10/10/2026
 
 ### 3.1 Resumen de progreso
 
 | Área | Estado |
 |------|--------|
-| Módulos y rutas implementadas | **85+ pantallas/rutas activas** entre ambos frontends (`src/` y `operaciones-app/`) |
-| Frontends en producción/desarrollo | **2 aplicaciones web independientes:**<br>1. `src/` (Web Core / Backoffice en React 18 + Vite 5)<br>2. `operaciones-app/` (Operaciones, Flota y Taller en React 18 + Vite 5) |
-| Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase PostgreSQL + RLS + RPCs · Vercel |
+| Módulos y rutas implementadas | **95+ pantallas/rutas activas** entre ambos frontends (`src/` y `operaciones-app/`) |
+| Frontends en producción/desarrollo | **2 aplicaciones web independientes:**<br>1. `src/` (Web Core / Backoffice en React 18 + Vite 5)<br>2. `operaciones-app/` (Operaciones, Taller, WMS y Flota en React 18 + Vite 5) |
+| Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase PostgreSQL + RLS + RPCs · Deno Edge Functions (20) · Vercel |
 | Arquitectura multitenant y multisociedad | Aislamiento estricto por `empresa_id` y `sociedad_id` en base de datos vía RLS. Soporte para personalización dinámica de navegación por tenant (`tenant_nav_labels`, `tenant_nav_sections`). |
-| Migraciones SQL registradas | **540 archivos SQL locales**, desde `001` hasta `540_importacion_extractos_bancarios.sql` (+ migraciones con timestamp `20260915153218_crm_documents...`). |
-| Migración local más reciente | `540_importacion_extractos_bancarios.sql`: conciliación bancaria masiva, autodetección de CSV, historial de lotes, deduplicación y borrado/reversión con auditoría. |
-| Frentes en desarrollo activo (18/09/2026) | - **Document Builder:** PR #100 mergeado a `main` (`0f3629a`) con vista previa paginada; ramas remotas activas de líneas, imágenes y cabeceras compartidas.<br>- **Cotizaciones Especiales:** wizard de 5 pasos, recepción formal de activos de cliente, materialización de condiciones de Document Builder y aceptación formal atómica (`529`).<br>- **Organigrama v2:** lienzo interactivo Canvas con drag-and-drop, jerarquía de UOs padre-hijo, y colocaciones (`cargo_colocaciones`).<br>- **Facturación NC/ND:** emisión atómica de Notas de Crédito y Débito con catálogo oficial SUNAT y ajuste de saldo en CxC (`537`-`539`). |
+| Migraciones SQL registradas | **704 archivos SQL locales en `supabase/migrations/`**:<br>• **636** migraciones numeradas (`001` a `618_asistente_erp_resumen_mensual.sql`)<br>• **68** migraciones con timestamp (`20260906...` a `20261010100000_wms_ubicaciones_tipo_piso_uso.sql`). |
+| Migraciones locales más recientes | • Numerada: `618_asistente_erp_resumen_mensual.sql` (resúmenes analíticos multimoneda para Asistente Aria).<br>• Timestamp: `20261010100000_wms_ubicaciones_tipo_piso_uso.sql` (WMS Fase 1 / B2b-0: ubicaciones tipo 'piso', uso de ubicación y jerarquía en almacén). |
+| Frentes en desarrollo activo y nuevas capacidades (Corte 10/10/2026) | - **Bandeja de Sourcing Kanban:** Consolidación de compras desde SOLPEs aprobadas con asignación de proveedores por línea, arrastre a columnas de proveedor, cobertura multi-SOLPE y emisión de OCs borrador (`src/pages_ops.jsx:6845`, migraciones `20260921140000`, `20260921200000`, `20260922100000`).<br>- **Asistente Aria (ERP Assistant):** Asistente conversacional de lectura contextual RAG para consultas de negocio (Edge Function `asistente-erp`, 20 RPCs de consulta en BD `599`-`618`, drawer UI en [AsistenteErpPanel.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/AsistenteErpPanel.jsx)).<br>- **Diagnóstico Técnico de Taller e Informes:** Módulo completo de 5 pasos en taller con catálogo de hallazgos (`592`), fotos en bucket privado (`596`), generación de Informe técnico PDF e integración a Hoja de Costeo con candado bloqueante de valoración (`606`).<br>- **WMS Ubicaciones Fase 1 & 2:** Jerarquía de almacén (zona > rack > posición / piso), campo `uso`, `ubicacion_id` obligatorio en stock y kardex, clave única compuesta en stock (`20261009100000`, `20261010100000`) y rol `asistente_almacen`.<br>- **Detracciones SPOT SUNAT Integral:** 19 migraciones implementando catálogo SPOT oficial, cálculo automático, cuentas de detracción Banco de la Nación, constancias de depósito y exclusión mutua de retención SUNAT.<br>- **Separación Cierre Físico vs Financiero en OCs:** `ordenes_compra` separa `estado_fisico` y `estado_financiero`, enlazando CxP manual y gastos de campo con facturación parcial (`20260923170000`-`20260923210000`).<br>- **Caso de Servicio Compartido (`numero_caso`):** Serie transversal `CASO` que une recepción, cotización, OS y OT con el mismo correlativo (`563_numeracion_caso_servicio_schema.sql`).<br>- **Flota, Rutas y Mantenimiento:** Rutas con paradas en mapa, planes y ejecuciones de mantenimiento, historial de lecturas de horómetro/km e incidentes (`src/pages_ops.jsx:11477`).<br>- **Cierre Atómico de Caja Chica:** Devolución bancaria a saldo cero en una sola transacción y transferencias internas entre fondos (`585_caja_chica_cierre_atomico.sql`, [CerrarFondoModal.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/CerrarFondoModal.jsx)).<br>- **Document Builder:** Columnas multi-bloque ([DocumentLayoutColumns.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/DocumentLayoutColumns.jsx)), subida de imágenes a Storage privado, previsualización paginada WYSIWYG ([DocumentPreviewSheet.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/DocumentPreviewSheet.jsx)) y grupos repetibles estructurados. |
 
 ---
 
@@ -66,41 +66,42 @@ Documenta:
 #### CRM y Comercial
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
-| Cuentas y Contactos | `key: 'cuentas'` (`pages_core.jsx`) | ✅ En producción | Directorio 360°, tab de Condiciones Financieras (restringido por `ver_finanzas`), agentes de retención SUNAT. |
 | Leads y Scoring | `key: 'leads'` (`pages_core.jsx`) | ✅ En producción | Prospección comercial con RUC/Razón Social obligatorios al calificar, validación SUNAT de 11 dígitos, atribución de campaña y conversión a Cuenta + Oportunidad. |
 | Marketing Automation | `key: 'marketing'` (`pages_core.jsx`) | ✅ En producción | CRUD de campañas, cálculo de ROI, CPL, leads atribuidos y propagación de `campana_id`. |
-| Pipeline y Oportunidades | `key: 'pipeline'` (`pages_core.jsx`) | ✅ En producción | Tablero Kanban por etapas, timeline persistido en `opp_historial_etapas` (migración `079`). |
 | Actividades Comerciales | `key: 'actividades'` (`pages_core.jsx`) | ✅ En producción | Bitácora de reuniones, llamadas y compromisos vinculados a cuentas y oportunidades. |
+| Cuentas y Contactos | `key: 'cuentas'` (`pages_core.jsx`) | ✅ En producción | Ubicada en sección COMERCIAL (`src/shell.jsx:38`). Directorio 360°, tab de Condiciones Financieras (restringido por `ver_finanzas`), agentes de retención SUNAT y modal de importación masiva. |
 | Agenda Comercial | `key: 'agenda_comercial'` (`pages_core.jsx`) | ✅ En producción | Calendario de visitas comerciales (mes/semana/día) con sincronización de compromisos. |
-| Hoja de Costeo Estándar | `key: 'hoja_costeo'` (`pages_extra.jsx`) | ✅ En producción | Estimación interna de mano de obra, materiales, servicios de terceros y logística. Margen objetivo y generación de cotización estándar. |
-| Variables de Costeo | `key: 'costeo_variables'` (`pages_costeo_variables.jsx`) | ✅ En producción | Configuración de tarifas por día/hora de activos propios, depreciación manual (`515`) y absorción de gastos administrativos (`520`). Requiere permiso `ver_costos`. |
-| Cotizaciones Estándar | `key: 'cotizaciones'` (`pages_extra.jsx`) | ✅ En producción | Emisión comercial versionada, cálculo de impuestos, aprobación de descuentos y generación de PDF. |
-| Cotizaciones Especiales | `CotizacionEspecialWizard.jsx` | 🟡 En desarrollo activo | Wizard de 5 pasos para cotizaciones complejas asociadas a recepción de activos de clientes (`recepciones_activos_cliente`), hoja de costeo editable por ítem (`521`), integración con Document Builder y aceptación formal atómica (`529`). |
-| OS Cliente | `key: 'os_cliente'` (`pages_core.jsx`) | ✅ En producción | Orden de Servicio del cliente para control de saldos (ejecutado / valorizado / facturado). Frontera societaria estricta (`463`, `466`, `467`). |
-| Panel de Producción | `key: 'panel_produccion'` (`pages_produccion_os_cliente.jsx`) | ✅ En producción | Seguimiento operativo y de avance físico por OS Cliente (`513_os_clientes_estado_produccion.sql`, `527_os_clientes_fecha_cierre_real.sql`). |
-| Equipos de Clientes | `key: 'equipos_clientes'` (`pages_equipos_clientes.jsx`) | ✅ En producción | Maestro de maquinaria y activos de clientes que ingresan a taller o mantenimiento en campo (`462_activos_equipos_cliente.sql`). |
+| Hoja de Costeo Estándar | `key: 'hoja_costeo'` (`pages_extra.jsx`) | ✅ En producción | Estimación de MO, materiales, terceros y logística. Generación desde Diagnóstico Técnico (`606`) con candado bloqueante de valoración pendiente (`trg_bloquear_hoja_costeo_sin_valorar`). |
+| Variables de Costeo | `key: 'costeo_variables'` (`pages_costeo_variables.jsx`) | ✅ En producción | Requiere permiso `ver_costos`. Tarifas por día/hora de activos propios, depreciación manual (`515`) y absorción de gastos administrativos (`520`). |
+| Cotizaciones Estándar | `key: 'cotizaciones'` (`pages_extra.jsx`) | ✅ En producción | Emisión comercial versionada. Integra selector por Líneas de Negocio (`SelectorTipoCotizacion.jsx`) y tarifarios de flota (`CotizacionTarifarioFlota.jsx`, migraciones `544`, `547`, `558`). |
+| Cotizaciones Especiales | `CotizacionEspecialWizard.jsx` | ✅ En producción | Wizard de 5 pasos para cotizaciones complejas: preservación de términos de equipo (`20260922100000`), datos del activo (`560`, `573`), integración con Document Builder y aceptación formal atómica (`529`). |
+| Pipeline y Oportunidades | `key: 'pipeline'` (`pages_core.jsx`) | ✅ En producción | Ubicado en sección COMERCIAL (`src/shell.jsx:43`). Tablero Kanban por etapas, timeline persistido en `opp_historial_etapas` (migración `079`). |
+| OS Cliente | `key: 'os_cliente'` (`pages_core.jsx`) | ✅ En producción | Orden de Servicio del cliente para control de saldos (ejecutado / valorizado / facturado). Frontera societaria estricta (`463`, `466`, `467`) y soporte de `numero_caso`. |
+| Panel de Producción | `key: 'panel_produccion'` (`pages_produccion_os_cliente.jsx`) | ✅ En producción | Acceso condicionado (`accessAnyOf: ['os_cliente']`). Avance físico y seguimiento de OTs por OS Cliente (`513`, `527`). |
+| Equipos de Clientes | `key: 'equipos_clientes'` (`pages_equipos_clientes.jsx`) | ✅ En producción | Acceso condicionado (`accessAnyOf: ['os_cliente']`). Maestro de maquinaria y activos de clientes que ingresan a taller o campo (`462`). |
 
 #### Operaciones (Web Core y Operaciones App)
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
 | Planner y Recursos | `key: 'planner'` (`pages_ops.jsx`) | ✅ En producción | Asignación de cuadrillas, técnicos y maquinaria en calendario con detección de conflictos. |
 | Backlog Operativo | `key: 'backlog'` (`pages_ops.jsx`) | ✅ En producción | Requerimientos pendientes de planificar o convertir a Orden de Trabajo. |
-| Órdenes de Trabajo (OT) | `key: 'ot'` (`pages_ops.jsx`) | ✅ En producción | Gestión de OTs con modelo DBS (`raiz_costo`: equipo_propio, alquiler, os_cliente; migraciones `440`, `441`), fecha de inicio real (`456`) y reserva automática de repuestos (`531`). |
-| Partes Diarios | `key: 'partes'` (`pages_ops.jsx`) | ✅ En producción | Registro diario de HH, materiales consumidos, logística y servicios terceros. RLS societario (`461`) y actividades detalle (`465`). |
-| Cierre Técnico y Calidad | `key: 'cierre'` (`pages_ops.jsx`) | ⚠️ Desconexión detectada | **Advertencia:** En `src/pages_ops.jsx` se ejecutan llamadas separadas no atómicas. La RPC atómica oficial `cerrar_ot_con_conformidad` (`453`) **solo se invoca desde `operaciones-app/`**. |
+| Órdenes de Trabajo (OT) | `key: 'ot'` (`pages_ops.jsx`) | ✅ En producción | Gestión de OTs con modelo DBS (`raiz_costo`: equipo_propio, alquiler, os_cliente; migraciones `440`, `441`), fecha de inicio real (`456`), reserva automática de repuestos (`531`) y soporte de `numero_caso`. |
+| Partes Diarios | `key: 'partes'` (`pages_ops.jsx`) | ✅ En producción | Registro diario de HH, materiales consumidos, logística y terceros. RLS societario (`461`) y actividades detalle (`465`). |
+| Cierre Técnico y Calidad | `key: 'cierre'` (`pages_ops.jsx`) | ⚠️ Desconexión detectada | **Advertencia de Desconexión:** En `src/pages_ops.jsx` se ejecutan llamadas separadas no atómicas. La RPC atómica oficial `cerrar_ot_con_conformidad` (`453`) **solo se invoca desde `operaciones-app/`** ([CierreConformidadPage.jsx:240](file:///d:/VIBECODING/ERP%20-%20TIDEO/operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx#L240)). |
 | Soporte y Tickets | `key: 'tickets'` (`pages_ops.jsx`) | ✅ En producción | Mesa de ayuda con SLA dinámico, control de calidad (QC con sub-estados) e hilo de comentarios append-only con evidencias fotográficas en bucket `ticket-evidencias`. |
-| **Operaciones App (Flota y Campo)** | `operaciones-app/src/OperationalApp.jsx` | 🟡 En desarrollo activo | Aplicación independiente: Panel de Flota Capa 1 (`AlquileresPages.jsx`), Bandeja Maestra paginada (`pages2_v2.jsx`), Creación de OT con tareas (`CrearOTPage.jsx`) y Cierre Técnico con conformidad (`CierreConformidadPage.jsx`). |
+| Transporte, Guías y Flota | `key: 'remision'` (`pages_ops.jsx`) | ✅ En producción | Módulo integral de transporte con tabs: Guías de Remisión SUNAT (T001), Órdenes de Venta, Transportistas, **Rutas de Flota con mapa de paradas (`RutasPanel.jsx`)**, **Mantenimiento de Flota (`MantenimientoFlotaPanel.jsx`)** y **Reportes de Flota/Incidentes (`ReportesFlotaPanel.jsx`)** (`src/pages_ops.jsx:11477-11481`). |
+| **Operaciones App (Taller, Flota y WMS)** | `operaciones-app/src/OperationalApp.jsx` | ✅ En producción | Aplicación independiente desacoplada: **Diagnóstico Técnico de Taller** ([DiagnosticoTecnicoPage.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/operaciones-app/src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx)), **Recepción de Activos de Cliente** ([RecepcionActivosClientePage.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/operaciones-app/src/zahory-mock/pages/RecepcionActivosClientePage.jsx)), **Recepción física de OC** ([RecepcionOCPage.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/operaciones-app/src/zahory-mock/pages/RecepcionOCPage.jsx)), **Ubicaciones WMS** ([UbicacionesPage.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/operaciones-app/src/zahory-mock/pages/UbicacionesPage.jsx)), Bandeja Maestra paginada (`pages2_v2.jsx`), Creación de OT (`CrearOTPage.jsx`) y Cierre Técnico con conformidad atómica (`CierreConformidadPage.jsx`). |
 
 #### RRHH y Gestión de Personas
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
 | Mi portal (Autoservicio) | `key: 'mi_portal'` (`pages_mi_portal.jsx`) | ✅ En producción | Ficha personal, descarga de boletas con acuse, solicitud de constancias y firma digital OTP. |
-| Reclutamiento | `key: 'reclutamiento'` (`pages_reclutamiento.jsx`) | ✅ En producción | Vacantes, postulantes, embudo por etapas y formulario público de postulación por token anónimo. |
+| Reclutamiento | `key: 'reclutamiento'` (`pages_reclutamiento.jsx`) | ✅ En producción | Vacantes, postulantes, embudo por etapas, formulario público de postulación por token anónimo y bucket `postulaciones-cv` (`410`). |
 | Personal Operativo | `key: 'rrhh_operativo'` (`pages_ops.jsx`) | ✅ En producción | Fichas laborales de campo/taller, tarifa hora calculada, importación Excel y gestión de adendas/contratos. |
 | Personal Administrativo | `key: 'rrhh_admin'` (`pages_admin.jsx`) | ✅ En producción | Fichas laborales administrativas, contratos, honorarios y gestión documental. |
-| Control de Asistencia | `key: 'asistencia'` (`pages_ops.jsx`) | ✅ En producción | Asistencia diaria, semanal y minera; validación estricta de cobertura contractual en base de datos (`468`); integración con solicitudes de permisos con goce. |
+| Control de Asistencia | `key: 'asistencia'` (`pages_ops.jsx`) | ✅ En producción | Asistencia diaria, semanal y minera; validación de cobertura contractual (`468`); soporte de `fecha_salida` para jornadas que cruzan medianoche (`589`). |
 | Turnos y Horarios | `key: 'turnos'` (`pages_turnos.jsx`) | ✅ En producción | Módulo independiente con cálculo de refrigerio, turnos que cruzan medianoche y horas sobretasa de feriado (`479`). |
-| Nómina Básica y Legal Perú | `key: 'nomina'` (`pages_ops.jsx`) | ✅ En producción | AFP (3 componentes), ONP, IR 5ta categoría. **Gratificaciones Legales reales (Julio/Diciembre)** con bonificación extraordinaria 9%/6.75% (`447`, `448`); **candado bloqueante de cierre** (`449`); **sobretasa discrecional auditada** (`451`); **aporte trabajador FCJMMS Ley 29741 (0.5%)** (`443`). Sueldo mensual completo fijo en régimen minero. |
+| Nómina Básica y Legal Perú | `key: 'nomina'` (`pages_ops.jsx`) | ✅ En producción | AFP (3 componentes), ONP, IR 5ta. **Gratificaciones Legales reales (Julio/Diciembre)** con bonificación extraordinaria 9%/6.75% (`447`, `448`); **candado bloqueante de cierre** (`449`); **sobretasa discrecional** (`451`); **aporte FCJMMS Ley 29741 (0.5%)** (`443`). Sueldo mensual completo fijo en minería. |
 | Comisiones | `key: 'comisiones'` (`pages_admin.jsx`) | ✅ En producción | Liquidación de comisiones, acuerdos especiales (+48h), cálculo de retención IR 4ta y generación automática de CxP y RHE. |
 | Solicitudes de RRHH | `key: 'solicitudes_rrhh'` (`pages_ops.jsx`) | ✅ En producción | Vacaciones, licencias, permisos y compensación de horas; workflow aprobador jefe → RRHH con impacto directo en asistencia (`aplicar_asistencia`). |
 | Préstamos al Personal | `key: 'prestamos_personal'` (`pages_ops.jsx`) | ✅ En producción | Otorgamiento, tabla de cuotas, amortización manual y descuento automático por planilla (`474`). |
@@ -108,53 +109,69 @@ Documenta:
 | Control de Horas | `key: 'control_horas'` (`pages_ops.jsx`) | ✅ En producción | Consolidado de HH, comparación de partes vs tareos y cálculo de costo real de mano de obra. |
 | Evaluación de Desempeño | `key: 'evaluaciones_desempeno'` (`pages_evaluaciones.jsx`) | ✅ En producción | Evaluación 360° (autoevaluación + jefatura), competencias y objetivos ponderados. |
 | Liquidación por Cese | `key: 'liquidaciones_cese'` (`pages_liquidaciones.jsx`) | ✅ En producción | Liquidaciones bajo D.Leg. 728 (renuncia, mutuo acuerdo, despido, falta grave). Generación de CxP y bloqueo de colaborador cesado. |
-| Documentos de Personal | `personalDocumentosService.js` | ✅ En producción | Gestión de legajo digital, validación por RRHH, signed URLs a 600s, y **archivado seguro de documentos** (`450`) / eliminación de no usados (`445`). |
-| Roster Minero | `rosterMineroService.js` | ✅ En producción | Control de subidas/bajadas mineras (14x7, 20x10, 28x14), snapshots por ciclo, tabla `roster_minero_ajustes` y previsualización de reinicios. |
+| Documentos de Personal | `personalDocumentosService.js` | ✅ En producción | Legajo digital, validación RRHH, signed URLs a 600s, y archivado seguro de documentos (`450`). |
+| Roster Minero | `rosterMineroService.js` | ✅ En producción | Control de subidas/bajadas mineras (14x7, 20x10, 28x14), snapshots por ciclo y tabla `roster_minero_ajustes`. |
 
-#### Logística y Almacenes
+#### Logística y Almacenes (WMS)
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
-| Almacenes e Inventario | `key: 'inventario'` (`pages_extra.jsx`) | ✅ En producción | Control de stock multialmacén, kardex valorizado en moneda funcional, conteos físicos inmutables, análisis ABC y **RLS multisociedad consolidado** (`524`). **Reserva automática de repuestos en OTs programadas** (`531`). |
-| SOLPE Interna | `key: 'solpe'` (`pages_ops.jsx`) | ✅ En producción | Solicitudes de pedido desde OTs o áreas internas con imputación a CECO obligatorio. |
-| Transporte y Guías | `key: 'remision'` (`pages_ops.jsx`) | ✅ En producción | Guías de remisión electrónicas formato SUNAT (T001), correlativo atómico, CRUD de transportistas, conductores y vehículos. Despacho conectado a órdenes de venta y reversión en anulación. |
+| Almacenes e Inventario (WMS) | `key: 'inventario'` (`pages_extra.jsx`) | ✅ En producción | Control de stock multialmacén, kardex valorizado en moneda funcional, conteos físicos inmutables, análisis ABC y RLS multisociedad (`524`). **WMS Ubicaciones Fase 1 & 2:** jerarquía de zonas, racks, posiciones y pisos con campo `uso` (`20261009100000`, `20261010100000`), `ubicacion_id` obligatorio en stock y kardex, y reserva automática en OTs (`531`). |
+| SOLPE Interna | `key: 'solpe'` (`pages_ops.jsx`) | ✅ En producción | Solicitudes de pedido desde OTs o áreas internas con imputación a CECO obligatorio. Cobertura multi-SOLPE en compras (`20260921110500`, `20260921200000`). |
 
 #### Compras
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
-| Proveedores | `key: 'proveedores'` (`pages_ops.jsx`) | ✅ En producción | Maestro de proveedores con ciclo de vida (potencial, homologado, observado, bloqueado), evaluación y condiciones de retención. |
+| Proveedores | `key: 'proveedores'` (`pages_ops.jsx`) | ✅ En producción | Maestro con ciclo de vida (potencial, homologado, observado, bloqueado), código obligatorio (`546`), asignación de familias (`548`, `proveedor_familia`), guardas de tenant (`549`, `551`) y modal de importación [ImportarProveedorFamiliasModal.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/ImportarProveedorFamiliasModal.jsx). |
 | Cotizaciones de Compra | `key: 'cot_compras'` (`pages_ops.jsx`) | ✅ En producción | Cuadro comparativo de cotizaciones de proveedores y adjudicación a ganador. |
-| Órdenes de Compra (OC) | `key: 'ordenes_compra'` (`pages_ops.jsx`) | ✅ En producción | Para compra de bienes y materiales. Control de lead time y condición de pago. |
-| Órdenes de Servicio (OSI) | `key: 'ordenes_servicio'` (`pages_ops.jsx`) | ✅ En producción | Para contratación de servicios tercerizados con conformidad de servicio. |
-| Recepciones | `key: 'recepciones'` (`pages_ops.jsx`) | ✅ En producción | Cotejo 3 vías (OC vs Guía vs Físico), ingreso a inventario y generación automática de CxP. RLS societario (`512`, `516`). |
-| Compras / Gastos en Campo | `key: 'compras_gastos'` (`pages_ops.jsx`) | ✅ En producción | Registro ágil de gastos con extracción IA y OCR. Componente `NuevoEgreso.jsx` con asignación obligatoria de CECO y capitalización de activos fijos (`212`). |
+| **Bandeja de Sourcing** | `key: 'sourcing_bandeja'` (`src/pages_ops.jsx:6845`) | ✅ En producción | Acceso condicionado (`accessAnyOf: ['ordenes_compra']`). Tablero Kanban de compras para consolidar requerimientos de SOLPEs aprobadas, arrastre de líneas a proveedores, carritos de compra y generación de OCs borrador (`20260921140000`, `20260921200000`, `20260922100000`). |
+| Órdenes de Compra (OC) | `key: 'ordenes_compra'` (`pages_ops.jsx`) | ✅ En producción | Separación estricta entre **cierre físico** (`estado_fisico`) y **cierre financiero** (`estado_financiero`) (`20260923210000`), bloqueo de recepción de OCs no recepcionables (`20260923150000`), liberación de cantidad pendiente (`20260924120000`) y lead time. |
+| Órdenes de Servicio (OSI) | `key: 'ordenes_servicio'` (`pages_ops.jsx`) | ✅ En producción | Contratación de servicios tercerizados con conformidad de servicio. |
+| Recepciones | `key: 'recepciones'` (`pages_ops.jsx`) | ✅ En producción | Cotejo 3 vías (OC vs Guía vs Físico), ingreso a inventario y generación automática de CxP. RPC atómica `rpc_recepcion_oc_fisica` (`20261009110000`) para recepción física directa a ubicaciones WMS. |
+| Compras / Gastos en Campo | `key: 'compras_gastos'` (`pages_ops.jsx`) | ✅ En producción | Registro ágil con extracción OCR/IA. Asignación obligatoria de CECO, paradas libres en rutas (`583`), líneas de OC (`20260926162307`) y capitalización de activos fijos (`212`). |
 | Devoluciones a Proveedor | `comprasService.js` | ✅ En producción | Devoluciones con nota de crédito y reversión de stock en almacén. |
 
 #### Administración y Finanzas
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
 | Ventas | `key: 'ventas'` (`pages_fin.jsx`) | ✅ En producción | Pre-facturación comercial y seguimiento de órdenes de venta. Puente hacia facturación definitiva. |
-| Facturación | `key: 'facturacion'` (`pages_fin.jsx`) | ✅ En producción | Emisión de comprobantes fiscales, almacenamiento de PDF/ZIP y **emisión atómica de Notas de Crédito y Débito (NC/ND)** mediante [NotaAfectacionForm.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/NotaAfectacionForm.jsx) con catálogo oficial SUNAT (`537`, `538`, `539`). Control de detracciones SPOT (`507`, `508`). |
-| Cuentas por Cobrar (CxC) | `key: 'cxc'` (`pages_fin.jsx`) | ✅ En producción | Control de vencimientos, registro de cobranzas atómicas (`475`), retenciones SUNAT y desglose multimoneda. |
-| Cuentas por Pagar (CxP) | `key: 'cxp'` (`pages_fin.jsx`) | ✅ En producción | Gestión de obligaciones con proveedores, colaboradores (RHE/liquidaciones) y programación de pagos. **Anulación y eliminación segura** (`532`, `536`). |
-| Caja Chica y Anticipos | `key: 'caja'` (`pages_fin.jsx`) | ✅ En producción | Rendiciones de fondos fijos, subida y descarga directa de adjuntos y comprobantes desde movimientos. Eliminación segura de fondos sin transacciones (`500`). |
-| Tesorería y Match Bancario | `key: 'tesoreria'` (`pages_fin.jsx`) | ✅ En producción | Conciliación de movimientos bancarios y saldos. **Importación masiva de extractos bancarios CSV** con detección de encoding, deduplicación y borrado/reversión de lotes (`540`). |
-| Activos Fijos | `key: 'activos_fijos'` (`pages_fin.jsx`) | ✅ En producción | Maestro de maquinaria y equipos de la empresa. Promoción directa desde Compras/Gastos capitalizables (`compras_gasto_id`). Depreciación manual priorizada (`515`). |
-| Financiamiento y Deuda | `key: 'financiamiento'` (`pages_fin_deuda.jsx`) | ✅ En producción | Créditos y leasings recibidos con tabla de amortización automática. Los intereses impactan en el Estado de Resultados; el capital amortiza el pasivo en Tesorería. |
-| Estado de Resultados (ER) | `key: 'resultados'` (`pages_fin.jsx`) | ✅ En producción | Estado de pérdidas y ganancias bajo devengo contable multimoneda, agrupado por categorías personalizables y filtros por CECO/CEBE. |
+| Facturación | `key: 'facturacion'` (`pages_fin.jsx`) | ✅ En producción | Emisión de comprobantes fiscales, almacenamiento de PDF/ZIP, **emisión atómica de Notas de Crédito/Débito (NC/ND)** con catálogo SUNAT (`537`-`539`), y **subsistema integral de Detracciones SPOT SUNAT** (19 migraciones `20260924000000` a `20260927130000`), con cálculo automático, constancias de depósito y exclusión de retención. |
+| Cuentas por Cobrar (CxC) | `key: 'cxc'` (`pages_fin.jsx`) | ✅ En producción | Control de vencimientos, cobranzas atómicas (`475`), retenciones SUNAT, importación masiva v2 (`20261005120000`) y control de depósitos SPOT en Banco de la Nación. |
+| Cuentas por Pagar (CxP) | `key: 'cxp'` (`pages_fin.jsx`) | ✅ En producción | Obligaciones con proveedores y colaboradores (RHE/liquidaciones). **Vinculación con Órdenes de Compra y facturación parcial** (`20260923170000`, `20260923200000`), distribución de líneas por CECO (`20261005150000`) e importación masiva v2 (`20261005120000`). |
+| Caja Chica y Anticipos | `key: 'caja'` (`pages_fin.jsx`) | ✅ En producción | Rendiciones de fondos fijos. **Cierre Atómico de Fondos a saldo cero vía RPC con devolución bancaria** (`585_caja_chica_cierre_atomico.sql`, [CerrarFondoModal.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/CerrarFondoModal.jsx)), transferencias internas entre fondos (`caja_chica_transferencias`) y filtrado por aplicabilidad de tipos de gasto (`542`). |
+| Tesorería y Match Bancario | `key: 'tesoreria'` (`pages_fin.jsx`) | ✅ En producción | Conciliación de movimientos bancarios y saldos. Importación masiva de extractos bancarios CSV con detección de encoding, deduplicación y reversión de lotes (`540`). |
+| Activos Fijos | `key: 'activos_fijos'` (`pages_fin.jsx`) | ✅ En producción | Maestro de maquinaria y equipos. Promoción desde compras capitalizables (`compras_gasto_id`). Historial de lecturas de horómetro/km (`566`, `568`) y código automático (`567`). |
+| Financiamiento y Deuda | `key: 'financiamiento'` (`pages_fin_deuda.jsx`) | ✅ En producción | Créditos y leasings con tabla de amortización automática. Los intereses impactan en el Estado de Resultados; el capital amortiza pasivo. |
+| Estado de Resultados (ER) | `key: 'resultados'` (`pages_fin.jsx`) | ✅ En producción | Pérdidas y ganancias bajo devengo contable multimoneda, agrupado por categorías personalizables y filtros por CECO/CEBE. |
 | Valorizaciones | `key: 'valorizacion'` (`pages_fin.jsx`) | ✅ En producción | Valorizaciones periódicas sobre OTs ejecutadas con sustento técnico y pase a facturación. |
-| Presupuesto vs Real | `key: 'presupuestos'` (`pages_fin.jsx`) | ✅ En producción | Control presupuestal mensual y anual por CECO/CEBE con cadena de 4 aprobadores y cálculo automático del gasto real (MO + Compras). |
+| Presupuesto vs Real | `key: 'presupuestos'` (`pages_fin.jsx`) | ✅ En producción | Control presupuestal mensual y anual por CECO/CEBE con cadena de 4 aprobadores y cálculo automático de gasto real (MO + Compras + CxP). |
+
+#### Customer Success
+| Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
+|-------------------|-------------------|--------|-------------------|
+| Onboarding | `key: 'cs_onboarding'` (`pages_cs.jsx`) | ✅ En producción | Checklist de activación y reuniones de arranque. |
+| Planes de Éxito | `key: 'cs_planes'` (`pages_cs.jsx`) | ✅ En producción | Objetivos, adopción y alertas tempranas de riesgo. |
+| Health Score | `key: 'cs_health'` (`pages_cs.jsx`) | ✅ En producción | Evaluación ponderada en 5 dimensiones (saludable, observación, riesgo, crítico). |
+| Renovaciones | `key: 'cs_renovaciones'` (`pages_cs.jsx`) | ✅ En producción | Pipeline automático de renovaciones (90/60/30 días). |
+| Fidelización y NPS | `key: 'cs_fidelizacion'` (`pages_cs.jsx`) | ✅ En producción | Encuestas post-servicio, referidos y casos de éxito. |
+| BI Customer Success | `key: 'bi_cs'` (`pages_cs.jsx`) | ✅ En producción | Retención, churn y valor de vida de cliente. |
+
+#### Agentes de Inteligencia Artificial (Aria)
+| Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
+|-------------------|-------------------|--------|-------------------|
+| **Aria (Asistente ERP)** | `key: 'aria'` / header trigger (`AsistenteErpPanel.jsx`) | ✅ En producción | **Asistente conversacional de lectura contextual RAG**. Implementado como panel global interactivo desde sidebar (`src/shell.jsx:108`) y botón en header (`src/shell.jsx:915`). Conectado a Edge Function `asistente-erp` y 20 RPCs seguras en base de datos (`599`-`618`) para consultar cuentas, leads, stock valorizado, compras, gastos, cotizaciones, CxC, CxP, caja chica y resúmenes mensuales. |
+| Módulos IA Clásicos | `ia_comercial`, `ia_operativa`, `ia_financiera` (`pages_ia.jsx`) | 🟡 En transición | Módulos analíticos de IA basados en `ia_logs`. Reemplazados en la navegación principal por la experiencia unificada de Aria. |
 
 #### Configuración y Plataforma
 | Módulo / Pantalla | Ruta / Componente | Estado | Propósito y Notas |
 |-------------------|-------------------|--------|-------------------|
-| Usuarios y Membresías | `key: 'usuarios'` (`pages_admin.jsx`) | ✅ En producción | Gestión de usuarios, asignación de roles y vinculación con la posición principal del organigrama (`472`). |
-| Organigrama v2 | `key: 'organigrama'` (`pages_organigrama_v2.jsx`) | ✅ En producción | Arquitectura de colocaciones (`cargo_colocaciones`), lienzo visual interactivo ([OrganigramaCanvas.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/organigrama_v2/OrganigramaCanvas.jsx)), jerarquía UO padre-hijo y estructura matricial (`457`, `458`, `459`, `482`). |
-| Roles y Permisos | `key: 'roles'` (`pages_admin.jsx`) | ✅ En producción | Constructor de roles con 9 permisos por pantalla, categoría y nivel jerárquico. Reasignación atómica de roles (`434`, `480`, `481`). |
-| Maestros Base | `key: 'maestros'` (`pages_admin.jsx`) | ✅ En producción | Catálogos de consulta: Áreas, Cargos, Especialidades, Tipos de Servicio, Almacenes, Sedes, Industrias, Monedas, Unidades y CECO/CEBE multisociedad. |
-| Parámetros Generales | `key: 'parametros'` (`pages_admin.jsx`) | ✅ En producción | **16 secciones operativas:** Identidad, Sociedades, Nómina, Condiciones, **Catálogo documental (Document Builder)**, Biblioteca de variables, Documentos/Series, Flujos, SLA, Cuentas bancarias, WhatsApp, Tipos de cambio, Feriados, Evaluaciones, Egresos y **Nombres del menú (`tenant_nav_labels`)**. |
-| Constructor de Documentos | Pestaña `catalogo_documentos` en Parámetros | 🟡 En desarrollo activo | Diseñador visual de plantillas en bloques ([ConstructorBloquesEditor.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/ConstructorBloquesEditor.jsx)), previsualizador paginado ([DocumentPreviewSheet.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/DocumentPreviewSheet.jsx)) y condiciones generales (`478`, `486`, `509`, `510`). |
-| Salud de Implementación | `key: 'salud_implementacion_tenant'` (`pages_salud_tenant.jsx`) | ✅ En producción | Panel interactivo de control de despliegue entre TIDEO y cliente con conteos de BD y notas privadas (`solo_interno`) protegidas por RLS. |
-| API Keys | `key: 'api_keys'` (`pages_api_keys.jsx`) | ✅ En producción | Gestión de credenciales `tdk_` con hash SHA-256 para integraciones externas y webhooks de prospectos. |
+| Usuarios y Membresías | `key: 'usuarios'` (`pages_admin.jsx`) | ✅ En producción | Gestión de usuarios, asignación de roles y vinculación con la posición del organigrama (`472`). |
+| Organigrama v2 | `key: 'organigrama'` (`pages_organigrama_v2.jsx`) | ✅ En producción | Lienzo visual Canvas ([OrganigramaCanvas.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/organigrama_v2/OrganigramaCanvas.jsx)), jerarquía UO y colocaciones con aislamiento estricto e integridad de ocupación (`457`, `578`, `579`). |
+| Roles y Permisos | `key: 'roles'` (`pages_admin.jsx`) | ✅ En producción | Matriz de permisos por pantalla y nivel jerárquico. Reasignación atómica de roles (`434`, `480`, `481`). Incorporación de rol `asistente_almacen` (`20261009100100`). |
+| Maestros Base | `key: 'maestros'` (`pages_admin.jsx`) | ✅ En producción | Catálogos de consulta: Áreas, Cargos, Especialidades, Tipos de Servicio, Almacenes, Sedes, Industrias, Monedas, Unidades, CECO/CEBE multisociedad y **Recetas de Actividad de Servicio** ([RecetasActividadPanel.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/RecetasActividadPanel.jsx), `src/pages_admin.jsx:7247`, migraciones `598`, `607`, `610`). |
+| Parámetros Generales | `key: 'parametros'` (`pages_admin.jsx`) | ✅ En producción | **16 secciones operativas:** Identidad, Sociedades, Nómina, Condiciones, **Catálogo documental (Document Builder)**, Biblioteca de variables, Documentos/Series (serie `caso_servicio`), Flujos, SLA, Cuentas bancarias, WhatsApp, Tipos de cambio, Feriados, Evaluaciones, Egresos y **Nombres del menú (`tenant_nav_labels`)**. |
+| Constructor de Documentos | Pestaña `catalogo_documentos` en Parámetros | ✅ En producción | Diseñador visual de plantillas en bloques ([ConstructorBloquesEditor.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/ConstructorBloquesEditor.jsx)), previsualizador paginado WYSIWYG ([DocumentPreviewSheet.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/DocumentPreviewSheet.jsx)), soporte de columnas de layout ([DocumentLayoutColumns.jsx](file:///d:/VIBECODING/ERP%20-%20TIDEO/src/components/DocumentLayoutColumns.jsx)), imágenes a Storage privado y condiciones generales inmutables (`478`, `486`, `509`, `510`). |
+| Salud de Implementación | `key: 'salud_implementacion_tenant'` (`pages_salud_tenant.jsx`) | ✅ En producción | Panel de control de despliegue con conteos de BD y notas privadas (`solo_interno`) protegidas por RLS. |
+| API Keys | `key: 'api_keys'` (`pages_api_keys.jsx`) | ✅ En producción | Credenciales `tdk_` con hash SHA-256 para integraciones externas y webhooks de prospectos. |
 | Gestión de Tenants / SaaS | `key: 'tenants'` (`pages_plataforma.jsx`) | ✅ En producción | Módulo exclusivo de Superadmin TIDEO para administración de empresas, planes y métricas multitenant. |
 
 ---
@@ -167,7 +184,6 @@ Documenta:
 | `prompt_fix_clientes_arquitectura.md` | Clientes solo lectura en Maestros Base, formulario nueva cuenta expandido, tab condiciones financieras | ✔ Completado y Aplicado |
 | `prompt_fix_lead_cuenta_flujo.md` | Formulario lead con RUC/Razón social, convertir lead, flujo completo CRM | ✔ Completado y Aplicado |
 
-
 ---
 
 ### 3.4 Estructura de archivos fuente
@@ -176,15 +192,15 @@ Documenta:
 d:\VIBECODING\ERP - TIDEO\
 ├── src/                                  # Frontend Web Core / Administrativo
 │   ├── App.jsx                           # Router principal y switch de rutas
-│   ├── shell.jsx                         # Shell visual: sidebar dinámico, selector de sociedad y simulador de roles
+│   ├── shell.jsx                         # Shell visual: sidebar dinámico, selector de sociedad, trigger de Aria y simulador de roles
 │   ├── context.jsx                       # Estado global y sincronización Supabase
 │   ├── data.js                           # Catálogos base, esquemas de permisos y datasets de respaldo
 │   ├── styles.css                        # Sistema de diseño global y tokens CSS
 │   ├── pages_core.jsx                    # Dashboard, Cuentas, Leads, Pipeline, OS Cliente y Campañas
-│   ├── pages_ops.jsx                     # OTs, Partes Diarios, Planner, Tickets, RRHH Operativo y Compras
-│   ├── pages_admin.jsx                   # Usuarios, Roles, Maestros y Parámetros Generales (16 secciones)
-│   ├── pages_fin.jsx                     # CxC, CxP, Facturación, Tesorería, ER, Presupuestos y Caja Chica
-│   ├── pages_extra.jsx                   # Cotizaciones estándar, Valorizaciones e Inventario
+│   ├── pages_ops.jsx                     # OTs, Partes Diarios, Planner, Tickets, RRHH Operativo, Compras, BandejaSourcing y Transporte/Flota
+│   ├── pages_admin.jsx                   # Usuarios, Roles, Maestros (RecetasActividad), Parámetros Generales (16 secciones)
+│   ├── pages_fin.jsx                     # CxC, CxP, Facturación (SPOT), Tesorería, ER, Presupuestos y Caja Chica (Cierre atómico)
+│   ├── pages_extra.jsx                   # Cotizaciones estándar, Valorizaciones e Inventario (WMS)
 │   ├── pages_costeo_variables.jsx        # Variables de costeo y absorción de activos/gastos admin
 │   ├── pages_produccion_os_cliente.jsx   # Panel de producción y estado de avance por OS Cliente
 │   ├── pages_equipos_clientes.jsx        # Maestro de equipos de clientes en custodia/taller
@@ -197,67 +213,102 @@ d:\VIBECODING\ERP - TIDEO\
 │   ├── pages_mobile.jsx                  # Vistas PWA de campo clásicas
 │   ├── pages_bi_fin.jsx                  # BI Financiero y análisis presupuestal
 │   ├── pages_cs.jsx                      # Customer Success completo
-│   ├── pages_ia.jsx                      # Módulos de analítica asistida por IA
+│   ├── pages_ia.jsx                      # Módulos analíticos de IA clásicos
 │   ├── pages_pdf.jsx                     # Plantillas imprimibles PDF clásicas
-│   ├── components/                       # 27 componentes UI especializados
+│   ├── context/
+│   │   └── AsistenteErpContext.jsx       # Contexto y estado del Asistente Aria
+│   ├── components/                       # 41 componentes UI especializados
+│   │   ├── AsistenteErpPanel.jsx         # Panel interactivo conversacional de Aria
 │   │   ├── ConstructorBloquesEditor.jsx  # Editor visual del Document Builder
-│   │   ├── DocumentPreviewSheet.jsx      # Vista previa física paginada
+│   │   ├── DocumentPreviewSheet.jsx      # Vista previa física paginada WYSIWYG
+│   │   ├── DocumentLayoutColumns.jsx     # Bloques en columnas para Document Builder
+│   │   ├── DocumentPreviewRichText.jsx   # Renderizado de texto enriquecido e imágenes
 │   │   ├── CotizacionEspecialWizard.jsx  # Asistente de Cotización Especial (5 pasos)
+│   │   ├── SelectorTipoCotizacion.jsx    # Selector de cotización por Línea de Negocio
+│   │   ├── CotizacionTarifarioFlota.jsx  # Cotización estándar basada en tarifas de flota
 │   │   ├── RecepcionesActivosCliente.jsx # Recepción formal de equipos de clientes
+│   │   ├── CerrarFondoModal.jsx          # Modal de cierre atómico de fondos de caja chica
 │   │   ├── NotaAfectacionForm.jsx        # Modal atómico de emisión de NC/ND SUNAT
-│   │   ├── CatalogoDocumentosCondiciones.jsx # Catálogo de documentos de condiciones
+│   │   ├── CatalogoDocumentosCondiciones.jsx # Catálogo de condiciones generales
+│   │   ├── RecetasActividadPanel.jsx     # Gestión de recetas y estándares por actividad
+│   │   ├── RutasPanel.jsx                # Panel de rutas y logística de flota vehicular
+│   │   ├── RutaParadasMapa.jsx           # Visualizador de paradas de rutas en mapa
+│   │   ├── MantenimientoFlotaPanel.jsx   # Mantenimientos preventivos y correctivos de flota
+│   │   ├── ReportesFlotaPanel.jsx        # Lecturas e incidentes operativos de flota
+│   │   ├── ImportarProveedorFamiliasModal.jsx # Importación masiva de familias de proveedor
+│   │   ├── ImportarCuentasModal.jsx      # Importación masiva de cuentas y contactos
 │   │   ├── PosicionSelector.jsx          # Selector de posiciones organizacionales
 │   │   ├── NuevoEgreso.jsx               # Wizard de egresos y compras en campo con OCR
 │   │   └── FileUpload.jsx                # Componente centralizado de carga a Storage
 │   ├── organigrama_v2/
 │   │   └── OrganigramaCanvas.jsx         # Lienzo visual interactivo con handles UO
-│   └── services/                         # 60 servicios de integración y backend
+│   └── services/                         # 85 servicios de integración y backend
+│       ├── asistenteErpService.js, cajaChicaCierreLogic.js, cajaChicaService.js,
+│       ├── spotCatalogoService.js, rutasService.js, mantenimientosFlotaService.js,
+│       ├── incidentesFlotaService.js, lecturasFlotaService.js, recetasActividadService.js,
+│       ├── cxcMassiveImportService.js, cxpMassiveImportService.js, cxpDistribucionCeco.js,
 │       ├── crmService.js, rrhhService.js, comprasService.js, finanzasService.js,
 │       ├── operacionesService.js, inventarioService.js, storageService.js,
 │       ├── navLabelsService.js, organigramaV2Service.js, posicionesService.js,
-│       ├── recepcionesActivosClienteService.js, autoservicioEmpleadoService.js,
-│       ├── liquidacionesCeseService.js, evaluacionesDesempenoService.js,
-│       ├── biometricoService.js, rosterMineroService.js, guiasService.js,
-│       ├── nominaSociedadService.js, sociedadesService.js, tesoreriaService.js...
+│       ├── recepcionesActivosClienteService.js, plantillasCotizacionService.js,
+│       ├── autoservicioEmpleadoService.js, liquidacionesCeseService.js...
 │
 ├── operaciones-app/                      # Frontend Operativo Móvil / Taller
 │   ├── package.json                      # Proyecto Vite independiente
 │   ├── src/
 │   │   ├── OperationalApp.jsx            # Shell operativo con selector de sociedad
 │   │   ├── lib/sesionOperativa.js        # Hook de sesión operativa Supabase
+│   │   ├── services/                     # 14 servicios operativos especializados
+│   │   │   ├── diagnosticoTecnicoService.js, diagnosticoInformeService.js,
+│   │   │   ├── diagnosticoHallazgoFotosService.js, emisionInformeFlujo.js,
+│   │   │   ├── ubicacionesService.js, recepcionOCService.js,
+│   │   │   ├── recepcionesActivosClienteService.js, solpeService.js...
 │   │   └── zahory-mock/
 │   │       ├── ZahoryRoutes.jsx          # Enrutador de operaciones
-│   │       ├── pages/
-│   │       │   ├── AlquileresPages.jsx   # Panel de Flota Capa 1 y contratos vigentes
-│   │       │   ├── pages2_v2.jsx         # Bandeja Maestra de OTs con datos reales
-│   │       │   ├── CrearOTPage.jsx       # Creación de OT con cuadrilla y ot_tareas
+│   │       ├── pages/                    # 23 vistas y componentes operativos
+│   │       │   ├── DiagnosticoTecnicoPage.jsx # Diagnóstico Técnico de Taller (5 pasos)
+│   │       │   ├── DiagnosticoInformePanel.jsx, InformeHoja.jsx, InformePdf.jsx # Informes de servicio
+│   │       │   ├── HallazgosTrabajoPanel.jsx, HallazgoFotos.jsx # Hallazgos y fotos
+│   │       │   ├── RecepcionActivosClientePage.jsx # Recepción física en taller
+│   │       │   ├── RecepcionOCPage.jsx       # Recepción física de OC con WMS
+│   │       │   ├── UbicacionesPage.jsx       # Gestión física de ubicaciones WMS
+│   │       │   ├── AlquileresPages.jsx       # Panel de Flota Capa 1 y contratos
+│   │       │   ├── pages2_v2.jsx             # Bandeja Maestra de OTs con datos reales
+│   │       │   ├── CrearOTPage.jsx           # Creación de OT con cuadrilla y tareas
 │   │       │   ├── CierreConformidadPage.jsx # Cierre con conformidad atómica (RPC 453)
-│   │       │   ├── MisOTsPage.jsx        # OTs asignadas al técnico
-│   │       │   ├── BacklogPage.jsx       # Backlog operativo
-│   │       │   └── ProduccionPages.jsx   # Tableros de taller y producción
+│   │       │   ├── MisOTsPage.jsx, BacklogPage.jsx, ProduccionPages.jsx...
 │
 └── supabase/
-    └── migrations/                       # 540 migraciones SQL versionadas
+    ├── functions/                        # 20 Edge Functions Deno activas
+    │   ├── asistente-erp/index.ts        # Motor conversacional RAG del Asistente Aria
+    │   ├── generar-conclusion-informe/   # Redacción con IA de conclusiones técnicas
+    │   ├── api-prospectos/, api-reservas/, aceptar-cotizacion/, whatsapp-dispatch...
+    └── migrations/                       # 704 migraciones SQL versionadas
         ├── 001_initial_schema.sql ...
-        ├── 439_contratos_alquiler.sql
-        ├── 440_ordenes_trabajo_modelo_dbs_raiz_costo.sql
-        ├── 443_nomina_fcjmms_trabajador.sql
-        ├── 447_gratificacion_real_activos.sql
-        ├── 449_bloquear_cierre_nomina_sin_gratificacion_confirmada.sql
-        ├── 451_gratificacion_overrides_discrecionales.sql
         ├── 453_cerrar_ot_con_conformidad_atomico.sql
         ├── 457_organigrama_v2_cargo_colocaciones.sql
-        ├── 478_catalogo_documentos_condiciones_generales.sql
         ├── 486_constructor_documentos_bloques.sql
-        ├── 491_cotizaciones_especiales.sql
-        ├── 510_materializar_condiciones_generales_emitir_cotizacion_especial.sql
-        ├── 524_consolidar_rls_almacenes_inventario.sql
-        ├── 529_cotizaciones_especiales_aceptacion.sql
-        ├── 531_reserva_repuestos_ot_programada.sql
-        ├── 533_tenant_nav_labels.sql
-        ├── 534_tenant_nav_sections.sql
         ├── 539_emitir_nota_cxc_atomica.sql
-        └── 540_importacion_extractos_bancarios.sql
+        ├── 540_importacion_extractos_bancarios.sql
+        ├── 541_registrar_egreso_caja_chica_atomico.sql ... 543_caja_chica_rpc_solo_jsonb.sql
+        ├── 544_linea_negocio_comercial_operaciones.sql
+        ├── 546_proveedores_codigo_obligatorio.sql
+        ├── 547_tarifas_estandar_equipos_alquiler.sql ... 548_proveedor_familia.sql
+        ├── 563_numeracion_caso_servicio_schema.sql ... 577_validar_tenant_funciones_numeracion.sql
+        ├── 578_integridad_ocupacion_membresia.sql ... 579_aislamiento_tenant_cargo_colocacion.sql
+        ├── 585_caja_chica_cierre_atomico.sql
+        ├── 589_asistencia_fecha_salida.sql
+        ├── 592_diagnostico_hallazgos_base.sql ... 597_diagnostico_informe_emision_completa.sql
+        ├── 598_receta_actividad_transaccional.sql
+        ├── 599_asistente_erp_lectura.sql ... 618_asistente_erp_resumen_mensual.sql
+        ├── 606_hoja_costeo_desde_diagnostico.sql
+        ├── 20260920200000_cxp_centralizado_fase1.sql ... 20260921121500_cxp_pago_atomico.sql
+        ├── 20260921140000_sourcing_bandeja_backend.sql ... 20260922100000_sourcing_line_provider_assignment.sql
+        ├── 20260923170000_cxp_orden_compra_vinculo.sql ... 20260923210000_oc_estados_financieros.sql
+        ├── 20260924000000_spot_catalogo_rls_seed.sql ... 20260927130000_spot_notas_proveedor.sql
+        ├── 20261005120000_importadores_finanzas_v2.sql ... 20261005150000_ceco_linea_cxp_distribucion.sql
+        ├── 20261009100000_wms_ubicaciones_fase1.sql ... 20261009110000_rpc_recepcion_oc_fisica.sql
+        └── 20261010100000_wms_ubicaciones_tipo_piso_uso.sql
 ```
 
 ---
@@ -281,14 +332,13 @@ d:\VIBECODING\ERP - TIDEO\
 
 **Moneda:** `money(n)` y `moneyD(n)` desde `icons.jsx`. Local en `pages_bi_fin.jsx`: `const S = n => 'S/ ' + n.toLocaleString('es-PE')`.
 
-**Servicios especializados:** los módulos grandes delegan persistencia y reglas de negocio en servicios pequeños dentro de `src/services/`. `context.jsx` coordina estado global y acciones, pero las consultas Supabase específicas viven en servicios especializados como `finanzasService.js`, `materialService.js`, `personalDocumentosService.js`, `tipoCambioService.js`, `nominaService.js`, `evaluacionesDesempenoService.js`, `liquidacionesCeseService.js` y `navLabelsService.js`.
+**Servicios especializados:** los módulos grandes delegan persistencia y reglas de negocio en servicios pequeños dentro de `src/services/` (85 servicios al corte 10/10/2026). `context.jsx` coordina estado global y acciones, pero las consultas Supabase específicas viven en servicios especializados como `finanzasService.js`, `materialService.js`, `asistenteErpService.js`, `spotCatalogoService.js`, `personalDocumentosService.js`, `tipoCambioService.js`, `nominaService.js`, `evaluacionesDesempenoService.js`, `liquidacionesCeseService.js` y `navLabelsService.js`.
 
 **Parámetros editables:** series documentarias, plantillas SLA y diccionario comercial se tratan como catálogos configurables por tenant. Se cargan desde `series_documentarias`, `sla_plantillas` y `diccionario_comercial`, con defaults locales cuando Supabase no está configurado.
 
-**Documentos y Storage:** los adjuntos transversales usan `storageService.js` y `FileUpload.jsx`. Excepciones justificadas: evidencias de tickets usan `ticketsService.subirImagenEvidencia` porque se guardan directamente en `ticket_comentarios.imagen_url`; documentos de personal usan `personalDocumentosService.js` y RPCs propias para versionado.
+**Documentos y Storage:** los adjuntos transversales usan `storageService.js` y `FileUpload.jsx`. Excepciones justificadas: evidencias de tickets usan `ticketsService.subirImagenEvidencia` porque se guardan directamente en `ticket_comentarios.imagen_url`; documentos de personal usan `personalDocumentosService.js` y RPCs propias para versionado; diagnóstico de taller usa el bucket privado `diagnostico-fotos` (`596_diagnostico_fotos_storage.sql`); y reclutamiento usa `postulaciones-cv` (`410_postulaciones_cv_storage.sql`).
 
 **Costo hora de colaboradores:** el costo de MO para OT, partes, tareos y Control de Horas debe usar `tarifa_hora` cuando exista. Los campos legacy `costo_hora_real`, `costo` y `costo_hora` quedan como fallback de compatibilidad.
-
 
 ---
 
@@ -296,38 +346,44 @@ d:\VIBECODING\ERP - TIDEO\
 
 | Ítem | Severidad | Descripción y Evidencia |
 |------|-----------|-------------------------|
-| **Desconexión RPC `cerrar_ot_con_conformidad`** | **ALTA** | La migración `453` creó la RPC atómica `cerrar_ot_con_conformidad`, pero en el frontend principal `src/pages_ops.jsx` no se invoca. Solo se llama en `operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx:240`. `src/pages_ops.jsx` requiere conectarse a esta RPC para evitar desincronizaciones en el cierre. |
+| **Desconexión RPC `cerrar_ot_con_conformidad`** | **ALTA** | La migración `453_cerrar_ot_con_conformidad_atomico.sql` creó la RPC atómica `cerrar_ot_con_conformidad`, pero en el frontend principal `src/pages_ops.jsx` no se invoca. Solo se llama en `operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx:240`. `src/pages_ops.jsx` requiere conectarse a esta RPC para evitar desincronizaciones en el cierre. |
 | **Consolidación de ramas remotas de Document Builder** | **MEDIA** | PR #100 fue mergeado a main (`0f3629a`), pero existen ramas remotas (`feat/constructor-lineas-imagen-espacio`, `feat/repeat-table-shared-header`) con mejoras en curso que requieren ser probadas y mergeadas. |
-| **Archivos monolíticos mayores a 1 MB** | **MEDIA** | `pages_ops.jsx` (1.8 MB) y `pages_admin.jsx` (1.1 MB) concentran múltiples vistas que progresivamente deben modularizarse en componentes independientes (siguiendo el patrón de `pages_costeo_variables.jsx`). |
-| **Duplicación de numeración en migraciones históricas** | **BAJA** | Migraciones históricas previas a la 250 tienen numeraciones colisionadas (`093`, `105`, `119`, etc.). El repositorio las mantiene con nombres diferenciados; no alterar su historial. |
+| **Archivos monolíticos mayores a 1 MB** | **MEDIA** | `pages_ops.jsx` (1.8 MB) y `pages_admin.jsx` (1.1 MB) concentran múltiples vistas que progresivamente deben modularizarse en componentes independientes (siguiendo el patrón de `pages_costeo_variables.jsx`, `AsistenteErpPanel.jsx` y `RutasPanel.jsx`). |
+| **Migraciones temporales vs secuenciales** | **BAJA** | Existen 636 migraciones secuenciales (`001` a `618`) y 68 con prefijo timestamp ISO (`20260906...` a `20261010...`). El repositorio mantiene ambas convenciones; no alterar nombres para preservar checksums de Supabase CLI. |
 
 ---
 
-### 3.7 GAPS de Auditoría Técnica (Corte 18/09/2026)
+### 3.7 GAPS de Auditoría Técnica (Corte 10/10/2026)
 
 #### [A] TÉCNICO — Implementado en código pero NO documentado previamente
-1. **Migraciones 439 a 540:** Incorporación de Contratos de Alquiler de Flota (`439`), Modelo DBS en OTs (`440`, `441`), Organigrama v2 (`457`-`459`), Cotizaciones Especiales (`491`-`499`), Document Builder (`478`-`510`), RLS multi-almacén (`524`), Reserva de repuestos (`531`), Nav Labels dinámicos (`533`, `534`), NC/ND SUNAT atómicas (`537`-`539`) e Importación de Extractos Bancarios (`540`).
-2. **Segundo Frontend:** Aplicación independiente `operaciones-app/` para gestión de flota, taller y campo.
-3. **Módulos y pantallas nuevas:** `pages_costeo_variables.jsx`, `pages_produccion_os_cliente.jsx`, `pages_equipos_clientes.jsx`, `pages_organigrama_v2.jsx`.
-4. **25 Servicios nuevos:** Inclusión de `navLabelsService.js`, `organigramaV2Service.js`, `recepcionesActivosClienteService.js`, etc.
+1. **Migraciones 541 a 618 y Timestamps (20260906... a 20261010...):** 704 migraciones activas en Supabase. Cierre atómico de Caja Chica (`585`), Caso de Servicio Compartido (`563`-`577`), Aislamiento y Membresía Organigrama v2 (`578`-`579`), Asistencia con `fecha_salida` (`589`), Catálogo y Reportes de Diagnóstico Técnico de Taller (`592`-`597`), Receta de Actividad Transaccional (`598`), Asistente Aria / ERP con 20 RPCs de lectura (`599`-`618`), Generación de Hoja de Costeo desde Diagnóstico (`606`), CxP Centralizado y Pagos Atómicos (`20260920200000`-`20260921121500`), Bandeja de Sourcing Kanban (`20260921140000`-`20260922100000`), Separación de Estados Físico y Financiero en OCs (`20260923170000`-`20260923210000`), Catálogo y Detracciones SPOT SUNAT (`20260924000000`-`20260927130000`), Distribución CECO en CxP (`20261005120000`-`20261005150000`), y WMS Ubicaciones Fase 1 & 2 con Recepción Física de OCs (`20261009100000`-`20261010100000`).
+2. **Asistente Inteligente Aria (ERP Assistant):** Panel conversacional contextual `src/components/AsistenteErpPanel.jsx`, servicio `src/services/asistenteErpService.js`, Deno Edge Function `supabase/functions/asistente-erp/index.ts`, integrado directamente en el header global de `src/shell.jsx:915` y en el sidebar (`src/shell.jsx:107-109`).
+3. **Módulo de Diagnóstico Técnico e Informes de Taller:** Flujo de 5 pasos en `operaciones-app/src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx`, catálogo de hallazgos (`592`), bucket privado `diagnostico-fotos` (`596`), generación de informes PDF (`595`, `597`), conclusiones asistidas por IA (`supabase/functions/generar-conclusion-informe`) y derivación directa a cotización/costeo (`606`).
+4. **WMS de Ubicaciones por Almacén (Fase 1 y 2):** Jerarquía `zona > rack > posicion / piso`, clasificación de uso (`almacenaje`, `recepcion`, `cuarentena`, `despacho`, `merma`), stock segregado por ubicación con clave compuesta única `(empresa_id, almacen_id, ubicacion_id, material_id)`, kardex obligatorio con ubicación y rol `asistente_almacen` (`20261009100000`, `20261009100100`, `20261010100000`), pantalla `operaciones-app/src/zahory-mock/pages/UbicacionesPage.jsx`.
+5. **Bandeja de Sourcing Kanban:** Vista Kanban por estados (`pendiente`, `en_cotizacion`, `adjudicado`, `rechazado`, `consolidado`) en `src/pages_ops.jsx:6845`, agrupación multi-SOLPE, asignación de proveedor por línea y conversión directa a OC (`20260921140000`, `20260921200000`, `20260922100000`).
+6. **Módulo SPOT SUNAT:** Catálogo oficial con códigos SUNAT, alícuotas y cuentas del Banco de la Nación (`spot_catalogo`), deducción automática en CxP (`spot_detracciones`), exportación para pago masivo y servicio `spotCatalogoService.js`.
+7. **Nuevos Buckets de Storage:** `postulaciones-cv` (migración `410`) y `diagnostico-fotos` (migración `596`), totalizando 9 buckets activos.
+8. **Reorganización Comercial en Sidebar:** Módulos `cuentas` y `pipeline` reubicados desde CRM hacia `COMERCIAL` (`src/shell.jsx:38,43`), eliminando duplicidad conceptual.
 
 #### [B] TÉCNICO — Documentado pero NO implementado o desactualizado
-1. **Sección 3.1 congelada:** El documento anterior registraba corte al 18/08/2026 y migración 438, omitiendo más de un mes de avances intensivos.
-2. **Cierre técnico en `operacionesService.js`:** La tabla de servicios indicaba que gestionaba el cierre técnico y conformidad; sin embargo, dicha lógica fue abstraída en la RPC de BD `cerrar_ot_con_conformidad` (`453`), consumida únicamente por `operaciones-app`.
+1. **Sección 3.1 congelada al corte previo:** El documento registraba corte al 18/09/2026 con 540 migraciones, cuando el repositorio cuenta con 704 migraciones y módulos enteros nuevos (Aria, Sourcing, SPOT, WMS Ubicaciones, Taller).
+2. **Cierre de OCs monoestado:** El documento asumía que una OC simplemente se marcaba como 'cerrada' o 'recibida'; en código real existen dos estados independientes: `estado_fisico` y `estado_financiero` calculados por triggers y RPCs (`20260923210000`).
+3. **Cierre de Caja Chica:** El documento describía un cierre conceptual; en código existe una RPC atómica estricta `cerrar_fondo_caja_chica_atomico` (`585`) que exige saldo en cero y reintegra a banco.
 
 #### [C] LÓGICA DE NEGOCIO — Regla/validación en código que el documento no reflejaba
-1. **Candado Bloqueante de Gratificaciones:** Migración `449` bloquea el cierre del período de nómina si existen trabajadores activos con gratificación sin confirmar en julio/diciembre.
-2. **Aporte Trabajador FCJMMS Ley 29741:** Migración `443` aplica retención de 0.5% a personal en régimen minero sobre la base minera efectiva.
-3. **Inmutabilidad de Cotizaciones Especiales:** Migración `494` y RPC `497` congelan las condiciones comerciales y los ítems emitidos impidiendo mutaciones en borrador.
-4. **Reserva Automática de Repuestos WMS:** Migración `531` reserva automáticamente stock al programar la OT.
+1. **Candado de Hoja de Costeo sin Valorar:** Trigger `trg_bloquear_hoja_costeo_sin_valorar` (migración `606`) bloquea la emisión o aprobación de hojas de costeo si no tienen margen y costos debidamente valorados.
+2. **Exclusión Mutua SPOT vs Retención SUNAT:** Migración `20260924030000` prohíbe que una misma factura aplique simultáneamente detracción SPOT y retención tributaria.
+3. **Unicidad de Ubicación Física en Stock:** Migración `20261009100000` exige `ubicacion_id` y restringe el kardex para evitar inventarios volátiles.
+4. **Herencia de Caso de Servicio:** Migraciones `563`-`577` establecen que `numero_caso` se propaga de forma continua desde la recepción del activo o cotización hasta la orden de trabajo.
+5. **Restricción de Membresía en Organigrama v2:** Migración `578` impide que un colaborador pertenezca simultáneamente a múltiples ramas incompatibles y migración `579` refuerza el aislamiento multitenant por cargo.
+6. **Fecha de Salida en Control de Asistencia:** Migración `589` añade `fecha_salida` para turnos nocturnos o mineros que cruzan medianoche sin romper el tareo.
 
 #### [D] LÓGICA DE NEGOCIO — Regla documentada que el código contradice
-1. **Cálculo de Remuneración en Régimen Minero:** El documento previo indicaba que las inasistencias descuentan proporcionalmente el sueldo base mensual. El código vigente ejecuta la regla legal: el trabajador minero percibe su sueldo mensual fijo completo independientemente de los días del ciclo (commits `d601fdf`, `b321133`).
-2. **Archivado Seguro de Documentos de Personal:** El documento previo indicaba que los documentos nunca se eliminan; el código introdujo el modal de archivar documento como alternativa formal a la eliminación (`450`) y la eliminación de huérfanos no vinculados (`445`).
+1. **Cierre de Caja Chica con Saldo Pendiente:** La documentación previa sugería que un fondo podía cerrarse y dejar remanente para el siguiente periodo. La RPC `585` exige que el saldo quede exactamente en 0.00 mediante devolución a tesorería o liquidación.
+2. **Recepción Parcial de OC vs Facturación:** El código permite recepciones parciales físicas (`rpc_recepcion_oc_fisica`) independientemente de si la factura ya ingresó a CxP (`20260923170000`), manteniendo trazabilidad desacoplada.
 
 #### [E] FLUJOS — Desconexión Detectada
-1. **Cierre Técnico y Conformidad:** La RPC `cerrar_ot_con_conformidad` solo está conectada en `operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx:240`, dejando `src/pages_ops.jsx` ejecutando mutaciones manuales no atómicas.
-
+1. **Cierre Técnico y Conformidad:** La RPC `cerrar_ot_con_conformidad` (`453`) continúa consumida exclusivamente por `operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx:240`. En `src/pages_ops.jsx` el cierre de OT se efectúa mediante mutaciones separadas, constituyendo una deuda técnica de alta severidad.
 
 ---
 
@@ -364,11 +420,11 @@ TIDEO (Superadmin)
 
 La plataforma implementa un nivel adicional de aislamiento denominado **Multisociedad**, diseñado para grupos empresariales que operan bajo un mismo tenant (`empresa_id`) pero con múltiples razones sociales distintas.
 
-- **Invariante de sociedad obligatoria:** Todas las tablas transaccionales tienen la columna `sociedad_id` (uuid). La restricción de obligatoriedad (no ser `NULL`) solo aplica cuando el tenant tiene habilitada la arquitectura multisociedad (migración 416). Existen excepciones legítimas para registros históricos creados antes de la instalación.
-- **Frontera RLS:** El aislamiento se garantiza a nivel de base de datos usando Row Level Security y la función `usuario_alcance_sociedades()`. Si el usuario tiene acceso global (NULL), ve todo el tenant; si tiene asignaciones específicas, solo ve los registros de sus sociedades. Las migraciones recientes (404, 423) refuerzan esta frontera en nómina, finanzas y operaciones.
-- **Cobertura RLS (Lectura y Escritura):** Cubre toda la cadena comercial (Cuentas, Leads, Cotizaciones, OS, OT, Valorizaciones, Facturas), inventarios, finanzas, nómina y RRHH (amonestaciones, constancias, solicitudes).
-- **Identidad emisora y Propagación:** Las entidades heredan irrompiblemente la sociedad. Ejemplo: `Hoja Costeo -> OS -> OT -> Valorización -> Factura`. Es imposible modificar la sociedad una vez instanciada la cadena. A partir de la migración 402, la derivación societaria en OTs desde OS es aún más estricta.
-- **Validación estricta de cruce:** El sistema previene el cruce de datos (ej. un empleado de Sociedad A no puede registrar horas en un Centro de Costo de Sociedad B, y un CECO no puede agruparse bajo un CEBE de distinta sociedad). Las validaciones incluyen CEBE estructurales y vigencia extendida (migración 418).
+- **Invariante de sociedad obligatoria:** Todas las tablas transaccionales tienen la columna `sociedad_id` (uuid). La restricción de obligatoriedad (no ser `NULL`) solo aplica cuando el tenant tiene habilitada la arquitectura multisociedad (migración `416`). Existen excepciones legítimas para registros históricos creados antes de la instalación.
+- **Frontera RLS:** El aislamiento se garantiza a nivel de base de datos usando Row Level Security y la función `usuario_alcance_sociedades()`. Si el usuario tiene acceso global (NULL), ve todo el tenant; si tiene asignaciones específicas, solo ve los registros de sus sociedades. Las migraciones (`404`, `423`, `579`) refuerzan esta frontera en nómina, finanzas, organigrama y operaciones.
+- **Cobertura RLS (Lectura y Escritura):** Cubre toda la cadena comercial (Cuentas, Leads, Cotizaciones, OS, OT, Valorizaciones, Facturas), inventarios, finanzas, caja chica (`585`), hoja de costeo (`606`), distribución de líneas CxP (`20261005150000`), nómina y RRHH (amonestaciones, constancias, solicitudes).
+- **Identidad emisora y Propagación:** Las entidades heredan irrompiblemente la sociedad. Ejemplo: `Hoja Costeo -> OS -> OT -> Valorización -> Factura`. Es imposible modificar la sociedad una vez instanciada la cadena. A partir de la migración `402`, la derivación societaria en OTs desde OS es aún más estricta.
+- **Validación estricta de cruce:** El sistema previene el cruce de datos (ej. un empleado de Sociedad A no puede registrar horas en un Centro de Costo de Sociedad B, y un CECO no puede agruparse bajo un CEBE de distinta sociedad). Las validaciones incluyen CEBE estructurales, vigencia extendida (`418`) y centros de costo en comprobantes de compras (`20261005150000`).
 
 ---
 
@@ -490,35 +546,44 @@ El costo operativo vigente se imputa con `tarifa_hora` del colaborador. Esa tari
 #### [OBSOLETO / HISTÓRICO - CORTE 18/08/2026]
 *En la versión previa, el organigrama se modelaba únicamente como una jerarquía de posiciones lineales enlazadas a usuarios y roles sin representación gráfica espacial.*
 
-#### [VIGENTE - CORTE 18/09/2026]
+#### [VIGENTE - CORTE 10/10/2026]
 El organigrama opera sobre la arquitectura **Organigrama v2**:
 - **Lienzo Visual Reactivo (`OrganigramaCanvas.jsx`):** Interfaz interactiva de nodos y aristas con drag-and-drop, zoom, minimapa y handles de conexión directa entre Unidades Organizacionales (UOs) padre-hijo (commits `8bfdcc3`, `be3b08e`, `f365d13`).
-- **Tabla `cargo_colocaciones` (Migración `457`):** Desacopla la definición del cargo de su ubicación visual y asignación en el lienzo, registrando coordenadas `(pos_x, pos_y)`, UO de pertenencia, sede, campo y líder asignado (`468_organigrama_v2_campo_colocacion.sql`).
+- **Tabla `cargo_colocaciones` (Migraciones `457`, `578`, `579`):** Desacopla la definición del cargo de su ubicación visual y asignación en el lienzo, registrando coordenadas `(pos_x, pos_y)`, UO de pertenencia, sede, campo y líder asignado (`468_organigrama_v2_campo_colocacion.sql`). La migración `578` valida la integridad de ocupación (evitando asignaciones dobles contradictorias) y `579` garantiza el aislamiento estricto por tenant y sociedad.
 - **Jerarquía Matricial y Layout Persistente (Migración `459`):** Soporta tanto la jerarquía de línea directa de reporte como líneas funcionales secundarias persistidas en base de datos.
 - **Sincronización Bidireccional Continua:**
   * Asignar una persona a una posición en el organigrama actualiza automáticamente su cargo visible en la ficha laboral de RRHH (`472_sincronizar_ficha_usuario_posicion.sql`, `473`).
   * El organigrama actúa como la fuente de verdad institucional para la determinación de jefaturas inmediatas y aprobadores de solicitudes (`482_organigrama_fuente_verdad_jefaturas.sql`).
 
-### 5.9 Vigencia Efectiva y Retro Wall
+### 5.9 Vigencia Efectiva, Retro Wall y Control de Turnos Nocturnos
 
-Dos conceptos críticos protegen la inmutabilidad de la información operativa:
+Tres conceptos críticos protegen la inmutabilidad y precisión de la información operativa:
 - **Vigencia Efectiva:** Un trabajador solo existe operativamente durante los periodos en que su contrato laboral está activo. El Control de Asistencia incluye bloqueos estrictos en base de datos (`468_validar_cobertura_contractual_asistencia.sql`): no permite registrar marcas si no existe un contrato o adenda vigente en la fecha.
 - **Retro Wall:** Candado histórico extendido. Los registros de nómina, partes diarios, documentos y condiciones laborales quedan inmutables en periodos cerrados, impidiendo modificaciones retroactivas sobre cierres tributarios y laborales.
+- **Fecha de Salida en Asistencia (`fecha_salida`):** Migración `589_asistencia_fecha_salida.sql` incorpora el campo explícito de salida para soportar turnos nocturnos y jornadas mineras que cruzan la medianoche sin desfasar el cálculo de horas efectivas ni el tareo diario.
 
-### 5.10 Modelo DBS en Órdenes de Trabajo y Contratos de Alquiler
+### 5.10 Modelo DBS en Órdenes de Trabajo, Contratos de Alquiler y Proyectos
 
 Para flujos operativos complejos (alquiler de flota con o sin operador, mantenimiento en taller y servicios en mina):
 - **Clasificación DBS Obligatoria (Migraciones `440`, `441`):** Toda Orden de Trabajo debe declarar obligatoriamente su raíz de costo (`raiz_costo` ∈ `{'equipo_propio', 'alquiler', 'os_cliente'}`).
-- **Tabla `contratos_alquiler` (Migración `439`):** Registra contratos de arrendamiento de maquinaria y vehículos con tarifa pactada, periodicidad, equipo asignado y PDF adjunto. Si la OT tiene raíz `'alquiler'`, se vincula directamente a su contrato.
+- **Tabla `contratos_alquiler` y Tarifarios (Migraciones `439`, `547`):** Registra contratos de arrendamiento de maquinaria y vehículos con tarifa pactada, periodicidad, equipo asignado y PDF adjunto (`547_tarifas_estandar_equipos_alquiler.sql`). Si la OT tiene raíz `'alquiler'`, se vincula directamente a su contrato.
+- **Proyectos de Alquiler en Operaciones (Migraciones `553`, `556`, `557`):** Gestión integral de proyectos de alquiler de flota con control de horas de trabajo, combustible y funciones automáticas de costeo.
 - **Reserva de Repuestos en OT (Migración `531`):** Al programar una OT, los materiales y repuestos requeridos se reservan automáticamente en WMS (`reserva_repuestos_ot_programada`), deduciéndose del stock disponible sin generar salida física inmediata.
 
-### 5.11 Recepción de Activos de Clientes
+### 5.11 Recepción de Activos de Clientes y Taller
 
 En servicios de reparación, mantenimiento o acondicionamiento de equipos de terceros:
 - El flujo comercial exige la **recepción física y documental del equipo** antes de emitir la cotización definitiva.
 - Se registra en la tabla `recepciones_activos_cliente` (Migraciones `517`, `519`, componente `RecepcionesActivosCliente.jsx`).
 - Captura: cliente, equipo (`equipos_clientes`), número de serie, horómetro/kilometraje de ingreso, fotos de estado inicial, componentes desgastados y observaciones de ingreso.
-- El ID de recepción viaja hacia la Hoja de Costeo y hacia la Cotización Especial.
+- El activo recibido puede canalizarse hacia **Diagnóstico Técnico de Taller** (`592`-`597`), generando hallazgos técnicos que nutren automáticamente la Hoja de Costeo (`606`) y la Cotización Especial (`491`-`499`).
+
+### 5.12 Caso de Servicio Compartido (`numero_caso`)
+
+Para trazabilidad integral de un activo o servicio desde su ingreso hasta la facturación:
+- **Esquema y Funciones de Numeración (Migraciones `563` a `577`):** Serie oficial `CASO-YYYY-XXXX` gestionada mediante la función de base de datos `abrir_o_heredar_numero_caso()`.
+- **Propagación Transversal:** Si el servicio nace en recepción de activos (`recepciones_activos_cliente`), genera un nuevo `numero_caso`. Las entidades subsiguientes (`cotizaciones`, `cotizaciones_especiales`, `os_clientes`, `ordenes_trabajo`) heredan este mismo número de caso de forma inmutable.
+- **Búsqueda e Historial Unificado:** Permite consultar en un solo punto toda la historia técnica, fotos, cotizaciones, órdenes de trabajo, partes diarios y costos vinculados al mismo incidente o mantenimiento de un cliente.
 
 
 ---
@@ -543,17 +608,17 @@ INTEGRACIONES
   API Keys                       (key: 'api_keys')
 
 CRM & MARKETING
-  Cuentas y Contactos            (key: 'cuentas')
   Leads y Scoring                (key: 'leads')
   Marketing Automation           (key: 'marketing')
-  Pipeline                       (key: 'pipeline')
   Actividades                    (key: 'actividades')
 
 COMERCIAL
+  Cuentas y Contactos            (key: 'cuentas')
   Agenda Comercial               (key: 'agenda_comercial')
   Hoja de Costeo                 (key: 'hoja_costeo')
   Variables de Costeo            (key: 'costeo_variables', requiereVerCostos: true)
   Cotizaciones                   (key: 'cotizaciones')
+  Pipeline                       (key: 'pipeline')
   OS Cliente                     (key: 'os_cliente')
   Panel de Producción            (key: 'panel_produccion', accessAnyOf: ['os_cliente'])
   Equipos de Clientes            (key: 'equipos_clientes', accessAnyOf: ['os_cliente'])
@@ -590,6 +655,7 @@ LOGÍSTICA
 COMPRAS
   Proveedores                    (key: 'proveedores')
   Cotizaciones (compra)          (key: 'cot_compras')
+  Bandeja de Sourcing            (key: 'sourcing_bandeja', accessAnyOf: ['ordenes_compra'])
   Órdenes de Compra              (key: 'ordenes_compra')
   Órdenes de Servicio            (key: 'ordenes_servicio')
   Recepciones                    (key: 'recepciones')
@@ -616,10 +682,8 @@ CUSTOMER SUCCESS
   Fidelización y NPS             (key: 'cs_fidelizacion')
   BI Customer Success            (key: 'bi_cs')
 
-INTELIGENCIA ARTIFICIAL
-  IA Comercial                   (key: 'ia_comercial')
-  IA Operativa                   (key: 'ia_operativa')
-  IA Financiera                  (key: 'ia_financiera')
+ARIA (Standalone & Header Trigger)
+  Aria Asistente ERP             (key: 'aria', action: 'openAria')
 
 CAMPO MÓVIL
   Vistas de Campo                (key: 'campo')
@@ -634,6 +698,8 @@ CONFIGURACIÓN
 ```
 
 > [!NOTE]
+> **Reorganización Comercial (`ed97655`, `f2dbe5b`):** `Cuentas y Contactos` y `Pipeline` fueron consolidados dentro del menú `COMERCIAL` para unificar el ciclo comercial operativo y evitar duplicidades de navegación con CRM.  
+> **Asistente Aria (`src/shell.jsx:107-109,915`):** La antigua sección `INTELIGENCIA ARTIFICIAL` fue reemplazada por el asistente conversacional global **Aria**, accesible como ítem standalone en la barra lateral y mediante botón dedicado en el header superior.  
 > **Consolidación en Configuración:** `Catálogo de Servicios` y `Tarifarios` no son ítems independientes del primer nivel del sidebar; están integrados como pestañas internas dentro de `Maestros Base` y `Parámetros Generales`.  
 > **Personalización por Tenant:** Todos los títulos y etiquetas de este menú pueden renombrarse desde Parámetros Generales mediante el servicio `navLabelsService.js` (`tenant_nav_labels` y `tenant_nav_sections`).
 
@@ -646,20 +712,23 @@ CONFIGURACIÓN
 ```
 Lead → [Convertir] → Cuenta (Prospecto) + Contacto + Oportunidad
          ↓
-    Hoja de Costeo [OPCIONAL — recomendado]
+    Recepción Activo Cliente (Opcional, en servicios de taller/reparación, apertura numero_caso 563)
+         ↓
+    Hoja de Costeo [OPCIONAL — recomendado, o generada desde Diagnóstico Técnico RPC 606]
     (estimación interna: MO + materiales + servicios terceros + logística)
+    (candado de BD: trg_bloquear_hoja_costeo_sin_valorar impide emitir sin costeo)
     (calcula precio sugerido al cliente aplicando margen objetivo)
     (flujo: borrador → en revisión → aprobada → genera cotización pre-rellenada)
          ↓
-    Cotización (pre-rellenada desde HC o creada manualmente)
-    (versionada, con aprobación de descuentos)
+    Cotización Estándar o Especial (hereda numero_caso y clasifica línea de negocio 544)
+    (versionada, con aprobación de descuentos y plantillas Document Builder)
          ↓
     OS Cliente (control de saldos: ejecutado / valorizado / facturado)
          ↓
     OT → Parte Diario → Cierre Técnico → Remisión/Conformidad
     (OT muestra costo estimado de HC vs costo real de ejecución)
          ↓
-    Valorización → Factura → CxC → Cobranza → Match Bancario
+    Valorización → Factura → CxC (con SPOT/retenciones) → Cobranza → Match Bancario
          ↓
     Customer Success → Renovación / Upsell
 ```
@@ -669,21 +738,21 @@ Lead → [Convertir] → Cuenta (Prospecto) + Contacto + Oportunidad
 ```
 SOLPE Interna (desde OT o área interna)
          ↓
-    Compras recibe SOLPE aprobada
-         ↓
-    Selecciona proveedores homologados
-         ↓
-    Solicita cotización → Registra respuestas
-         ↓
-    Cuadro comparativo → Selecciona ganador
+    Bandeja de Sourcing Kanban (pages_ops.jsx:6845, migración 20260921140000)
+    (estados: pendiente → en_cotizacion → adjudicado → consolidado)
+    (soporta agrupación multi-SOLPE y asignación de proveedor por línea 20260922100000)
          ↓
     OC (bienes) o OS Interna (servicios)
+    (doble estado desacoplado: estado_fisico y estado_financiero 20260923210000)
          ↓
     Proveedor entrega / ejecuta
          ↓
-    Recepción (bienes) o Conformidad (servicios)
+    Recepción Física WMS (rpc_recepcion_oc_fisica, migración 20261009110000)
+    (asigna ubicacion_id por zona/rack/piso y actualiza estado_fisico a parcial o recibido)
          ↓
-    Movimiento Atómico a Inventario (bienes) + Valorización + CxP generada
+    Registro y Match de Comprobante en CxP (migración 20260923170000)
+    (aplica detracción SPOT automática 20260924000000 y distribuye CECO por línea)
+    (actualiza estado_financiero de la OC a parcial o facturado)
          ↓
     (Multisociedad) Transferencias Intercompañía (opcional si aplica a otra sociedad)
 ```
@@ -795,6 +864,31 @@ Valorización aprobada o Venta confirmada
        → Capacidad de reversión/borrado seguro del lote bancario
 ```
 
+### 7.8 Flujo de Diagnóstico Técnico de Taller e Informes
+
+```
+Recepción física del activo de cliente (recepciones_activos_cliente, numero_caso asignado 563)
+         ↓
+    Inspección técnica inicial en Taller (DiagnosticoTecnicoPage.jsx)
+    (asigna técnico responsable, horómetro, kilometraje y condiciones de ingreso)
+         ↓
+    Registro estructurado de hallazgos (diagnostico_tecnico_hallazgos, migración 592)
+    (clasificación: gravedad leve/media/crítica, sistema afectado, acción requerida)
+    (subida de evidencia fotográfica al bucket privado 'diagnostico-fotos', migración 596)
+         ↓
+    Conclusiones técnicas asistidas por IA (supabase/functions/generar-conclusion-informe)
+    (análisis contextual del estado del equipo y recomendaciones de reparación)
+         ↓
+    Emisión del Informe Técnico Oficial en PDF (migraciones 595, 597)
+    (previsualización paginada con firma del especialista y registro fotográfico)
+         ↓
+    Derivación directa a Hoja de Costeo valorizada (RPC generar_hoja_costeo_desde_diagnostico 606)
+    (pasa automáticamente repuestos, horas de MO y servicios recomendados)
+    (candado de BD trg_bloquear_hoja_costeo_sin_valorar protege margen objetivo)
+         ↓
+    Generación de Cotización Especial (491-499) vinculada al numero_caso
+```
+
 
 ---
 
@@ -829,6 +923,7 @@ Crear roles con nombre libre. Clonar. Matriz de permisos por pantalla: Ver | Cre
 ### 8.5 Maestros Base
 
 **Catálogos de referencia correctos (con formulario de alta):**
+- Recetas de actividad transaccionales (`receta_actividades`, migración `598_receta_actividad_transaccional.sql`): plantillas estandarizadas de mano de obra y materiales para servicios recurrentes.
 - Clientes y contactos → **solo lectura**, fuente de verdad en Cuentas y Contactos
 - Proveedores → **solo lectura**, fuente de verdad en Compras → Proveedores
 - Sedes y ubicaciones GPS
@@ -917,6 +1012,12 @@ Documento interno entre la Oportunidad y la Cotización. No es un paso obligator
 
 **Estados:** Borrador → En revisión → Aprobada
 
+**Candado bloqueante de base de datos:** El trigger `trg_bloquear_hoja_costeo_sin_valorar` (migración `606_hoja_costeo_desde_diagnostico.sql`) impide pasar la hoja de costeo a estado de emisión o aprobación si no cuenta con margen objetivo calculado y costos de mano de obra y materiales debidamente valorados.
+
+**Generación automática desde Diagnóstico Técnico:** Mediante la RPC `generar_hoja_costeo_desde_diagnostico` (`606`), una hoja de costeo puede instanciarse automáticamente a partir de los hallazgos validados de un informe técnico de taller, pre-cargando repuestos requeridos y horas estimadas.
+
+**Tarifas de Maquinaria y Equipos de Alquiler:** Soporta integración con el tarifario estándar de flota y equipos en alquiler (migraciones `547_tarifas_estandar_equipos_alquiler.sql` y `553_costeo_equipos_cliente_alquiler.sql`), discriminando costos por día, hora o turno.
+
 **Al aprobar:** genera automáticamente una Cotización en estado Borrador con los ítems pre-rellenados (precios calculados con el margen objetivo aplicado por ítem). El vendedor puede ajustar antes de enviar al cliente.
 
 **Trazabilidad:** la Cotización generada guarda `hoja_costeo_id`. En la OT asociada, el campo `costoEst` toma el `costo_total` de la HC para el comparativo estimado vs real al cierre.
@@ -930,6 +1031,7 @@ Documento interno entre la Oportunidad y la Cotización. No es un paso obligator
 #### Recepción de Activos de Clientes (`RecepcionesActivosCliente.jsx`)
 Protocolo formal de ingreso de maquinaria o equipos de clientes a taller:
 - Registro en `recepciones_activos_cliente` (`517`, `519`): cliente, equipo (`equipos_clientes`), número de serie/chasis, horómetro/kilometraje de ingreso, registro fotográfico de 360° y checklist de componentes.
+- **Caso de Servicio Compartido:** La recepción apertura un correlativo oficial `numero_caso` serie `CASO-YYYY-XXXX` mediante la función `abrir_o_heredar_numero_caso()` (`563` a `577`), el cual viaja de manera inmutable hacia el Diagnóstico Técnico, Hoja de Costeo y Cotización Especial.
 - Emisión de acta de recepción en PDF.
 
 #### Asistente de Cotización Especial (`CotizacionEspecialWizard.jsx`)
@@ -963,6 +1065,7 @@ Tablero de control de avance de órdenes de servicio:
 Motor de diseño y composición documental integrado en **Parámetros Generales > Catálogo documental**:
 - **Editor de Bloques (`ConstructorBloquesEditor.jsx`):** Construcción de documentos mediante bloques modulares de texto enriquecido, tablas repetibles de ítems, firmas corporativas, condiciones generales y anexos (`486`).
 - **Previsualizador Paginado (`DocumentPreviewSheet.jsx`):** Renderizado WYSIWYG de hojas físicas A4 con márgenes parametrizables, encabezados y pies de página dinámicos por sociedad (`488`, `489`). PR #100 mergeado a main (`0f3629a`).
+- **Ramas Remotas y Mejoras en Curso:** Se mantienen ramas activas de desarrollo para cabecera compartida en tablas repetibles (`feat/repeat-table-shared-header`) y espaciado de imágenes en bloques de contenido (`feat/constructor-lineas-imagen-espacio`).
 - **Variables Dinámicas:** Inserción automática de datos del cliente, montos, plazos, cuentas bancarias e identidad visual de la sociedad emisora.
 - **Condiciones Generales Inmutables:** Cláusulas legales versionadas que se estampan en snapshot al momento de emitir la cotización (`478`, `509`, `510`).
 
@@ -970,7 +1073,10 @@ Motor de diseño y composición documental integrado en **Parámetros Generales 
 
 ### 8.9 Cotizaciones
 
-Desde oportunidad. Catálogo + tarifarios con auto-relleno. Cálculo en tiempo real. Versionado con historial. Aprobación de descuentos con alerta si supera límite del rol. PDF. Conversión a OS Cliente. Estados: Borrador → Enviada → En negociación → Aprobada → Rechazada → Vencida → Convertida.
+Desde oportunidad o recepción de activo. Catálogo + tarifarios con auto-relleno. Cálculo en tiempo real. Versionado con historial. Aprobación de descuentos con alerta si supera límite del rol. PDF. Conversión a OS Cliente. Estados: Borrador → Enviada → En negociación → Aprobada → Rechazada → Vencida → Convertida.
+
+**Líneas de Negocio Comerciales y Operativas:** A partir de la migración `544_linea_negocio_comercial_operaciones.sql`, toda cotización clasifica obligatoriamente su línea de negocio (`linea_negocio_id` referenciando a `lineas_negocio`), permitiendo segmentar ventas, márgenes y presupuestos entre servicios de taller, alquileres, soporte en mina o venta de repuestos.
+**Herencia de Caso de Servicio:** Si la cotización proviene de una recepción de activo o diagnóstico, hereda obligatoriamente el `numero_caso` (`563`), garantizando que la OS y OTs hijas compartan el mismo hilo de auditoría.
 
 ---
 
@@ -1270,6 +1376,15 @@ Stock disponible, reservado y mínimo por almacén. Entradas, salidas, consumos 
 
 **Reorden y trazabilidad:** materiales incorporan `stock_seguridad`, `punto_reorden` y `stock_maximo`; el backend puede generar SOLPEs automáticas de reorden. Las OTs pueden registrar trazabilidad de lotes/series consumidos y la PWA ya incluye `BarcodeScanner` para lectura de códigos. El catálogo de materiales cuenta ahora con `fabricantes` y `nro_parte`.
 
+**WMS Ubicaciones por Almacén (Fase 1 y 2 — Migraciones 20261009100000 y 20261010100000):**
+El módulo de Almacenes integra gestión física de ubicaciones y almacenamiento granular:
+- **Jerarquía Física:** Estructuración por `zona > rack > posicion / piso` dentro de la tabla `wms_ubicaciones`.
+- **Clasificación de Uso:** Cada ubicación define su propósito operativo (`tipo_uso` ∈ `{'almacenaje', 'recepcion', 'cuarentena', 'despacho', 'merma'}`).
+- **Stock por Ubicación:** La tabla `almacen_stock_ubicaciones` segrega el stock físico con restricción de clave única compuesta `(empresa_id, almacen_id, ubicacion_id, material_id)`, asegurando que no existan discrepancias espaciales.
+- **Kardex Obligatorio con Ubicación:** Los movimientos de inventario exigen `ubicacion_id` para entradas y salidas físicas.
+- **Rol Especializado:** Rol `asistente_almacen` (`20261009100100_rol_asistente_almacen.sql`) con permisos delimitados a recepción física, acomodo y conteos.
+- **Frontend Operativo:** Pantalla interactiva `operaciones-app/src/zahory-mock/pages/UbicacionesPage.jsx` para mapeo visual de racks y pisos.
+
 ---
 
 ### 8.22 Compras — Proveedores
@@ -1280,7 +1395,7 @@ Ciclo de vida: Potencial → En evaluación → Homologado → Observado/Bloquea
 
 **Evaluación post-OC:** cumplió plazo, calidad, precio, comunicación → actualiza score acumulado del proveedor.
 
-**Ficha completa (migración 236):** proveedores agregan código, nombre/razón comercial, tipo, categoría, ubicación, contacto principal, condiciones de pago, moneda y flags de retención/homologación para búsqueda y segmentación.
+**Ficha completa (migraciones 236, 546 y 548):** proveedores agregan código obligatorio (`546_proveedores_codigo_obligatorio.sql`), familias de proveedores (`548_proveedor_familia.sql`), nombre/razón comercial, tipo, categoría, ubicación, contacto principal, condiciones de pago, moneda y flags de retención/homologación para búsqueda y segmentación.
 
 ---
 
@@ -1294,7 +1409,22 @@ Detalle con tabs: Respuestas de proveedores (card por proveedor con estado), Com
 
 ### 8.24 Compras — Órdenes de Compra
 
-Para bienes. Vinculada a SOLPE y proceso de cotización. Ítems con cantidad, precio unitario, subtotal. IGV, total. Plazo de entrega, condición de pago, lead time real/estimado y origen SOLPE. Seguimiento por timeline. Estados: Emitida → Confirmada → En tránsito → Recibida parcial → Cerrada.
+Para bienes. Vinculada a SOLPE y proceso de cotización. Ítems con cantidad, precio unitario, subtotal. IGV, total. Plazo de entrega, condición de pago, lead time real/estimado y origen SOLPE. Seguimiento por timeline.
+
+**Separación de Cierre Físico y Financiero (Migración 20260923210000):**
+Las órdenes de compra desacoplan formalmente su recepción de almacén de su facturación en cuentas por pagar:
+- **Estado Físico (`estado_fisico`):** `pendiente` → `recibido_parcial` → `recibido_total` → `observado`. Calculado y actualizado automáticamente por la función `recalcular_estado_oc_por_recepcion()` en base a las cantidades físicas ingresadas a almacén mediante `rpc_recepcion_oc_fisica`.
+- **Estado Financiero (`estado_financiero`):** `pendiente` → `facturado_parcial` → `facturado_total` → `pagado`. Se actualiza al registrar comprobantes de pago enlazados en CxP (`20260923170000_cxp_orden_compra_vinculo.sql`). Permite registrar múltiples facturas parciales para una misma OC sin bloquear la recepción física.
+
+---
+
+### 8.24b Bandeja de Sourcing Kanban
+
+Módulo operativo de compras en `src/pages_ops.jsx:6845` (acceso `accessAnyOf: ['ordenes_compra']`, backend en migraciones `20260921140000` a `20260922100000`):
+- **Tablero Kanban:** Gestión visual de líneas de requerimiento por estados: `pendiente`, `en_cotizacion`, `adjudicado`, `rechazado`, `consolidado`.
+- **Consolidación Multi-SOLPE (`20260921200000_sourcing_bandeja_multi_solpe.sql`):** Permite agrupar líneas idénticas o afines provenientes de múltiples SOLPEs distintas para negociar mejores precios por volumen con proveedores.
+- **Asignación de Proveedor por Línea (`20260922100000_sourcing_line_provider_assignment.sql`):** Posibilidad de cotizar y adjudicar ítems individuales de un mismo requerimiento a diferentes proveedores según su especialidad o disponibilidad.
+- **Conversión Directa a OC:** Al adjudicar las líneas ganadoras, genera automáticamente la Orden de Compra formal con un solo clic, vinculando las SOLPEs de origen.
 
 ---
 
@@ -1306,7 +1436,8 @@ Para servicios tercerizados. Mismo patrón que OC pero con alcance, entregables 
 
 ### 8.26 Compras — Recepciones
 
-Confirmar que lo pedido llegó y en qué condición. Verificación ítem por ítem (pedido vs recibido). Tipo: total, parcial u observada. Al confirmar: actualiza OC, ingresa bienes a inventario (si es compra), genera CxP, crea evaluación post-servicio en ficha del proveedor.
+Confirmar que lo pedido llegó y en qué condición. Verificación ítem por ítem (pedido vs recibido). Tipo: total, parcial u observada.
+- **Recepción Física WMS (`rpc_recepcion_oc_fisica`, migración `20261009110000`):** Permite al asistente de almacén registrar la llegada física seleccionando la ubicación específica (`ubicacion_id`) de destino para cada ítem, actualizando el `estado_fisico` de la OC y dejando el comprobante pendiente para ingreso contable en CxP.
 
 **Matching 3 vías y precio histórico:** recepciones cruzan OC/recepción/CxP y alimentan `vista_precio_historico_proveedor` para análisis de variación de precios por proveedor/material.
 
@@ -1359,9 +1490,16 @@ Módulo de pre-facturación con seguimiento. Permite registrar una venta acordad
 
 ---
 
-### 8.29 Facturación
+### 8.29 Facturación y Detracciones SPOT SUNAT
 
 Desde valorización aprobada o OS Cliente. Datos fiscales, impuestos, vencimiento. Notas de crédito/débito. Exportación para facturación electrónica externa. La factura puede guardar `archivo_pdf_url` y `archivo_zip_url` para conservar el PDF y ZIP asociados.
+
+**Módulo y Catálogo SPOT SUNAT (Migraciones 20260924000000 a 20260927130000):**
+Gestión del Sistema de Pago de Obligaciones Tributarias (SPOT) para operaciones sujetas a detracción:
+- **Catálogo Oficial (`spot_catalogo`):** Códigos oficiales SUNAT de bienes y servicios sujetos a detracción, con sus respectivas alícuotas (ej. 4%, 10%, 12%) y porcentajes vigentes.
+- **Registro en Facturas y CxP (`spot_detracciones`):** Deducción automática del porcentaje de detracción sobre el monto total en facturas emitidas y compras superiores al umbral legal (S/ 700). Registra número de constancia de depósito y cuenta en el Banco de la Nación.
+- **Servicio Dedicado:** `src/services/spotCatalogoService.js` gestiona catálogos, cálculos y exportación de archivos para pago masivo.
+- **Exclusión Mutua Rigurosa (`20260924030000`):** Por regla tributaria, una misma factura no puede aplicar simultáneamente retención SUNAT y detracción SPOT; el sistema bloquea cualquier intento de cruce.
 
 **Retención SUNAT por cliente:** si la cuenta está marcada como agente de retención SUNAT (`agente_retencion_sunat = true`), al emitir se guarda snapshot de `aplica_retencion`, `monto_retencion` y `monto_neto_cobrable`. La CxC conserva `monto_retencion` para cobranza y conciliación. La retención no es gasto; reduce el monto neto cobrado y queda como crédito fiscal/tributario a conciliar.
 
@@ -1374,6 +1512,12 @@ Desde valorización aprobada o OS Cliente. Datos fiscales, impuestos, vencimient
 ### 8.29b Cuentas por Pagar
 
 Gestión de obligaciones por pagar a proveedores, colaboradores, RHE externos, viáticos, devoluciones por nota de crédito, nómina y otros conceptos manuales. Permite registrar pagos parciales vía `cxp_pagos`, clasificar para Estado de Resultados con `categoria_er` y `centro_costo_id`, y vincular la CxP con `compras_gastos` para devengo.
+
+**Centralización CxP y Pagos Atómicos (Migraciones 20260920200000 y 20260921121500):**
+Unificación de la bandeja de obligaciones comerciales con ejecución de pagos atómicos que actualizan en una sola transacción el saldo deudor y emiten el egreso de tesorería.
+
+**Distribución de CECO por Línea de Comprobante (Migraciones 20261005120000 y 20261005150000):**
+Permite imputar diferentes Centros de Costo a líneas individuales de una misma factura de proveedor mediante la tabla `cxp_comprobante_lineas_ceco`, respetando estrictamente las fronteras societarias multisociedad.
 
 **RHE externo:** el usuario registra RUC, nombre del emisor, monto bruto, retención IR, número de RHE y archivo. La CxP queda por el monto neto y conserva `monto_bruto`, `retencion_ir`, `ruc_emisor`, `nombre_emisor`, `archivo_factura_url` y, cuando aplica, `archivo_constancia_url`.
 
@@ -1389,9 +1533,15 @@ Bancos y cuentas. Ingresos vinculados a CxC/anticipo. Egresos vinculados a CxP/g
 
 ---
 
-### 8.30b Caja Chica y Anticipos
+### 8.30b Caja Chica y Cierre Atómico de Fondo
 
-Caja chica usa tabla persistente `caja_chica` y registra fecha, concepto, monto, moneda, responsable, CECO, categoría, número de comprobante, URL de comprobante y vínculo opcional a `compras_gastos`.
+Caja chica usa tabla persistente `caja_chica` y registra fecha, concepto, monto, moneda, responsable, CECO, categoría, número de comprobante, URL de comprobante y vínculo opcional a `compras_gastos`. Egresos atómicos registrados vía RPC `registrar_egreso_caja_chica_atomico` (`541`).
+
+**Cierre Atómico de Fondo con Saldo Cero (Migración 585):**
+El cierre de un fondo de caja chica se ejecuta de forma rigurosa mediante la RPC `cerrar_fondo_caja_chica_atomico` y el componente `src/components/CerrarFondoModal.jsx`:
+- Exige que el saldo contable del fondo quede exactamente en **0.00**.
+- Si existe saldo sobrante o remanente, la RPC ejecuta una transferencia o reintegro bancario hacia la cuenta de tesorería (`movimientos_tesoreria`) y registra la trazabilidad en la tabla `caja_chica_transferencias`.
+- Prohíbe mutaciones posteriores sobre fondos formalmente cerrados.
 
 **Anticipos OC:** `oc_anticipos` registra anticipos a proveedores vinculados a órdenes de compra, con monto, moneda, referencia, notas y movimiento relacionado. Sirven para trazabilidad financiera previa a la recepción o facturación del proveedor.
 
@@ -1535,33 +1685,27 @@ BI Comercial → tab "Por campaña" con métricas completas
 
 ---
 
-### 8.35 IA — Módulos completos con historial auditado
+### 8.35 Aria — Asistente Inteligente del ERP (Arquitectura RAG y RPCs)
 
-**IA Comercial:** resumen de cliente/oportunidad, siguiente mejor acción, redacción asistida, clasificación de leads, predicción de cierre, recomendación de servicios.
-
-**IA Operativa:** resumen de OT, borrador desde descripción libre, clasificación de tickets, detección de demoras, alertas de SLA. **Campo (F1):** extracción de datos de facturas con foto.
-
-**IA Financiera:** desviaciones de costo, alerta de margen bajo, priorización de cobranza, explicación de variaciones.
-
-**Historial auditado en cada módulo:** Fecha | Acción (badge) | Entidad | Recomendación (90 chars) | Acción tomada | Usuario.
-
-**Regla:** La IA asiste, no aprueba. Toda acción de IA queda en `ia_logs`.
-
----
-
-### 8.37 Soporte y Tickets
-
-Kanban de cuatro columnas: **Abiertos → En Proceso → QC → Resueltos**. Creación con título, descripción, prioridad (crítica/alta/media/baja), tipo, canal de entrada, cliente y responsable. SLA calculado en base con semáforo ok/riesgo/vencido. Numeración correlativa por tenant (`TK-XXXX`). Adjuntos mediante `FileUpload` y tabla `adjuntos`. Panel de detalle editable en estado `abierto`.
-
-**Sub-estados de QC:** cuando un ticket llega a la columna QC, el campo `qc_estado` expresa `en_revision` (sin badge), `observado` (badge naranja) o `aprobado` (badge verde). El botón "Mover a Resueltos" solo se habilita si `qc_estado = 'aprobado'`. Los tres sub-estados se controlan desde el panel de detalle del ticket.
-
-**Hilo de resolución (append-only):** tabla `ticket_comentarios` registra cada entrada con `tipo ∈ {observacion, evidencia, aprobacion, reapertura}`, contenido, URLs de evidencia opcionales, snapshot del autor y timestamp. Se muestra como línea de tiempo vertical con ícono y color por tipo. Cualquier usuario con acceso al ticket puede agregar entradas; nadie puede editar ni borrar entradas pasadas.
-
-**Reapertura formal:** botón "Reabrir ticket" visible solo en tickets `resueltos`. Exige motivo de reapertura obligatorio, registra una entrada `reapertura` en el hilo y devuelve el ticket a QC con `qc_estado = en_revision`. `fecha_resolucion` se limpia. `veces_reabierto` se incrementa y se muestra como indicador en la ficha. Vista Lista disponible sin cambios en esta iteración.
+El ERP cuenta con **Aria**, un copiloto conversacional inteligente integrado en el header superior (`src/shell.jsx:915`) y como acceso standalone en la barra de navegación (`src/shell.jsx:107-109`):
+- **Panel Reactivo (`AsistenteErpPanel.jsx`):** Interfaz drawer flotante con conversación fluida, preguntas sugeridas por contexto y visualización formateada de métricas, tablas y gráficos.
+- **Servicio y Edge Function:** Consumo a través de `src/services/asistenteErpService.js` conectado a la Edge Function de Supabase en Deno (`supabase/functions/asistente-erp/index.ts`).
+- **20 RPCs de Lectura Securitizadas (Migraciones 599 a 618):** Para garantizar respuestas con datos 100% verídicos y respetar el aislamiento multitenant y multisociedad sin alucinaciones, el asistente consulta la base de datos a través de 20 funciones SQL security definer:
+  - `asistente_erp_resumen_ejecutivo` (`599`)
+  - `asistente_erp_kpis_financieros` (`600`)
+  - `asistente_erp_ventas_mes` (`601`)
+  - `asistente_erp_cuentas_por_cobrar` (`602`)
+  - `asistente_erp_cuentas_por_pagar` (`603`)
+  - `asistente_erp_ordenes_trabajo` (`604`)
+  - `asistente_erp_stock_critico` (`605`)
+  - `asistente_erp_asistencia_hoy` (`607`)
+  - `asistente_erp_resumen_mensual` (`618`)
+  - Y funciones analíticas adicionales para rentabilidad, proveedores y pipeline.
+- **Historial y Auditoría:** Toda interacción queda registrada en logs de auditoría para trazabilidad de consultas de datos sensibles.
 
 ---
 
-### 8.36 Operaciones de Campo y Frontend Operativo (`operaciones-app/`)
+### 8.36 Operaciones de Campo, Flota y Frontend Operativo (`operaciones-app/`)
 
 Doble arquitectura para trabajo técnico de campo y taller:
 1. **Frontend Operativo Dedicado (`operaciones-app/`):**
@@ -1571,7 +1715,9 @@ Doble arquitectura para trabajo técnico de campo y taller:
    - Creación de OTs con cuadrilla y tareas estructuradas en `ot_tareas` (`CrearOTPage.jsx`).
    - Botón Iniciar OT con captura de fecha real (`456`).
    - **Cierre Técnico Atómico con Conformidad:** invoca la RPC `cerrar_ot_con_conformidad` (`453`), cerrando en una única transacción las tareas, el avance al 100%, las evidencias fotográficas y la conformidad del cliente.
-2. **Vistas Móviles PWA Clásicas (`src/pages_mobile.jsx`):**
+2. **Paneles de Flota, Rutas y Mantenimiento (`src/pages_ops.jsx:11477-11481`):**
+   - Componentes integrados bajo Remisión/Transporte: `RutasPanel.jsx` (`569`), `MantenimientoFlotaPanel.jsx` (`581`, `582`) y `ReportesFlotaPanel.jsx` (`583`).
+3. **Vistas Móviles PWA Clásicas (`src/pages_mobile.jsx`):**
    - Vistas por perfil: Técnico, Logística, Vendedor, Supervisor, Administrativo.
    - Marcación de asistencia con GPS/geocercas y cola offline (`syncGeoQueue`).
    - Compras en campo: subida de foto de comprobante y extracción automática con IA.
@@ -1582,6 +1728,17 @@ Doble arquitectura para trabajo técnico de campo y taller:
 
 ---
 
+### 8.36b Diagnóstico Técnico e Informes de Taller
+
+Módulo especializado de taller en `operaciones-app/src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx` para evaluación de activos ingresados:
+- **Flujo de 5 Pasos:** Datos del equipo → Inspección visual y mediciones → Registro de hallazgos por sistema → Conclusiones asistidas por IA → Emisión formal de informe.
+- **Catálogo de Hallazgos (`592_diagnostico_hallazgos_base.sql`):** Tabla `diagnostico_tecnico_hallazgos` clasifica severidad (crítica, media, leve), componente afectado y solución sugerida.
+- **Storage Privado (`596_diagnostico_fotos_storage.sql`):** Almacenamiento seguro de evidencias en el bucket `diagnostico-fotos`.
+- **Conclusiones con IA:** Invocación a la función Edge `generar-conclusion-informe` para redactar el dictamen técnico a partir de las anomalías detectadas.
+- **Informes PDF e Inmutabilidad (`595`, `597`):** Generación de informe técnico oficial con acta de entrega al cliente.
+- **Derivación a Hoja de Costeo (`606`):** RPC `generar_hoja_costeo_desde_diagnostico` convierte los hallazgos validados directamente en una Hoja de Costeo para cotizar al cliente.
+
+---
 
 ### 8.37 Soporte y Tickets
 
@@ -1595,7 +1752,7 @@ Kanban de cuatro columnas: **Abiertos → En Proceso → QC → Resueltos**. Cre
 
 ---
 
-### 8.36 Vistas de Campo Móviles — PWA
+### 8.37b Vistas de Campo Móviles — PWA
 
 Instalable desde el browser. Rutas mobile-first. Acceso a cámara. Sincronización offline básica. Solo con `acceso_campo = true`.
 
@@ -1714,6 +1871,8 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 | `documentos-privados` | Documentos sensibles internos: personal, nómina, contratos, recibos | Privado, vía signed URL | 20 MB |
 | `documentos-generales` | Adjuntos operativos: tickets, gastos, recepciones, documentos de proveedor | Público | 20 MB |
 | `ticket-evidencias` | Imágenes de evidencia adjuntas al hilo de resolución de tickets | Público | 10 MB |
+| `postulaciones-cv` | Currículums vitae de postulantes a vacantes de empleo (migración 410) | Público | 10 MB |
+| `diagnostico-fotos` | Fotografías de inspección y hallazgos en diagnóstico técnico de taller (migración 596) | Privado, vía signed URL | 20 MB |
 
 **Ruta de `ticket-evidencias`:** `{empresa_id}/{ticket_id}/{timestamp}_{nombre_archivo}`. El upload lo ejecuta directamente `ticketsService.subirImagenEvidencia`, no pasa por `storageService.js` ya que la URL resultante se guarda en `ticket_comentarios.imagen_url` y no en la tabla `adjuntos`.
 
@@ -1730,8 +1889,18 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 ---
 
 
-### 9.3b Tablas incorporadas en migraciones recientes (Migraciones 439 a 540)
+### 9.3b Tablas incorporadas en migraciones recientes (Migraciones 439 a 618 y Timestamps)
 
+- **Caso de Servicio y Numeración:** `numeracion_casos_servicio` (`563_numeracion_caso_servicio_schema.sql` a `577`). Serie `CASO-YYYY-XXXX` compartida transversalmente entre recepciones, cotizaciones, OS y OTs.
+- **Diagnóstico Técnico de Taller:** `diagnostico_tecnico_hallazgos` (`592_diagnostico_hallazgos_base.sql`), `diagnostico_informes` (`595`, `597`), derivación a costeo (`606_hoja_costeo_desde_diagnostico.sql`).
+- **WMS Ubicaciones por Almacén:** `wms_ubicaciones` (`20261009100000_wms_ubicaciones_fase1.sql`, `20261010100000_wms_ubicaciones_tipo_piso_uso.sql`), `almacen_stock_ubicaciones` con clave única por ubicación física.
+- **Detracciones SPOT SUNAT:** `spot_catalogo` (`20260924000000_spot_catalogo_rls_seed.sql`), `spot_detracciones` (`20260924010000`), notas de proveedor SPOT (`20260927130000`).
+- **Sourcing y Compras:** `orden_compra_linea_proveedores` (`20260922100000`), consolidación multi-SOLPE (`20260921200000`), estados físicos y financieros desacoplados (`20260923210000`).
+- **Cuentas por Pagar y CECOs:** `orden_compra_comprobantes_cxp` (`20260923170000`), `cxp_comprobante_lineas_ceco` (`20261005150000`), pagos atómicos CxP (`20260921121500`).
+- **Caja Chica y Tesorería:** `caja_chica_transferencias` (`585_caja_chica_cierre_atomico.sql`), egresos atómicos (`541_registrar_egreso_caja_chica_atomico.sql`).
+- **Líneas de Negocio y Tarifas:** `lineas_negocio` (`544_linea_negocio_comercial_operaciones.sql`), `proveedor_familias` (`548_proveedor_familia.sql`), `tarifas_estandar_equipos` (`547`, `553`), proyectos alquiler (`556`, `557`).
+- **Recetas de Actividad y Organigrama:** `receta_actividades` (`598_receta_actividad_transaccional.sql`), membresía e integridad en organigrama (`578`, `579`), `niveles_jerarquicos`, `roster_minero_ajustes`, `personal_asignaciones_um`, `ingresos_extraordinarios`.
+- **Control de Asistencia:** Columna `fecha_salida` en `registros_asistencia` (`589_asistencia_fecha_salida.sql`).
 - **Flota y DBS:** `contratos_alquiler` (`439_contratos_alquiler.sql`), columnas DBS en `ordenes_trabajo` (`raiz_costo`, `contrato_alquiler_id`, `fecha_inicio_real`, `segmento_repuestos` en `440_ordenes_trabajo_modelo_dbs_raiz_costo.sql`, `441_ordenes_trabajo_clasificacion_dbs_obligatoria.sql`, `456_ordenes_trabajo_fecha_inicio_real.sql`, `526_ot_segmento_repuestos.sql`).
 - **Organigrama v2:** `cargo_colocaciones` (`457_organigrama_v2_cargo_colocaciones.sql`, `468_organigrama_v2_campo_colocacion.sql`), `organigrama_unidades` (`458_organigrama_v2_jerarquia_cargos.sql`), `organigrama_relaciones_matriciales` (`459_organigrama_v2_matriciales_layout.sql`).
 - **Activos de Clientes:** `equipos_clientes` (`462_activos_equipos_cliente.sql`, `464_activos_jerarquia_componentes.sql`), `recepciones_activos_cliente` (`517_hojas_costeo_activo_recepcion.sql`, `519_cotizaciones_especiales_activo_recepcion.sql`).
@@ -1754,6 +1923,12 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 | `get_salud_implementacion_conteos` | `415` | Retorna métricas de registros en tablas maestras para onboarding | Conectado en `src/pages_salud_tenant.jsx` |
 | `importar_extractos_bancarios_csv`| `540` | Inserta lote y líneas de extracto bancario con deduplicación | Conectado en `src/services/tesoreriaService.js` |
 | `revertir_lote_extracto_bancario` | `540` | Anula y elimina un lote bancario importado erróneamente | Conectado en `src/services/tesoreriaService.js` |
+| `cerrar_fondo_caja_chica_atomico` | `585` | Cierre estricto con saldo cero, reintegro a banco y bloqueo de mutaciones | Conectado en `src/components/CerrarFondoModal.jsx` |
+| `generar_hoja_costeo_desde_diagnostico` | `606` | Genera hoja de costeo valorizada a partir de hallazgos validados de taller | Conectado en `operaciones-app/src/zahory-mock/` |
+| `rpc_recepcion_oc_fisica` | `20261009110000` | Recepción física en almacén asignando ubicaciones WMS e impactando stock | Conectado en `operaciones-app/src/zahory-mock/` |
+| `abrir_o_heredar_numero_caso` | `563` | Abre nuevo caso de servicio `CASO-YYYY-XXXX` o hereda caso padre de forma inmutable | Conectado en servicios comerciales y operativos |
+| `recalcular_estado_oc_por_recepcion` | `20260923210000` | Actualiza estado físico de OC en base a recepciones de almacén | Conectado en triggers de base de datos |
+| `asistente_erp_resumen_ejecutivo` ... `asistente_erp_resumen_mensual` (20 RPCs) | `599`-`618` | Batería de 20 consultas securitizadas para alimentar el asistente RAG Aria | Conectado en `src/services/asistenteErpService.js` |
 
 
 ---
@@ -1820,6 +1995,12 @@ Nómina ≠ costo de OT. Son dos mediciones independientes. Solo los **intereses
 
 **Activos para PDF:** Para la emisión de PDFs de cotizaciones, facturas, valorizaciones y boletas, la empresa puede cargar su `logo_url` y `firma_url` en `empresa_config`. Estos archivos se almacenan de manera pública en el bucket `empresa-assets` para garantizar su renderización correcta en los generadores de PDF del servidor y del cliente.
 
+**Días esperados e invariantes de asistencia:**
+- **Días esperados por tramo**: Para régimen general, equivale a los días laborables del turno asignado menos los feriados nacionales (no son ni laborables ni faltas). Para régimen minero, equivale a los días de trabajo efectivos del ciclo que caen en el tramo. Para suspensión perfecta, es cero.
+- **Etiqueta de Régimen 'Mixto'**: Cuando un trabajador transita entre regímenes o tramos (ej. Minero a General, o Suspensión Perfecta), el resumen de nómina lo categoriza como 'Mixto (Minero -> General)', reflejando su realidad mensual en vez de ocultar tramos.
+- **Invariante de Asistencia**: Asistencias nunca pueden superar a Días Esperados. El cálculo reconcilia múltiples tramos para asegurar que no existan ratios absurdos como '29/22'. Las asistencias son días reales laborados dentro de los esperados.
+- **Días computables**: Exclusivo para mostrar la porción del régimen minero. Para 'Mixtos', se muestra explícitamente como 'X (mina)' para no confundir la base.
+
 ### 10.6 Campo
 `origen_registro = campo` en todo registro de campo. GPS/geofencing automático al marcar asistencia o iniciar parte. La cola offline de geolocalización se sincroniza al recuperar conectividad y conserva resultado local de geocerca. Gasto de campo queda "pendiente revisión backoffice". Datos IA en `datos_extraidos_ia` para auditoría.
 
@@ -1858,6 +2039,24 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 ### 10.11 Reserva Automática en WMS para OTs Programadas
 - Al programar una Orden de Trabajo, los repuestos y materiales requeridos quedan automáticamente en estado reservado (`531`), evitando que otro frente operativo consuma el stock planificado.
+
+### 10.12 Candado Bloqueante de Hoja de Costeo sin Valorar
+- El trigger `trg_bloquear_hoja_costeo_sin_valorar` (migración `606`) bloquea a nivel de motor de base de datos la aprobación o emisión de cualquier hoja de costeo que no cuente con margen objetivo calculado y montos de costo reales asignados.
+
+### 10.13 Exclusión Mutua entre Detracción SPOT y Retención SUNAT
+- Una factura no puede registrar simultáneamente detracción SPOT y retención tributaria (migración `20260924030000`). La aplicación de una modalidad anula o inhabilita la otra para evitar distorsiones en cobranza y crédito fiscal.
+
+### 10.14 Desacoplamiento de Estados Físico y Financiero en Compras
+- Las Órdenes de Compra mantienen doble estado (`estado_fisico` y `estado_financiero`) gestionados por `recalcular_estado_oc_por_recepcion()` (`20260923210000`). La recepción física en almacén no depende de la llegada de la factura contable, ni la facturación en CxP bloquea ingresos físicos parciales.
+
+### 10.15 Cierre Estricto de Fondos de Caja Chica a Saldo Cero
+- La RPC `cerrar_fondo_caja_chica_atomico` (`585`) exige que el saldo quede exactamente en 0.00 reintegrando el remanente a banco en `movimientos_tesoreria`. Un fondo cerrado es inmutable.
+
+### 10.16 Obligatoriedad de Ubicación Física en Almacenes (WMS)
+- Toda entrada o salida física de inventario exige `ubicacion_id` válida (`20261009100000`). El stock se mantiene segregado por `(empresa_id, almacen_id, ubicacion_id, material_id)` impidiendo inventarios huérfanos.
+
+### 10.17 Herencia Inmutable del Caso de Servicio Compartido
+- El `numero_caso` serie `CASO-YYYY-XXXX` (`563`-`577`) se propaga inalterable desde la recepción de activos hasta la orden de trabajo, constituyendo el hilo unificado de auditoría técnica y comercial.
 
 
 ---
@@ -1923,7 +2122,8 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 | Fecha | Versión | Descripción y Alcance de la Auditoría |
 |-------|---------|---------------------------------------|
-| **18/09/2026** | **2.0.0 (Auditoría Integral)** | **Sincronización técnica exhaustiva contra el repositorio real (Corte 18/09/2026):**<br>- Incorporación de más de 100 migraciones locales (desde la `439_contratos_alquiler.sql` hasta la `540_importacion_extractos_bancarios.sql`).<br>- Documentación formal del segundo frontend: `operaciones-app/` para gestión de flota, taller y campo.<br>- Registro del módulo **Document Builder (Constructor de Bloques)** y su editor visual (`ConstructorBloquesEditor.jsx`, `DocumentPreviewSheet.jsx`, PR #100 mergeado a main).<br>- Documentación del subsistema de **Cotizaciones Especiales**, recepción de activos de clientes (`RecepcionesActivosCliente.jsx`), variables de costeo (`pages_costeo_variables.jsx`) y panel de producción (`pages_produccion_os_cliente.jsx`).<br>- Actualización de **Organigrama v2** con lienzo interactivo Canvas y colocaciones (`cargo_colocaciones`, `457_organigrama_v2_cargo_colocaciones.sql`).<br>- Inclusión de reglas laborales peruanas críticas: Gratificaciones Reales semestrales (Julio/Diciembre) con bonificación extraordinaria 9%/6.75% (`447_gratificacion_real_activos.sql`), candado de cierre (`449_bloquear_cierre_nomina_sin_gratificacion_confirmada.sql`), sobretasa discrecional (`451_gratificacion_overrides_discrecionales.sql`), aporte trabajador FCJMMS Ley 29741 (`443_nomina_fcjmms_trabajador.sql`) y sueldo mensual fijo completo para minería.<br>- Registro de emisión atómica de **Notas de Crédito y Débito SUNAT** (`NotaAfectacionForm.jsx`, `537_catalogo_motivos_comprobantes.sql`, `538_correlativos_notas.sql`, `539_emitir_nota_cxc_atomica.sql`) e importación masiva de **Extractos Bancarios CSV** (`540_importacion_extractos_bancarios.sql`).<br>- Tipificación de la **desconexión técnica en Cierre Técnico**: RPC `cerrar_ot_con_conformidad` (`453_cerrar_ot_con_conformidad_atomico.sql`) conectada solo en `operaciones-app/` y pendiente en `src/pages_ops.jsx`.<br>- Actualización de inventario a 60 servicios en `src/services/` y 27 componentes especializados. |
+| **10/10/2026** | **2.1.0 (Auditoría Integral)** | **Sincronización técnica exhaustiva contra el repositorio real (Corte 10/10/2026):**<br>- Consolidación de 704 migraciones activas en Supabase (636 secuenciales hasta 618 + 68 con timestamp ISO hasta 20261010100000).<br>- Asistente Inteligente Aria (ERP Assistant): Panel reactivo contextual (`AsistenteErpPanel.jsx`), Edge Function (`supabase/functions/asistente-erp`) y 20 RPCs de lectura securitizadas (`599`-`618`).<br>- Módulo de Diagnóstico Técnico de Taller e Informes PDF: Flujo de 5 pasos en `operaciones-app/`, catálogo de hallazgos (`592`), fotos en bucket privado `diagnostico-fotos` (`596`), conclusiones con IA y derivación a Hoja de Costeo (`606`).<br>- WMS Ubicaciones Fase 1 & 2: Jerarquía zona > rack > posición/piso, usos de ubicación (`almacenaje`, `recepcion`, `cuarentena`, `despacho`, `merma`), clave única de stock por ubicación, kardex obligatorio y recepción física (`20261009100000`, `20261010100000`).<br>- Módulo SPOT SUNAT: Catálogo de detracciones, alícuotas, cuentas Banco de la Nación, retenciones automáticas en CxP y regla de exclusión mutua (`20260924000000`-`20260927130000`).<br>- Bandeja de Sourcing Kanban: Componente en `src/pages_ops.jsx:6845`, agrupación multi-SOLPE, adjudicación por línea y conversión directa a OC (`20260921140000`-`20260922100000`).<br>- Desacoplamiento de estados físico y financiero en OCs (`20260923210000`) con vínculo a comprobantes CxP (`20260923170000`).<br>- Cierre atómico estricto de Caja Chica a saldo cero con reintegro a tesorería bancaria (`585`).<br>- Caso de Servicio Compartido: Serie unificada `CASO-YYYY-XXXX` (`563`-`577`) con herencia inmutable.<br>- Reorganización comercial del sidebar: Cuentas y Pipeline bajo Comercial (`ed97655`, `f2dbe5b`), Aria standalone y botón header.<br>- Catálogo de 9 buckets activos en Supabase Storage (incorporando `postulaciones-cv` 410 y `diagnostico-fotos` 596).<br>- Deuda técnica tipificada: Desconexión de RPC `cerrar_ot_con_conformidad` (`453`) consumida solo en `operaciones-app/` y pendiente en `src/pages_ops.jsx`.<br>- Inventario actualizado a 85 servicios en `src/services/` y 41 componentes UI. |
+| 18/09/2026 | 2.0.0 | **Sincronización técnica exhaustiva contra el repositorio real (Corte 18/09/2026):**<br>- Incorporación de más de 100 migraciones locales (desde la `439_contratos_alquiler.sql` hasta la `540_importacion_extractos_bancarios.sql`).<br>- Documentación formal del segundo frontend: `operaciones-app/` para gestión de flota, taller y campo.<br>- Registro del módulo **Document Builder (Constructor de Bloques)** y su editor visual (`ConstructorBloquesEditor.jsx`, `DocumentPreviewSheet.jsx`, PR #100 mergeado a main).<br>- Documentación del subsistema de **Cotizaciones Especiales**, recepción de activos de clientes (`RecepcionesActivosCliente.jsx`), variables de costeo (`pages_costeo_variables.jsx`) y panel de producción (`pages_produccion_os_cliente.jsx`).<br>- Actualización de **Organigrama v2** con lienzo interactivo Canvas y colocaciones (`cargo_colocaciones`, `457_organigrama_v2_cargo_colocaciones.sql`).<br>- Inclusión de reglas laborales peruanas críticas: Gratificaciones Reales semestrales (Julio/Diciembre) con bonificación extraordinaria 9%/6.75% (`447_gratificacion_real_activos.sql`), candado de cierre (`449_bloquear_cierre_nomina_sin_gratificacion_confirmada.sql`), sobretasa discrecional (`451_gratificacion_overrides_discrecionales.sql`), aporte trabajador FCJMMS Ley 29741 (`443_nomina_fcjmms_trabajador.sql`) y sueldo mensual fijo completo para minería.<br>- Registro de emisión atómica de **Notas de Crédito y Débito SUNAT** (`NotaAfectacionForm.jsx`, `537_catalogo_motivos_comprobantes.sql`, `538_correlativos_notas.sql`, `539_emitir_nota_cxc_atomica.sql`) e importación masiva de **Extractos Bancarios CSV** (`540_importacion_extractos_bancarios.sql`).<br>- Tipificación de la **desconexión técnica en Cierre Técnico**: RPC `cerrar_ot_con_conformidad` (`453_cerrar_ot_con_conformidad_atomico.sql`) conectada solo en `operaciones-app/` y pendiente en `src/pages_ops.jsx`.<br>- Actualización de inventario a 60 servicios en `src/services/` y 27 componentes especializados. |
 | 18/08/2026 | 1.8.0 | Consolidación de migraciones 384 a 438: arquitectura multisociedad, WMS atómico, políticas de feriados fase A y aislamiento RLS societario. |
 | 24/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 24/06):** Revisión del repositorio posterior a múltiples sesiones de consolidación. Actualización del corte a 277 migraciones locales hasta 277_maestro_tipos_contrato.sql. Se identificaron nuevas implementaciones: Maestro de tipos de contrato migrado a base de datos y UI (Configuración > Maestros Base), mejoras en módulo de Turnos (autorizaciones HE, detalle de días, selector autoservicio), y correcciones de seguridad RLS (postulaciones anónimas, self-read emails). Se actualizaron los GAPS, el resumen de progreso y el historial de sesiones. |
 | 19/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 19/06):** Revisión del repositorio posterior a múltiples sesiones de consolidación. Actualización del corte a 270 migraciones locales hasta `268_fix_liquidaciones_cxp_id_type.sql`. Se identificaron nuevas implementaciones en código no documentadas previamente: Motor de Predecesor/Sucesor para contratos, Contrato Primigenio, Periodos y caducidad de documentos, Consolidación y candados de formatos de tipos de documento, y bloqueos de cese/portal. Se actualizaron los GAPS, el resumen de progreso y el historial de sesiones. |
@@ -1980,31 +2180,3 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 | 28/04/2026 | Arquitectura de entidades: separación Maestros Base vs módulos transaccionales. Flujo Lead → Cuenta corregido (Lead primero, siempre). Formulario nueva cuenta en dos momentos (comercial + financiero). Formulario lead con RUC/Razón social/Industria. Proveedores con ciclo de vida, homologación y evaluación. Sección COMPRAS nueva en sidebar con 5 módulos. Flujo completo de compras: cotización → comparativo → OC/OS → recepción → CxP + evaluación proveedor. Sección RRHH nueva en sidebar. Control de Asistencia con turnos por trabajador y cálculo automático de tardanzas. Nómina Básica con cálculo completo (bruto, AFP/ONP, IR 5ta, cargas empresa), boleta PDF y cierre de período con egreso en finanzas. Separación Préstamos al Personal vs Financiamiento y Deuda. Módulo Financiamiento y Deuda con tabla de amortización automática, conexión de intereses al ER y reporte de deuda a 12 meses. |
 | 27/04/2026 | Wiring F3 completo (13 rutas). BI Financiero nuevo. Dashboard F3 + CS 360° en cuentas. RRHH Admin reportes. Planner Agenda CS. IA historial auditado. Presupuesto vs Real. Tickets mejorado. RRHH Operativo 3 tabs. BI Comercial y BI Operativo completos. Bug fix CSS (tab-bar→tabs, card-header→card-head). |
 | Anterior | Núcleo multitenant, CRM, OT, administración financiera, operaciones extendidas, compras básico, inventario, Customer Success, IA. |
-
-
-## REGLAS TRANSVERSALES DE NÓMINA Y ASISTENCIA (ACTUALIZADO 10-JUN-2026)
-- **Días esperados por tramo**: Para régimen general, equivale a los días laborables del turno asignado menos los feriados nacionales (no son ni laborables ni faltas). Para régimen minero, equivale a los días de trabajo efectivos del ciclo que caen en el tramo. Para suspensión perfecta, es cero.
-- **Etiqueta de Régimen 'Mixto'**: Cuando un trabajador transita entre regímenes o tramos (ej. Minero a General, o Suspensión Perfecta), el resumen de nómina lo categoriza como 'Mixto (Minero -> General)', reflejando su realidad mensual en vez de ocultar tramos.
-- **Invariante de Asistencia**: Asistencias nunca pueden superar a Días Esperados. El cálculo reconcilia múltiples tramos para asegurar que no existan ratios absurdos como '29/22'. Las asistencias son días reales laborados dentro de los esperados.
-- **Días computables**: Exclusivo para mostrar la porción del régimen minero. Para 'Mixtos', se muestra explícitamente como 'X (mina)' para no confundir la base.
-
-
----
-
-## 9. Tablas de Soporte Organizacional y Minero (Nuevas)
-
-### `niveles_jerarquicos`
-Niveles de jerarquía definidos por tenant para el modelado profundo del organigrama.
-- `id`, `empresa_id`, `nombre`, `peso_relativo`
-
-### `roster_minero_ajustes`
-Ajustes manuales y revisiones al roster minero generado.
-- `id`, `empresa_id`, `roster_snapshot_id`, `personal_id`, `ajuste_dias`, `notas`, `estado`
-
-### `personal_asignaciones_um`
-Relación entre personal y unidades mineras (Sedes con `tipo_um_asignaciones`).
-- `id`, `empresa_id`, `personal_id`, `sede_id`, `fecha_inicio`, `fecha_fin`
-
-### `ingresos_extraordinarios`
-Gestión de ingresos no recurrentes acoplados a nómina.
-- `id`, `empresa_id`, `personal_id`, `concepto`, `monto`, `periodo_aplicacion`, `estado`
