@@ -7,7 +7,7 @@ import { DxBuscador } from '../../components/dx/DxBuscador.jsx';
 import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 import { filtrarBusquedaInteligente } from '../../components/dx/busquedaInteligente.js';
 import { actualizarRuta, cambiarEstadoRuta, crearRuta, listarRutas } from '../../../services/transporteRutasService.js';
-import { listarTarifas } from '../../../services/transporteTarifasService.js';
+import { listarCuentasTransporte, listarTarifas } from '../../../services/transporteTarifasService.js';
 import { listarLugares } from '../../../services/transporteLugaresService.js';
 import { listarViajes } from '../../../services/transporteViajesService.js';
 import {
@@ -73,6 +73,7 @@ export function MaestroRutasPage() {
   const access = usePermisosTransporte(sesion);
   const [rutas, setRutas] = useState([]);
   const [tarifas, setTarifas] = useState([]);
+  const [cuentas, setCuentas] = useState([]);
   const [lugares, setLugares] = useState([]);
   const [viajes, setViajes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,12 +94,13 @@ export function MaestroRutasPage() {
     setLoading(true);
     setError('');
     try {
-      const [routes, tariffs, places, trips] = await Promise.all([
+      const [routes, tariffs, accounts, places, trips] = await Promise.all([
         listarRutas(empresaId), listarTarifas(empresaId),
-        listarLugares(empresaId), listarViajes(empresaId),
+        listarCuentasTransporte(empresaId), listarLugares(empresaId), listarViajes(empresaId),
       ]);
       setRutas(routes);
       setTarifas(tariffs);
+      setCuentas(accounts);
       setLugares(places);
       setViajes(trips);
       setSelectedId(current => routes.some(route => route.id === current)
@@ -117,6 +119,7 @@ export function MaestroRutasPage() {
     return result;
   }, {}), [tarifas]);
   const placesById = useMemo(() => new Map(lugares.map(place => [place.id, place])), [lugares]);
+  const cuentasById = useMemo(() => new Map(cuentas.map(account => [account.id, account])), [cuentas]);
   const filtered = useMemo(() => filtrarBusquedaInteligente(rutas, query), [rutas, query]);
   const selected = filtered.find(route => route.id === selectedId) || filtered[0] || null;
   const monthTrips = viajes.filter(trip => trip.ruta_id === selected?.id
@@ -344,8 +347,9 @@ export function MaestroRutasPage() {
                     : ({ vigente: 'Vigente', futura: 'Futura', vencida: 'Vencida', inactiva: 'Inactiva' })[state];
                   return <article className="dx-transporte-route-tariff-row" key={tariff.id}>
                     <span className="dx-transporte-tariff-client" data-label="Aplica a">
-                      <b>{tariff.cuenta?.nombre_comercial || tariff.cuenta?.razon_social
-                        || (tariff.cuenta_id ? 'Sin dato' : 'Tarifa base')}</b>
+                      <b>{cuentasById.get(tariff.cuenta_id)?.nombre_comercial
+                        || cuentasById.get(tariff.cuenta_id)?.razon_social
+                        || (tariff.cuenta_id ? 'Cliente' : 'Tarifa base')}</b>
                       <small>{tariff.cuenta_id ? 'Tarifa de cliente' : 'Todos los clientes'}</small></span>
                     <span data-label="Unidad">{tariff.tipo_unidad || 'Sin dato'}</span>
                     <span data-label="Modalidad">{etiquetaModalidad(tariff.modalidad)}</span>

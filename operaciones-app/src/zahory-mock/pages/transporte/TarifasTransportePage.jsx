@@ -14,8 +14,8 @@ import {
 } from '../../../services/transporteTarifasService.js';
 import { TarifaGrupo } from './TarifaGrupo.jsx';
 import {
-  etiquetaContador, estadoVigencia, fechaActualLocal, formatearFechaTransporte,
-  formatearImporte, unificarTiposUnidad, validarFormularioTarifa,
+  catalogoTiposUnidad, etiquetaContador, estadoVigencia, fechaActualLocal,
+  formatearFechaTransporte, formatearImporte, validarFormularioTarifa,
 } from './transporteUtils.js';
 
 const BLANK = { ruta_id: null, cuenta_id: null, tipo_unidad: '', modalidad: 'km', tarifa: '',
@@ -70,7 +70,7 @@ export function TarifasTransportePage() {
       setTarifas(tariffRows);
       setRutas(routeRows);
       setCuentas(accountRows);
-      setTypes(unificarTiposUnidad([], unitTypes));
+      setTypes(catalogoTiposUnidad(unitTypes, tariffRows));
     } catch (loadError) {
       setError(loadError.message || 'No se pudieron cargar las tarifas.');
     } finally {
@@ -249,7 +249,8 @@ export function TarifasTransportePage() {
             name="cuenta_id" error={fieldErrors.cuenta_id} />
           <label className="dx-ui-field"><span>Tipo de unidad</span><select className="dx-ui-select"
             value={form.tipo_unidad} onChange={event => update('tipo_unidad', event.target.value)}>
-            <option value="">Selecciona unidad</option>{types.map(type => <option key={type}>{type}</option>)}</select>
+            <option value="">Selecciona unidad</option>{catalogoTiposUnidad(types, [], form.tipo_unidad)
+              .map(type => <option key={type}>{type}</option>)}</select>
             {fieldErrors.tipo_unidad && <small className="dx-ui-field-error">{fieldErrors.tipo_unidad}</small>}</label>
           <label className="dx-ui-field"><span>Modalidad</span><select className="dx-ui-select"
             value={form.modalidad} onChange={event => update('modalidad', event.target.value)}>

@@ -119,6 +119,21 @@ test('unifica tipos de unidad sin duplicados de mayúsculas o acentos', () => {
   );
 });
 
+test('combina defaults, vehículos, tarifas activas y unidad guardada sin duplicados', () => {
+  assert.deepEqual(utils.catalogoTiposUnidad(
+    ['furgon', 'Camión eléctrico'],
+    [
+      { tipo_unidad: 'Tracto 30 t', estado: 'activa' },
+      { tipo_unidad: 'Unidad retirada', estado: 'inactiva' },
+    ],
+    'Volquete antiguo',
+  ), [
+    'Camioneta', 'Furgón', 'Camión 2 ejes', 'Camión 3 ejes',
+    'Tracto con semirremolque', 'Cama baja', 'Camión eléctrico',
+    'Tracto 30 t', 'Volquete antiguo',
+  ]);
+});
+
 test('formulario de ruta vac\u00edo devuelve todos los obligatorios', () => {
   assert.deepEqual(utils.validarFormularioRuta({}), {
     codigo: 'Este campo es obligatorio.',

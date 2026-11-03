@@ -7,23 +7,23 @@ import {
 import { listarRutas } from '../../../services/transporteRutasService.js';
 import { listarLugares } from '../../../services/transporteLugaresService.js';
 import {
-  listarCuentasTransporte, listarTiposUnidadTransporte,
+  listarCuentasTransporte, listarTarifas, listarTiposUnidadTransporte,
 } from '../../../services/transporteTarifasService.js';
 import { AccesoTransporte } from './AccesoTransporte.jsx';
 import { usePermisosTransporte } from './usePermisosTransporte.js';
 import { WizardStep, StopsEditor, TripSummary, ChargeFields } from './OrdenViajeComponents.jsx';
 import { LugarEditorModal } from './LugarEditorModal.jsx';
 import {
-  armarParadasDesdeRuta, cantidadFacturableViaje, fechaActualLocal,
+  armarParadasDesdeRuta, cantidadFacturableViaje, catalogoTiposUnidad, fechaActualLocal,
   fechaLocalInputAFechaUtc, fechaUtcAFechaLocalInput, formatearImporte,
-  ingresoEstimadoViaje, llegadaEstimadaViaje, sincronizarParadasViaje, unificarTiposUnidad,
+  ingresoEstimadoViaje, llegadaEstimadaViaje, sincronizarParadasViaje,
   validarPasoViaje, validarVentanaParada, puedeProgramarViaje, debeCambiarEstadoAlProgramar,
 } from './transporteUtils.js';
 import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 
 const STEPS = [
-  ['Quién y cuándo', 'Cliente y fecha'], ['Por dónde', 'Ruta y paradas'],
-  ['Qué y en qué', 'Carga y unidad'], ['Cuánto y confirmar', 'Tarifa e ingreso'],
+  ['Cliente y fecha', 'Quién y cuándo'], ['Ruta y paradas', 'Por dónde'],
+  ['Carga y unidad', 'Qué y en qué'], ['Tarifa', 'Cuánto y confirmar'],
 ];
 const blank = () => ({ cuenta_id: '', os_cliente_id: '', fecha_programada: `${fechaActualLocal()}T08:00`,
   ruta_id: '', origen_nombre: '', destino_nombre: '', distancia_km: '', duracion_estimada_horas: '',
@@ -73,13 +73,12 @@ export function OrdenViajePage({ onNav }) {
     if (!empresaId || !access.ver) return;
     setLoading(true);
     try {
-      const [accounts, routeList, unitTypes, placeList] = await Promise.all([
+      const [accounts, routeList, unitTypes, tariffList, placeList] = await Promise.all([
         listarCuentasTransporte(empresaId), listarRutas(empresaId),
-        listarTiposUnidadTransporte(empresaId), listarLugares(empresaId),
+        listarTiposUnidadTransporte(empresaId), listarTarifas(empresaId), listarLugares(empresaId),
       ]);
       setCuentas(accounts);
       setRutas(routeList);
-      setTipos(unificarTiposUnidad([], unitTypes));
       setLugares(placeList);
       let initial = blank();
       if (viajeId) {
@@ -89,6 +88,7 @@ export function OrdenViajePage({ onNav }) {
           fecha_programada: fechaUtcAFechaLocalInput(viaje.fecha_programada),
           paradas: sincronizarParadasViaje(viaje.paradas || [], viaje.origen_nombre, viaje.destino_nombre) };
       }
+      setTipos(catalogoTiposUnidad(unitTypes, tariffList, initial.tipo_unidad));
       setForm(initial);
       setOriginMode(initial.os_cliente_id ? 'os' : 'directo');
       setBaseline(JSON.stringify(initial));

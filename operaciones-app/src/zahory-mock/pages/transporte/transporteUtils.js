@@ -204,6 +204,26 @@ export function unificarTiposUnidad(defaults = [], catalogo = []) {
   return result;
 }
 
+export const UNIT_DEFAULTS = Object.freeze([
+  'Camioneta',
+  'Furgón',
+  'Camión 2 ejes',
+  'Camión 3 ejes',
+  'Tracto con semirremolque',
+  'Cama baja',
+]);
+
+export function catalogoTiposUnidad(tiposVehiculo = [], tarifas = [], tipoActual = '') {
+  const tiposTarifa = tarifas
+    .filter(tarifa => tarifa.estado === 'activa')
+    .map(tarifa => tarifa.tipo_unidad);
+  return unificarTiposUnidad(UNIT_DEFAULTS, [
+    ...tiposVehiculo,
+    ...tiposTarifa,
+    tipoActual,
+  ]);
+}
+
 export function formatearImporte(valor, moneda, modalidad) {
   if (valor === '' || valor == null || !Number.isFinite(Number(valor))) return '—';
 
