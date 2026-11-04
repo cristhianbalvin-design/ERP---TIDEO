@@ -29,6 +29,13 @@ const NEW_PLACE = {
 
 const LABELS = { viaje: 'viaje', km: 'km', tonelada: 't', hora: 'h' };
 
+function encuadrarPuntosMapa(map, points) {
+  if (points.length === 1) map.setView(points[0], 10, { animate: false });
+  if (points.length > 1) map.fitBounds(points, { paddingTopLeft: [40, 40],
+    paddingBottomRight: [40, 80], maxZoom: 10, animate: false });
+  if (!points.length) map.setView([-12.6, -75.5], 6);
+}
+
 function Field({ label, name, value, onChange, error, required, type = 'text', ...props }) {
   const id = `composer-${name.replaceAll('.', '-')}`;
   return <label className={`dx-ui-field${error ? ' is-invalid' : ''}`} htmlFor={id}>
@@ -202,6 +209,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   const mapNode = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
+  const mapPointsRef = useRef([]);
   const lineRef = useRef(null);
   const routeLayersRef = useRef(null);
   const showPlaceRef = useRef(showPlace);
@@ -261,7 +269,10 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     map.on('click', event => {
       if (showPlaceRef.current) pickPoint(event.latlng);
     });
-    const observer = new ResizeObserver(() => map.invalidateSize());
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+      encuadrarPuntosMapa(map, mapPointsRef.current);
+    });
     observer.observe(mapNode.current);
     requestAnimationFrame(() => map.invalidateSize());
     return () => {
@@ -307,10 +318,8 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     }
     const points = [...pointData.map(item => item.point)];
     if (showPlace && mapPoint) points.push([mapPoint.lat, mapPoint.lng]);
-    if (points.length === 1) map.setView(points[0], 10, { animate: false });
-    if (points.length > 1) map.fitBounds(points, { padding: [40, 40], maxZoom: 10,
-      animate: false });
-    if (!points.length) map.setView([-12.6, -75.5], 6);
+    mapPointsRef.current = points;
+    encuadrarPuntosMapa(map, points);
   }, [originPoint?.[0], originPoint?.[1], destinationPoint?.[0], destinationPoint?.[1],
     showPlace, mapPoint?.lat, mapPoint?.lng]);
 

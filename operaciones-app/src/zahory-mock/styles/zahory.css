@@ -8223,14 +8223,20 @@ width:20px;height:20px}
 }
 .dx-transporte-composer-map-hint {
   position:absolute;
-  right:10px;
-  bottom:10px;
   left:10px;
+  bottom:10px;
   z-index:500;
-  padding:7px;
-  border-radius:7px;
+  width:fit-content;
+  max-width:calc(100% - 20px);
+  box-sizing:border-box;
+  padding:7px 10px;
+  border:1px solid var(--dx-ui-line);
+  border-radius:999px;
   background:var(--dx-ui-card);
-  text-align:center;
+  color:var(--dx-ui-ink);
+  font-size:12px;
+  line-height:1.35;
+  text-align:left;
 }
 .dx-transporte-composer-preview {
   display:grid;
@@ -8331,6 +8337,12 @@ width:20px;height:20px}
 :host([data-theme='dark']) .dx-transporte-composer .leaflet-tile-pane,
 .dark .dx-transporte-composer .leaflet-tile-pane {
   filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.9);
+}
+
+[data-theme='dark'] .dx-transporte-composer .leaflet-container,
+:host([data-theme='dark']) .dx-transporte-composer .leaflet-container,
+.dark .dx-transporte-composer .leaflet-container {
+  background:#1B2940;
 }
 /* Ajustes de fidelidad del composer Nueva ruta. */
 .dx-transporte-composer-head {
@@ -8568,9 +8580,9 @@ width:20px;height:20px}
   }
 }
 
-.dx-transporte-composer-marker.is-b span { background:var(--dx-ui-cyan); }
-.dx-transporte-composer-marker.is-a span { background:var(--dx-ui-cyan); }
-.dx-transporte-composer-marker.is-b span { background:var(--dx-ui-navy); }
+.dx-transporte-composer-marker.is-a span { background:#00ACC1; color:#06323A; }
+.dx-transporte-composer-marker.is-b span { background:#1A2B4A; color:#fff; }
+.dx-transporte-composer-marker.is-new span { background:#E08A00; color:#fff; }
 .dx-transporte-composer-map-link {
   width:100%;
   min-height:40px;
