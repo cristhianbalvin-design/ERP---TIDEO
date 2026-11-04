@@ -20,6 +20,7 @@ const RUTAS_COLUMNAS = [
   'distancia_km',
   'duracion_estimada_horas',
   'tipo_carga_habitual',
+  'numero_peajes',
   'peajes_estimados',
   'moneda_peajes',
   'notas',
@@ -102,6 +103,25 @@ export async function crearRuta(empresaId, payload) {
     .select(RUTAS_COLUMNS)
     .single();
 
+  lanzar(error);
+  return data;
+}
+
+export async function siguienteCodigoRuta(empresaId) {
+  const { data, error } = await getSupabaseClient().rpc('transporte_siguiente_codigo_ruta', {
+    p_empresa_id: empresaId,
+  });
+  lanzar(error);
+  return data;
+}
+
+export async function guardarRutaCompuesta(empresaId, ruta, crearRegreso, tarifa = null) {
+  const { data, error } = await getSupabaseClient().rpc('transporte_ruta_guardar_compuesta', {
+    p_empresa_id: empresaId,
+    p_ruta: ruta,
+    p_crear_regreso: crearRegreso,
+    p_tarifa: tarifa,
+  });
   lanzar(error);
   return data;
 }
