@@ -514,7 +514,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
         const r = await servicio.importar(campana.id, filas, false);
         setError("");
         setAviso(
-          `Importación completada: ${r.agregadas} ${plural(r.agregadas, "persona agregada", "personas agregadas")}.`,
+          `Importación completada: ${r.agregadas} ${plural(r.agregadas, "persona agregada", "personas agregadas")}${r.completados ? ` y ${r.completados} ${plural(r.completados, "persona completada", "personas completadas")}` : ""}.`,
         );
       }
       if (modal !== "mensaje") await cargar();
@@ -556,13 +556,13 @@ export default function CampanaAudiencia({ campana, onVolver }) {
     const url = String(m.contacto?.linkedin_url || "")
       .trim()
       .replace(/^https?:\/\//i, "");
-    if (!url || /[\s\\]/.test(url)) {
+    if (m.contacto?.linkedin_url && (!url || /[\s\\]/.test(url))) {
       setError("El perfil de LinkedIn no tiene una URL válida.");
       return;
     }
     try {
-      const parsed = new URL(`https://${url}`);
-      if (
+      const parsed = url ? new URL(`https://${url}`) : null;
+      if (parsed &&
         !["linkedin.com", "www.linkedin.com"].includes(
           parsed.hostname.toLowerCase(),
         ) &&
@@ -580,13 +580,15 @@ export default function CampanaAudiencia({ campana, onVolver }) {
           setAviso("Mensaje copiado. Estado sin cambios.");
         } catch {
           setError(
-            "No se pudo copiar el mensaje. Se abrirá el perfil de LinkedIn.",
+            parsed
+              ? "No se pudo copiar el mensaje. Se abrirá el perfil de LinkedIn."
+              : "No se pudo copiar el mensaje al portapapeles.",
           );
         }
       } else {
         setAviso("No hay mensaje base; redacta uno para copiarlo.");
       }
-      window.open(parsed.href, "_blank", "noopener,noreferrer");
+      if (parsed) window.open(parsed.href, "_blank", "noopener,noreferrer");
     } catch (e) {
       setError(e.message || "No se pudo copiar el mensaje.");
     }
@@ -664,11 +666,9 @@ export default function CampanaAudiencia({ campana, onVolver }) {
           <>
             {m.estado === "por_enviar" && (
               <>
-                {m.contacto?.linkedin_url && (
-                  <button className="dx-btn primary" onClick={() => copiar(m)}>
-                    Copiar y abrir LinkedIn
-                  </button>
-                )}
+                <button className="dx-btn primary" onClick={() => copiar(m)}>
+                  {m.contacto?.linkedin_url ? "Copiar y abrir LinkedIn" : "Copiar mensaje"}
+                </button>
                 <button className="dx-btn" onClick={() => mover(m, "enviado")}>
                   Marcar enviado
                 </button>
@@ -951,7 +951,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                 <button
                   className="dx-btn primary"
                   onClick={guardarModal}
-                  disabled={ocupado || (modal === "importar" && !resumen)}
+                  disabled={ocupado || (modal === "importar" && (!resumen || (!resumen.agregadas && !resumen.completados)))}
                 >
                   {ocupado
                     ? "Guardando…"
@@ -1114,10 +1114,11 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                       ["nuevas", "personas nuevas"],
                       ["ya_existen", "ya existen"],
                       ["ya_en_campana", "ya en campaña"],
-                      ["sin_contacto", "sin dato de contacto"],
+                      ["sin_contacto", "sin LinkedIn ni contacto"],
                       ["sin_nombre", "sin nombre"],
                       ["no_contactar", "no contactar"],
                       ["agregadas", "a agregar"],
+                      ["completados", "enlaces completados"],
                     ].map(([k, l]) => (
                       <div key={k}>
                         <strong>{resumen[k]}</strong>
@@ -1130,7 +1131,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                 <p className="dx-camp-aud-hint">Sin columna de tipo se importan como Persona. Para estados ya avanzados, la fecha de último contacto será la de importación.</p>
                 <p className="dx-camp-aud-hint">
                   Las personas repetidas se reconocen por LinkedIn, correo o
-                  teléfono. Quienes pidieron no ser contactadas no se agregarán.
+                  teléfono. Las personas sin LinkedIn, correo ni teléfono se reconocen por nombre; reimportarlas con enlaces las completa sin duplicarlas. Quienes pidieron no ser contactadas no se agregarán.
                 </p>
               </>
             )}
