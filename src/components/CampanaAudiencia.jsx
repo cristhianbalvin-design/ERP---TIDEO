@@ -406,6 +406,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
       const r = await fn();
       await cargar();
       setSeleccion([]);
+      setError("");
       if (texto) setAviso(typeof texto === "function" ? texto(r) : texto);
       return true;
     } catch (e) {
@@ -416,11 +417,13 @@ export default function CampanaAudiencia({ campana, onVolver }) {
   const mover = async (m, destino) => {
     if (estado(m) === destino) return;
     if (m.lead_id) {
+      setAviso("");
       setError("Esta persona ya es lead; continúa en Leads y Scoring.");
       return;
     }
     if (destino === "lead") {
       if (m.estado !== "interesado") {
+        setAviso("");
         setError("Primero marca a la persona como interesada.");
         return;
       }
@@ -491,6 +494,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
       if (modal === "ficha") await servicio.guardar(form.miembro, form);
       if (modal === "persona") {
         const r = await servicio.importar(campana.id, [form], false);
+        setError("");
         setAviso(
           r.no_contactar
             ? "Esta persona pidió no ser contactada."
@@ -501,6 +505,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
       }
       if (modal === "importar") {
         const r = await servicio.importar(campana.id, filas, false);
+        setError("");
         setAviso(
           `Importación completada: ${r.agregadas} ${plural(r.agregadas, "persona agregada", "personas agregadas")}.`,
         );
