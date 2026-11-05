@@ -938,7 +938,7 @@ function Leads() {
       contacto_cargo: modalConvertir.cargo || '',
       contacto_telefono: modalConvertir.telefono || '',
       contacto_email: modalConvertir.email || '',
-      nombre_oportunidad: `${String(modalConvertir.necesidad || '').split(/\r?\n/)[0].trim().slice(0,50) || 'Venta'} — ${String(modalConvertir.empresa_contacto || modalConvertir.nombre || modalConvertir.nombre_contacto || '').trim()}`,
+      nombre_oportunidad: `${String(modalConvertir.necesidad || '').split(/\r?\n/)[0].trim().slice(0,50) || 'Venta'} — ${String((modalConvertir.tipo_documento === TIPO_DOCUMENTO_DNI ? (modalConvertir.nombre || modalConvertir.nombre_contacto) : (modalConvertir.empresa_contacto || modalConvertir.nombre || modalConvertir.nombre_contacto)) || '').trim()}`,
       monto_estimado: potencial.monto || '',
       moneda: (() => { const m = potencial.moneda || empresa?.moneda || 'PEN'; const codes = monedasActivas.map(x => x.codigo); return codes.includes(m) ? m : (codes[0] || empresa?.moneda || 'PEN'); })(),
       etapa_inicial: 'calificacion'
@@ -1899,6 +1899,7 @@ function Leads() {
                           style={!convForm.fuente ? {borderColor:'var(--danger)'} : {}}
                           onChange={e=>setConvForm(p=>({...p,fuente:e.target.value}))}>
                           <option value="">Seleccionar...</option>
+                          {convForm.fuente && !['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].includes(convForm.fuente) && <option value={convForm.fuente}>{convForm.fuente}</option>}
                           {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
                         </select>
                       </div>
@@ -2254,6 +2255,7 @@ function Leads() {
               </div>
               <div className="input-group"><label>Fuente {campoBloqueadoConvertido && <LockHint>Trazabilidad del lead</LockHint>}</label><select className="select" value={formNuevo.fuente} onChange={e=>updateNuevo('fuente',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="">Seleccionar...</option>
+                {formNuevo.fuente && !['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].includes(formNuevo.fuente) && <option value={formNuevo.fuente}>{formNuevo.fuente}</option>}
                 {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
               </select></div>
               <div className="input-group">

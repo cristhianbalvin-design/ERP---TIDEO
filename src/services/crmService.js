@@ -305,6 +305,7 @@ export async function persistirOportunidad(supabase, empresaId, opp) {
     empresa_id: empresaId,
     cuenta_id: opp.cuenta_id || null,
     lead_id: opp.lead_id || opp.lead_origen || null,
+    campana_id: opp.campana_id || null,
     contacto_id: opp.contacto_id || null,
     nombre: opp.nombre || 'Nueva oportunidad',
     servicio_interes: opp.servicio_interes || null,
