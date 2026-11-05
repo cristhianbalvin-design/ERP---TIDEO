@@ -270,6 +270,12 @@ export const cxpCanDevengarEr = cxp => {
   return cxpDevengoAmount(cxp) > 0;
 };
 
+export const filtrarComprasGastosParaEr = comprasGastos =>
+  (comprasGastos || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
+
+export const filtrarCajaChicaSinGastoVinculado = filas =>
+  (filas || []).filter(r => r.gasto_id == null);
+
 export const compraCoversCxp = (cxp, comprasGastos = []) => {
   const cxpId = cxp?.id;
   const gastoId = cxp?.gasto_id;
@@ -520,7 +526,7 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds,
   if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
+  return filtrarComprasGastosParaEr(data);
 }
 
 async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null) {
@@ -629,8 +635,8 @@ async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null, e
   const [{ data, error }, erConfig] = await Promise.all([query, erConfigPromise]);
   if (error) throw error;
   // Excluir registros con gasto_id para no duplicar lo que ya recoge loadComprasGastos.
-  return (data || []).filter(r => r.gasto_id == null
-    && !esCategoriaInversionCajaChica(r.categoria, erConfig));
+  return filtrarCajaChicaSinGastoVinculado(data).filter(r =>
+    !esCategoriaInversionCajaChica(r.categoria, erConfig));
 }
 
 async function loadNaturalezasCeco(supabase, empresaId, cecoIds = []) {
