@@ -402,6 +402,18 @@ export function Sidebar({
   const [pillTop, setPillTop] = useState(null);
   const railList = useRef(null);
   const sidebarRef = useRef(null);
+  const commandPreviousFocus = useRef(null);
+  const openCommand = () => {
+    commandPreviousFocus.current = document.activeElement;
+    setCommandOpen(true);
+  };
+  const changeCommandOpen = open => {
+    setCommandOpen(open);
+    if (!open) {
+      const previousFocus = commandPreviousFocus.current;
+      window.setTimeout(() => previousFocus?.isConnected && previousFocus.focus(), 0);
+    }
+  };
   const userId = app.authUser?.id || 'anonimo';
   const [menuUsuario, setMenuUsuario] = useState(() => leerMenuUsuario(userId));
   const overlay = !costeoWorkMode && (collapsed || compact || diagnosticoWorkMode);
@@ -439,7 +451,7 @@ export function Sidebar({
       active: visibleItems.some(it => it.key === active)
     };
   }).filter(Boolean), [active, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
-  const activeGroupKey = visibleGroups.find(group => group.active && !group.standalone)?.key || visibleGroups.find(group => !group.standalone)?.key;
+  const activeGroupKey = visibleGroups.find(group => group.active && !group.standalone)?.key;
   const selectedKey = panelKey || activeGroupKey;
   const selected = visibleGroups.find(group => group.key === selectedKey && !group.standalone);
   const showPanel = Boolean(selected && (!overlay || panelKey || mobile && drawer || costeoWorkMode));
@@ -453,27 +465,34 @@ export function Sidebar({
   useEffect(() => {
     const m = window.matchMedia('(max-width: 900px)'),
       phone = window.matchMedia('(max-width: 760px)');
+    let wasCompact = m.matches, wasMobile = phone.matches;
     const update = () => {
-      setCompact(m.matches);
-      setMobile(phone.matches);
+      const nextCompact = m.matches, nextMobile = phone.matches;
+      if (nextCompact === wasCompact && nextMobile === wasMobile) return;
+      wasCompact = nextCompact;
+      wasMobile = nextMobile;
+      setCompact(nextCompact);
+      setMobile(nextMobile);
       setPanelKey(null);
       setDrawer(false);
     };
     m.addEventListener('change', update);
     phone.addEventListener('change', update);
+    window.addEventListener('resize', update);
     return () => {
       m.removeEventListener('change', update);
       phone.removeEventListener('change', update);
+      window.removeEventListener('resize', update);
     };
   }, []);
   useEffect(() => {
     const onDiagnostico = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
     const onCosteo = event => setCosteoWorkModeState(Boolean(event.detail?.active));
-    const onCommand = () => setCommandOpen(true);
+    const onCommand = () => openCommand();
     const onKey = event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        setCommandOpen(true);
+        openCommand();
       }
       if (event.key === 'Escape') {
         setPanelKey(null);
@@ -540,7 +559,7 @@ export function Sidebar({
     });
   };
   const groupButton = group => {
-    const selectedGroup = group.standalone ? group.active : (selectedKey === group.key && showPanel) || (group.key === 'configuracion' && group.active && !panelKey);
+    const selectedGroup = group.standalone ? group.active && !panelKey : (selectedKey === group.key && showPanel) || (group.key === 'configuracion' && group.active && !panelKey);
     const count = group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0);
     return <button
       type="button"
@@ -611,7 +630,7 @@ export function Sidebar({
           type="button"
           className="dx-nav-rail-button"
           aria-label="Buscar pantallas"
-          onClick={() => setCommandOpen(true)}
+          onClick={openCommand}
           onMouseEnter={event => showTip(event, 'Buscar')}
           onMouseLeave={() => setTip(null)}
           onFocus={event => showTip(event, 'Buscar')}
@@ -633,14 +652,14 @@ export function Sidebar({
         <button
           type="button"
           className="dx-nav-search"
-          onClick={() => setCommandOpen(true)}>{I.search}<span>Buscar</span><kbd>Ctrl K</kbd></button>
+          onClick={openCommand}>{I.search}<span>Buscar</span><kbd>Ctrl K</kbd></button>
         <div className="dx-nav-panel-list">
           {selected.items.some(item => menuUsuario.favoritos.includes(item.key)) && <>
             <h3>Favoritos</h3>
             {selected.items.filter(item => menuUsuario.favoritos.includes(item.key)).map(row)}
           </>}
           <h3>Pantallas</h3>
-          {selected.items.map(row)}
+          {selected.items.filter(item => !menuUsuario.favoritos.includes(item.key)).map(row)}
         </div>
       </nav>}
       {costeoWorkMode &&
@@ -680,7 +699,7 @@ export function Sidebar({
       disabled={!inicio}
       onClick={() => inicio && handleItem(inicio)}>{I.dashboard}<span>Inicio</span></button><button
       type="button"
-      onClick={() => setCommandOpen(true)}>{I.search}<span>Buscar</span></button><button
+      onClick={openCommand}>{I.search}<span>Buscar</span></button><button
       type="button"
       onClick={solicitarApertura}><IconoAria /><span>Aria</span></button><button
       type="button"
@@ -688,7 +707,7 @@ export function Sidebar({
       onClick={() => setDrawer(!drawer)}>{I.list}<span>Menú</span></button></nav>}
     <ComandoGlobal
       open={commandOpen}
-      onOpenChange={setCommandOpen}
+      onOpenChange={changeCommandOpen}
       items={items}
       favoritos={menuUsuario.favoritos}
       recientes={menuUsuario.recientes}

@@ -307,7 +307,7 @@
   .dx-nav-shell.dx-nav-pinned {
     width: 64px;
   }
-  .dx-nav-panel-pin {
+  .dx-nav-panel-pin, .dx-nav-pin {
     display: none;
   }
 }
@@ -358,11 +358,11 @@
   }
 }
 @media (max-width:760px) {
-  .dx-asis-fab {
-    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  .dx-asis .dx-asis-fab {
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
   }
-  .dx-asis-hint {
-    bottom: calc(87px + env(safe-area-inset-bottom, 0px));
+  .dx-asis .dx-asis-hint {
+    bottom: calc(83px + env(safe-area-inset-bottom, 0px));
   }
 }
 html[data-dx-diagnostico-work-mode="true"] .dx-nav-shell {

@@ -10,9 +10,12 @@ export default function ComandoGlobal({ open, onOpenChange, items, favoritos, re
     ? items.map(item => ({ item, score: score(query, item) }))
       .filter(result => result.score > 0)
       .sort((a, b) => b.score - a.score || a.item.label.localeCompare(b.item.label, 'es'))
+      .filter((result, index, ranked) => ranked[0].score < 450 || result.score >= 450)
+      .slice(0, 8)
       .map(result => result.item)
     : [], [query, items, score]);
   const byKeys = keys => keys.map(key => items.find(item => item.key === key)).filter(Boolean);
+  const recentItems = byKeys(recientes.filter(key => !favoritos.includes(key)));
   const group = (title, list) => list.length > 0 && (
     <Command.Group heading={title}>
       {list.map(item => (
@@ -45,8 +48,8 @@ export default function ComandoGlobal({ open, onOpenChange, items, favoritos, re
         ) : (
           <>
             {group('Favoritos', byKeys(favoritos))}
-            {group('Recientes', byKeys(recientes))}
-            {!byKeys(favoritos).length && !byKeys(recientes).length && (
+            {group('Recientes', recentItems)}
+            {!byKeys(favoritos).length && !recentItems.length && (
               <div className="dx-nav-empty">Busca una pantalla o añade favoritos.</div>
             )}
           </>
