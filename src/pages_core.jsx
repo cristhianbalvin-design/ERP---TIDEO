@@ -8,6 +8,7 @@ import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
 import { canUserSeeOwner, getAssignableUsers, getUserCategory, getUserHierarchyLevel } from './lib/hierarchy.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { campanasService } from './services/campanasService.js';
+import CampanaAudiencia from './components/CampanaAudiencia.jsx';
 import { maestrosService } from './services/maestrosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { ETIQUETA_ESTADO_OF, listarOFDeOS, urlOperaciones } from './services/ordenesFabricacionAdminService.js';
@@ -6037,6 +6038,7 @@ function OSCliente() {
 
 function Marketing() {
   const { campanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana, leads, oportunidades, empresa, monedasActivas } = useApp();
+  const [audiencia, setAudiencia] = useState(null);
   const [tab, setTab] = useState('campanas');
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -6044,12 +6046,12 @@ function Marketing() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const TIPOS = ['ads', 'email', 'evento', 'outbound', 'contenido', 'referidos'];
+  const TIPOS = ['ads', 'email', 'evento', 'outbound', 'contenido', 'referidos', 'base_propia'];
   const CANALES = ['Google Ads', 'LinkedIn', 'Email', 'WhatsApp', 'Evento', 'Campo', 'Otro'];
   const ESTADOS_LABEL = { borrador: 'Borrador', activa: 'Activa', pausada: 'Pausada', finalizada: 'Finalizada' };
   const estadoBadge = { borrador: 'badge-gray', activa: 'badge-green', pausada: 'badge-orange', finalizada: 'badge-cyan' };
 
-  const formBase = { nombre: '', tipo: 'ads', canal: 'Google Ads', fecha_inicio: '', fecha_fin: '', presupuesto: '', moneda: empresa?.moneda || 'PEN', estado: 'borrador', descripcion: '' };
+  const formBase = { nombre: '', tipo: 'ads', canal: 'Google Ads', fecha_inicio: '', fecha_fin: '', presupuesto: '', moneda: empresa?.moneda || 'PEN', estado: 'borrador', descripcion: '', mensaje_base: '', fuente_codigo: '' };
   const [form, setForm] = useState(formBase);
   const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
 
@@ -6076,7 +6078,7 @@ function Marketing() {
   const roiGlobal = presupuestoTotal > 0 ? ((ingAtribTotal - presupuestoTotal) / presupuestoTotal * 100).toFixed(0) : null;
 
   const abrirNuevo = () => { setForm(formBase); setFormError(''); setPanelNuevo(true); setEditando(null); setDetalle(null); };
-  const abrirEditar = (c) => { setForm({ nombre: c.nombre, tipo: c.tipo, canal: c.canal, fecha_inicio: c.fecha_inicio || '', fecha_fin: c.fecha_fin || '', presupuesto: c.presupuesto || '', moneda: c.moneda || 'PEN', estado: c.estado, descripcion: c.descripcion || '' }); setFormError(''); setEditando(c); setPanelNuevo(false); setDetalle(null); };
+  const abrirEditar = (c) => { setForm({ nombre: c.nombre, tipo: c.tipo, canal: c.canal, fecha_inicio: c.fecha_inicio || '', fecha_fin: c.fecha_fin || '', presupuesto: c.presupuesto || '', moneda: c.moneda || 'PEN', estado: c.estado, descripcion: c.descripcion || '', mensaje_base: c.mensaje_base || '', fuente_codigo: c.fuente_codigo || '' }); setFormError(''); setEditando(c); setPanelNuevo(false); setDetalle(null); };
   const cerrar = () => { setPanelNuevo(false); setEditando(null); setFormError(''); };
 
   const confirmarEliminar = async (c) => {
@@ -6101,12 +6103,14 @@ function Marketing() {
       else await crearCampana(datos);
       cerrar();
     } catch (err) {
-      setFormError(err?.message || 'No se pudo guardar la campana.');
+      setFormError(err?.code === '23505' || /campanas_fuente_codigo_uidx/i.test(err?.message || '') ? 'El código de fuente ya está en uso por otra campaña.' : (err?.message || 'No se pudo guardar la campaña.'));
     }
     finally { setSaving(false); }
   };
 
   const panelOpen = panelNuevo || !!editando;
+
+  if (audiencia) return <CampanaAudiencia campana={campanas.find(c => c.id === audiencia.id) || audiencia} onVolver={() => setAudiencia(null)} />;
 
   return (
     <>
@@ -6141,7 +6145,7 @@ function Marketing() {
                       return (
                         <tr key={c.id} className="hover-row" onClick={() => { setDetalle(c); cerrar(); }} style={{cursor:'pointer'}}>
                           <td><div style={{fontWeight:600,fontSize:13}}>{c.nombre}</div><div className="text-muted" style={{fontSize:11}}>{c.descripcion?.slice(0,55)}{(c.descripcion?.length||0)>55?'…':''}</div></td>
-                          <td><span className="badge badge-gray" style={{fontSize:11,textTransform:'capitalize'}}>{c.tipo}</span><span style={{marginLeft:6,fontSize:11,color:'var(--fg-muted)'}}>{c.canal}</span></td>
+                          <td><span className="badge badge-gray" style={{fontSize:11,textTransform:'capitalize'}}>{c.tipo === 'base_propia' ? 'Base propia' : c.tipo}</span><span style={{marginLeft:6,fontSize:11,color:'var(--fg-muted)'}}>{c.canal}</span></td>
                           <td className="text-muted" style={{fontSize:12}}>{c.fecha_inicio}{c.fecha_fin ? ' → '+c.fecha_fin : ''}</td>
                           <td className="num">{money(c.presupuesto)}</td>
                           <td style={{fontWeight:700}}>{m.leadsGen}</td>
@@ -6149,6 +6153,7 @@ function Marketing() {
                           <td><span className={'badge '+estadoBadge[c.estado]} style={{textTransform:'capitalize'}}>{ESTADOS_LABEL[c.estado]}</span></td>
                           <td onClick={e=>e.stopPropagation()}>
                             <div className="row" style={{gap:6}}>
+                              <button className="btn btn-sm btn-secondary" onClick={()=>setAudiencia(c)}>Audiencia</button>
                               <button className="btn btn-sm btn-secondary" onClick={()=>abrirEditar(c)}>Editar</button>
                               {c.estado==='borrador'&&<button className="btn btn-sm btn-primary" onClick={()=>cambiarEstadoCampana(c.id,'activa')}>Activar</button>}
                               {c.estado==='activa'&&<button className="btn btn-sm btn-secondary" onClick={()=>cambiarEstadoCampana(c.id,'pausada')}>Pausar</button>}
@@ -6204,7 +6209,7 @@ function Marketing() {
               <div style={{padding:'0 24px 24px'}}>
                 <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
                   <span className={'badge '+estadoBadge[c.estado]}>{ESTADOS_LABEL[c.estado]}</span>
-                  <span className="badge badge-gray" style={{textTransform:'capitalize'}}>{c.tipo}</span>
+                  <span className="badge badge-gray" style={{textTransform:'capitalize'}}>{c.tipo === 'base_propia' ? 'Base propia' : c.tipo}</span>
                   <span className="badge badge-gray">{c.canal}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
@@ -6236,6 +6241,7 @@ function Marketing() {
                   </>
                 )}
                 <div className="row" style={{gap:8,marginTop:16}}>
+                  <button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>setAudiencia(c)}>Audiencia</button>
                   <button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>abrirEditar(c)}>Editar</button>
                   {c.estado==='borrador'&&<button className="btn btn-primary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'activa');setDetalle({...c,estado:'activa'});}}>Activar</button>}
                   {c.estado==='activa'&&<button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'pausada');setDetalle({...c,estado:'pausada'});}}>Pausar</button>}
@@ -6260,11 +6266,6 @@ function Marketing() {
               <button className="icon-btn" onClick={cerrar}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardar}>
-              {formError && (
-                <div style={{padding:'10px 12px', border:'1px solid rgba(239,68,68,0.35)', background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderRadius:8, fontSize:12, marginBottom:14}}>
-                  {formError}
-                </div>
-              )}
               <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--fg-muted)'}}>Datos de la campaña</div>
               <div className="grid-2" style={{gap:14,marginBottom:20}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
@@ -6273,7 +6274,7 @@ function Marketing() {
                 </div>
                 <div className="input-group">
                   <label>Tipo</label>
-                  <select className="select" value={form.tipo} onChange={e=>upd('tipo',e.target.value)}>{TIPOS.map(t=><option key={t} value={t}>{t}</option>)}</select>
+                  <select className="select" value={form.tipo} onChange={e=>upd('tipo',e.target.value)}>{TIPOS.map(t=><option key={t} value={t}>{t === 'base_propia' ? 'Base propia' : t}</option>)}</select>
                 </div>
                 <div className="input-group">
                   <label>Canal</label>
@@ -6302,10 +6303,16 @@ function Marketing() {
                   <select className="select" value={form.estado} onChange={e=>upd('estado',e.target.value)}>{Object.entries(ESTADOS_LABEL).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Código de fuente (opcional)</label>
+                  <input className="input" value={form.fuente_codigo} onChange={e=>upd('fuente_codigo',e.target.value)}/>
+                  <small>Debe coincidir con la fuente que envía la landing.</small>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Descripción</label>
                   <textarea className="input" rows={3} value={form.descripcion} onChange={e=>upd('descripcion',e.target.value)} placeholder="Objetivo y público de la campaña"/>
                 </div>
               </div>
+              {formError && <div role="alert" style={{color:'var(--danger)', marginBottom:10}}>{formError}</div>}
               <div className="row" style={{justifyContent:'flex-end',gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrar} disabled={saving}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : (editando ? 'Guardar cambios' : 'Crear campaña')}</button>

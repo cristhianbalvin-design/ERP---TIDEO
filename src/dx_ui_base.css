@@ -24,6 +24,10 @@
   --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
 }
 .dx-ui .dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui .dx-ui-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:10px; margin-bottom:16px; }
+.dx-ui .dx-ui-kpi { display:flex; align-items:center; gap:8px; min-height:56px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui .dx-ui-kpi strong { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui .dx-ui-kpi span { color:var(--dx-ui-gray); font-size:12px; }
 .dx-ui .dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
 .dx-ui .dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
 .dx-ui .dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
