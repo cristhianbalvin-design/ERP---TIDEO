@@ -459,9 +459,11 @@ function MainLayout({ onShowApplicationWelcome }) {
   );
 }
 
+const ADMINISTRATION_HOME = 'dashboard';
+
 function ApplicationEntry() {
   const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard'));
-  const { setMobileMode, setMobileProfile } = useApp();
+  const { navigate, setMobileMode, setMobileProfile } = useApp();
   const enterAttendance = () => {
     setMobileProfile('asistencia');
     setMobileMode(true);
@@ -471,7 +473,7 @@ function ApplicationEntry() {
   return selected
     ? <MainLayout onShowApplicationWelcome={() => setSelected(false)} />
     : <ApplicationWelcome
-        onEnterAdministration={() => setSelected(true)}
+        onEnterAdministration={() => { navigate(ADMINISTRATION_HOME); setSelected(true); }}
         onEnterAttendance={enterAttendance}
       />;
 }
