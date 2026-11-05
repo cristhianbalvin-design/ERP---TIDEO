@@ -841,7 +841,7 @@ function Leads() {
     .filter(l => canUserSeeOwner({ viewer: authUser, ownerUserId: l.responsable_id, ownerName: l.responsable, users: usuarios, roles }))
     .filter(l =>
       l.nombre.toLowerCase().includes(query) ||
-      l.empresa_contacto.toLowerCase().includes(query) ||
+      (l.empresa_contacto || '').toLowerCase().includes(query) ||
       (l.necesidad || '').toLowerCase().includes(query)
     )
     .filter(l => !filterLeadFuente || l.fuente === filterLeadFuente)
@@ -873,7 +873,7 @@ function Leads() {
   const opcionesIndustria = industrias?.length ? industrias.map(i => i.nombre || i) : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'];
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [editandoLead, setEditandoLead] = useState(null);
-  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', numero_documento:'', tipo_documento:TIPO_DOCUMENTO_RUC, industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
+  const formNuevoBase = { nombre:'', cargo:'', linkedin_url:'', empresa_contacto:'', razon_social:'', numero_documento:'', tipo_documento:TIPO_DOCUMENTO_RUC, industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
   const [formNuevo, setFormNuevo] = useState(formNuevoBase);
   const [errores, setErrores] = useState({});
   const esPersonaNaturalForm = formNuevo.tipo_documento === TIPO_DOCUMENTO_DNI;
@@ -938,7 +938,7 @@ function Leads() {
       contacto_cargo: modalConvertir.cargo || '',
       contacto_telefono: modalConvertir.telefono || '',
       contacto_email: modalConvertir.email || '',
-      nombre_oportunidad: `${modalConvertir.necesidad?.slice(0,50) || 'Venta'} — ${modalConvertir.empresa_contacto}`,
+      nombre_oportunidad: `${String(modalConvertir.necesidad || '').split(/\r?\n/)[0].trim().slice(0,50) || 'Venta'} — ${String(modalConvertir.empresa_contacto || modalConvertir.nombre || modalConvertir.nombre_contacto || '').trim()}`,
       monto_estimado: potencial.monto || '',
       moneda: (() => { const m = potencial.moneda || empresa?.moneda || 'PEN'; const codes = monedasActivas.map(x => x.codigo); return codes.includes(m) ? m : (codes[0] || empresa?.moneda || 'PEN'); })(),
       etapa_inicial: 'calificacion'
@@ -995,6 +995,7 @@ function Leads() {
       ...formNuevoBase,
       nombre: lead.nombre || lead.nombre_contacto || '',
       cargo: lead.cargo || '',
+      linkedin_url: lead.linkedin_url || '',
       empresa_contacto: lead.empresa_contacto || lead.empresa_nombre || '',
       razon_social: lead.razon_social || '',
       numero_documento: lead.numero_documento || '',
@@ -1044,13 +1045,14 @@ function Leads() {
     } : {
       nombre: formNuevo.nombre,
       cargo: formNuevo.cargo,
-      empresa_contacto: esPersonaNatural ? null : formNuevo.empresa_contacto,
+      empresa_contacto: formNuevo.empresa_contacto,
       razon_social: esPersonaNatural ? null : (formNuevo.razon_social || formNuevo.empresa_contacto),
       numero_documento: formNuevo.numero_documento || null,
       tipo_documento: formNuevo.tipo_documento,
       industria: formNuevo.industria || null,
       telefono: formNuevo.telefono,
       email: formNuevo.email,
+      linkedin_url: formNuevo.linkedin_url || null,
       fuente: formNuevo.fuente || 'Manual',
       campana_id: formNuevo.campana_id || null,
       campana: campanas.find(c => c.id === formNuevo.campana_id)?.nombre || null,
@@ -1130,9 +1132,8 @@ function Leads() {
 
   const getEtiquetaTipoLead = (lead) => {
     const tipo = String(lead.tipo_documento || '').trim().toUpperCase();
-    const documento = String(lead.numero_documento || '').replace(/\D/g, '');
-    const esPersona = tipo === TIPO_DOCUMENTO_DNI || (!tipo && documento.length === 8);
-    const esEmpresa = tipo === TIPO_DOCUMENTO_RUC || (!tipo && documento.length === 11);
+    const esPersona = tipo === TIPO_DOCUMENTO_DNI;
+    const esEmpresa = tipo === TIPO_DOCUMENTO_RUC || tipo === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO;
 
     if (esPersona) return { label: 'PERSONA', color: '#be185d', background: '#fce7f3', border: '#f9a8d4' };
     if (esEmpresa) return { label: 'EMPRESA', color: '#1d4ed8', background: '#dbeafe', border: '#93c5fd' };
@@ -1531,8 +1532,8 @@ function Leads() {
                 <div style={{padding:'20px 22px 22px', background:'linear-gradient(135deg, rgba(6,182,212,0.10), rgba(26,43,74,0.04))', borderBottom:'1px solid var(--border)'}}>
                   <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, alignItems:'stretch'}}>
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
-                      <div className="eyebrow" style={{marginBottom:8}}>Empresa objetivo</div>
-                      <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{sel.empresa_contacto || 'Empresa pendiente'}</div>
+                      <div className="eyebrow" style={{marginBottom:8}}>{sel.tipo_documento === TIPO_DOCUMENTO_DNI ? "PERSONA" : "EMPRESA"}</div>
+                      <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{sel.tipo_documento === TIPO_DOCUMENTO_DNI ? (sel.nombre || sel.nombre_contacto || 'Sin nombre') : (sel.empresa_contacto || 'Empresa pendiente')}</div>
                        <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.razon_social || sel.nombre || sel.nombre_contacto || 'Sin razon social legal'}{sel.numero_documento ? ` · ${sel.tipo_documento || TIPO_DOCUMENTO_RUC} ${sel.numero_documento}` : ''}</div>
                     </div>
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
@@ -1548,7 +1549,7 @@ function Leads() {
                     <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
                       <SectionTitle icon={I.building} title="Empresa" color="var(--cyan)" />
                       <div style={{display:'grid', gap:13}}>
-                        <Field label="Nombre comercial" value={sel.empresa_contacto} strong />
+                        <Field label={sel.tipo_documento === TIPO_DOCUMENTO_DNI ? "Empresa donde labora" : "Nombre comercial"} value={sel.empresa_contacto} strong />
                          {sel.tipo_documento !== TIPO_DOCUMENTO_DNI && <Field label="Razon social legal" value={sel.razon_social} />}
                          <Field label={sel.tipo_documento || TIPO_DOCUMENTO_RUC} value={sel.numero_documento} />
                         <Field label="Industria" value={sel.industria} />
@@ -1561,6 +1562,7 @@ function Leads() {
                         <Field label="Cargo" value={sel.cargo} />
                         <Field label="Telefono" value={sel.telefono} />
                         <Field label="Email" value={sel.email} />
+                        <div><div className="eyebrow">LinkedIn</div>{(() => { try { const raw = String(sel.linkedin_url || '').trim(); if (!raw || /[\s\\]/.test(raw)) return 'Sin dato'; const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); return url.protocol === 'https:' && !url.username && !url.password ? <a href={url.href} target="_blank" rel="noopener noreferrer">{raw}</a> : raw; } catch { return sel.linkedin_url || 'Sin dato'; } })()}</div>
                       </div>
                     </div>
                   </div>
@@ -2186,12 +2188,14 @@ function Leads() {
                 <input className={'input'+(errores.telefono?' border-danger':'')} type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formNuevo.telefono} onChange={e=>updateNuevo('telefono',sanitizePhone(e.target.value))} placeholder="9XXXXXXXX" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.telefono && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.telefono}</span>}
               </div>
+              <div className="input-group"><label>LinkedIn {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" value={formNuevo.linkedin_url} onChange={e=>updateNuevo('linkedin_url',e.target.value)} placeholder="https://linkedin.com/in/..." disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" type="email" value={formNuevo.email} onChange={e=>updateNuevo('email',e.target.value)} placeholder="contacto@empresa.pe" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>{esPersonaNaturalForm ? 'Datos del documento' : 'Datos de la empresa'}</div>
             {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde Cuentas y Contactos.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              {esPersonaNaturalForm && <div className="input-group"><label>Empresa donde labora</label><input className="input" value={formNuevo.empresa_contacto} onChange={e=>updateNuevo('empresa_contacto',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>}
               {!esPersonaNaturalForm && <>
               <div className="input-group">
                 <label>Nombre comercial * {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label>

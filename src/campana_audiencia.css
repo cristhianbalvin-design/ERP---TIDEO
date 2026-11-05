@@ -51,3 +51,8 @@
 @container (width < 1060px) { .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @container (width < 601px) { .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @container (width < 300px) { .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:minmax(0,1fr); } }
+
+.dx-camp-aud-tipo { display:inline-block; margin-left:5px; padding:2px 6px; border-radius:5px; font-size:10px; font-weight:700; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-camp-aud-tipo.is-empresa { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-camp-aud-preview { display:grid; gap:6px; padding:14px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-bg); overflow-wrap:anywhere; }
+.dx-camp-aud-preview span { color:var(--dx-ui-gray); display:inline-block; min-width:100px; }
