@@ -35,13 +35,30 @@ export const campanaAudienciaService = {
       })[0] || [];
     const mapa = {
       nombre: "nombre",
-      nombres: "nombre",
-      "nombre completo": "nombre",
+      nombres: "nombres",
+      apellidos: "apellidos",
+      apellido: "apellidos",
+      empresa: "empresa_nombre",
+      "empresa nombre": "empresa_nombre",
+      empresa_nombre: "empresa_nombre",
+      compania: "empresa_nombre",
+      cargo: "cargo",
+      puesto: "cargo",
+      estado: "estado",
+      tipo: "tipo_cliente",
+      "tipo de cliente": "tipo_cliente",
+      tipo_cliente: "tipo_cliente",
+      observacion: "observacion",
+      observaciones: "observacion",
+      nota: "observacion",
+      "nombre completo": "nombre_completo",
       linkedin: "linkedin_url",
       linkedin_url: "linkedin_url",
       perfil: "linkedin_url",
       "perfil de linkedin": "linkedin_url",
       "url linkedin": "linkedin_url",
+      "linkedin url": "linkedin_url",
+      "url de linkedin": "linkedin_url",
       correo: "email",
       "correo electronico": "email",
       email: "email",
@@ -57,32 +74,31 @@ export const campanaAudienciaService = {
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .trim();
-    if (!encabezados.some((k) => mapa[normalizar(k)] === "nombre"))
+    if (!encabezados.some((k) => ["nombre", "nombres", "nombre_completo"].includes(mapa[normalizar(k)])))
       throw new Error(
         "No se reconoce la columna nombre. Agrega un encabezado nombre, nombres o nombre completo.",
       );
     const datos = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
-    return datos.map((f) =>
-      Object.fromEntries(
-        Object.entries(f)
-          .filter(([k]) => mapa[normalizar(k)])
+    return datos.map((f) => {
+      const fila = Object.fromEntries(
+        Object.entries(f).filter(([k]) => mapa[normalizar(k)])
           .map(([k, v]) => [mapa[normalizar(k)], String(v)]),
-      ),
-    );
+      );
+      const nombre = fila.nombre_completo !== undefined
+        ? fila.nombre_completo
+        : [fila.nombres || fila.nombre, fila.apellidos].filter(Boolean).join(" ");
+      delete fila.nombre_completo;
+      delete fila.nombres;
+      delete fila.apellidos;
+      return { ...fila, nombre: String(nombre || "").trim().replace(/\s+/g, " ") };
+    });
   },
   descargarPlantilla() {
     const libro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       libro,
       XLSX.utils.aoa_to_sheet([
-        [
-          "nombre",
-          "linkedin",
-          "correo",
-          "telefono",
-          "etiqueta",
-          "consentimiento",
-        ],
+        ["Apellidos", "Nombres", "Linkedin", "Empresa", "Cargo", "Estado", "Correo", "Teléfono", "Observación"],
       ]),
       "Audiencia",
     );
@@ -124,7 +140,7 @@ export const campanaAudienciaService = {
   async guardar(m, f) {
     const sb = await getSupabaseClient();
     return resultado(
-      sb.rpc("guardar_miembro_campana", {
+      sb.rpc("guardar_ficha_miembro_campana", {
         p_miembro_id: m.id,
         p_estado: f.estado,
         p_canal: f.canal,
@@ -132,6 +148,9 @@ export const campanaAudienciaService = {
         p_proximo_seguimiento: f.proximo_seguimiento || null,
         p_nota: f.nota || null,
         p_consentimiento: f.consentimiento,
+        p_tipo_cliente: f.tipo_cliente,
+        p_empresa_nombre: f.empresa_nombre || null,
+        p_cargo: f.cargo || null,
       }),
     );
   },

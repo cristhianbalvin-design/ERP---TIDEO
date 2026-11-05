@@ -41,6 +41,10 @@ const vencido = (m) =>
 const vacio = (v) => v || "Sin dato";
 const inicial = {
   nombre: "",
+  tipo_cliente: "persona",
+  empresa_nombre: "",
+  cargo: "",
+  observacion: "",
   linkedin_url: "",
   email: "",
   telefono: "",
@@ -463,8 +467,10 @@ export default function CampanaAudiencia({ campana, onVolver }) {
   const guardarModal = async () => {
     setErrorModal("");
     setErrores({});
-    if (modal === "persona") {
+    if (modal === "persona" || modal === "ficha") {
       const e = {};
+      if (form.tipo_cliente === "empresa" && !form.empresa_nombre?.trim()) e.empresa_nombre = "Escribe la empresa.";
+      if (modal === "persona") {
       if (!form.nombre?.trim()) e.nombre = "Escribe el nombre.";
       if (
         ![form.linkedin_url, form.email, form.telefono].some((v) => v?.trim())
@@ -472,6 +478,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
         e.linkedin_url = "Ingresa LinkedIn, correo o teléfono.";
       if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
         e.email = "Ingresa un correo válido.";
+      }
       if (Object.keys(e).length) {
         setErrores(e);
         requestAnimationFrame(() =>
@@ -593,6 +600,8 @@ export default function CampanaAudiencia({ campana, onVolver }) {
           m.contacto?.telefono,
           m.contacto?.linkedin_url,
           m.contacto?.etiqueta,
+          m.contacto?.empresa_nombre,
+          m.contacto?.cargo,
         ].some((v) => normal(v).includes(normal(consulta))),
       ),
     [miembros, consulta],
@@ -636,6 +645,9 @@ export default function CampanaAudiencia({ campana, onVolver }) {
       proximo_seguimiento: m.proximo_seguimiento || "",
       nota: m.nota || "",
       consentimiento: m.contacto?.consentimiento || "por_confirmar",
+      tipo_cliente: m.contacto?.tipo_cliente || "persona",
+      empresa_nombre: m.contacto?.empresa_nombre || "",
+      cargo: m.contacto?.cargo || "",
     });
   const accion = (m) => (
     <div
@@ -693,8 +705,9 @@ export default function CampanaAudiencia({ campana, onVolver }) {
   );
   const persona = (m) => (
     <>
-      <strong>{m.contacto?.nombre}</strong>
-      <small>{vacio(m.contacto?.etiqueta)}</small>
+      <strong>{m.contacto?.nombre} <span className={`dx-camp-aud-tipo ${m.contacto?.tipo_cliente === "empresa" ? "is-empresa" : ""}`}>{m.contacto?.tipo_cliente === "empresa" ? "EMPRESA" : "PERSONA"}</span></strong>
+      <small>{[m.contacto?.cargo, m.contacto?.empresa_nombre].filter(Boolean).join(" · ") || "Sin dato"}</small>
+      {m.contacto?.etiqueta && <small>{m.contacto.etiqueta}</small>}
       {m.contacto?.consentimiento === "por_confirmar" && (
         <small>Consentimiento por confirmar</small>
       )}
@@ -711,7 +724,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
     <div className="dx-ui-field" key={nombre}>
       <label htmlFor={`aud-${nombre}`}>
         {etiqueta}
-        {nombre === "nombre" && <span className="dx-ui-required"> *</span>}
+        {(nombre === "nombre" || (nombre === "empresa_nombre" && form.tipo_cliente === "empresa")) && <span className="dx-ui-required"> *</span>}
       </label>
       {modal === "ficha" && !editar ? (
         <span>
@@ -721,6 +734,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
         <input
           id={`aud-${nombre}`}
           type={tipo}
+          placeholder={nombre === "nombre" ? "Nombres y apellidos" : undefined}
           readOnly={modal === "ficha" && !editar}
           value={form[nombre] || ""}
           aria-invalid={!!errores[nombre]}
@@ -732,6 +746,22 @@ export default function CampanaAudiencia({ campana, onVolver }) {
           {errores[nombre]}
         </span>
       )}
+    </div>
+  );
+  const tipoCliente = (
+    <div className="dx-ui-field">
+      <label htmlFor="aud-tipo">Tipo de cliente <span className="dx-ui-required">*</span></label>
+      {modal === "ficha" && !editar ? <span>{form.tipo_cliente === "empresa" ? "Empresa" : "Persona"}</span> :
+        <select id="aud-tipo" className="dx-ui-select" value={form.tipo_cliente} onChange={(e) => setForm({ ...form, tipo_cliente: e.target.value })}>
+          <option value="persona">Persona</option><option value="empresa">Empresa</option>
+        </select>}
+    </div>
+  );
+  const observacion = (key) => (
+    <div className="dx-ui-field dx-camp-aud-wide">
+      <label htmlFor="aud-observacion">Observación</label>
+      {modal === "ficha" && !editar ? <span>{vacio(form[key])}</span> :
+        <textarea id="aud-observacion" rows={3} value={form[key] || ""} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />}
     </div>
   );
   return (
@@ -823,7 +853,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
           <label className="dx-ui-search">
             <input
               aria-label="Buscar en la audiencia"
-              placeholder="Buscar nombre, correo o etiqueta"
+              placeholder="Buscar nombre, empresa, cargo o correo"
               value={consulta}
               onChange={(e) => setConsulta(e.target.value)}
             />
@@ -955,11 +985,14 @@ export default function CampanaAudiencia({ campana, onVolver }) {
             )}
             {modal === "persona" && (
               <div className="dx-ui-form-grid is-2">
-                {campo("nombre", "Nombre")}
-                {campo("etiqueta", "Etiqueta")}
+                {tipoCliente}
+                {campo("nombre", "Nombre completo")}
+                {campo("empresa_nombre", form.tipo_cliente === "empresa" ? "Empresa" : "Empresa donde labora")}
+                {campo("cargo", "Cargo")}
                 {campo("linkedin_url", "Perfil de LinkedIn")}
                 {campo("email", "Correo", "email")}
                 {campo("telefono", "Teléfono")}
+                {campo("etiqueta", "Etiqueta")}
                 <div className="dx-ui-field">
                   <label htmlFor="aud-cons">
                     Consentimiento para promociones
@@ -979,6 +1012,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                     ))}
                   </select>
                 </div>
+                {observacion("observacion")}
               </div>
             )}
             {modal === "ficha" && (
@@ -1040,21 +1074,15 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                   ))}
                   {campo("ultimo_contacto", "Último contacto", "date")}
                   {campo("proximo_seguimiento", "Próximo seguimiento", "date")}
-                  <div className="dx-ui-field dx-camp-aud-wide">
-                    <label htmlFor="aud-nota">Nota</label>
-                    {!editar ? (
-                      <span>{vacio(form.nota)}</span>
-                    ) : (
-                      <textarea
-                        id="aud-nota"
-                        rows={3}
-                        value={form.nota}
-                        onChange={(e) =>
-                          setForm({ ...form, nota: e.target.value })
-                        }
-                      />
-                    )}
-                  </div>
+                  {tipoCliente}
+                  {campo("cargo", "Cargo")}
+                  {campo("empresa_nombre", "Empresa")}
+                  <span className="dx-ui-field-hint dx-camp-aud-wide">Persona: dónde labora. Empresa: quién compra.</span>
+                  {observacion("nota")}
+                  {!form.miembro.lead_id && <div className="dx-camp-aud-preview dx-camp-aud-wide">
+                    <strong>Así llegará al lead</strong>
+                    {[["Tipo", form.tipo_cliente === "empresa" ? "EMPRESA" : "PERSONA"], ["Empresa", form.empresa_nombre], ["Cargo", form.cargo], ["LinkedIn", form.miembro.contacto?.linkedin_url], ["Oportunidad", campana.nombre], ["Observación", form.nota]].map(([label, value]) => <div key={label}><span>{label}</span> {vacio(value)}</div>)}
+                  </div>}
                 </div>
               </>
             )}
@@ -1069,8 +1097,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                     onChange={leerArchivo}
                   />
                   <span className="dx-ui-field-hint">
-                    Columnas: nombre, LinkedIn, correo, teléfono, etiqueta y
-                    consentimiento.
+                    Columnas: Apellidos, Nombres, LinkedIn, Empresa, Cargo, Estado, correo, teléfono, etiqueta, consentimiento, observación y tipo.
                   </span>
                 </div>
                 <button
@@ -1099,6 +1126,8 @@ export default function CampanaAudiencia({ campana, onVolver }) {
                     ))}
                   </div>
                 )}
+                {resumen && <p className="dx-camp-aud-hint">Estado: {Object.entries(resumen.estados || {}).map(([k, n]) => `${ESTADOS[k] || k}: ${n}`).join(" · ") || "Sin personas agregadas"} · {resumen.estado_sin_reconocer || 0} estado sin reconocer, pasarán a Por enviar.</p>}
+                <p className="dx-camp-aud-hint">Sin columna de tipo se importan como Persona. Para estados ya avanzados, la fecha de último contacto será la de importación.</p>
                 <p className="dx-camp-aud-hint">
                   Las personas repetidas se reconocen por LinkedIn, correo o
                   teléfono. Quienes pidieron no ser contactadas no se agregarán.
