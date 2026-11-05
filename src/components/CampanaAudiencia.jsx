@@ -707,7 +707,7 @@ export default function CampanaAudiencia({ campana, onVolver }) {
     <>
       <strong>{m.contacto?.nombre} <span className={`dx-camp-aud-tipo ${m.contacto?.tipo_cliente === "empresa" ? "is-empresa" : ""}`}>{m.contacto?.tipo_cliente === "empresa" ? "EMPRESA" : "PERSONA"}</span></strong>
       <small>{[m.contacto?.cargo, m.contacto?.empresa_nombre].filter(Boolean).join(" · ") || "Sin dato"}</small>
-      <small>{vacio(m.contacto?.etiqueta)}</small>
+      {m.contacto?.etiqueta && <small>{m.contacto.etiqueta}</small>}
       {m.contacto?.consentimiento === "por_confirmar" && (
         <small>Consentimiento por confirmar</small>
       )}
