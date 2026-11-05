@@ -424,6 +424,7 @@ export function Sidebar({
     app.cxc, app.cxp, app.facturas, app.valorizaciones, app.financiamientos, app.movimientosBanco,
     app.evaluacionEvaluaciones, app.evaluacionPlantillas, app.personalOperativo, app.personalAdmin, app.authUser?.id
   ]);
+  const activeItemKey = active === 'hoja_costeo_wizard' ? 'hoja_costeo' : active;
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
     const visibleItems = group.items.filter(it =>
@@ -448,9 +449,9 @@ export function Sidebar({
       section: getSectionLabel(key, group.section),
       icon: SECTION_ICONS[group.section] || visibleItems[0]?.icon || I.package,
       items: visibleItems,
-      active: visibleItems.some(it => it.key === active)
+      active: visibleItems.some(it => it.key === activeItemKey)
     };
-  }).filter(Boolean), [active, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
+  }).filter(Boolean), [activeItemKey, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
   const activeGroupKey = visibleGroups.find(group => group.active && !group.standalone)?.key;
   const selectedKey = panelKey || activeGroupKey;
   const selected = visibleGroups.find(group => group.key === selectedKey && !group.standalone);
@@ -580,13 +581,13 @@ export function Sidebar({
     </button>;
   };
   const row = item => <div
-    className={'dx-nav-row' + (active === item.key ? ' is-active' : '')}
+    className={'dx-nav-row' + (activeItemKey === item.key ? ' is-active' : '')}
     key={item.key}>
     <button
       type="button"
       className="dx-nav-item"
       onClick={() => handleItem(item)}
-      aria-current={active === item.key ? 'page' : undefined}>{item.icon}<span>{item.label}</span>{item.badge && <b className="dx-nav-badge">{item.badge}</b>}</button>
+      aria-current={activeItemKey === item.key ? 'page' : undefined}>{item.icon}<span>{item.label}</span>{item.badge && <b className="dx-nav-badge">{item.badge}</b>}</button>
     <button
       type="button"
       className={'dx-nav-star' + (menuUsuario.favoritos.includes(item.key) ? ' is-favorite' : '')}
