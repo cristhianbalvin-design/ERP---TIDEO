@@ -11970,6 +11970,15 @@ export function AppProvider({ children }) {
     ? cuentas.filter(cuenta => cuenta?.empresa_id === empresa.id)
     : cuentas;
 
+  const recargarLeads = async () => {
+    const sb = await getSupabaseClient();
+    const comprobacion = await sb.from('leads').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id);
+    if (comprobacion.error) throw comprobacion.error;
+    const data = await loadCrmFromSupabase(sb, empresa.id);
+    if (!data) throw new Error('No se pudieron cargar los leads.');
+    setLeads(recalcularDiasSinActividadLeads(data.leads || [], data.actividades || [], data.agendaEventos || []));
+  };
+
   const contextValue = {
     isDataLoaded,
     isRrhhLoaded,
@@ -11990,7 +11999,7 @@ export function AppProvider({ children }) {
     usuarios, setUsuarios,
     posiciones, posicionesUsuarios, unidadesOrganizacionales,
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
-    leads, setLeads, updateLeadState, historialEstados,
+    leads, setLeads, recargarLeads, updateLeadState, historialEstados,
     campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
     cuentas: cuentasDelTenant, setCuentas, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
