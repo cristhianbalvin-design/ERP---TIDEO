@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import L from 'leaflet';
 import leafletCss from 'leaflet/dist/leaflet.css?inline';
 import { crearLugar } from '../../../services/transporteLugaresService.js';
 import { siguienteCodigoRuta, guardarRutaCompuesta } from '../../../services/transporteRutasService.js';
@@ -7,6 +6,10 @@ import {
   catalogoTiposUnidad, estimarTrayecto, fechaActualLocal, parsearCoordenadasMaps,
   encontrarRutaDuplicada, formatearImporte, formatearValorUnidad, validarComposerRuta,
 } from './transporteUtils.js';
+
+// Leaflet usa window al cargarse: se importa solo cuando se abre el mapa.
+let leafletPromise = null;
+const cargarLeaflet = () => (leafletPromise ||= import('leaflet').then(mod => mod.default || mod));
 
 const CARGAS = ['General', 'Refrigerada', 'Peligrosa', 'Granel', 'Sobredimensionada'];
 const PLACE_TYPES = {
@@ -208,6 +211,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
   const [submitted, setSubmitted] = useState(false);
   const mapNode = useRef(null);
   const mapRef = useRef(null);
+  const [L, setL] = useState(null);
   const markerRef = useRef(null);
   const mapPointsRef = useRef([]);
   const lineRef = useRef(null);
@@ -259,7 +263,13 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     destination?.longitud, manualEstimate]);
 
   useEffect(() => {
-    if (!mapNode.current || mapRef.current) return undefined;
+    let vigente = true;
+    cargarLeaflet().then(lib => { if (vigente) setL(() => lib); }).catch(() => {});
+    return () => { vigente = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!L || !mapNode.current || mapRef.current) return undefined;
     const map = L.map(mapNode.current, { scrollWheelZoom: true })
       .setView([-12.6, -75.5], 6);
     mapRef.current = map;
@@ -282,11 +292,11 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [L]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!L || !map) return;
     markerRef.current?.remove();
     lineRef.current?.remove();
     routeLayersRef.current?.clearLayers();
@@ -320,7 +330,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, onClose, onC
     if (showPlace && mapPoint) points.push([mapPoint.lat, mapPoint.lng]);
     mapPointsRef.current = points;
     encuadrarPuntosMapa(map, points);
-  }, [originPoint?.[0], originPoint?.[1], destinationPoint?.[0], destinationPoint?.[1],
+  }, [L, originPoint?.[0], originPoint?.[1], destinationPoint?.[0], destinationPoint?.[1],
     showPlace, mapPoint?.lat, mapPoint?.lng]);
 
   useEffect(() => {
