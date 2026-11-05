@@ -7882,7 +7882,7 @@ width:20px;height:20px}
   background:rgba(15,27,48,.48);
 }
 .dx-transporte-composer {
-  container-type:inline-size;
+  container:panel / inline-size;
   display:flex;
   flex-direction:column;
   width:min(1120px,100%);
@@ -8665,3 +8665,125 @@ width:20px;height:20px}
 .dx-transporte-composer-segmented button { flex:1 1 auto; min-width:max-content; white-space:nowrap; }
 .dx-transporte-composer-duplicate>span { flex:1 1 100%; }
 .dx-transporte-composer-duplicate .dx-btn.link { min-height:0; padding:0; border:0; background:transparent; color:inherit; font-weight:600; }
+
+/* TMS editor panels and shared Leaflet map */
+.dx-transporte-map { position:relative; min-width:0; overflow:hidden; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-head); }
+.dx-transporte-map-legend { position:absolute; z-index:800; left:12px; bottom:12px; max-width:calc(100% - 24px); padding:7px 12px; border:1px solid var(--dx-ui-line); border-radius:999px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font-size:12px; box-shadow:0 2px 8px rgba(26,43,74,.12); }
+.dx-transporte-composer-map { min-height:300px; }
+.dx-transporte-lugar-layout { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(250px,.65fr); gap:20px; }
+.dx-transporte-lugar-layout > form { min-width:0; }
+.dx-transporte-lugar-aside { display:grid; align-content:start; gap:14px; }
+.dx-transporte-lugar-aside section { padding:16px; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); color:var(--dx-ui-ink); }
+.dx-transporte-lugar-map-section { grid-column:1/-1; display:grid; gap:10px; }
+.dx-transporte-lugar-map { min-height:300px; }
+.dx-transporte-lugar-map-canvas { min-height:300px; }
+.dx-transporte-lugar-more { grid-column:1/-1; }
+
+
+
+.dx-transporte-composer-marker span { line-height:1; }
+.dx-transporte-modal.dx-work-card { width:min(1160px,100%) !important; max-width:min(1160px,100%) !important; height:100dvh !important; max-height:100dvh !important; margin-left:auto; overflow-y:auto; border-radius:14px 0 0 14px !important; }
+.dx-transporte-lugar-panel .dx-transporte-lugar-layout { container-type:inline-size; }
+@container (max-width:760px) { .dx-transporte-lugar-layout { grid-template-columns:minmax(0,1fr); } .dx-transporte-lugar-aside { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container (max-width:480px) { .dx-transporte-lugar-layout { gap:12px; } .dx-transporte-lugar-aside { grid-template-columns:minmax(0,1fr); } }
+[data-theme='dark'] .dx-transporte-map-legend,[data-theme='dark'] .dx-transporte-lugar-aside section { background:var(--dx-ui-card); color:var(--dx-ui-ink); border-color:var(--dx-ui-line); }
+
+
+.dx-transporte-tarifa-layout { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr); gap:24px; }
+.dx-transporte-tarifa-layout form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:16px; }
+.dx-transporte-tarifa-layout form > fieldset,.dx-transporte-tarifa-layout form > details,.dx-transporte-tarifa-layout form > .dx-transporte-composer-duplicate,.dx-transporte-tarifa-layout form > .dx-transporte-error,.dx-transporte-tarifa-layout form > .dx-transporte-confirm { grid-column:1/-1; }
+.dx-transporte-tarifa-who,.dx-transporte-tarifa-mode { min-width:0; margin:0; padding:12px; border:1px solid var(--dx-ui-line); border-radius:10px; color:var(--dx-ui-ink); }
+.dx-transporte-tarifa-who legend,.dx-transporte-tarifa-mode legend { padding:0 5px; font-weight:600; }
+.dx-transporte-tarifa-who label { display:inline-flex; align-items:center; gap:7px; margin:4px 12px 10px 0; }
+.dx-transporte-tarifa-route-meta { grid-column:1/-1; margin:-10px 0 0; color:var(--dx-ui-gray); font-size:12px; }
+.dx-transporte-tarifa-aside { display:grid; align-content:start; gap:16px; }
+.dx-transporte-tarifa-aside section { padding:16px; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); color:var(--dx-ui-ink); }
+.dx-transporte-tarifa-map,.dx-transporte-tarifa-map-canvas { min-height:260px; }
+.dx-transporte-tarifa-notes { grid-column:1/-1; }
+.dx-transporte-tarifa-editor.dx-work-card .dx-transporte-tarifa-layout { container-type:inline-size; }
+@container (max-width:760px) { .dx-transporte-tarifa-layout { grid-template-columns:minmax(0,1fr); } .dx-transporte-tarifa-aside { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container (max-width:480px) { .dx-transporte-tarifa-layout form { grid-template-columns:minmax(0,1fr); } .dx-transporte-tarifa-aside { grid-template-columns:minmax(0,1fr); } }
+[data-theme='dark'] .dx-transporte-tarifa-who,[data-theme='dark'] .dx-transporte-tarifa-mode,[data-theme='dark'] .dx-transporte-tarifa-aside section { border-color:var(--dx-ui-line); background:var(--dx-ui-card); color:var(--dx-ui-ink); }
+
+.dx-transporte-lugar-types { display:flex; flex-wrap:wrap; gap:8px; }
+.dx-transporte-lugar-types button { display:flex; align-items:center; gap:7px; min-height:40px; padding:8px 10px; border:1px solid var(--dx-ui-border); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); cursor:pointer; }
+.dx-transporte-lugar-types button.is-on { border-color:var(--dx-ui-cyan); background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-transporte-lugar-types i { font-style:normal; font-size:16px; }
+[data-theme='dark'] .dx-transporte-lugar-types button { border-color:var(--dx-ui-line); background:var(--dx-ui-card); color:var(--dx-ui-ink); }
+[data-theme='dark'] .dx-transporte-lugar-types button.is-on { border-color:var(--dx-ui-cyan); background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+
+.dx-transporte-modal.dx-work-card { container-type:inline-size; }
+
+/* Shared editor panels: layout and responsive behavior follows the composer mock. */
+.dx-transporte-place-body,.dx-transporte-tarifa-body { min-height:0; }
+.dx-transporte-place-form,.dx-transporte-tarifa-form { gap:18px; }
+.dx-transporte-place-aside,.dx-transporte-tarifa-aside { display:grid; align-content:start; gap:14px; overflow:auto; padding:20px 24px; background:var(--dx-ui-head); }
+.dx-transporte-place-map,.dx-transporte-place-map-canvas { height:400px; min-height:400px; }
+.dx-transporte-tarifa-map,.dx-transporte-tarifa-map-canvas { height:220px; min-height:220px; }
+.dx-transporte-place-aside .dx-transporte-composer-preview,.dx-transporte-tarifa-aside .dx-transporte-composer-preview { display:grid; gap:12px; }
+.dx-transporte-place-search-result { display:grid; grid-template-columns:38px minmax(0,1fr); align-items:center; gap:10px; }
+.dx-transporte-place-search-result>i { display:grid; width:36px; height:36px; place-items:center; border-radius:50%; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-size:18px; font-style:normal; }
+.dx-transporte-place-search-result>span,.dx-transporte-place-route>span { display:grid; gap:3px; min-width:0; }
+.dx-transporte-place-search-result small,.dx-transporte-place-route small { color:var(--dx-ui-gray); }
+.dx-transporte-place-route { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--dx-ui-line); }
+.dx-transporte-place-route>i { padding:5px 8px; border-radius:999px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-size:11px; font-style:normal; font-weight:700; }
+.dx-transporte-place-status { display:flex; min-height:54px; flex-wrap:wrap; align-items:center; gap:8px; padding:12px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-head); }
+.dx-transporte-place-status>small { color:var(--dx-ui-gray); }
+.dx-transporte-place-gps { padding:4px 8px; border-radius:999px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-transporte-place-or { display:flex; align-items:center; gap:10px; color:var(--dx-ui-gray); font-size:12px; }
+.dx-transporte-place-label { color:var(--dx-ui-gray); font-size:12px; font-weight:700; }
+.dx-transporte-composer-alert { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:11px 13px; border:1px solid transparent; border-radius:10px; font-size:13px; }
+.dx-transporte-composer-alert.is-amber { border-color:var(--dx-ui-line); background:#FFF3E0; color:#8A4B00; }
+.dx-transporte-composer-alert.is-cyan { border-color:var(--dx-ui-line); background:#E0F7FA; color:#0B4F5A; }
+.dx-transporte-composer-alert.is-red { border-color:var(--dx-ui-line); background:#FDE8E7; color:#9B2C2C; }
+.dx-transporte-composer-alert .dx-btn.link { min-height:0; padding:0; border:0; background:transparent; color:inherit; font-weight:700; }
+.dx-transporte-tarifa-form .dx-transporte-composer-section { min-width:0; }
+.dx-transporte-tarifa-rsel { display:flex; width:100%; min-height:58px; align-items:center; gap:12px; padding:9px 12px; border:1px solid var(--dx-ui-border); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); text-align:left; cursor:pointer; }
+.dx-transporte-tarifa-rsel>b,.dx-transporte-tarifa-options>button>b { padding:5px 8px; border-radius:7px; background:var(--dx-ui-navy); color:#fff; font-size:11px; }
+.dx-transporte-tarifa-rsel>span,.dx-transporte-tarifa-options>button>span { display:grid; min-width:0; gap:3px; }
+.dx-transporte-tarifa-rsel small,.dx-transporte-tarifa-options small { color:var(--dx-ui-gray); }
+.dx-transporte-tarifa-rsel>i { margin-left:auto; color:var(--dx-ui-gray); font-style:normal; }
+.dx-transporte-tarifa-options { position:absolute; z-index:9; display:grid; width:min(520px,calc(100% - 48px)); max-height:280px; overflow:auto; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); box-shadow:0 8px 24px rgba(15,27,48,.16); }
+.dx-transporte-tarifa-options>button { display:flex; align-items:center; gap:10px; padding:10px 12px; border:0; border-bottom:1px solid var(--dx-ui-line); background:transparent; color:var(--dx-ui-ink); text-align:left; cursor:pointer; }
+.dx-transporte-tarifa-segmented { display:flex; width:100%; gap:0; overflow:hidden; border:1px solid var(--dx-ui-border); border-radius:9px; }
+.dx-transporte-tarifa-segmented>button { flex:1 1 50%; min-width:0; min-height:38px; padding:7px 8px; border:0; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-transporte-tarifa-segmented>button.is-on { background:var(--dx-ui-navy); color:#fff; }
+.dx-transporte-tarifa-total { display:block; color:var(--dx-ui-navy); font:700 28px 'Sora',sans-serif; }
+.dx-transporte-tarifa-priority { display:flex; align-items:flex-start; gap:9px; padding-top:10px; border-top:1px solid var(--dx-ui-line); }
+.dx-transporte-tarifa-priority>i { padding:4px 8px; border-radius:999px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-size:11px; font-style:normal; font-weight:700; }
+.dx-transporte-tarifa-priority>i.cli { background:#F0EAFB; color:#5B3A8C; }
+.dx-transporte-tarifa-row,.dx-transporte-route-tariff { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 12px; padding:10px 0; border-bottom:1px solid var(--dx-ui-line); }
+.dx-transporte-tarifa-row>strong,.dx-transporte-route-tariff>strong { color:var(--dx-ui-navy); text-align:right; }
+.dx-transporte-tarifa-row>small,.dx-transporte-route-tariff>small { grid-column:1/-1; color:var(--dx-ui-gray); }
+.dx-transporte-tarifa-row.is-off,.dx-transporte-route-tariff.is-off { opacity:.55; }
+.dx-transporte-composer-preview>footer { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--dx-ui-gray); font-size:12px; }
+.dx-transporte-route-tariff { grid-template-columns:minmax(0,1fr) auto; }
+.dx-transporte-lugar-types button { border-radius:999px; }
+@container panel (max-width:860px) {
+  .dx-transporte-place-body,.dx-transporte-tarifa-body { grid-template-columns:minmax(0,1fr); overflow:auto; }
+  .dx-transporte-place-aside,.dx-transporte-tarifa-aside { order:-1; overflow:visible; padding:14px 20px 0; border:0; background:transparent; }
+  .dx-transporte-place-map,.dx-transporte-place-map-canvas { height:400px; min-height:300px; }
+  .dx-transporte-place-aside .dx-transporte-composer-preview,.dx-transporte-tarifa-aside .dx-transporte-composer-preview { display:none; }
+  .dx-transporte-place-form,.dx-transporte-tarifa-form { overflow:visible; padding:18px 20px; }
+}
+@container panel (max-width:520px) {
+  .dx-transporte-place-map,.dx-transporte-place-map-canvas { height:320px; min-height:260px; }
+  .dx-transporte-place-form,.dx-transporte-tarifa-form { padding:16px; }
+  .dx-transporte-place-aside,.dx-transporte-tarifa-aside { padding-inline:16px; }
+  .dx-transporte-tarifa-segmented>button { padding-inline:4px; font-size:11px; }
+}
+.dark .dx-transporte-composer-alert.is-amber,[data-theme='dark'] .dx-transporte-composer-alert.is-amber,:host([data-theme='dark']) .dx-transporte-composer-alert.is-amber { border-color:var(--dx-ui-line); background:#3A2810; color:#FDBA74; }
+.dark .dx-transporte-composer-alert.is-cyan,[data-theme='dark'] .dx-transporte-composer-alert.is-cyan,:host([data-theme='dark']) .dx-transporte-composer-alert.is-cyan { border-color:var(--dx-ui-line); background:#0A3038; color:#67E8F9; }
+.dark .dx-transporte-composer-alert.is-red,[data-theme='dark'] .dx-transporte-composer-alert.is-red,:host([data-theme='dark']) .dx-transporte-composer-alert.is-red { border-color:var(--dx-ui-line); background:#3B1D20; color:#FCA5A5; }
+.dark .dx-transporte-tarifa-rsel,[data-theme='dark'] .dx-transporte-tarifa-rsel,:host([data-theme='dark']) .dx-transporte-tarifa-rsel,.dark .dx-transporte-tarifa-options,[data-theme='dark'] .dx-transporte-tarifa-options,:host([data-theme='dark']) .dx-transporte-tarifa-options { background:var(--dx-ui-card); color:var(--dx-ui-ink); border-color:var(--dx-ui-line); }
+
+.dx-transporte-place-grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 16px; }
+.dx-transporte-place-nogps { padding:4px 8px; border-radius:999px; background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray); font-size:11px; }
+.dx-transporte-place-or::before,.dx-transporte-place-or::after { flex:1; height:1px; background:var(--dx-ui-line); content:""; }
+@container panel (max-width:520px) { .dx-transporte-place-grid3 { grid-template-columns:minmax(0,1fr); } }
+.dark .dx-transporte-place-nogps,[data-theme='dark'] .dx-transporte-place-nogps,:host([data-theme='dark']) .dx-transporte-place-nogps { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray); }
+
+.dx-transporte-tarifa-form #tarifa-ruta { position:relative; }
+.dx-transporte-tarifa-segmented.dx-transporte-composer-segmented { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); flex-wrap:nowrap; }
+.dx-transporte-tarifa-segmented.dx-transporte-composer-segmented>button { min-width:0; padding-inline:4px; overflow-wrap:anywhere; white-space:normal; font-size:12px; }
+@container panel (max-width:520px) { .dx-transporte-tarifa-segmented.dx-transporte-composer-segmented>button { font-size:10px; } }

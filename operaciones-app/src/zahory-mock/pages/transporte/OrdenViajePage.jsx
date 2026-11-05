@@ -458,7 +458,7 @@ export function OrdenViajePage({ onNav }) {
       <button type="button" className="dx-btn primary" onClick={() => onNav?.('transporte-viajes')}>Salir</button>
     </section></div>}
     {saveNotice && <div className="dx-transporte-notice" role="status">{saveNotice}</div>}
-    <LugarEditorModal open={placeModal} lugar={null} cuentas={cuentas}
+    <LugarEditorModal open={placeModal} lugar={null} cuentas={cuentas} lugares={lugares}
       cuentaPreseleccionada={form.cuenta_id} empresaId={empresaId}
       onClose={() => setPlaceModal(false)} onSaved={place => {
         setLugares(old => [...old, place]); setPlaceModal(false); selectPlace(place);

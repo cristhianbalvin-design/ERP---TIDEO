@@ -210,6 +210,9 @@ export function LugaresPage() {
         open={Boolean(editor)}
         lugar={editor?.lugar}
         cuentas={cuentas}
+        lugares={lugares}
+        rutas={rutas}
+        onViewLugar={place => { setEditor(null); setSelectedId(place.id); }}
         empresaId={empresaId}
         onClose={() => setEditor(null)}
         onSaved={handleSaved}
