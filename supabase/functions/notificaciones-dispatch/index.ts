@@ -55,7 +55,7 @@ serve(async (req) => {
   let fallidos = 0;
   const apiKey = Deno.env.get("RESEND_API_KEY");
   const appUrl = Deno.env.get("PUBLIC_APP_URL") || "https://erp.tideo.tech";
-  const from = Deno.env.get("RESEND_FROM") || "TIDEO <notificaciones@tideo.tech>";
+  const from = Deno.env.get("RESEND_FROM") || "OPERA <notificaciones@tideo.tech>";
 
   for (const row of reclamados) {
     let ok = false;
