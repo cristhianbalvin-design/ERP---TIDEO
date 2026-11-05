@@ -4,7 +4,7 @@ import { alcanceSociedades, filtrarSociedades, nombreCliente, nombreProveedor, c
 const hoy = '2026-11-05';
 test('separación de monedas, cuenta sin dato y detracciones fuera', () => {
   const cuentas = [{ id: 'a', estado: 'activo', moneda: 'PEN', saldo_inicial: 100 }, { id: 'd', estado: 'activo', moneda: 'PEN', saldo_inicial: 90, es_cuenta_detracciones: true }];
-  assert.deepEqual(cajaCuentas(cuentas, [{ cuenta_bancaria_id: 'a', moneda: 'USD', monto: 5, monto_en_moneda_cuenta: 20, tipo: 'ingreso' }], 'PEN'), { caja: 120, detracciones: 90 });
+  assert.deepEqual(cajaCuentas(cuentas, [{ cuenta_bancaria_id: 'a', moneda: 'USD', monto: 5, monto_en_moneda_cuenta: 20, tipo: 'ingreso' }], 'PEN'), { caja: 120, detracciones: 90, cuentasOperativas: [{ nombre: 'Cuenta operativa', saldo: 120 }] });
   assert.equal(cajaCuentas(cuentas, [], 'USD').caja, null);
   assert.equal(calcularDashboard({ cxc: [{ saldo: 10, moneda: 'PEN' }, { saldo: 20, moneda: 'USD' }] }, 'PEN', hoy).totalCobrar, 10);
 });
@@ -66,4 +66,14 @@ test('cese oculta proveedor y respeta límites de palabra', () => {
 test('por facturar normaliza $ a USD', () => {
   const osClientes = [{ moneda: '$', saldo_por_facturar: 42 }, { moneda: 'PEN', saldo_por_facturar: 100 }];
   assert.equal(calcularDashboard({ osClientes }, 'USD', hoy).cadena[4].valor, 42);
+});
+
+test('saldo por cuenta usa equivalencia historica de Tesoreria', () => {
+  const cuentasBancarias = [{ id: 'a', estado: 'activo', moneda: 'PEN', saldo_inicial: 100 }, { id: 'd', estado: 'activo', moneda: 'PEN', saldo_inicial: 10, es_cuenta_detracciones: true }];
+  const movimientosTesoreria = [{ id: 'm', cuenta_bancaria_id: 'a', moneda: 'USD', monto: 5, tipo: 'ingreso' }, { id: 'n', cuenta_bancaria_id: 'd', moneda: 'USD', monto: 2, tipo: 'egreso' }];
+  const metricas = calcularDashboard({ cuentasBancarias, movimientosTesoreria, equivalenciasCuenta: { 'm:a': 20, 'n:d': 8 } }, 'PEN', hoy);
+  assert.equal(metricas.caja, 120);
+  assert.equal(metricas.cuentasOperativas[0].saldo, 120);
+  assert.equal(metricas.detracciones, 2);
+  assert.equal(metricas.neta, 120);
 });

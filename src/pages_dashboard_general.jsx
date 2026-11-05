@@ -8,6 +8,9 @@ import { getEstadoResultados, getEstadoResultadosPorScope } from './services/est
 import { isSupabaseMode } from './lib/dataMode.js';
 import { maestrosService } from './services/maestrosService.js';
 import { cargarFuentesDashboard } from './services/dashboardGeneralService.js';
+import { claveEquivalenciaMovimientoCuenta, monedasDifierenMovimientoCuenta } from './services/tesoreriaService.js';
+import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { alcanceSociedades, filtrarSociedades, calcularDashboard, contarDashboard, temasAtencion, nombreCliente, cantidadTexto } from './dashboardGeneralMetrics.js';
 import './dashboard_general.css';
 const fuentesVacias = { cobros: { data: [], error: '' }, tickets: { data: [], error: '' }, recepciones: { data: [], error: '' } };
@@ -19,8 +22,8 @@ const dinero = (valor, moneda) => valor == null ? 'Sin dato' : `${moneda === 'US
 const sumar = filas => filas.reduce((total, fila) => total + (Number(fila.saldo) || 0), 0);
 const porcentaje = (parte, total) => total ? `${Math.round(parte / total * 100)}% vencido` : 'Sin saldo';
 const nombreMes = periodo => ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'][Number(periodo.slice(5, 7)) - 1];
-function Tarjeta({ titulo, nota, children }) {
-  return <section className="dx-ui-card">
+function Tarjeta({ titulo, nota, children, atencion = false }) {
+  return <section className={`dx-ui-card ${atencion ? 'dx-dash-atencion' : ''}`}>
   <div className="dx-ui-toolbar">
    <h2>{titulo}</h2>
    <span className="dx-ui-count">{nota}</span>
@@ -79,6 +82,7 @@ export function Dashboard({ role }) {
   const [moneda, setMoneda] = useState(base);
   const [fuentes, setFuentes] = useState(fuentesVacias);
   const [cargando, setCargando] = useState(false);
+  const [equivalencias, setEquivalencias] = useState({ solicitud: null, valores: {}, error: '' });
   const [er, setEr] = useState({ loading: false, data: null, error: '' });
   const [cebe, setCebe] = useState(false);
   const [mas, setMas] = useState(false);
@@ -132,7 +136,38 @@ export function Dashboard({ role }) {
     const filtrados = Object.fromEntries(claves.map(clave => [clave, scope(app[clave])]));
     return { ...filtrados, cxc, cxp: scope(app.cxp), cuentasBancarias: scope(app.cuentasBancarias), movimientosTesoreria: scope(movimientos), oportunidades: app.oportunidades || [], solpes: app.solpes || [], cuentas: app.cuentas || [], cobros: fuentes.cobros.data.filter(fila => ids.has(fila.cxc_id)), tickets: fuentes.tickets.data, recepciones: scope(fuentes.recepciones.data) };
   }, [app.cxc, app.cxp, app.cuentasBancarias, app.movimientosTesoreria, app.facturas, app.ots, app.oportunidades, app.cotizaciones, app.osClientes, app.valorizaciones, app.ordenesCompra, app.solpes, app.partes, app.solicitudesRRHH, app.cuentas, fuentes, alcance]);
-  const metricas = useMemo(() => canFin ? calcularDashboard(datos, moneda, hoy) : contarDashboard(datos, moneda, hoy), [datos, moneda, hoy, canFin]);
+  const solicitudEquivalencias = useMemo(() => {
+    const cuentas = datos.cuentasBancarias.filter(c => c.estado === 'activo');
+    return datos.movimientosTesoreria.map(mov => {
+      const cuenta = cuentas.find(c => c.id === mov?.cuenta_bancaria_id);
+      return cuenta ? { mov, cuenta, key: claveEquivalenciaMovimientoCuenta(mov, cuenta) } : null;
+    }).filter(item => item && monedasDifierenMovimientoCuenta(item.mov, item.cuenta) &&
+      (item.mov.monto_en_moneda_cuenta == null || item.mov.monto_en_moneda_cuenta === ''));
+  }, [datos.cuentasBancarias, datos.movimientosTesoreria]);
+  useEffect(() => {
+    let activo = true;
+    if (!canFin || !solicitudEquivalencias.length) return () => { activo = false; };
+    const cargar = async () => {
+      const supabase = isSupabaseConfigured() ? await getSupabaseClient() : null;
+      const valores = {};
+      for (const { mov, cuenta, key } of solicitudEquivalencias) {
+        const fecha = mov.fecha || mov.fecha_movimiento || mov.fecha_operacion || mov.created_at || mov.creado_en || '';
+        const origen = String(mov.moneda || 'PEN').trim().toUpperCase();
+        const destino = cuenta.moneda;
+        const tc = await getTipoCambioPorFecha(fecha, supabase);
+        const par = [origen, String(destino || 'PEN').trim().toUpperCase()];
+        const tasa = par.includes('PEN') && par.includes('USD') ? tc?.usd : par.includes('PEN') && par.includes('EUR') ? tc?.eur : 1;
+        if (!tc || !Number.isFinite(Number(tasa)) || Number(tasa) <= 0) throw new Error('Tipo de cambio no disponible');
+        valores[key] = convertirMontoConTc(mov.monto, origen, destino, tc);
+      }
+      if (activo) setEquivalencias({ solicitud: solicitudEquivalencias, valores, error: '' });
+    };
+    cargar().catch(error => { if (activo) setEquivalencias({ solicitud: solicitudEquivalencias, valores: {}, error: error?.message || 'Tipo de cambio no disponible' }); });
+    return () => { activo = false; };
+  }, [canFin, solicitudEquivalencias]);
+  const cajaCargando = canFin && (app.supabaseStatus?.loading || (solicitudEquivalencias.length > 0 && equivalencias.solicitud !== solicitudEquivalencias));
+  const cajaError = !cajaCargando && solicitudEquivalencias.length > 0 && equivalencias.solicitud === solicitudEquivalencias && equivalencias.error;
+  const metricas = useMemo(() => canFin ? calcularDashboard({ ...datos, equivalenciasCuenta: equivalencias.solicitud === solicitudEquivalencias ? equivalencias.valores : {} }, moneda, hoy) : contarDashboard(datos, moneda, hoy), [datos, moneda, hoy, canFin, equivalencias, solicitudEquivalencias]);
   if (!isSupabaseMode())
     return <section className="dx-ui dx-dash">
   <div className="dx-dash-wrap">
@@ -150,6 +185,7 @@ export function Dashboard({ role }) {
     }
   }
   const fmt = valor => dinero(valor, moneda);
+  const estadoCaja = cajaCargando ? 'Cargando' : cajaError ? 'Error al cargar' : null;
   const actual = canFin ? metricas.meses[5] : null;
   const cobroEstado = cargando ? 'Cargando' : fuentes.cobros.error ? 'Error al cargar' : fmt(actual?.cobrado);
   const resultadoValor = er.data?.resultadoNeto?.[moneda];
@@ -159,7 +195,7 @@ export function Dashboard({ role }) {
   const vencidoCobrar = canFin ? sumar(metricas.vencidos) : 0;
   const vencidoPagar = canFin ? sumar(metricas.pagosVencidos) : 0;
   const kpis = canFin ? [
-    { titulo: 'Caja operativa', valor: fmt(metricas.caja), subtitulo: metricas.detracciones == null ? 'Sin cuenta de detracciones' : `Detracciones: ${fmt(metricas.detracciones)}`, negativo: metricas.caja < 0, items: metricas.cuentasOperativas.map(cuenta => ({ label: cuenta.nombre, value: fmt(cuenta.saldo) })) },
+    { titulo: 'Caja operativa', valor: estadoCaja || fmt(metricas.caja), subtitulo: estadoCaja ? `Detracciones: ${estadoCaja}` : metricas.detracciones == null ? 'Sin cuenta de detracciones' : `Detracciones: ${fmt(metricas.detracciones)}`, negativo: !estadoCaja && metricas.caja < 0, items: estadoCaja ? [] : metricas.cuentasOperativas.map(cuenta => ({ label: cuenta.nombre, value: fmt(cuenta.saldo) })) },
     { titulo: 'Por cobrar', valor: fmt(metricas.totalCobrar), subtitulo: porcentaje(vencidoCobrar, metricas.totalCobrar), items: [{ label: 'Vencido', value: fmt(vencidoCobrar) }, { label: 'Por vencer', value: fmt(metricas.totalCobrar - vencidoCobrar) }] },
     { titulo: 'Por pagar', valor: fmt(metricas.totalPagar), subtitulo: porcentaje(vencidoPagar, metricas.totalPagar), items: [{ label: 'Vencido', value: fmt(vencidoPagar) }, { label: 'Por vencer', value: fmt(metricas.totalPagar - vencidoPagar) }] },
     { titulo: 'Por facturar', valor: fmt(metricas.cadena[4].valor), subtitulo: cantidadTexto(metricas.cadena[4].cantidad, 'OS abierta', 'OS abiertas'), items: [] },
@@ -193,7 +229,7 @@ export function Dashboard({ role }) {
     {multi && !idsScope && <p className="dx-dash-warning">Sin sociedad disponible para mostrar datos.</p>}
     {canFin && <div className="kpi-grid bic-kpis">{kpis.map(item => <Indicador key={item.titulo} {...item}/>)}</div>}
     <div className="dx-dash-grid">
-     <Tarjeta titulo="Requiere atención" nota={cantidadTexto(temas.length, 'tema', 'temas')}>
+     <Tarjeta atencion titulo="Requiere atención" nota={cantidadTexto(temas.length, 'tema', 'temas')}>
       {cargando && <p className="dx-dash-note">Cargando fuentes adicionales…</p>}
       {['tickets', 'recepciones'].map(clave => fuentes[clave].error && <p className="dx-dash-error" key={clave}>Error al cargar {clave}: {fuentes[clave].error}</p>)}
       {!temas.length && !cargando && <p className="dx-dash-note">Sin temas pendientes.</p>}
@@ -213,13 +249,13 @@ export function Dashboard({ role }) {
       <div className="dx-dash-liq">
        {[['Caja operativa', metricas.caja], ['Más: por cobrar', metricas.totalCobrar], ['Menos: por pagar', metricas.totalPagar]].map(([label, valor]) => <div className="dx-dash-liqline" key={label}>
         <span>{label}</span>
-        <strong className={valor < 0 ? 'is-neg' : ''}>{fmt(valor)}</strong>
+        <strong className={valor < 0 ? 'is-neg' : ''}>{label === 'Caja operativa' && estadoCaja ? estadoCaja : fmt(valor)}</strong>
        </div>)}
        <div className="dx-dash-net">
         <span>Posición neta</span>
-        <strong className={metricas.neta < 0 ? 'is-neg' : ''}>{fmt(metricas.neta)}</strong>
+        <strong className={metricas.neta < 0 ? 'is-neg' : ''}>{estadoCaja || fmt(metricas.neta)}</strong>
        </div>
-       <p className="dx-dash-note">{metricas.caja == null ? 'Sin cuenta operativa activa; se considera cero para la posición neta.' : 'No incluye detracciones.'}</p>
+       <p className="dx-dash-note">{!estadoCaja && (metricas.caja == null ? 'Sin cuenta operativa activa; se considera cero para la posición neta.' : 'No incluye detracciones.')}</p>
        <div className="dx-dash-month-stats">{[['Facturado del mes', fmt(actual?.facturado), false], ['Cobrado del mes', cobroEstado, false], ['Resultado del mes', resultado, resultadoValor < 0], ['Margen neto', margen, false]].map(([label, valor, negativo]) => <div key={label}>
         <span>{label}</span>
         <strong className={negativo ? 'is-neg' : ''}>{valor}</strong>

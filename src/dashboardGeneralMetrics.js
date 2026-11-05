@@ -1,4 +1,5 @@
 import { normalizarMonedaBI } from './biComercialMetrics.js';
+import { calcularSaldosCuentasBancarias } from './services/tesoreriaService.js';
 const numero = valor => Number(valor) || 0;
 const estado = fila => String(fila?.estado || '').trim().toLowerCase().replace(/\s+/g, '_');
 const dia = valor => String(valor || '').slice(0, 10);
@@ -51,16 +52,12 @@ function agrupar(filas, nombre, hoy) {
   });
   return [...grupos.values()].sort((a, b) => b.saldo - a.saldo).slice(0, 3);
 }
-export function cajaCuentas(cuentas = [], movimientos = [], moneda = 'PEN') {
-  const activas = cuentas.filter(cuenta => estado(cuenta) === 'activo' && monedaEs(cuenta, moneda));
-  const saldo = cuenta => movimientos.filter(mov => mov.cuenta_bancaria_id === cuenta.id && !['anulado', 'anulada'].includes(estado(mov))).reduce((total, mov) => {
-    const monto = monedaEs(mov, cuenta.moneda) ? numero(mov.monto) : numero(mov.monto_en_moneda_cuenta);
-    const tipo = String(mov.tipo || '').toLowerCase();
-    return total + (['ingreso', 'credito', 'crédito'].includes(tipo) ? monto : ['egreso', 'debito', 'débito'].includes(tipo) ? -monto : 0);
-  }, numero(cuenta.saldo_inicial));
-  const operativas = activas.filter(cuenta => !cuenta.es_cuenta_detracciones);
-  const detracciones = activas.filter(cuenta => cuenta.es_cuenta_detracciones);
-  return { caja: operativas.length ? suma(operativas, saldo) : null, detracciones: detracciones.length ? suma(detracciones, saldo) : null };
+export function cajaCuentas(cuentas = [], movimientos = [], moneda = 'PEN', equivalencias = {}) {
+  const activas = cuentas.filter(cuenta => cuenta.estado === 'activo' && monedaEs(cuenta, moneda));
+  const saldos = calcularSaldosCuentasBancarias(activas, movimientos, equivalencias);
+  const operativas = saldos.filter(cuenta => !cuenta.es_cuenta_detracciones);
+  const detracciones = saldos.filter(cuenta => cuenta.es_cuenta_detracciones);
+  return { caja: operativas.length ? suma(operativas, cuenta => cuenta.saldo) : null, detracciones: detracciones.length ? suma(detracciones, cuenta => cuenta.saldo) : null, cuentasOperativas: operativas.map(c => ({ nombre: c.nombre || c.nombre_cuenta || c.banco || 'Cuenta operativa', saldo: c.saldo })) };
 }
 export function calcularOTs(ots = [], hoy) {
   const activos = ots.filter(fila => estado(fila) !== 'anulada');
@@ -97,8 +94,7 @@ export function calcularDashboard(data = {}, moneda = 'PEN', hoy) {
   const { cuentasBancarias = [], movimientosTesoreria = [], cxc = [], facturas = [], cobros = [], oportunidades = [], cotizaciones = [], osClientes = [], cuentas = [] } = data;
   const conteos = contarDashboard(data, moneda, hoy);
   const { cobrar, pagar, vencidos, pagosVencidos } = conteos;
-  const { caja, detracciones } = cajaCuentas(cuentasBancarias, movimientosTesoreria, moneda);
-  const cuentasOperativas = cuentasBancarias.filter(c => estado(c) === 'activo' && !c.es_cuenta_detracciones && monedaEs(c, moneda)).map(c => ({ nombre: c.nombre || c.nombre_cuenta || c.banco || 'Cuenta operativa', saldo: cajaCuentas([c], movimientosTesoreria, moneda).caja }));
+  const { caja, detracciones, cuentasOperativas } = cajaCuentas(cuentasBancarias, movimientosTesoreria, moneda, data.equivalenciasCuenta);
   const aging = [0, 0, 0, 0, 0];
   cobrar.forEach(fila => { const mora = diasDesde(fila.fecha_vencimiento, hoy); aging[mora <= 0 ? 0 : mora <= 30 ? 1 : mora <= 60 ? 2 : mora <= 90 ? 3 : 4] += numero(fila.saldo); });
   const [year, month] = hoy.slice(0, 7).split('-').map(Number);
