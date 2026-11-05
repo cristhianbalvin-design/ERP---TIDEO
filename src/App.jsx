@@ -14,7 +14,7 @@ import { AsistenteErpPanel } from './components/AsistenteErpPanel.jsx';
 
 // Core CRM / BI
 const OrganigramaV2 = lazy(() => import('./pages_organigrama_v2.jsx'));
-const Dashboard       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Dashboard })));
+const Dashboard       = lazy(() => import('./pages_dashboard_general.jsx').then(m => ({ default: m.Dashboard })));
 const DashboardsPage   = lazy(() => import('./pages_dashboards.jsx'));
 const Leads           = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Leads })));
 const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Pipeline })));
