@@ -47,6 +47,7 @@
 .dx-camp-aud-card.is-dragging { opacity:.4; }
 @container (max-width:940px) { .dx-camp-aud-label { display:block; } }
 .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:repeat(6,minmax(0,1fr)); }
-.dx-camp-aud-root .dx-ui-kpi { min-width:0; overflow-wrap:anywhere; }
+.dx-camp-aud-root .dx-ui-kpi { min-width:0; }
 @container (width < 1060px) { .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @container (width < 601px) { .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container (width < 300px) { .dx-camp-aud-root .dx-ui-kpi-row { grid-template-columns:minmax(0,1fr); } }
