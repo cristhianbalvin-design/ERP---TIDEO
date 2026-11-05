@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OF · Mock F3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== Tokens: mismos que .dx-otb (Bandeja de OTs) ===== */
+.dx-of{--n:#1A2B4A;--cy:#00ACC1;--cyf:#0B4F5A;--cyb:#E0F7FA;--vi:#5B3A8C;--vib:#F0EAFB;--amf:#8A4B00;--amb:#FFF3E0;--amd:#E08A00;--grf:#14633A;--grb:#E3F6EA;--blf:#1E4E8C;--blb:#E6EFFB;--rdf:#9B1C1C;--rdb:#FDECEC;--rd:#DC2626;--gr:#6B7280;--grb2:#F1F3F5;--grf2:#4B5563;--ink:#1F2937;--line:#E4E7EB;--line2:#EEF0F3;--bd:#C9CFD8;--bg:#F4F6F8;--hd:#F8F9FA;--card:#fff;--hov:#F6FBFC;
+  container-type:inline-size;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans',sans-serif;min-height:100vh}
+[data-theme='dark'] .dx-of{--n:#F8FAFC;--cy:#22D3EE;--cyf:#67E8F9;--cyb:#0A3038;--vi:#D8B4FE;--vib:#321B3B;--amf:#FDBA74;--amb:#3A2810;--amd:#F59E0B;--grf:#86EFAC;--grb:#12351F;--blf:#93C5FD;--blb:#13294B;--rdf:#FCA5A5;--rdb:#3B1414;--rd:#F87171;--gr:#94A3B8;--grb2:#273244;--grf2:#CBD5E1;--ink:#F8FAFC;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.08);--bd:#475569;--bg:#020617;--hd:#0F172A;--card:#0F172A;--hov:#172033}
+*{box-sizing:border-box}body{margin:0;background:#F4F6F8}[data-theme='dark'] body{background:#020617}
+button,input,select{font:inherit}button{cursor:pointer}
+/* Barra del mock (no es parte del diseño) */
+.mockbar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 16px;background:#111827;color:#fff;font:13px 'DM Sans'}
+.mockbar button{height:32px;padding:0 12px;border:1px solid #374151;border-radius:8px;background:#1F2937;color:#fff}
+.mockbar button.on{background:#00ACC1;border-color:#00ACC1;color:#02161A;font-weight:700}
+.mockbar span{opacity:.7;margin-left:auto}
+/* ===== Layout común ===== */
+.dx-of-in{padding:24px 28px 48px;max-width:1280px}
+.dx-of-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.dx-of-eyebrow{color:var(--cyf);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.dx-of-title{margin:4px 0;color:var(--n);font:700 28px/1.2 Sora,sans-serif}
+.dx-of-sub{margin:0;color:var(--gr)}
+.dx-of-primary{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 18px;border:0;border-radius:10px;background:#1A2B4A;color:#fff;font-weight:700;white-space:nowrap}
+[data-theme='dark'] .dx-of-primary{background:#00ACC1;color:#02161A}
+.dx-of-primary:disabled{opacity:.45;cursor:not-allowed}
+.dx-of-ghost{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 16px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--ink);font-weight:600;white-space:nowrap}
+.dx-of-link{border:0;background:none;padding:0;color:var(--cyf);font-weight:700}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* KPI (familia de la Bandeja de OTs) */
+.dx-of-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.dx-of-kpi{display:flex;min-width:0;flex-direction:column;gap:2px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px #0f1b300a;color:inherit;text-align:left}
+.dx-of-kpi:hover{background:var(--hov)}.dx-of-kpi.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+.dx-of-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-ico{display:flex;width:32px;height:32px;align-items:center;justify-content:center;border-radius:9px}
+.dx-of-ico.is-cyan{background:var(--cyb);color:var(--cyf)}.dx-of-ico.is-gray{background:var(--grb2);color:var(--grf2)}.dx-of-ico.is-red{background:var(--rdb);color:var(--rdf)}.dx-of-ico.is-amber{background:var(--amb);color:var(--amf)}
+.dx-of-kpi-val{margin-top:6px;color:var(--n);font:700 26px/1.1 Sora,sans-serif}
+.dx-of-kpi-note{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-kpi.is-danger{border-color:color-mix(in srgb,var(--rd) 40%,var(--line))}.dx-of-kpi.is-danger .dx-of-kpi-val{color:var(--rdf)}
+.dx-of-kpi.is-alert{border-color:color-mix(in srgb,var(--amd) 45%,var(--line))}.dx-of-kpi.is-alert .dx-of-kpi-val{color:var(--amf)}
+/* Tarjeta y barra */
+.dx-of-card{overflow:visible;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px #0f1b300a}
+.dx-of-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line)}
+.dx-of-bar h2{margin:0 auto 0 0;color:var(--n);font:700 16px/1.4 Sora,sans-serif}
+.dx-of-count{margin-left:8px;color:var(--gr);font:500 13px 'DM Sans'}
+.dx-of-search{display:flex;width:300px;max-width:100%;height:44px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--gr)}
+.dx-of-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink)}
+.dx-of-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--hd)}
+.dx-of-chips{display:flex;flex:1;min-width:0;gap:8px;flex-wrap:wrap}
+.dx-of-chip{display:inline-flex;height:36px;align-items:center;gap:8px;padding:0 12px 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;white-space:nowrap}
+.dx-of-chip i{width:8px;height:8px;border-radius:50%;background:var(--gr)}
+.dx-of-chip b{min-width:22px;padding:1px 7px;border-radius:999px;background:var(--grb2);color:var(--grf2);font-size:12px;text-align:center}
+.dx-of-chip.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n);background:var(--hov)}
+/* Estados de la OF */
+.st-borrador{--c:#6B7280}.st-en_ingenieria{--c:#2F6FD6}.st-aprobada{--c:#00ACC1}.st-en_produccion{--c:#2F6FD6}.st-en_calidad{--c:#5B3A8C}.st-lista_entrega{--c:#E08A00}.st-entregada,.st-cerrada{--c:#16A34A}.st-anulada{--c:#DC2626}
+.dx-of-chip i[class^=st-]{background:var(--c)}
+.dx-of-pill{display:inline-flex;width:max-content;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-of-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dx-of-pill.st-borrador{background:var(--grb2);color:var(--grf2)}
+.dx-of-pill.st-en_ingenieria,.dx-of-pill.st-en_produccion{background:var(--blb);color:var(--blf)}
+.dx-of-pill.st-aprobada{background:var(--cyb);color:var(--cyf)}
+.dx-of-pill.st-en_calidad{background:var(--vib);color:var(--vi)}
+.dx-of-pill.st-lista_entrega{background:var(--amb);color:var(--amf)}
+.dx-of-pill.st-entregada,.dx-of-pill.st-cerrada{background:var(--grb);color:var(--grf)}
+.dx-of-pill.st-anulada{background:var(--rdb);color:var(--rdf)}
+.dx-of-pill.is-fab{background:var(--cyb);color:var(--cyf)}.dx-of-pill.is-mix{background:var(--vib);color:var(--vi)}
+/* Filas de la bandeja */
+.dx-of-cols{display:grid;grid-template-columns:minmax(170px,1.2fr) minmax(190px,1.5fr) 132px minmax(110px,.8fr) minmax(120px,.9fr) 120px 112px 20px;column-gap:14px;align-items:center;padding-inline:20px}
+.dx-of-head{height:40px;border-bottom:1px solid var(--line);background:var(--hd);color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-head .r{text-align:right}
+.dx-of-row{min-height:84px;padding-block:14px;border-bottom:1px solid var(--line2);cursor:pointer}
+.dx-of-row:hover{background:var(--hov)}.dx-of-row:focus-visible{outline:2px solid var(--cy);outline-offset:-2px}
+.dx-of-of{display:flex;min-width:0;align-items:flex-start;gap:12px}
+.dx-of-ofi{display:flex;width:40px;height:40px;flex:none;align-items:center;justify-content:center;border-radius:10px;background:var(--cyb);color:var(--cyf)}
+.dx-of-cell{display:flex;min-width:0;flex-direction:column;gap:2px}
+.dx-of-num{color:var(--n);font:700 13px ui-monospace,Menlo,monospace}
+.dx-of-strong{overflow:hidden;color:var(--n);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-muted{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-tag{width:max-content;max-width:100%;overflow:hidden;margin-top:2px;padding:1px 7px;border-radius:6px;background:var(--grb2);color:var(--grf2);font-size:11px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-tag.is-warn{background:var(--amb);color:var(--amf)}
+.dx-of-tag.is-red{background:var(--rdb);color:var(--rdf)}
+.dx-of-prog{display:flex;flex-direction:column;gap:5px}
+.dx-of-prog b{color:var(--n);font:700 13px Sora}
+.dx-of-bar2{height:6px;overflow:hidden;border-radius:999px;background:var(--grb2)}.dx-of-bar2 i{display:block;height:100%;border-radius:999px;background:var(--cy)}
+.dx-of-money{color:var(--n);font:700 14px Sora;white-space:nowrap;text-align:right}
+.dx-of-date{text-align:right}.dx-of-date .dx-of-muted{text-align:right}
+.dx-of-date .is-late{color:var(--rdf)}.dx-of-date .is-soon{color:var(--amf)}
+.dx-of-arrow{color:var(--gr)}
+.dx-of-pag{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;color:var(--gr);font-size:13px}
+/* ===== Crear OF ===== */
+.dx-of-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.dx-of-sec{padding:18px 20px;border-bottom:1px solid var(--line)}
+.dx-of-sec:last-child{border-bottom:0}
+.dx-of-sec h3{display:flex;align-items:center;gap:8px;margin:0 0 4px;color:var(--n);font:700 15px Sora}
+.dx-of-sec h3 .n{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:var(--n);color:var(--card);font:700 12px Sora}
+[data-theme='dark'] .dx-of-sec h3 .n{background:#00ACC1;color:#02161A}
+.dx-of-help{margin:0 0 14px;color:var(--gr);font-size:13px}
+.dx-of-field{position:relative;display:flex;flex-direction:column;gap:6px;max-width:560px}
+.dx-of-field label{min-height:18px;color:var(--grf2);font-size:12px;font-weight:700}
+.dx-of-req{color:var(--rd)}
+.dx-of-combo{display:flex;height:40px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--gr)}
+.dx-of-combo input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink)}
+.dx-of-combo:focus-within{border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 20%,transparent)}
+.dx-of-pop{position:absolute;z-index:20;top:70px;left:0;right:0;max-height:300px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 12px 32px #0f1b3024}
+.dx-of-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:none;color:inherit;text-align:left}
+.dx-of-opt:hover,.dx-of-opt.is-act{background:var(--hov)}
+.dx-of-opt .dx-of-muted{grid-column:1}
+.dx-of-resolved{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--hd)}
+.dx-of-resolved .dx-of-cell{flex:1 1 200px;min-width:0}
+.dx-of-notice{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--amb);color:var(--amf);font-size:13px}
+.dx-of-notice.is-info{background:var(--cyb);color:var(--cyf)}
+.dx-of-radio{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.dx-of-radio label{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer}
+.dx-of-radio label.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+.dx-of-radio input{margin-top:3px;accent-color:#1A2B4A}
+/* Ruta (vista previa y ficha) */
+.dx-of-trab{container-type:inline-size;margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.dx-of-trab-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--hd);border-bottom:1px solid var(--line)}
+.dx-of-trab-h b{color:var(--n);font:700 14px Sora}
+.dx-of-act{padding:8px 14px 0;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-op{display:grid;grid-template-columns:28px minmax(140px,1.4fr) minmax(110px,1fr) 104px minmax(130px,1.1fr) minmax(130px,1.1fr) 90px;column-gap:12px;align-items:center;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-of-op:first-of-type{border-top:0}
+.dx-of-op.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px}
+.dx-of-op .seq{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:7px;background:var(--grb2);color:var(--grf2);font:700 12px Sora}
+.dx-of-op .r{text-align:right}
+.dx-of-op .dx-of-muted,.dx-of-op .dx-of-strong{white-space:normal}
+.dx-of-k{display:none;color:var(--gr);font-size:11px;font-weight:700}
+.dx-of-empty{padding:28px 16px;color:var(--gr);text-align:center;border:1px dashed var(--line);border-radius:12px;margin-top:12px}
+/* Aside */
+.dx-of-aside{position:sticky;top:60px;display:flex;flex-direction:column;gap:12px}
+.dx-of-aside .dx-of-card{padding:16px 18px}
+.dx-of-aside h4{margin:0 0 10px;color:var(--n);font:700 14px Sora}
+.dx-of-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;margin:0;font-size:13px}
+.dx-of-dl dt{color:var(--gr)}.dx-of-dl dd{margin:0;color:var(--ink);font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
+.dx-of-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.dx-of-total span{color:var(--gr);font-weight:700}.dx-of-total b{color:var(--n);font:700 22px Sora}
+.dx-of-foot{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding:12px 0;background:linear-gradient(transparent,var(--bg) 30%)}
+/* ===== Ficha ===== */
+.dx-of-hdr{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.dx-of-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;border:0;background:none;padding:0;color:var(--cyf);font-weight:700}
+.dx-of-tl{display:flex;margin-bottom:16px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.dx-of-tl div{position:relative;display:flex;flex:1;min-width:92px;flex-direction:column;align-items:center;gap:6px;color:var(--gr);font-size:11px;font-weight:700;text-align:center}
+.dx-of-tl div::before{content:'';position:absolute;top:9px;left:-50%;right:50%;height:2px;background:var(--line)}
+.dx-of-tl div:first-child::before{display:none}
+.dx-of-tl i{position:relative;z-index:1;width:20px;height:20px;border:2px solid var(--bd);border-radius:50%;background:var(--card)}
+.dx-of-tl .is-now{color:var(--n)}.dx-of-tl .is-now i{border-color:var(--cy);background:var(--cy);box-shadow:0 0 0 4px var(--cyb)}
+.dx-of-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 20px;padding:18px 20px}
+.dx-of-fields .dx-of-cell span:first-child{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-of-fields .dx-of-cell span:last-child{color:var(--ink);font-weight:600}
+.dx-of-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line)}
+.dx-of-tabs button{height:44px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:none;color:var(--gr);font-weight:700}
+.dx-of-tabs button.is-on{border-color:var(--cy);color:var(--n)}
+.dx-of-soon{margin:14px 20px 18px;padding:12px 14px;border-radius:10px;background:var(--grb2);color:var(--grf2);font-size:13px}
+.view{display:none}.view.on{display:block}
+/* ===== Responsive por contenedor ===== */
+@container (max-width:1100px){
+ .dx-of-kpi .dx-of-ico{display:none}
+ .dx-of-cols{grid-template-columns:minmax(150px,1.1fr) minmax(160px,1.4fr) 124px minmax(90px,.7fr) minmax(110px,.9fr) 110px 100px 16px;column-gap:12px;padding-inline:16px}
+ .dx-of-grid{grid-template-columns:minmax(0,1fr) 280px}
+}
+@container (max-width:900px){
+ .dx-of-in{padding:18px 16px 32px}
+ .dx-of-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .dx-of-bar h2{width:100%}.dx-of-search{flex:1 1 100%;width:auto}
+ .dx-of-head{display:none}
+ .dx-of-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'of estado' 'cli cli' 'prog ops' 'cost date';gap:10px 14px;padding:14px 16px}
+ .a-of{grid-area:of}.a-st{grid-area:estado;justify-self:end}.a-cli{grid-area:cli}.a-prog{grid-area:prog}.a-ops{grid-area:ops;justify-self:end;text-align:right}.a-cost{grid-area:cost;text-align:left}.a-date{grid-area:date}.a-arrow{display:none}
+ .dx-of-grid{grid-template-columns:minmax(0,1fr)}.dx-of-aside{position:static}
+ .dx-of-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* La ruta responde al ancho de su propia tarjeta */
+@container (max-width:760px){
+ .dx-of-op{grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:'seq tar cost' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah';row-gap:4px}
+ .dx-of-op.is-head{display:none}
+ .o-seq{grid-area:seq;align-self:start}.o-tar{grid-area:tar}.o-car{grid-area:car}.o-hh{grid-area:hh}.o-eq{grid-area:eq}.o-bah{grid-area:bah}.o-cost{grid-area:cost}
+ .dx-of-k{display:inline;margin-right:6px}
+}
+@container (max-width:600px){
+ .dx-of-title{font-size:24px}
+ .dx-of-top .dx-of-primary{width:100%;justify-content:center}
+ .dx-of-kpi{padding:12px 14px}.dx-of-kpi-val{font-size:22px}
+ .dx-of-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+ .dx-of-row{grid-template-areas:'of of' 'estado estado' 'cli cli' 'prog prog' 'ops ops' 'cost date'}
+ .a-st{justify-self:start}.a-ops{justify-self:start;text-align:left}
+ .dx-of-fields{grid-template-columns:1fr}
+ .dx-of-foot .dx-of-primary,.dx-of-foot .dx-of-ghost{flex:1;justify-content:center}
+}
+/* ===== F3 · Ficha editable de la OF ===== */
+/* Formularios y KPI: estándar dx-ui (mismas reglas que zahory.css) */
+.dx-of{--dx-ui-navy:var(--n);--dx-ui-gray:var(--gr);--dx-ui-line:var(--line);--dx-ui-border:var(--bd);--dx-ui-card:var(--card);--dx-ui-ink:var(--ink);--dx-ui-red-fg:#9B2C2C}
+[data-theme='dark'] .dx-of{--dx-ui-red-fg:#FCA5A5}
+.dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui-kpi{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card)}
+.dx-ui-kpi strong{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif;white-space:nowrap}
+.dx-ui-kpi span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:16px 20px}
+.dx-ui-form-grid.is-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dx-ui-field{position:relative;display:flex;min-width:0;flex-direction:column;gap:6px;color:var(--dx-ui-ink);font-size:12px;font-weight:600}
+.dx-ui-field>label{display:flex;align-items:center;gap:4px;min-height:18px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-ui-field input,.dx-ui-field textarea{box-sizing:border-box;width:100%;min-width:0;height:40px;min-height:40px;padding:0 10px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui-field textarea{height:auto;min-height:72px;padding:10px;resize:vertical}
+.dx-ui-field-full{grid-column:1/-1}
+.dx-ui-select{box-sizing:border-box;width:100%;height:40px;min-height:40px;padding:0 34px 0 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background-color:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dx-ui-gray) 50%),linear-gradient(135deg,var(--dx-ui-gray) 50%,transparent 50%);background-position:calc(100% - 16px) 17px,calc(100% - 12px) 17px;background-repeat:no-repeat;background-size:5px 5px}
+.dx-ui-required{color:var(--dx-ui-red-fg)}
+.dx-ui-field-error{color:var(--dx-ui-red-fg);font-size:12px;font-weight:400}
+.dx-ui-field-hint{color:var(--dx-ui-gray);font-size:12px;font-weight:400}
+.dx-ui-field [aria-invalid='true']{border-color:var(--dx-ui-red-fg)}
+.dx-ui-field input:focus,.dx-ui-select:focus,.dx-ui-field textarea:focus{outline:0;border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 20%,transparent)}
+.dx-ui-field input[readonly]{background:var(--hd);color:var(--grf2)}
+/* Modal (mismo patrón que dx-w-modal del WMS) */
+.dx-ofe-backdrop{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-start;justify-content:center;padding:48px 16px;background:rgba(15,27,48,.45);overflow:auto}
+.dx-ofe-modal{container-type:inline-size;width:min(100%,720px);margin-block:auto;padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 12px 32px rgba(15,27,48,.18)}
+.dx-ofe-modal.is-narrow{width:min(100%,560px)}
+.dx-ofe-modal h3{margin:0 0 4px;color:var(--n);font:700 16px Sora,sans-serif}
+.dx-ofe-modal>p{margin:0 0 16px;color:var(--gr);font-size:13px}
+.dx-ofe-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px}
+.dx-ofe-actions .dx-of-primary,.dx-ofe-actions .dx-of-ghost{height:40px}
+.dx-ofe-server{margin-top:14px;padding:10px 12px;border-radius:10px;background:var(--rdb);color:var(--rdf);font-size:13px}
+.dx-ofe-pop{position:absolute;z-index:30;top:66px;left:0;right:0;max-height:260px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 12px 32px #0f1b3024}
+.dx-ofe-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:none;color:inherit;text-align:left}
+.dx-ofe-opt:hover,.dx-ofe-opt.is-act{background:var(--hov)}
+.dx-ofe-stock{font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ofe-stock.ok{color:var(--grf)}.dx-ofe-stock.low{color:var(--amf)}
+/* Barra de acciones del encabezado */
+.dx-ofe-hdr-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dx-ofe-hdr-actions .dx-of-primary,.dx-ofe-hdr-actions .dx-of-ghost{height:40px}
+.dx-ofe-notice{display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;padding:12px 14px;border-radius:12px;background:var(--cyb);color:var(--cyf);font-size:13px}
+.dx-ofe-notice.is-warn{background:var(--amb);color:var(--amf)}
+.dx-ofe-notice.is-ok{background:var(--grb);color:var(--grf)}
+.dx-ofe-notice b{font-weight:700}
+/* Ruta editable */
+.dx-ofe-op{display:grid;grid-template-columns:28px minmax(130px,1.4fr) minmax(100px,1fr) 96px minmax(110px,1.1fr) minmax(120px,1fr) 86px 64px;column-gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-op.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px}
+.dx-ofe-op.is-prod{grid-template-columns:28px minmax(130px,1.4fr) minmax(100px,1fr) 104px minmax(120px,1.1fr) 120px 108px}
+.dx-ofe-op .r{text-align:right}
+.dx-ofe-op .seq{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:7px;background:var(--grb2);color:var(--grf2);font:700 12px Sora}
+.dx-ofe-op .dx-of-muted,.dx-ofe-op .dx-of-strong{white-space:normal}
+.dx-ofe-icons{display:flex;justify-content:flex-end;gap:2px}
+.dx-ofe-ib{display:inline-flex;width:30px;height:30px;align-items:center;justify-content:center;border:0;border-radius:8px;background:none;color:var(--gr)}
+.dx-ofe-ib:hover{background:var(--grb2);color:var(--n)}
+.dx-ofe-ib.is-del:hover{background:var(--rdb);color:var(--rdf)}
+.dx-ofe-ib:disabled{opacity:.35;cursor:not-allowed;background:none}
+.dx-ofe-ib:focus-visible{outline:2px solid var(--cy)}
+.dx-ofe-add{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-addbtn{display:inline-flex;height:34px;align-items:center;gap:6px;padding:0 12px;border:1px dashed var(--bd);border-radius:8px;background:none;color:var(--cyf);font-weight:700;font-size:13px}
+.dx-ofe-addbtn:hover{background:var(--hov)}
+.dx-ofe-tabsbar{display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--line)}
+.dx-ofe-tabsbar .dx-of-tabs{flex:1;padding:0;border-bottom:0}
+.dx-ofe-tabsbar .dx-of-ghost{height:36px;padding:0 12px;font-size:13px}
+.dx-ofe-panel{padding:4px 20px 18px}
+.dx-ofe-progress{display:flex;flex-direction:column;gap:4px}
+.dx-ofe-progress b{color:var(--n);font:700 13px Sora}
+.dx-ofe-progress .dx-of-muted{white-space:nowrap}
+.dx-of-tabs button b{margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--amb);color:var(--amf);font-size:11px}
+/* Estado de operación */
+.dx-ofe-st{display:inline-flex;width:max-content;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ofe-st i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dx-ofe-st.pendiente{background:var(--grb2);color:var(--grf2)}
+.dx-ofe-st.en_proceso{background:var(--blb);color:var(--blf)}
+.dx-ofe-st.terminada{background:var(--grb);color:var(--grf)}
+.dx-ofe-st.en_revision{background:var(--amb);color:var(--amf)}
+.dx-ofe-st.observado{background:var(--rdb);color:var(--rdf)}
+/* Materiales */
+.dx-ofe-mat{display:grid;grid-template-columns:minmax(200px,1.6fr) 110px 120px 120px minmax(170px,1.3fr) 66px;column-gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-mat.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px;background:var(--hd)}
+.dx-ofe-mat .r{text-align:right}
+.dx-ofe-mats{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;container-type:inline-size}
+.dx-ofe-res{display:flex;flex-direction:column;gap:4px}
+.dx-ofe-res .dx-of-tag{margin-top:0;white-space:normal}
+.dx-of-tag.is-ok{background:var(--grb);color:var(--grf)}
+.dx-of-tag.is-blue{background:var(--blb);color:var(--blf)}
+.dx-ofe-mono{font:700 12px ui-monospace,Menlo,monospace;color:var(--n)}
+/* Partes */
+.dx-ofe-parte{display:grid;grid-template-columns:minmax(110px,.9fr) minmax(150px,1.5fr) minmax(110px,1fr) 64px 72px 112px 76px;column-gap:10px;align-items:center;padding:12px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-parte.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px;background:var(--hd)}
+.dx-ofe-parte .r{text-align:right}
+.dx-ofe-mini{display:inline-flex;height:32px;align-items:center;padding:0 10px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--ink);font-weight:700;font-size:12px}
+.dx-ofe-mini.is-pri{border-color:#1A2B4A;background:#1A2B4A;color:#fff}
+[data-theme='dark'] .dx-ofe-mini.is-pri{border-color:#00ACC1;background:#00ACC1;color:#02161A}
+.dx-ofe-cmp{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0 0 16px;padding:12px 14px;border-radius:10px;background:var(--hd);font-size:13px}
+.dx-ofe-cmp dt{color:var(--gr)}.dx-ofe-cmp dd{margin:0;font-weight:700;color:var(--ink)}
+.dx-of-tl .is-done{color:var(--grf2)}.dx-of-tl .is-done i{border-color:var(--cy);background:var(--cyb)}
+/* Responsive por contenedor */
+@container (max-width:1100px){
+ .dx-ofe-mat{grid-template-columns:minmax(180px,1.6fr) 96px 104px 110px minmax(150px,1.2fr) 66px;column-gap:10px}
+}
+@container (max-width:760px){
+ .dx-ofe-op,.dx-ofe-op.is-prod{grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:'seq tar act' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah' 'seq cost cost';row-gap:4px}
+ .dx-ofe-op.is-head,.dx-ofe-mat.is-head,.dx-ofe-parte.is-head{display:none}
+ .dx-ofe-op .o-seq{grid-area:seq;align-self:start}.dx-ofe-op .o-tar{grid-area:tar}.dx-ofe-op .o-car{grid-area:car}.dx-ofe-op .o-hh{grid-area:hh}.dx-ofe-op .o-eq{grid-area:eq}.dx-ofe-op .o-bah{grid-area:bah}.dx-ofe-op .o-cost{grid-area:cost;text-align:left}.dx-ofe-op .o-act{grid-area:act;align-self:start}
+ .dx-ofe-mat{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'mat act' 'cant cu' 'sub sub' 'res res';row-gap:6px}
+ .m-mat{grid-area:mat}.m-cant{grid-area:cant}.m-cu{grid-area:cu;text-align:right}.m-sub{grid-area:sub;text-align:left!important}.m-res{grid-area:res}.m-act{grid-area:act;align-self:start}
+ .dx-ofe-parte{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'num st' 'op op' 'tec tec' 'hh av' 'acc acc';row-gap:6px}
+ .p-num{grid-area:num}.p-op{grid-area:op}.p-tec{grid-area:tec}.p-hh{grid-area:hh}.p-av{grid-area:av;text-align:right}.p-st{grid-area:st;justify-self:end}.p-acc{grid-area:acc;justify-self:start}
+ .dx-of-k{display:inline;margin-right:6px}
+ .dx-ui-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container (max-width:480px){
+ .dx-ui-form-grid,.dx-ui-form-grid.is-2{grid-template-columns:minmax(0,1fr)}
+}
+@container (max-width:600px){
+ .dx-ofe-hdr-actions{width:100%}
+ .dx-ofe-hdr-actions>*{flex:1;justify-content:center}
+ .dx-ofe-actions>*{flex:1;justify-content:center}
+ .dx-ofe-tabsbar{flex-wrap:wrap;padding:0 14px}.dx-ofe-tabsbar .dx-of-ghost{margin-bottom:10px}
+ .dx-ofe-panel{padding:4px 14px 16px}
+}
+.dx-ofe-tabsbar .dx-of-tabs{min-width:0;overflow-x:auto;scrollbar-width:thin}
+.dx-ofe-tabsbar .dx-of-tabs button{flex:none;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="mockbar">
+  <b>Mock F3 · Ficha de la OF</b>
+  <button data-st="borrador" class="on">1 · Borrador (editable)</button>
+  <button data-st="aprobada">2 · Aprobada (reservas)</button>
+  <button data-st="en_produccion">3 · En producción (partes)</button>
+  <button data-m="tarea">Modal tarea</button>
+  <button data-m="tarea-err">Tarea con errores</button>
+  <button data-m="material">Modal material</button>
+  <button data-m="aprobar">Confirmar aprobación</button>
+  <button data-m="avance">Registrar avance</button>
+  <button data-m="parte">Aprobar parte</button>
+  <button id="tema">Modo oscuro</button>
+  <span>Catálogos reales de PRUEBA (tareas, máquinas y bahías del Planner, materiales con su stock) · cliente y personas genéricos</span>
+</div>
+
+<main class="dx-of">
+<section class="dx-of-in">
+  <button class="dx-of-back"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Órdenes de Fabricación</button>
+  <div class="dx-of-hdr">
+    <div>
+      <div class="dx-of-eyebrow">Orden de Fabricación</div>
+      <h1 class="dx-of-title" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">OF-26-0001 <span id="pill"></span></h1>
+      <p class="dx-of-sub">Fabricación de vástago 80 mm · Minera Andina Demo</p>
+    </div>
+    <div class="dx-ofe-hdr-actions" id="hdr-actions"></div>
+  </div>
+  <div class="dx-of-tl" id="tl" aria-label="Estado de la OF"></div>
+  <div id="notice"></div>
+  <div id="kpis"></div>
+  <div class="dx-of-grid">
+    <div class="dx-of-card">
+      <div class="dx-of-fields">
+        <div class="dx-of-cell"><span>Cliente</span><span>Minera Andina Demo</span></div>
+        <div class="dx-of-cell"><span>OS</span><span>OSC-2026-0981</span></div>
+        <div class="dx-of-cell"><span>Hoja de costeo</span><span>HC-2026-0583</span></div>
+        <div class="dx-of-cell"><span>Componente</span><span>Vástago 80 mm</span></div>
+        <div class="dx-of-cell"><span>Apertura</span><span>3 nov 2026</span></div>
+        <div class="dx-of-cell"><span>Compromiso</span><span>20 nov 2026</span></div>
+        <div class="dx-of-cell"><span>Responsable</span><span>Sin dato</span></div>
+        <div class="dx-of-cell"><span>Moneda</span><span>Soles (PEN)</span></div>
+        <div class="dx-of-cell"><span>Avance</span><span id="f-av">0 %</span></div>
+      </div>
+      <div class="dx-ofe-tabsbar"><div class="dx-of-tabs" role="tablist" id="tabs"></div><span id="tab-action"></span></div>
+      <div class="dx-ofe-panel" id="panel" role="tabpanel"></div>
+    </div>
+    <aside class="dx-of-aside" id="aside"></aside>
+  </div>
+</section>
+<div id="modal"></div>
+</main>
+<script>
+const IC={
+ edit:'<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+ del:'<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+ up:'<svg class="i" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>',
+ down:'<svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
+ plus:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+ check:'<svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
+ info:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+ warn:'<svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+ ext:'<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M10 6H5v13h13v-5"/></svg>',
+ search:'<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+ x:'<svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+};
+const money=n=>'S/ '+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const TL=[['borrador','Borrador'],['en_ingenieria','Ingeniería'],['aprobada','Aprobada'],['en_produccion','Producción'],['en_calidad','Calidad'],['lista_entrega','Lista'],['entregada','Entregada'],['cerrada','Cerrada']];
+const ETQ={borrador:'Borrador',aprobada:'Aprobada',en_produccion:'En producción'};
+const ST_OP={pendiente:'Pendiente',en_proceso:'En proceso',terminada:'Terminada'};
+// Ruta: tareas, actividades, máquinas y bahías reales del catálogo de PRUEBA
+const RUTA=[{trabajo:'Fabricación de vástago 80 mm',acts:[
+ {act:'Fabricación de vástago',ops:[
+  {seq:1,tar:'Torneado de acabado',car:'Ayudante Técnico',hh:6,hm:4,eq:'Torno CNC',bah:'Zona de mecanizado',cost:110.88,real:6.5,av:100,st:'terminada'},
+  {seq:2,tar:'Rectificado de vástago',car:'Ayudante Técnico',hh:4,hm:3,eq:'',bah:'',cost:78.92,real:2,av:50,st:'en_proceso'},
+  {seq:3,tar:'Soldadura de fabricación',car:'Ayudante Técnico',hh:3,hm:0,eq:'Equipo de soldadura',bah:'Bahía Soldadura',cost:25.44,real:0,av:0,st:'pendiente'}]},
+ {act:'Armado y prueba de cilindro',ops:[
+  {seq:4,tar:'Prueba de funcionamiento',car:'Ayudante Técnico',hh:2,hm:1,eq:'Banco de pruebas hidráulico',bah:'Banco hidráulico',cost:31.96,real:0,av:0,st:'pendiente'},
+  {seq:5,tar:'Control de calidad dimensional final',car:'Inspector de Calidad',hh:1,hm:0,eq:'',bah:'',cost:12.50,real:0,av:0,st:'pendiente'}]}]}];
+// Materiales reales con su stock disponible en PRUEBA
+const MATS=[
+ {cod:'G01030101',des:'TUBO DELGADO',u:'m',cant:3,cu:10,origen:'Stock propio',op:'Torneado de acabado',disp:95,res:'ok',desp:3},
+ {cod:'MEC-ROD-102',des:'Rodamiento Rígido de Bolas 6204',u:'UND',cant:2,cu:25,origen:'Stock propio',op:'Prueba de funcionamiento',disp:10,res:'ok',desp:2},
+ {cod:'QUI-LUB-044',des:'Grasa de Litio Multipropósito NLGI 2',u:'UND',cant:1,cu:10,origen:'Stock propio',op:'Sin operación',disp:112,res:'ok',desp:0},
+ {cod:'HID-BOM-024',des:'Bomba Hidráulica Caudal Fijo',u:'UND',cant:2,cu:10,origen:'Stock propio',op:'Prueba de funcionamiento',disp:1,res:'parcial',desp:0}];
+const PARTES=[
+ {num:'PD-2026-0051',fecha:'4 nov 2026',op:'1 · Torneado de acabado',tec:'J. Pérez (técnico)',hh:4,av:60,st:'aprobado'},
+ {num:'PD-2026-0052',fecha:'5 nov 2026',op:'1 · Torneado de acabado',tec:'J. Pérez (técnico)',hh:2.5,av:100,st:'aprobado'},
+ {num:'PD-2026-0053',fecha:'5 nov 2026',op:'2 · Rectificado de vástago',tec:'M. Torres (técnico)',hh:2,av:50,st:'aprobado'},
+ {num:'PD-2026-0054',fecha:'6 nov 2026',op:'3 · Soldadura de fabricación',tec:'M. Torres (técnico)',hh:1.5,av:30,st:'en_revision'}];
+let st='borrador',tab='ruta';
+const editable=()=>st==='borrador';
+const totMO=259.70,totMat=110.00;
+
+function pill(){document.getElementById('pill').innerHTML=`<span class="dx-of-pill st-${st}"><i></i>${ETQ[st]}</span>`}
+function tl(){const i=TL.findIndex(x=>x[0]===st);document.getElementById('tl').innerHTML=TL.map(([k,l],j)=>`<div class="${j<i?'is-done':j===i?'is-now':''}"${j===i?' aria-current="step"':''}><i></i>${l}</div>`).join('')}
+function hdr(){
+ const h=document.getElementById('hdr-actions');
+ const os=`<button class="dx-of-ghost">${IC.ext}Abrir OS</button>`;
+ if(st==='borrador')h.innerHTML=os+`<button class="dx-of-primary" data-m="aprobar">${IC.check}Aprobar OF</button>`;
+ if(st==='aprobada')h.innerHTML=os+`<button class="dx-of-primary" data-m="avance">${IC.plus}Registrar avance</button>`;
+ if(st==='en_produccion')h.innerHTML=os+`<button class="dx-of-primary" data-m="avance">${IC.plus}Registrar avance</button>`;
+}
+function notice(){
+ const n=document.getElementById('notice');
+ if(st==='borrador')n.innerHTML=`<div class="dx-ofe-notice">${IC.info}<div>Revisa la ruta y los materiales. Al <b>aprobar</b>, se reserva el stock y se pide a Compras lo que falte; después solo se agregan materiales no planificados.</div></div>`;
+ if(st==='aprobada')n.innerHTML=`<div class="dx-ofe-notice is-warn">${IC.warn}<div>Se reservaron <b>3 de 4 materiales</b>. Falta <b>1 UND</b> de Bomba Hidráulica Caudal Fijo: va a Compras en la SOLPE <b>SLP-OF-20261103-0001</b>. La OF pasa a <b>En producción</b> con el primer parte aprobado.</div></div>`;
+ if(st==='en_produccion')n.innerHTML='';
+}
+function kpis(){
+ const k=document.getElementById('kpis');
+ k.innerHTML=st==='en_produccion'?`<div class="dx-ui-kpi-row">
+  <div class="dx-ui-kpi"><strong>50 %</strong><span>Avance (por horas estimadas)</span></div>
+  <div class="dx-ui-kpi"><strong>8.5 h</strong><span>Horas reales de 16 h estimadas</span></div>
+  <div class="dx-ui-kpi"><strong>S/ 152.08</strong><span>Costo real a la fecha</span></div>
+  <div class="dx-ui-kpi"><strong>1</strong><span>Parte por aprobar</span></div></div>`:'';
+ document.getElementById('f-av').textContent=st==='en_produccion'?'50 %':'0 %';
+}
+function tabs(){
+ const t=[['ruta','Ruta · 5'],['materiales','Materiales · 4']];
+ if(st!=='borrador')t.push(['partes','Partes · '+(st==='en_produccion'?'4':'0'),st==='en_produccion'?1:0]);
+ if(!t.some(x=>x[0]===tab))tab='ruta';
+ document.getElementById('tabs').innerHTML=t.map(([k,l,b])=>`<button role="tab" aria-selected="${tab===k}" class="${tab===k?'is-on':''}" data-tab="${k}">${l}${b?`<b>${b} por aprobar</b>`:''}</button>`).join('');
+ const a=document.getElementById('tab-action');
+ a.innerHTML=tab==='materiales'?(editable()?`<button class="dx-of-ghost" data-m="material">${IC.plus}Agregar material</button>`:`<button class="dx-of-ghost" data-m="material-np">${IC.plus}Material no planificado</button>`):(tab==='ruta'&&editable()?`<button class="dx-of-ghost" data-m="tarea">${IC.plus}Agregar tarea</button>`:'');
+}
+function opRow(o,first,last){
+ const bah=o.bah?`<span class="dx-of-tag">${o.bah}</span>`:`<span class="dx-of-tag is-warn">La asigna el Planner</span>`;
+ const hh=`${o.hh} h${o.hm?` · ${o.hm} h-máq.`:''}`;
+ if(st==='borrador')return `<div class="dx-ofe-op"><span class="o-seq seq">${o.seq}</span><span class="o-tar dx-of-strong">${o.tar}</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>${o.car}</span><span class="o-hh"><span class="dx-of-k">Horas</span>${hh}</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>${o.eq||'Sin equipo'}</span><span class="o-bah"><span class="dx-of-k">Bahía</span>${bah}</span><span class="o-cost dx-of-money"><span class="dx-of-k">Costo</span>${money(o.cost)}</span><span class="o-act dx-ofe-icons"><button class="dx-ofe-ib" aria-label="Editar ${o.tar}" data-m="tarea">${IC.edit}</button><button class="dx-ofe-ib is-del" aria-label="Quitar ${o.tar}">${IC.del}</button></span></div>`;
+ const prod=st==='en_produccion';
+ const stt=prod?o.st:'pendiente', av=prod?o.av:0, real=prod?o.real:0;
+ return `<div class="dx-ofe-op is-prod"><span class="o-seq seq">${o.seq}</span><span class="o-tar dx-of-strong">${o.tar}</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>${o.car}</span><span class="o-hh"><span class="dx-of-k">Horas</span>${real} h de ${o.hh} h</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>${o.eq||'Sin equipo'} · ${o.bah||'Planner'}</span><span class="o-bah dx-ofe-progress"><b>${av} %</b><span class="dx-of-bar2"><i style="width:${av}%"></i></span></span><span class="o-cost r"><span class="dx-ofe-st ${stt}"><i></i>${ST_OP[stt]}</span></span></div>`;
+}
+function ruta(){
+ let html='';
+ RUTA.forEach(t=>{
+  const n=t.acts.reduce((s,a)=>s+a.ops.length,0);
+  html+=`<div class="dx-of-trab"><div class="dx-of-trab-h"><b>${t.trabajo}</b><span class="dx-of-pill is-fab">Fabricación (OF)</span><span class="dx-of-muted" style="margin-left:auto">${n} tareas · 16 h-hombre · 8 h-máquina</span></div>`;
+  t.acts.forEach((a,ai)=>{
+   html+=`<div class="dx-of-act">Actividad · ${a.act}</div>`;
+   html+=st==='borrador'
+    ?`<div class="dx-ofe-op is-head" aria-hidden="true"><span>#</span><span>Tarea</span><span>Cargo</span><span>Horas</span><span>Equipo</span><span>Bahía</span><span class="r">Costo</span><span></span></div>`
+    :`<div class="dx-ofe-op is-prod is-head" aria-hidden="true"><span>#</span><span>Tarea</span><span>Cargo</span><span>Horas reales</span><span>Equipo · bahía</span><span>Avance</span><span class="r">Estado</span></div>`;
+   a.ops.forEach((o,i)=>html+=opRow(o,ai===0&&i===0,ai===t.acts.length-1&&i===a.ops.length-1));
+   if(editable())html+=`<div class="dx-ofe-add"><button class="dx-ofe-addbtn" data-m="tarea">${IC.plus}Tarea en «${a.act}»</button></div>`;
+  });
+  html+='</div>';
+ });
+ if(editable())html+=`<div class="dx-ofe-add" style="border:0;padding-inline:0"><button class="dx-ofe-addbtn" data-m="tarea">${IC.plus}Nueva actividad o trabajo</button></div>`;
+ return html;
+}
+function resCell(m){
+ if(st==='borrador')return `<span class="dx-ofe-stock ${m.disp>=m.cant?'ok':'low'}">${m.disp>=m.cant?`Stock suficiente · ${m.disp} ${m.u}`:`Stock: ${m.disp} de ${m.cant} ${m.u}`}</span>`;
+ if(m.res==='ok'){
+  if(st==='en_produccion'&&m.desp)return `<div class="dx-ofe-res"><span class="dx-of-tag is-ok">Despachado ${m.desp} ${m.u}</span><span class="dx-of-muted">Consumido en la OF</span></div>`;
+  return `<div class="dx-ofe-res"><span class="dx-of-tag is-blue">Reservado ${m.cant} ${m.u}</span><span class="dx-of-muted">Por despachar al taller</span></div>`;
+ }
+ return `<div class="dx-ofe-res"><span class="dx-of-tag is-blue">Reservado 1 ${m.u}</span><span class="dx-of-tag is-warn">Falta 1 · SOLPE SLP-OF-20261103-0001</span></div>`;
+}
+function materiales(){
+ let h=`<div class="dx-ofe-mats"><div class="dx-ofe-mat is-head" aria-hidden="true"><span>Material</span><span class="r">Cantidad</span><span class="r">Costo unit.</span><span class="r">Subtotal</span><span>${st==='borrador'?'Stock':'Reserva y despacho'}</span><span></span></div>`;
+ MATS.forEach(m=>{
+  h+=`<div class="dx-ofe-mat"><span class="m-mat dx-of-cell"><span class="dx-of-strong" style="white-space:normal">${m.des}</span><span class="dx-of-muted"><span class="dx-ofe-mono">${m.cod}</span> · ${m.origen} · ${m.op}</span></span><span class="m-cant r"><span class="dx-of-k">Cantidad</span>${m.cant} ${m.u}</span><span class="m-cu r dx-of-muted"><span class="dx-of-k">Costo unit.</span>${money(m.cu)}</span><span class="m-sub dx-of-money"><span class="dx-of-k">Subtotal</span>${money(m.cant*m.cu)}</span><span class="m-res">${resCell(m)}</span><span class="m-act dx-ofe-icons">${editable()?`<button class="dx-ofe-ib" aria-label="Editar ${m.des}" data-m="material">${IC.edit}</button><button class="dx-ofe-ib is-del" aria-label="Quitar ${m.des}">${IC.del}</button>`:''}</span></div>`;
+ });
+ return h+'</div>';
+}
+function partes(){
+ if(st!=='en_produccion')return `<div class="dx-of-empty">Aún no hay partes. Registra el avance de una operación con «Registrar avance».</div>`;
+ const E={aprobado:['terminada','Aprobado'],en_revision:['en_revision','En revisión']};
+ let h=`<div class="dx-ofe-mats"><div class="dx-ofe-parte is-head" aria-hidden="true"><span>Parte</span><span>Operación</span><span>Técnico</span><span class="r">Horas</span><span class="r">Avance</span><span>Estado</span><span></span></div>`;
+ PARTES.forEach(p=>{const[c,l]=E[p.st];h+=`<div class="dx-ofe-parte"><span class="p-num dx-of-cell"><span class="dx-ofe-mono">${p.num}</span><span class="dx-of-muted">${p.fecha}</span></span><span class="p-op dx-of-strong" style="white-space:normal">${p.op}</span><span class="p-tec dx-of-muted"><span class="dx-of-k">Técnico</span>${p.tec}</span><span class="p-hh r"><span class="dx-of-k">Horas</span>${p.hh} h</span><span class="p-av r"><span class="dx-of-k">Avance</span>${p.av} %</span><span class="p-st"><span class="dx-ofe-st ${c}"><i></i>${l}</span></span><span class="p-acc">${p.st==='en_revision'?`<button class="dx-ofe-mini is-pri" data-m="parte">Revisar</button>`:''}</span></div>`});
+ return h+'</div>';
+}
+function panel(){document.getElementById('panel').innerHTML=tab==='ruta'?ruta():tab==='materiales'?materiales():partes()}
+function aside(){
+ const real=st==='en_produccion';
+ document.getElementById('aside').innerHTML=`<div class="dx-of-card"><h4>Costos</h4><dl class="dx-of-dl"><dt>Mano de obra y máquina</dt><dd>${money(totMO)}</dd><dt>Materiales</dt><dd>${money(totMat)}</dd></dl><div class="dx-of-total"><span>Costo estimado</span><b>${money(totMO+totMat)}</b></div></div>
+ <div class="dx-of-card"><h4>Costo real</h4>${real?`<dl class="dx-of-dl"><dt>Mano de obra (8.5 h)</dt><dd>S/ 72.08</dd><dt>Materiales despachados</dt><dd>S/ 80.00</dd></dl><div class="dx-of-total"><span>Real a la fecha</span><b>S/ 152.08</b></div><p class="dx-of-muted" style="white-space:normal;margin:10px 0 0">41 % del estimado con 50 % de avance.</p>`:`<p class="dx-of-muted" style="white-space:normal;margin:0">Se calcula con los partes aprobados y los materiales despachados.</p>`}</div>
+ <div class="dx-of-card"><h4>Origen</h4><dl class="dx-of-dl"><dt>OS</dt><dd>OSC-2026-0981</dd><dt>Tipo de OS</dt><dd>Fabricación</dd><dt>Hoja</dt><dd>HC-2026-0583</dd><dt>Horas</dt><dd>16 h-hombre · 8 h-máq.</dd></dl></div>`;
+}
+function render(){pill();tl();hdr();notice();kpis();tabs();panel();aside();document.querySelectorAll('.mockbar [data-st]').forEach(b=>b.classList.toggle('on',b.dataset.st===st))}
+
+/* ===== Modales ===== */
+const sel=(id,label,req,opts,val,err,hint)=>`<div class="dx-ui-field"><label for="${id}">${label}${req?' <span class="dx-ui-required">*</span>':''}</label><select id="${id}" class="dx-ui-select"${err?' aria-invalid="true"':''}><option value="">Elige…</option>${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select>${err?`<span class="dx-ui-field-error">${err}</span>`:hint?`<span class="dx-ui-field-hint">${hint}</span>`:''}</div>`;
+const inp=(id,label,req,val,err,hint,extra='')=>`<div class="dx-ui-field ${extra}"><label for="${id}">${label}${req?' <span class="dx-ui-required">*</span>':''}</label><input id="${id}" value="${val}"${err?' aria-invalid="true"':''}>${err?`<span class="dx-ui-field-error">${err}</span>`:hint?`<span class="dx-ui-field-hint">${hint}</span>`:''}</div>`;
+const close=`<button type="button" class="dx-of-ghost" data-close>Cancelar</button>`;
+function modal(kind){
+ const M=document.getElementById('modal');let h='';
+ if(kind==='tarea'||kind==='tarea-err'){const e=kind==='tarea-err';
+  h=`<form class="dx-ofe-modal" role="dialog" aria-modal="true" aria-labelledby="mt" novalidate><h3 id="mt">${e?'Nueva tarea':'Editar tarea'}</h3><p>La bahía se deduce del equipo (máquina del Planner). Sin equipo, la asigna el Planner.</p>
+  <div class="dx-ui-form-grid">
+   ${sel('t-trab','Trabajo',1,['Fabricación de vástago 80 mm'],'Fabricación de vástago 80 mm')}
+   ${sel('t-act','Actividad',1,['Fabricación de vástago','Armado y prueba de cilindro','Reparación de vástago'],e?'':'Fabricación de vástago',e?'Elige la actividad.':'')}
+   ${sel('t-tar','Tarea',1,['Torneado de acabado','Rectificado de vástago','Rectificado cilíndrico','Soldadura de fabricación','Taladrado y roscado'],e?'':'Torneado de acabado',e?'Elige la tarea.':'')}
+   ${sel('t-car','Cargo',1,['Ayudante Técnico','Inspector de Calidad','Ingeniero de Proyectos'],e?'':'Ayudante Técnico',e?'Elige el cargo.':'')}
+   ${inp('t-hh','Horas-hombre',1,e?'0':'6',e?'Debe ser mayor a 0.':'','')}
+   ${inp('t-hm','Horas-máquina',0,e?'':'4','','Opcional')}
+   ${sel('t-eq','Equipo',0,['Torno CNC','Torno convencional','Banco de pruebas hidráulico','Prensa hidráulica 100 t','Equipo de soldadura','Grúa puente 20 t'],e?'':'Torno CNC','',e?'Opcional':'Bahía: Zona de mecanizado')}
+   ${inp('t-cost','Costo estimado',0,e?'S/ 0.00':'S/ 110.88','','Se calcula con la tarifa del cargo y del equipo')}
+   ${sel('t-pos','Posición',1,['1 · antes de Torneado de acabado','2 · después de Torneado de acabado','3 · después de Rectificado de vástago'],e?'3 · después de Rectificado de vástago':'1 · antes de Torneado de acabado','','Orden dentro de la actividad')}
+  </div>
+  <div class="dx-ofe-actions">${close}<button class="dx-of-primary" type="button">${e?'Agregar tarea':'Guardar cambios'}</button></div></form>`;}
+ if(kind==='material'||kind==='material-np'){const np=kind==='material-np';
+  h=`<form class="dx-ofe-modal" role="dialog" aria-modal="true" aria-labelledby="mm" novalidate><h3 id="mm">${np?'Material no planificado':'Agregar material'}</h3><p>${np?'La OF ya está aprobada: el material se agrega como no planificado y se reserva al guardarlo.':'Busca en el catálogo de materiales. El costo unitario sale del costo promedio.'}</p>
+  <div class="dx-ui-form-grid">
+   <div class="dx-ui-field dx-ui-field-full"><label for="m-q">Material <span class="dx-ui-required">*</span></label><input id="m-q" value="rodam" autocomplete="off" aria-expanded="true">
+    <div class="dx-ofe-pop" role="listbox">
+     <button type="button" class="dx-ofe-opt is-act" role="option"><span class="dx-of-strong">Rodamiento Rígido de Bolas 6204</span><span class="dx-ofe-stock ok">10 UND disponibles</span><span class="dx-of-muted"><span class="dx-ofe-mono">MEC-ROD-102</span> · S/ 25.00 por UND</span></button>
+     <button type="button" class="dx-ofe-opt" role="option"><span class="dx-of-strong">Bomba Hidráulica Caudal Fijo</span><span class="dx-ofe-stock low">1 UND disponible</span><span class="dx-of-muted"><span class="dx-ofe-mono">HID-BOM-024</span> · S/ 10.00 por UND</span></button>
+     <button type="button" class="dx-ofe-opt" role="option"><span class="dx-of-strong">Cable Vulcanizado 3x10 AWG</span><span class="dx-ofe-stock ok">27 MET disponibles</span><span class="dx-of-muted"><span class="dx-ofe-mono">ELE-CAB-015</span> · S/ 31.97 por MET</span></button>
+    </div></div>
+   ${inp('m-c','Cantidad',1,'2','','Unidad: UND')}
+   ${sel('m-o','Origen',1,['Stock propio','Compra','Material del cliente'],'Stock propio')}
+   ${sel('m-op','Operación',0,['1 · Torneado de acabado','2 · Rectificado de vástago','4 · Prueba de funcionamiento'],'4 · Prueba de funcionamiento','','Opcional')}
+   ${np?`<div class="dx-ui-field dx-ui-field-full"><label for="m-mot">Motivo <span class="dx-ui-required">*</span></label><textarea id="m-mot">Se desgastó el rodamiento original durante el armado.</textarea></div>`:''}
+  </div>
+  <div class="dx-ofe-actions">${close}<button class="dx-of-primary" type="button">${np?'Agregar y reservar':'Agregar material'}</button></div></form>`;}
+ if(kind==='aprobar'){
+  h=`<div class="dx-ofe-modal is-narrow" role="dialog" aria-modal="true" aria-labelledby="ma"><h3 id="ma">¿Aprobar la OF-26-0001?</h3><p>Después de aprobarla, la ruta y los materiales ya no se editan; solo se agregan materiales no planificados.</p>
+  <dl class="dx-ofe-cmp"><dt>Operaciones</dt><dd>5 · 16 h-hombre · 8 h-máq.</dd><dt>Se reservará</dt><dd>3 materiales completos y 1 de 2 UND de Bomba Hidráulica</dd><dt>Irá a Compras</dt><dd>1 UND de Bomba Hidráulica Caudal Fijo (SOLPE)</dd><dt>Costo estimado</dt><dd>S/ 369.70</dd></dl>
+  <div class="dx-ofe-actions">${close}<button class="dx-of-primary" data-go="aprobada">${IC.check}Aprobar y reservar</button></div></div>`;}
+ if(kind==='avance'){
+  h=`<form class="dx-ofe-modal" role="dialog" aria-modal="true" aria-labelledby="mv" novalidate><h3 id="mv">Registrar avance</h3><p>El parte queda en revisión hasta que lo apruebe el jefe de taller.</p>
+  <div class="dx-ui-form-grid">
+   ${sel('v-op','Operación',1,['1 · Torneado de acabado','2 · Rectificado de vástago','3 · Soldadura de fabricación','4 · Prueba de funcionamiento','5 · Control de calidad dimensional final'],'3 · Soldadura de fabricación','','Estimado: 3 h · lleva 0 h · avance 0 %')}
+   ${sel('v-tec','Técnico',1,['J. Pérez (técnico)','M. Torres (técnico)'],'M. Torres (técnico)')}
+   ${inp('v-f','Fecha',1,'06/11/2026','','')}
+   ${inp('v-h','Horas trabajadas',1,'1.5','','Máximo 2 decimales')}
+   ${inp('v-a','Avance de la operación (%)',1,'30','','De 0 a 100; con 100 la operación queda terminada')}
+   <div class="dx-ui-field dx-ui-field-full"><label for="v-obs">Qué se hizo</label><textarea id="v-obs">Preparación de biseles y primer cordón de raíz.</textarea></div>
+  </div>
+  <div class="dx-ofe-actions">${close}<button class="dx-of-primary" type="button">Enviar a revisión</button></div></form>`;}
+ if(kind==='parte'){
+  h=`<form class="dx-ofe-modal is-narrow" role="dialog" aria-modal="true" aria-labelledby="mp" novalidate><h3 id="mp">Revisar parte PD-2026-0054</h3><p>Al aprobarlo se suman las horas, se actualiza el avance de la operación y de la OF, y el costo real.</p>
+  <dl class="dx-ofe-cmp"><dt>Operación</dt><dd>3 · Soldadura de fabricación</dd><dt>Técnico</dt><dd>M. Torres · 6 nov 2026</dd><dt>Horas</dt><dd>1.5 h (lleva 0 h de 3 h)</dd><dt>Avance reportado</dt><dd>30 %</dd><dt>Qué se hizo</dt><dd>Preparación de biseles y primer cordón de raíz.</dd></dl>
+  <div class="dx-ui-form-grid is-2">
+   ${inp('p-av','Avance validado (%)',1,'30','','Puedes corregir lo reportado')}
+   <div class="dx-ui-field"><label for="p-mot">Observación</label><input id="p-mot" value=""><span class="dx-ui-field-hint">Obligatoria si observas el parte o cambias el avance</span></div>
+  </div>
+  <div class="dx-ofe-actions"><button type="button" class="dx-of-ghost" data-close>Cancelar</button><button type="button" class="dx-of-ghost">Observar</button><button class="dx-of-primary" type="button" data-close>${IC.check}Aprobar parte</button></div></form>`;}
+ M.innerHTML=`<div class="dx-ofe-backdrop">${h}</div>`;
+ const f=M.querySelector('[aria-invalid="true"]')||M.querySelector('input,select,textarea,button.dx-of-primary');if(f)f.focus();
+}
+document.addEventListener('click',e=>{
+ const s=e.target.closest('.mockbar [data-st]');if(s){st=s.dataset.st;tab=st==='en_produccion'?'ruta':tab;document.getElementById('modal').innerHTML='';render();return}
+ const m=e.target.closest('[data-m]');if(m){if(m.dataset.m==='avance'&&st==='borrador'){st='en_produccion';render()}if(m.dataset.m==='parte'&&st!=='en_produccion'){st='en_produccion';tab='partes';render()}if(m.dataset.m==='aprobar'&&st!=='borrador'){st='borrador';render()}if(m.dataset.m==='material-np'&&st==='borrador'){st='aprobada';render()}modal(m.dataset.m);return}
+ const g=e.target.closest('[data-go]');if(g){st=g.dataset.go;document.getElementById('modal').innerHTML='';render();return}
+ if(e.target.closest('[data-close]')||e.target.classList.contains('dx-ofe-backdrop')){document.getElementById('modal').innerHTML='';return}
+ const t=e.target.closest('[data-tab]');if(t){tab=t.dataset.tab;tabs();panel()}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('modal').innerHTML=''});
+document.getElementById('tema').onclick=e=>{const d=document.documentElement;d.dataset.theme=d.dataset.theme==='dark'?'light':'dark';e.target.classList.toggle('on',d.dataset.theme==='dark')};
+render();
+</script>
+</body>
+</html>
