@@ -4534,7 +4534,7 @@ body {
 @keyframes dx-inicio-spin{to{transform:rotate(360deg)}}
 
 .dxi-fab { padding:0; border:0; background:none; cursor:pointer; color:inherit; }
-.dx-asis .dx-asis-fab { display:block; z-index:69; }
+.dx-asis .dx-asis-fab { display:block; z-index:69; pointer-events:auto; }
 .dxi-fab:focus-visible { outline:2px solid #00BCD4; outline-offset:2px; }
 body:has(.dx-asis-fab[aria-expanded="true"]) .dxi-root .dxi-fab { visibility:hidden; pointer-events:none; }
 @media (max-width:760px) { .dx-asis .dx-asis-fab { bottom:calc(74px + env(safe-area-inset-bottom, 0px)); } }
