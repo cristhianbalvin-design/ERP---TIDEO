@@ -87,7 +87,7 @@ export function fraseItem(item, mio) {
   return montos ? `${base} por ${montos}` : base;
 }
 
-export function resumenDia(data, visibles, mio) {
+export function resumenDia(data, items) {
   const propios = data.filas_mias || 0;
   const area = data.filas_area || 0;
   if (!propios && !area) return 'Hoy no tienes pendientes por resolver.';
@@ -95,7 +95,9 @@ export function resumenDia(data, visibles, mio) {
   let texto = propios
     ? `Hoy tienes ${propios} ${propios === 1 ? 'pendiente tuyo' : 'pendientes tuyos'} y ${mas} más en tu área.`
     : `Hoy no tienes pendientes asignados; hay ${area} en tu área.`;
-  const primeros = visibles.slice(0, 2).map(item => fraseItem(item, mio));
+  const propiosItems = items.filter(item => item.cantidad_mia > 0);
+  const primeros = (propiosItems.length ? propiosItems : items).slice(0, 2)
+    .map(item => fraseItem(item, propiosItems.length > 0));
   if (primeros.length) texto += ` Lo primero: ${primeros.join(' y ')}.`;
   return texto;
 }

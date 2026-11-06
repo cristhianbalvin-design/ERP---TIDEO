@@ -323,9 +323,9 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     b.style.top = by + 'px';
   }
   async function go(i) {
-    if (destruido) return;
-    st = i;
+    if (destruido || !tour || busy || i < 0) return;
     if (i >= STEPS.length) return endTour();
+    st = i;
     const s = STEPS[i],
       el = $(s.el);
     if (!el) return go(i + 1);
@@ -334,7 +334,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       behavior: 'smooth'
     });
     await wait(450);
-    if (destruido || st !== i) return;
+    if (destruido || !tour || busy || st !== i) return;
     const r = el.getBoundingClientRect();
     const sp = nodes.spot;
     sp.style.display = 'block';
@@ -352,6 +352,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
   const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
   let busy = false,
     tour = false,
+    tourVersion = 0,
     inView = true;
   const { stage, mor, fab, fl } = nodes;
   const waiting = new Set();
@@ -554,6 +555,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
   async function startTour() {
     if (destruido || busy || tour) return;
     tour = true;
+    const version = ++tourVersion;
     busy = true;
     stopSpeech();
     const fs = FS();
@@ -573,7 +575,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
         width: fs,
         height: fs
       }, true);
-      if (destruido) return;
+      if (destruido || !tour || version !== tourVersion) { done(); return; }
       setFl(x, y, fs);
       fl.style.display = 'block';
       done();
@@ -582,53 +584,38 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     busy = false;
     nodes.bub.style.display = 'block';
     await wait(30);
-    if (destruido) return;
+    if (destruido || !tour || version !== tourVersion) return;
     fl.style.transition = '';
     go(0);
   }
-  async function endTour() {
-    if (destruido || !tour || busy) return;
-    busy = true;
+  function endTour() {
+    const wasTour = tour;
+    tour = false;
+    tourVersion++;
     st = -1;
-    stopSpeech();
     nodes.spot.style.display = 'none';
     nodes.bub.style.display = 'none';
-    stage.scrollIntoView({
-      behavior: reduce ? 'auto' : 'smooth',
-      block: 'center'
-    });
-    await wait(reduce ? 0 : 520);
-    if (destruido) return;
-    const r = stage.getBoundingClientRect(),
-      fs = FS(),
-      x = r.left + r.width / 2 - fs / 2,
-      y = Math.max(70, r.top + 40);
-    setFl(x, y, fs, true);
-    await wait(reduce ? 0 : 720);
-    if (destruido) return;
     fl.style.display = 'none';
-    const done = await morph({
-      left: x,
-      top: y,
-      width: fs,
-      height: fs
-    }, r, false);
-    if (destruido) return;
+    if (destruido || !wasTour) return;
+    stopSpeech();
+    animations.forEach(animation => animation.cancel());
+    animations.clear();
+    mor.style.display = 'none';
     stage.style.visibility = '';
-    done();
+    fab.style.visibility = '';
+    fab.style.display = 'none';
     place = 'hero';
     busy = false;
-    tour = false;
     sync();
   }
   const begin = () => {
-    if (destruido) return;
+    if (destruido || tour || busy) return;
     STEPS = getSteps();
     if (STEPS.length) startTour();
   };
-  const next = () => go(st + 1);
+  const next = () => { if (tour && !busy && st >= 0) go(st + 1); };
   const key = e => {
-    if (e.key === 'Escape' && st >= 0) endTour();
+    if (e.key === 'Escape') endTour();
   };
   nodes.bubNx.addEventListener('click', next);
   nodes.bubSk.addEventListener('click', endTour);

@@ -4,7 +4,7 @@ import { useApp } from '../context.jsx';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { SOCIEDAD_TODAS_ID } from '../services/sociedadesService.js';
-import { formatos, fecha, importe, subtitulo, titulo, fraseItem, resumenDia, textoHablado } from './datos.js';
+import { formatos, fecha, importe, subtitulo, titulo, resumenDia, textoHablado } from './datos.js';
 import { crearMotor } from './motorAria.js';
 import sprite from './sprite.svg?raw';
 import './inicio.css';
@@ -232,7 +232,7 @@ export default function Inicio() {
     [data, ocultos]);
   const visibles = items.filter(i => scope === 'area' || i.cantidad_mia > 0);
   const filtrados = visibles.filter(i => area === 'Todas' || i.area === area);
-  const resumen = data ? resumenDia(data, filtrados, scope === 'mios') : '';
+  const resumen = data ? resumenDia(data, items) : '';
   const primerosMontos = data?.ver_finanzas ? ['pagar_vencido', 'cobrar_vencido'].map(clave =>
     data.dinero?.[clave]?.por_moneda?.find(x => x.total != null && x.moneda)) : [];
   const pendientes = data?.filas_mias > 0 ? data.filas_mias : data?.filas_area || 0;
@@ -244,7 +244,7 @@ export default function Inicio() {
     ? `Este es tu pulso del día: ${monto(primerosMontos[0])} vencidos por pagar y ${monto(primerosMontos[1])} por cobrar.`
     : `Este es tu pulso del día: ${pendientes} ${pendientes === 1 ? 'pendiente' : 'pendientes'}.`;
   steps.current = [data && { el: '#kpis', t: pasoKpi },
-    ...filtrados.slice(0, 2).map(i => ({ el: `[data-id="${i.id}"]`, t: fraseItem(i, scope === 'mios') })),
+    ...filtrados.slice(0, 2).map(i => ({ el: `[data-id="${i.id}"]`, t: titulo(i, scope === 'mios') })),
     data?.alertas && Object.keys(data.alertas).length > 0 && { el: '#alerts', t: 'Aquí están tus avisos de hoy.' },
     data?.ver_finanzas && data?.dinero && { el: '#money', t: 'Aquí ves tus cobros y pagos separados por moneda.' },
     data && { el: '#ask', t: 'Y si necesitas algo más, pregúntame aquí.' }
