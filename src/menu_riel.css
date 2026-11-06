@@ -389,7 +389,7 @@ html[data-dx-diagnostico-work-mode="true"] .dx-nav-shell {
 .dx-nav-aria { position: relative; display: grid; place-items: center; width: 46px; height: 46px; }
 .dx-nav-aria::before { content: ""; position: absolute; inset: -6px; background: radial-gradient(circle, rgba(0,188,212,.35) 0%, transparent 70%); opacity: .75; pointer-events: none; }
 .dx-nav-rail-button:hover .dx-nav-aria::before { opacity: 1; }
-.dx-nav-aria svg { position: relative; display: block; }
+.dx-nav-aria svg { width: 36px; height: 36px; display: block; position: relative; }
 .dx-header-fecha { color: rgba(255,255,255,.6); font: 500 12.5px 'DM Sans', sans-serif; white-space: nowrap; }
 .dx-header-search { display: flex; align-items: center; gap: 8px; height: 36px; width: min(320px, 25vw); padding: 0 10px; border: 0; border-radius: 10px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.62); font: 13px 'DM Sans', sans-serif; cursor: pointer; }
 .dx-header-search svg { width: 19px; height: 19px; flex: none; }
