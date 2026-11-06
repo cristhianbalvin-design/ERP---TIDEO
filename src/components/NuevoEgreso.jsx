@@ -4,6 +4,7 @@ import { I } from '../icons.jsx';
 import { FileUpload } from './FileUpload.jsx';
 import { finanzasService } from '../services/finanzasService.js';
 import { cajaChicaService } from '../services/cajaChicaService.js';
+import { convertirEgresoCajaChica } from '../services/cajaChicaConversion.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
@@ -362,6 +363,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [tiposGasto, setTiposGasto] = useState([]);
   const [buscarTipo, setBuscarTipo] = useState('');
   const [tc, setTc]               = useState(null);
+  const [tcCajaChica, setTcCajaChica] = useState(null);
   const [archivoUrl, setArchivoUrl] = useState(registroEditar?.archivo_url || registroEditar?.archivo_factura_url || registroEditar?.comprobante_url || '');
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState('');
@@ -527,6 +529,39 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const fondoCajaSeleccionado = fondosCaja.find(f => f.id === form.fondo_caja_chica_id) || fondoCajaChicaFijo;
   const fondoCajaChicaFijado = Boolean(fondoCajaChicaFijoId);
   const esPagoCajaChica = Boolean(form.ya_pagado && form.metodo_pago === 'Caja chica');
+  useEffect(() => {
+    let mounted = true;
+    setTcCajaChica(null);
+    const load = async () => {
+      try {
+        const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
+        const tipoCambio = await getTipoCambioPorFecha(form.fecha, sb);
+        if (mounted) setTcCajaChica(tipoCambio);
+      } catch { if (mounted) setTcCajaChica(null); }
+    };
+    if (form.fecha) load();
+    return () => { mounted = false; };
+  }, [form.fecha]);
+  const egresoCajaChica = esPagoCajaChica && fondoCajaSeleccionado
+    ? (() => {
+        const monedaPago = form.moneda;
+        const monedaFondo = fondoCajaSeleccionado.moneda || 'PEN';
+        const mismaMoneda = monedaPago === monedaFondo;
+        const tasaRelativaPEN = monedaPago === 'PEN'
+          ? (monedaFondo === 'USD' ? tcCajaChica?.usd : tcCajaChica?.eur)
+          : (monedaPago === 'USD' ? tcCajaChica?.usd : tcCajaChica?.eur);
+        // tipoCambioService guarda USD/EUR por PEN; la RPC espera PEN por USD/EUR.
+        const tasa = tasaRelativaPEN ? 1 / Number(tasaRelativaPEN) : null;
+        try {
+          return { ...convertirEgresoCajaChica({
+            monedaPago,
+            monto: form.monto,
+            monedaFondo,
+            tipoCambio: mismaMoneda ? null : tasa,
+          }), error: '' };
+        } catch (error) { return { error: error.message }; }
+      })()
+    : null;
   const esCompraConOc = Boolean(form.es_compra_con_oc && !esPagoCajaChica);
   const ocSeleccionadaEnFormulario = Boolean(esCompraConOc && form.orden_compra_id);
   const ordenCompraSeleccionada = esCompraConOc
@@ -1343,18 +1378,21 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         />
       </div>
 
+      {errorGuardado && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>{errorGuardado}</div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4 }}>
         <button className="btn btn-secondary" type="button" disabled={esEdicion} onClick={() => setPaso(1)}>← Atrás</button>
         <button
           className="btn btn-primary"
           type="button"
           onClick={() => {
+            setErrorGuardado('');
             let ok = true;
             if (!form.centro_costo_id) { setErrCeco(true); ok = false; }
             if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); ok = false; }
             if (!esEdicion && !form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); ok = false; }
             if (!form.fecha || form.fecha > today) { setErrFecha(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
+            if (form.ya_pagado && form.metodo_pago === 'Caja chica' && egresoCajaChica?.error) { setErrorGuardado(egresoCajaChica.error); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
             if (!esEdicion && form.ya_pagado && form.metodo_pago === METODO_TRANSFERENCIA && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
             if (esCompraConOc && !form.orden_compra_id) { setErrOrdenCompra('Selecciona la Orden de Compra de origen.'); ok = false; }
@@ -1393,6 +1431,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       ['Concepto',       form.concepto],
       ['Fecha',          form.fecha],
       ['Monto',          `${form.moneda} ${monto.toFixed(2)}${form.moneda !== 'PEN' ? ` (S/ ${montoPEN.toFixed(2)})` : ''}`],
+      esPagoCajaChica && egresoCajaChica && !egresoCajaChica.error && egresoCajaChica.moneda_original
+        ? ['Descuento del fondo', `Se descontará del fondo: ${egresoCajaChica.moneda} ${egresoCajaChica.monto.toFixed(2)} (${egresoCajaChica.moneda_original} ${egresoCajaChica.monto_original.toFixed(2)} ${egresoCajaChica.moneda_original === 'PEN' ? '÷' : '×'} TC ${egresoCajaChica.tipo_cambio})`]
+        : null,
       ['CECO',           cecoNombre],
       form.ot_vinc_id ? ['OT vinculada', etiquetaOT(otsActivas.find(o => o.id === form.ot_vinc_id))] : null,
       ['Estado pago',    form.ya_pagado ? 'Pagado' : 'Pendiente'],
@@ -1492,6 +1533,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (!esEdicion && !form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
     if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) {
       setErrFondo(true);
+      setPaso(2);
+      return;
+    }
+    if (form.ya_pagado && form.metodo_pago === 'Caja chica' && egresoCajaChica?.error) {
+      setErrorGuardado(egresoCajaChica.error);
       setPaso(2);
       return;
     }
@@ -1668,8 +1714,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           sociedad_id:       sociedadOperacionId,
           fecha:             form.fecha,
           concepto:          form.concepto.trim(),
-          monto,
-          moneda:            form.moneda,
+          monto:             egresoCajaChica.monto,
+          moneda:            egresoCajaChica.moneda,
+          ...(egresoCajaChica.moneda_original ? {
+            moneda_original: egresoCajaChica.moneda_original,
+            monto_original: egresoCajaChica.monto_original,
+            tipo_cambio: egresoCajaChica.tipo_cambio,
+          } : {}),
           responsable_id:    authUser?.id   || null,
           responsable_nombre: authUser?.email || null,
           fondo_id:          fondoCajaChicaFijoId || form.fondo_caja_chica_id || null,
