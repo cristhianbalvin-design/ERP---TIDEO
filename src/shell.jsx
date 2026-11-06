@@ -10,6 +10,9 @@ import { puedeVerPantalla } from './access/roleAccess.js';
 import { DASHBOARDS_ACCESS_ANY_OF } from './dashboardsTabs.js';
 import { useAsistenteErp } from './context/AsistenteErpContext.jsx';
 import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
+import ComandoGlobal from './components/ComandoGlobal.jsx';
+import { leerMenuUsuario, guardarMenuUsuario, alternarFavorito, agregarReciente } from './menuFavoritos.js';
+import './menu_riel.css';
 
 function IconoAria({ size = 20 }) {
   return <svg width={size} height={size} viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2" /></svg>;
@@ -366,19 +369,54 @@ function buildSidebarBadges(app) {
   };
 }
 
-export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
+export function Sidebar({
+  active,
+  onNav,
+  role,
+  isSuperadmin,
+  onBrandClick
+}) {
   const app = useApp();
-  const { solicitarApertura } = useAsistenteErp();
-  const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
-  const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true');
-  const [costeoWorkMode, setCosteoWorkModeState] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxCosteoWorkMode === 'true');
-  const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
-  const [flyoutKey, setFlyoutKey] = useState(null);
-  const [flyoutPosition, setFlyoutPosition] = useState({ top: 8, bottom: 'auto', maxHeight: 0 });
-  const [busquedaModulo, setBusquedaModulo] = useState('');
-  // En el modo trabajo de la Hoja de Costeo la barra lateral es un cajón y se muestra completa.
-  const effectiveCollapsed = costeoWorkMode ? false : collapsed || isMobileNav || diagnosticoWorkMode;
+  const {
+    solicitarApertura
+  } = useAsistenteErp();
+  const {
+    getLabel,
+    getSectionLabel
+  } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('tideo_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => document.documentElement.dataset.dxDiagnosticoWorkMode === 'true');
+  const [costeoWorkMode, setCosteoWorkModeState] = useState(() => document.documentElement.dataset.dxCosteoWorkMode === 'true');
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 900px)').matches);
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 760px)').matches);
+  const [drawer, setDrawer] = useState(false);
+  const [panelKey, setPanelKey] = useState(null);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [tip, setTip] = useState(null);
+  const [pillTop, setPillTop] = useState(null);
+  const railList = useRef(null);
+  const sidebarRef = useRef(null);
+  const commandPreviousFocus = useRef(null);
+  const openCommand = () => {
+    commandPreviousFocus.current = document.activeElement;
+    setCommandOpen(true);
+  };
+  const changeCommandOpen = open => {
+    setCommandOpen(open);
+    if (!open) {
+      const previousFocus = commandPreviousFocus.current;
+      window.setTimeout(() => previousFocus?.isConnected && previousFocus.focus(), 0);
+    }
+  };
+  const userId = app.authUser?.id || 'anonimo';
+  const [menuUsuario, setMenuUsuario] = useState(() => leerMenuUsuario(userId));
+  const overlay = !costeoWorkMode && (collapsed || compact || diagnosticoWorkMode);
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
@@ -386,20 +424,23 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     app.cxc, app.cxp, app.facturas, app.valorizaciones, app.financiamientos, app.movimientosBanco,
     app.evaluacionEvaluaciones, app.evaluacionPlantillas, app.personalOperativo, app.personalAdmin, app.authUser?.id
   ]);
+  const activeItemKey = active === 'hoja_costeo_wizard' ? 'hoja_costeo' : active;
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
-    const visibleItems = group.items
-      .filter(it => it.action === 'openAria'
-        ? Boolean(app.authUser && app.empresa?.id)
-        : it.adminOnly
-        ? Boolean(role?.permisos?.todo)
-        : it.requiereVerCostos
-        ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
-        : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
-      .map(it => {
-        const navKey = it.action ? it.key : (NAV_MODULE_KEYS[it.key] || it.key);
-        return { ...it, navKey, label: it.action || it.fixedLabel ? it.label : getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
-      });
+    const visibleItems = group.items.filter(it =>
+      it.action === 'openAria' ? Boolean(app.authUser && app.empresa?.id)
+        : it.adminOnly ? Boolean(role?.permisos?.todo)
+        : it.requiereVerCostos ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
+        : puedeVerPantalla(role, it.key, it.accessAnyOf || [])
+    ).map(it => {
+      const navKey = it.action ? it.key : NAV_MODULE_KEYS[it.key] || it.key;
+      return {
+        ...it,
+        navKey,
+        label: it.action || it.fixedLabel ? it.label : getLabel(navKey, it.label),
+        badge: capBadge(badges[it.key])
+      };
+    });
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);
     return {
@@ -408,318 +449,276 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
       section: getSectionLabel(key, group.section),
       icon: SECTION_ICONS[group.section] || visibleItems[0]?.icon || I.package,
       items: visibleItems,
-      active: visibleItems.some(it => it.key === active),
+      active: visibleItems.some(it => it.key === activeItemKey)
     };
-  }).filter(Boolean), [active, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
-  const resultadosBusqueda = useMemo(() => {
-    const consulta = normalizarBusqueda(busquedaModulo);
-    if (!consulta) return [];
-    return visibleGroups
-      .flatMap(group => group.items.map(item => ({
-        ...item,
-        seccion: group.section,
-        puntuacion: puntuarBusquedaModulo(consulta, item, group.section),
-      })))
-      .filter(item => item.puntuacion > 0)
-      .sort((a, b) => b.puntuacion - a.puntuacion || a.label.localeCompare(b.label, 'es'))
-      .slice(0, 8);
-  }, [busquedaModulo, visibleGroups]);
-  const activeGroupKey = visibleGroups.find(group => group.active)?.key || visibleGroups[0]?.key || '';
-  const [openSections, setOpenSections] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('tideo_sidebar_open_sections') || 'null');
-      if (Array.isArray(saved) && saved.length) return new Set(saved);
-    } catch {}
-    return new Set();
-  });
-
+  }).filter(Boolean), [activeItemKey, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
+  const activeGroupKey = visibleGroups.find(group => group.active && !group.standalone)?.key;
+  const selectedKey = panelKey || activeGroupKey;
+  const selected = visibleGroups.find(group => group.key === selectedKey && !group.standalone);
+  const showPanel = Boolean(selected && (!overlay || panelKey || mobile && drawer || costeoWorkMode));
+  const items = visibleGroups.flatMap(group => group.items.filter(item => !item.action).map(item => ({
+    ...item,
+    seccion: group.section
+  })));
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 900px)');
-    const onChange = () => {
-      setIsMobileNav(media.matches);
-      if (media.matches) setFlyoutKey(null);
+    setMenuUsuario(leerMenuUsuario(userId));
+  }, [userId]);
+  useEffect(() => {
+    const m = window.matchMedia('(max-width: 900px)'),
+      phone = window.matchMedia('(max-width: 760px)');
+    let wasCompact = m.matches, wasMobile = phone.matches;
+    const update = () => {
+      const nextCompact = m.matches, nextMobile = phone.matches;
+      if (nextCompact === wasCompact && nextMobile === wasMobile) return;
+      wasCompact = nextCompact;
+      wasMobile = nextMobile;
+      setCompact(nextCompact);
+      setMobile(nextMobile);
+      setPanelKey(null);
+      setDrawer(false);
     };
-    onChange();
-    media.addEventListener?.('change', onChange);
-    return () => media.removeEventListener?.('change', onChange);
-  }, []);
-
-  useEffect(() => {
-    const onWorkMode = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
-    window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
-    if (document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true') setDiagnosticoWorkMode(true);
-    return () => window.removeEventListener('dx-diagnostico-work-mode', onWorkMode);
-  }, []);
-
-  useEffect(() => {
-    const onCosteoWorkMode = event => setCosteoWorkModeState(Boolean(event.detail?.active));
-    window.addEventListener('dx-costeo-work-mode', onCosteoWorkMode);
-    if (document.documentElement?.dataset?.dxCosteoWorkMode === 'true') setCosteoWorkModeState(true);
-    return () => window.removeEventListener('dx-costeo-work-mode', onCosteoWorkMode);
-  }, []);
-
-  useEffect(() => {
-    if (!activeGroupKey) return;
-    setOpenSections(prev => {
-      if (prev.has(activeGroupKey)) return prev;
-      const next = new Set(prev);
-      next.add(activeGroupKey);
-      localStorage.setItem('tideo_sidebar_open_sections', JSON.stringify([...next]));
-      return next;
-    });
-  }, [activeGroupKey]);
-
-  useEffect(() => {
-    if (!flyoutKey) return;
-    const closeFlyout = () => setFlyoutKey(null);
-    const initialWidth = window.innerWidth;
-    const closeFlyoutOnWidthResize = () => {
-      if (window.innerWidth !== initialWidth) closeFlyout();
-    };
-    const closeFlyoutOnPageScroll = event => {
-      if (event.target?.closest?.('.sidebar-flyout')) return;
-      closeFlyout();
-    };
-    window.addEventListener('resize', closeFlyoutOnWidthResize);
-    window.addEventListener('orientationchange', closeFlyout);
-    window.addEventListener('scroll', closeFlyoutOnPageScroll, true);
+    m.addEventListener('change', update);
+    phone.addEventListener('change', update);
+    window.addEventListener('resize', update);
     return () => {
-      window.removeEventListener('resize', closeFlyoutOnWidthResize);
-      window.removeEventListener('orientationchange', closeFlyout);
-      window.removeEventListener('scroll', closeFlyoutOnPageScroll, true);
+      m.removeEventListener('change', update);
+      phone.removeEventListener('change', update);
+      window.removeEventListener('resize', update);
     };
-  }, [flyoutKey]);
-
-  const toggleCollapsed = () => {
-    setCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('tideo_sidebar_collapsed', String(next));
-      setFlyoutKey(null);
-      if (next) setBusquedaModulo('');
-      return next;
-    });
-  };
-  const toggleSection = key => {
-    setOpenSections(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      localStorage.setItem('tideo_sidebar_open_sections', JSON.stringify([...next]));
-      return next;
-    });
-  };
-  const handleNav = key => {
-    setFlyoutKey(null);
-    setBusquedaModulo('');
-    if (document.documentElement?.dataset?.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
-    onNav(key);
+  }, []);
+  useEffect(() => {
+    const onDiagnostico = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
+    const onCosteo = event => setCosteoWorkModeState(Boolean(event.detail?.active));
+    const onCommand = () => openCommand();
+    const onKey = event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openCommand();
+      }
+      if (event.key === 'Escape') {
+        setPanelKey(null);
+        setDrawer(false);
+        setTip(null);
+      }
+    };
+    window.addEventListener('dx-diagnostico-work-mode', onDiagnostico);
+    window.addEventListener('dx-costeo-work-mode', onCosteo);
+    window.addEventListener('dx-nav-command', onCommand);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('dx-diagnostico-work-mode', onDiagnostico);
+      window.removeEventListener('dx-costeo-work-mode', onCosteo);
+      window.removeEventListener('dx-nav-command', onCommand);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
+  useEffect(() => {
+    if (!overlay || !panelKey) return;
+    const close = event => {
+      if (!sidebarRef.current?.contains(event.target)) setPanelKey(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [overlay, panelKey]);
+  useEffect(() => {
+    const button = railList.current?.querySelector('[data-selected="true"]');
+    setPillTop(button ? button.offsetTop : null);
+  }, [selectedKey, active, visibleGroups, drawer]);
+  useEffect(() => {
+    if (!overlay) setPanelKey(null);
+  }, [active, overlay]);
+  const updateMenu = next => {
+    setMenuUsuario(next);
+    guardarMenuUsuario(userId, next);
   };
   const handleItem = item => {
+    setPanelKey(null);
+    setDrawer(false);
+    setCommandOpen(false);
+    if (document.documentElement.dataset.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
     if (item.action === 'openAria') {
-      setFlyoutKey(null);
-      setBusquedaModulo('');
       solicitarApertura();
       return;
     }
-    handleNav(item.key);
+    updateMenu(agregarReciente(menuUsuario, item.key));
+    onNav(item.key);
   };
-  const toggleFlyout = (event, key, itemCount) => {
-    if (flyoutKey === key) {
-      setFlyoutKey(null);
-      return;
-    }
+  const toggleCollapsed = () => setCollapsed(prev => {
+    const next = !prev;
+    try {
+      localStorage.setItem('tideo_sidebar_collapsed', String(next));
+    } catch {}
+    setPanelKey(null);
+    return next;
+  });
+  const showTip = (event, label) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const below = Math.max(0, viewportHeight - rect.top - 8);
-    const above = Math.max(0, rect.bottom - 8);
-    const estimatedHeight = 52 + itemCount * 36;
-    const openDown = below >= estimatedHeight;
-    const maxHeight = openDown ? below : above;
-    setFlyoutPosition({
-      top: openDown ? rect.top : 'auto',
-      bottom: openDown ? 'auto' : Math.max(0, viewportHeight - rect.bottom),
-      maxHeight,
+    setTip({
+      label,
+      top: Math.max(8, Math.min(window.innerHeight - 36, rect.top + rect.height / 2 - 15)),
+      left: rect.right + 8
     });
-    setFlyoutKey(key);
   };
-
-  return (
-    <aside className={'sidebar ' + (effectiveCollapsed ? 'collapsed' : '') + (diagnosticoWorkMode ? ' diagnostico-work-mode' : '')}>
-      <button
-        type="button"
-        className="sidebar-logo"
-        onClick={onBrandClick}
-        aria-label="Volver al selector de aplicaciones"
-        style={{ width: '100%', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
-      >
-        <div style={{width:34, height:34, background:'#fff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', padding:4, overflow:'hidden', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
-          <img src="/opera/opera-isotipo-light.png" alt="OPERA" style={{width:'100%', height:'100%', objectFit:'contain'}} />
-        </div>
-        {!effectiveCollapsed && <div>
-          <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>OPERA</div>
-          <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
-        </div>}
-      </button>
-      {!effectiveCollapsed && (
-        <div className="sidebar-module-search">
-          <div className="sidebar-module-search-input">
-            {I.search}
-            <input
-              type="search"
-              value={busquedaModulo}
-              onChange={event => setBusquedaModulo(event.target.value)}
-              placeholder="Buscar módulo..."
-              aria-label="Buscar módulo"
-            />
-            {busquedaModulo && (
-              <button type="button" onClick={() => setBusquedaModulo('')} aria-label="Limpiar búsqueda">
-                {I.x}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      <nav className="sidebar-nav" style={{padding:'10px 12px'}}>
-        {busquedaModulo.trim() ? (
-          <div className="sidebar-search-results" aria-label="Resultados de módulos">
-            {resultadosBusqueda.map(item => (
-              <button
-                type="button"
-                key={item.key}
-                className={'sidebar-search-result ' + (active === item.key ? 'active' : '')}
-                onClick={() => handleItem(item)}
-              >
-                {item.icon}
-                <span><strong>{item.label}</strong><small>{item.seccion}</small></span>
-                {item.badge && <span className="sidebar-item-badge">{item.badge}</span>}
-              </button>
-            ))}
-            {!resultadosBusqueda.length && <div className="sidebar-search-empty">No encontramos un módulo parecido.</div>}
-          </div>
-        ) : visibleGroups.map(group => {
-          const isOpen = openSections.has(group.key);
-          return (
-            <div key={group.key} className="sidebar-group">
-              {group.standalone && effectiveCollapsed ? (
-                <>
-                  <button
-                    type="button"
-                    className={'sidebar-area-btn ' + (active === group.items[0].key ? 'active' : '')}
-                    onClick={event => toggleFlyout(event, group.key, group.items.length)}
-                    title={group.items[0].label}
-                    aria-label={group.items[0].ariaLabel || group.items[0].label}
-                  >{group.items[0].icon}</button>
-                  {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" style={isMobileNav ? { position: 'fixed', top: flyoutPosition.top, bottom: flyoutPosition.bottom, maxHeight: flyoutPosition.maxHeight } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
-                      <div className="sidebar-flyout-title">{group.items[0].label}</div>
-                      {group.items.map(it => <button type="button" key={it.key} className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')} onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
-                    </div>
-                  )}
-                </>
-              ) : group.standalone ? (
-                <div
-                  className={'sidebar-item ' + (active === group.items[0].key ? 'active' : '')}
-                  onClick={() => handleItem(group.items[0])}
-                  style={{padding:'8px 10px', fontSize:12, borderRadius:8}}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      handleItem(group.items[0]);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={group.items[0].ariaLabel || group.items[0].label}
-                >
-                  {group.items[0].icon}<span style={{fontWeight:500}}>{group.items[0].label}</span>
-                </div>
-              ) : effectiveCollapsed ? (
-                <>
-                  <button
-                    type="button"
-                    className={'sidebar-area-btn ' + (group.active ? 'active' : '')}
-                    onClick={(event) => toggleFlyout(event, group.key, group.items.length)}
-                    title={group.section}
-                    aria-label={group.section}
-                  >
-                    {group.icon}
-                    {group.items.some(it => it.badge) && <span className="sidebar-area-dot" />}
-                  </button>
-                  {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" style={isMobileNav ? { position: 'fixed', top: flyoutPosition.top, bottom: flyoutPosition.bottom, maxHeight: flyoutPosition.maxHeight } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
-                      <div className="sidebar-flyout-title">{group.section}</div>
-                      {group.items.map(it => (
-                        <button
-                          type="button"
-                          key={it.key}
-                          className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')}
-                          onClick={() => handleItem(it)}
-                        >
-                          {it.icon}
-                          <span>{it.label}</span>
-                          {it.badge && <span className="sidebar-item-badge">{it.badge}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className={'sidebar-section-toggle ' + (group.active ? 'active' : '')}
-                    onClick={() => toggleSection(group.key)}
-                  >
-                    <span className="sidebar-section-icon">{group.icon}</span>
-                    <span>{group.section}</span>
-                    <span className="sidebar-section-chev">{isOpen ? I.chev : I.chevRight}</span>
-                  </button>
-                  {isOpen && group.items.map(it => (
-                    <div key={it.key} className={'sidebar-item ' + (active === it.key ? 'active' : '')} onClick={() => handleItem(it)} style={{padding:'8px 10px', fontSize:12, borderRadius:8}}>
-                      {it.icon}
-                      <span style={{fontWeight:500}}>{it.label}</span>
-                      {it.badge && <span className="sidebar-item-badge" style={{fontSize:9, padding:'1px 5px'}}>{it.badge}</span>}
-                    </div>
-                  ))}
-                </>
-              )}
-                </div>
-          );
-        })}
+  const groupButton = group => {
+    const selectedGroup = group.standalone ? group.active && !panelKey : (selectedKey === group.key && showPanel) || (group.key === 'configuracion' && group.active && !panelKey);
+    const count = group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0);
+    return <button
+      type="button"
+      key={group.key}
+      data-selected={selectedGroup || undefined}
+      className={'dx-nav-rail-button' + (selectedGroup ? ' is-active' : '')}
+      aria-label={group.section + (count ? `, ${count} pendientes` : '')}
+      aria-expanded={group.standalone ? undefined : selectedGroup}
+      onMouseEnter={event => showTip(event, group.section)}
+      onMouseLeave={() => setTip(null)}
+      onFocus={event => showTip(event, group.section)}
+      onBlur={() => setTip(null)}
+      onClick={() => {
+      setTip(null);
+      if (group.standalone) handleItem(group.items[0]);else setPanelKey(group.key);
+    }}>
+      {group.icon}{count > 0 && <span className="dx-nav-count">{capBadge(count)}</span>}
+    </button>;
+  };
+  const row = item => <div
+    className={'dx-nav-row' + (activeItemKey === item.key ? ' is-active' : '')}
+    key={item.key}>
+    <button
+      type="button"
+      className="dx-nav-item"
+      onClick={() => handleItem(item)}
+      aria-current={activeItemKey === item.key ? 'page' : undefined}>{item.icon}<span>{item.label}</span>{item.badge && <b className="dx-nav-badge">{item.badge}</b>}</button>
+    <button
+      type="button"
+      className={'dx-nav-star' + (menuUsuario.favoritos.includes(item.key) ? ' is-favorite' : '')}
+      aria-label={(menuUsuario.favoritos.includes(item.key) ? 'Quitar de favoritos: ' : 'Añadir a favoritos: ') + item.label}
+      aria-pressed={menuUsuario.favoritos.includes(item.key)}
+      onClick={() => updateMenu(alternarFavorito(menuUsuario, item.key))}>★</button>
+  </div>;
+  const footerGroups = visibleGroups.filter(group => group.key === 'aria' || group.key === 'configuracion');
+  const mainGroups = visibleGroups.filter(group => group.key !== 'aria' && group.key !== 'configuracion');
+  const inicio = items.find(item => item.key === 'dashboard') || items[0];
+  return <>
+    {mobile && drawer && <button
+      className="dx-nav-backdrop"
+      aria-label="Cerrar menú"
+      onClick={() => setDrawer(false)} />}
+    <aside
+      ref={sidebarRef}
+      className={'sidebar dx-nav-shell'
+        + (showPanel && !overlay ? ' dx-nav-pinned' : '')
+        + (drawer ? ' dx-nav-drawer-open' : '')
+        + (diagnosticoWorkMode ? ' diagnostico-work-mode' : '')}>
+      <nav
+        className="dx-nav-rail"
+        aria-label="Áreas de administración">
+        <button
+          type="button"
+          className="dx-nav-brand"
+          onClick={onBrandClick}
+          aria-label="Volver al selector de aplicaciones"><img
+          src="/opera/opera-isotipo-dark.png"
+          alt="OPERA" /></button>
+        <div
+          className="dx-nav-rail-list"
+          ref={railList}
+          onScroll={() => setTip(null)}>{pillTop !== null && <span
+          className="dx-nav-pill"
+          style={{
+            transform: `translateY(${pillTop}px)`
+          }} />}{mainGroups.map(groupButton)}</div>
+        <div className="dx-nav-rail-foot"><button
+          type="button"
+          className="dx-nav-rail-button"
+          aria-label="Buscar pantallas"
+          onClick={openCommand}
+          onMouseEnter={event => showTip(event, 'Buscar')}
+          onMouseLeave={() => setTip(null)}
+          onFocus={event => showTip(event, 'Buscar')}
+          onBlur={() => setTip(null)}>{I.search}</button>{footerGroups.map(groupButton)}<button
+          type="button"
+          className="dx-nav-rail-button dx-nav-pin"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Fijar panel' : 'Desfijar panel'}>{collapsed ? I.chevRight : I.chevLeft}</button></div>
       </nav>
-      <button
-        type="button"
-        className="sidebar-collapse"
-        onClick={toggleCollapsed}
-        style={isMobileNav ? {display:'none'} : undefined}
-        title={collapsed ? 'Expandir menu' : 'Colapsar menu'}
-        aria-label={collapsed ? 'Expandir menu' : 'Colapsar menu'}
-      >
-        {collapsed ? I.chevRight : I.chevLeft}
-        {!collapsed && !isMobileNav && <span>Colapsar</span>}
-      </button>
-      {costeoWorkMode && (
-        // En modo trabajo el header está oculto: sus notificaciones, tema y sesión van al pie del cajón.
-        <WorkDrawerFooter
-          empresaNombre={app.empresa?.nombre || app.empresa?.nombre_comercial || 'Empresa'}
-          email={app.dataMode === 'supabase' ? (app.authUser?.email || '') : (role?.nombre || '')}
-          avatarText={app.dataMode === 'supabase' && app.authUser?.email ? app.authUser.email.slice(0, 2).toUpperCase() : 'LM'}
-          notificaciones={app.notificaciones || []}
-          onMarkRead={app.markNotificacionesRead}
-          onNotificacionClick={n => {
-            app.markNotificacionesRead?.(n.id);
-            if (n.referenceType !== 'personal_documento') return;
-            const payload = n.referencePayload || {};
-            if (document.documentElement?.dataset?.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
-            app.navigate?.(payload.personal_tipo === 'administrativo' ? 'rrhh_admin' : 'rrhh_operativo', { detail: payload.personal_id, tab: 'documentos', docTipo: payload.tipo_documento_id });
-          }}
-          dark={Boolean(app.dark)}
-          onToggleDark={() => app.setDark?.(!app.dark)}
-          onSignOut={app.signOut}
-        />
-      )}
+      {showPanel && <nav
+        className={'dx-nav-panel' + (overlay ? ' is-overlay' : '')}
+        aria-label={'Pantallas de ' + selected.section}>
+        <div className="dx-nav-panel-title"><strong>{selected.section}</strong><button
+          type="button"
+          className="dx-nav-panel-pin"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Fijar panel' : 'Desfijar panel'}
+          title={collapsed ? 'Fijar panel' : 'Desfijar panel'}>{collapsed ? I.chevRight : I.chevLeft}</button></div>
+        <button
+          type="button"
+          className="dx-nav-search"
+          onClick={openCommand}>{I.search}<span>Buscar</span><kbd>Ctrl K</kbd></button>
+        <div className="dx-nav-panel-list">
+          {selected.items.some(item => menuUsuario.favoritos.includes(item.key)) && <>
+            <h3>Favoritos</h3>
+            {selected.items.filter(item => menuUsuario.favoritos.includes(item.key)).map(row)}
+          </>}
+          <h3>Pantallas</h3>
+          {selected.items.filter(item => !menuUsuario.favoritos.includes(item.key)).map(row)}
+        </div>
+      </nav>}
+      {costeoWorkMode &&
+      // En modo trabajo el header está oculto: sus notificaciones, tema y sesión van al pie del cajón.
+      <WorkDrawerFooter
+        empresaNombre={app.empresa?.nombre || app.empresa?.nombre_comercial || 'Empresa'}
+        email={app.dataMode === 'supabase' ? app.authUser?.email || '' : role?.nombre || ''}
+        avatarText={app.dataMode === 'supabase' && app.authUser?.email ? app.authUser.email.slice(0, 2).toUpperCase() : 'LM'}
+        notificaciones={app.notificaciones || []}
+        onMarkRead={app.markNotificacionesRead}
+        onNotificacionClick={n => {
+        app.markNotificacionesRead?.(n.id);
+        if (n.referenceType !== 'personal_documento') return;
+        const payload = n.referencePayload || {};
+        if (document.documentElement?.dataset?.dxWorkNavOpen) delete document.documentElement.dataset.dxWorkNavOpen;
+        app.navigate?.(payload.personal_tipo === 'administrativo' ? 'rrhh_admin' : 'rrhh_operativo', {
+          detail: payload.personal_id,
+          tab: 'documentos',
+          docTipo: payload.tipo_documento_id
+        });
+      }}
+        dark={Boolean(app.dark)}
+        onToggleDark={() => app.setDark?.(!app.dark)}
+        onSignOut={app.signOut} />}
     </aside>
-  );
+    {tip && <div
+      className="dx-nav-tooltip"
+      role="tooltip"
+      style={{
+      top: tip.top,
+      left: tip.left
+    }}>{tip.label}</div>}
+    {mobile && !costeoWorkMode && <nav
+      className="dx-nav-bottom"
+      aria-label="Navegación móvil"><button
+      type="button"
+      disabled={!inicio}
+      onClick={() => inicio && handleItem(inicio)}>{I.dashboard}<span>Inicio</span></button><button
+      type="button"
+      onClick={openCommand}>{I.search}<span>Buscar</span></button><button
+      type="button"
+      onClick={solicitarApertura}><IconoAria /><span>Aria</span></button><button
+      type="button"
+      aria-expanded={drawer}
+      onClick={() => setDrawer(!drawer)}>{I.list}<span>Menú</span></button></nav>}
+    <ComandoGlobal
+      open={commandOpen}
+      onOpenChange={changeCommandOpen}
+      items={items}
+      favoritos={menuUsuario.favoritos}
+      recientes={menuUsuario.recientes}
+      score={(query, item) => puntuarBusquedaModulo(normalizarBusqueda(query), item, item.seccion)}
+      onSelect={handleItem}
+      onAria={() => {
+      setCommandOpen(false);
+      solicitarApertura();
+    }} />
+  </>;
 }
 
 export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, puedeVerConsolidado, isMobile }) {
@@ -974,6 +973,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         />
       )}
 
+      <button type="button" className="icon-btn" onClick={() => window.dispatchEvent(new Event('dx-nav-command'))} aria-label="Buscar pantallas" title="Buscar pantallas (Ctrl K)">{I.search}</button>
       <button type="button" className="icon-btn" onClick={solicitarApertura} aria-label="Preguntar a Aria" title="Preguntar a Aria"><IconoAria size={18} /></button>
 
       {/* Separador — oculto en móvil */}

@@ -2839,7 +2839,7 @@ function CecoCebePanel({ onClose }) {
     try {
       const resp = usuariosActivos.find(u => u.id === cebeForm.responsable_id);
       const esEstructural = cebeForm.tipo === 'estructural';
-      const datos = { ...cebeForm, cargo_financiero_dbs: esEstructural ? null : (cebeForm.cargo_financiero_dbs || null), responsable_nombre: resp?.nombre || '', fecha_inicio: cebeForm.fecha_inicio || null, fecha_fin: cebeForm.fecha_fin || null, meta_ingresos: esEstructural ? 0 : (cebeForm.meta_ingresos !== '' ? cebeForm.meta_ingresos : null), cuenta_id: cebeForm.cuenta_id || null };
+      const datos = { ...cebeForm, cargo_financiero_dbs: esEstructural ? null : (cebeForm.cargo_financiero_dbs || null), responsable_nombre: resp?.nombre || '', fecha_inicio: cebeForm.fecha_inicio || null, fecha_fin: cebeForm.fecha_fin || null, meta_ingresos: esEstructural ? 0 : (cebeForm.meta_ingresos !== '' ? cebeForm.meta_ingresos : null), cuenta_id: cebeForm.tipo === 'cliente' ? (cebeForm.cuenta_id || null) : null };
       if (cebeEditId) await actualizarCentroBeneficio(cebeEditId, datos);
       else await crearCentroBeneficio(datos);
       addNotificacion?.(`CEBE ${cebeEditId ? 'actualizado' : 'creado'} correctamente.`);
@@ -3121,7 +3121,12 @@ function CecoCebePanel({ onClose }) {
                   </div>
                   <div className="input-group">
                     <label>Tipo *</label>
-                    <select className="select" value={cebeForm.tipo} onChange={e=>setCebeForm(p => e.target.value === 'estructural' ? ({...p, tipo:e.target.value, cargo_financiero_dbs:'', meta_ingresos:'0'}) : ({...p, tipo:e.target.value}))}>
+                    <select className="select" value={cebeForm.tipo} onChange={e=>setCebeForm(p => {
+                      const tipo = e.target.value;
+                      return tipo === 'estructural'
+                        ? ({ ...p, tipo, cargo_financiero_dbs:'', meta_ingresos:'0', cuenta_id:'' })
+                        : ({ ...p, tipo, cuenta_id: tipo === 'cliente' ? p.cuenta_id : '' });
+                    })}>
                       {CEBE_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
                     </select>
                     <NotaContextual>{notasTipoCebe[cebeForm.tipo]}</NotaContextual>

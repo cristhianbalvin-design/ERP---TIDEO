@@ -9,9 +9,6 @@ import {
 import {
   AnalisisSOS,
   DashboardProduccion,
-  BandejaOFs,
-  CrearOFPage,
-  DetalleOFPage,
   PlanificacionOFPage,
   ControlProduccion,
   TiemposMTMPage,
@@ -26,14 +23,19 @@ import {
   AreaProcesoPage,
   TrazabilidadOF,
 } from '../pages/ProduccionPages.jsx';
+import { BandejaOFPage } from '../pages/of/BandejaOFPage.jsx';
+import { CrearOFPage } from '../pages/of/CrearOFPage.jsx';
+import { DetalleOFPage } from '../pages/of/DetalleOFPage.jsx';
 import {
   DashboardTransporte,
-  MonitorViajes,
-  CrearOVPage,
   HojaDeRuta,
-  MaestroRutas,
   LiquidacionTransporte,
 } from '../pages/TransportePages.jsx';
+import { MaestroRutasPage } from '../pages/transporte/MaestroRutasPage.jsx';
+import { TarifasTransportePage } from '../pages/transporte/TarifasTransportePage.jsx';
+import { MonitorViajesPage } from '../pages/transporte/MonitorViajesPage.jsx';
+import { OrdenViajePage } from '../pages/transporte/OrdenViajePage.jsx';
+import { LugaresPage } from '../pages/transporte/LugaresPage.jsx';
 import {
   DashboardRepuestos,
   PedidosVenta,
@@ -47,14 +49,14 @@ import {
   OrdenesVenta,
   GuiasDespachos,
 } from '../pages/RepuestosVentaPages.jsx';
-import { CatalogoPage } from '../pages/pages2_v2.jsx';
+import { CatalogoVentaPage } from '../pages/wms/CatalogoVentaPage.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 
 export const businessLinesRouteIds = new Set([
   'dashboard-rental', 'flota', 'contratos-rental', 'checkout', 'liquidacion',
   'pasaporte-equipos', 'gestion-garantias', 'certificaciones-activo', 'monitoreo-equipos',
-  'dashboard-transporte', 'transporte-viajes', 'transporte-crear-ov', 'transporte-ruta',
+  'dashboard-transporte', 'transporte-viajes', 'transporte-crear-ov', 'transporte-ruta', 'transporte-lugares',
   'transporte-tarifas', 'transporte-liquidacion', 'transporte-tarifas-config',
   'dashboard-produccion', 'produccion-of', 'produccion-crear-of', 'produccion-detalle-of',
   'produccion-planificacion', 'produccion-control', 'produccion-mtm', 'produccion-oee',
@@ -73,7 +75,7 @@ export const businessLinesRouteIds = new Set([
 ]);
 
 export function renderBusinessLinesRoute(route, context) {
-  const { onNavigate, currentOT, setCurrentOT, currentOF, setCurrentOF, currentOV, setCurrentOV, currentPV, setCurrentPV } = context;
+  const { onNavigate, routeParams = {}, currentOT, setCurrentOT, setCurrentOF, currentOV, setCurrentOV, currentPV, setCurrentPV } = context;
 
   switch (route) {
     case 'dashboard-rental': return <DashboardRentalPage onNav={onNavigate} />;
@@ -87,18 +89,19 @@ export function renderBusinessLinesRoute(route, context) {
     case 'monitoreo-equipos': return <PlaceholderPage title="Monitoreo de Equipos" />;
 
     case 'dashboard-transporte': return <DashboardTransporte onNav={onNavigate} />;
-    case 'transporte-viajes': return <MonitorViajes onNav={onNavigate} setCurrentOV={setCurrentOV} />;
-    case 'transporte-crear-ov': return <CrearOVPage onNav={onNavigate} />;
+    case 'transporte-viajes': return <MonitorViajesPage onNav={onNavigate} />;
+    case 'transporte-crear-ov': return <OrdenViajePage onNav={onNavigate} />;
+    case 'transporte-lugares': return <LugaresPage />;
     case 'transporte-ruta': return <HojaDeRuta onNav={onNavigate} ovId={currentOV} />;
-    case 'transporte-tarifas': return <MaestroRutas onNav={onNavigate} />;
+    case 'transporte-tarifas': return <MaestroRutasPage />;
     case 'transporte-liquidacion': return <LiquidacionTransporte onNav={onNavigate} />;
-    case 'transporte-tarifas-config': return <PlaceholderPage title="Tarifas Transporte" />;
+    case 'transporte-tarifas-config': return <TarifasTransportePage />;
 
     case 'dashboard-produccion': return <DashboardProduccion onNav={onNavigate} setCurrentOF={setCurrentOF} />;
     case 'produccion-of':
-    case 'maestranza-of': return <BandejaOFs onNav={onNavigate} setCurrentOF={setCurrentOF} />;
-    case 'produccion-crear-of': return <CrearOFPage onNav={onNavigate} />;
-    case 'produccion-detalle-of': return <DetalleOFPage onNav={onNavigate} ofId={currentOF} />;
+    case 'maestranza-of': return <BandejaOFPage onNav={onNavigate} setCurrentOF={setCurrentOF} routeParams={routeParams} />;
+    case 'produccion-crear-of': return <CrearOFPage onNav={onNavigate} routeParams={routeParams} />;
+    case 'produccion-detalle-of': return <DetalleOFPage onNav={onNavigate} routeParams={routeParams} />;
     case 'produccion-planificacion':
     case 'of-planificacion': return <PlanificacionOFPage onNav={onNavigate} />;
     case 'produccion-control':
@@ -146,7 +149,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'repuestos-detalle-pedido': return <DetallePedidoPage onNav={onNavigate} pvId={currentPV} />;
     case 'catalogo-precios': return <CatalogoPrecios />;
     case 'despachos-repuestos': return <DespachosRepuestos onNav={onNavigate} setCurrentPV={setCurrentPV} />;
-    case 'catalogo': return <CatalogoPage onNav={onNavigate} />;
+    case 'catalogo': return <CatalogoVentaPage />;
     case 'repuestos-cotizaciones': return <CotizacionesVenta setCurrent={onNavigate} />;
     case 'repuestos-ordenes': return <OrdenesVenta setCurrent={onNavigate} />;
     case 'repuestos-despachos': return <><AdministrativeAppLinkPage title="Guías y Despachos" adminRoute="remision" /><GuiasDespachos /></>;

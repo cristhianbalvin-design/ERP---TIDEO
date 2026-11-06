@@ -391,9 +391,12 @@ export async function calcularCostoRealOT(supabase, otId, empresaId) {
   const moAdmin = tareosAdmin.reduce((sum, tareo) => sum + toNumber(tareo.horas) * getRate(people.get(tareo.personal_id)), 0);
 
   const materialesPartes = partes.reduce((sum, parte) => sum + sumLines(parte.materiales || parte.materiales_usados), 0);
+  // Salidas cargadas a la OT suman; entradas ligadas a la OT (devolución de taller, reversa de despacho) restan.
   const materialesKardex = kardex.reduce((sum, mov) => {
     const isSalida = normalizeState(mov.tipo).includes('salida') || normalizeState(mov.referencia_tipo).includes('consumo');
-    return isSalida ? sum + lineAmount(mov) : sum;
+    if (isSalida) return sum + lineAmount(mov);
+    const isEntradaOt = normalizeState(mov.tipo).includes('entrada') && normalizeState(mov.referencia_tipo) === 'ot';
+    return isEntradaOt ? sum - lineAmount(mov) : sum;
   }, 0);
 
   const tercerosPartes = partes.reduce((sum, parte) => sum + sumLines(parte.terceros_lineas), 0);

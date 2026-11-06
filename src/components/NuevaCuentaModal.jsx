@@ -49,6 +49,7 @@ export function NuevaCuentaModal({ open, empresa, crearCuenta, comercialesAsigna
   const { cuentas = [], industrias = [] } = useApp();
   const [form, setForm] = useState(inicial);
   const [saving, setSaving] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
   const [intentado, setIntentado] = useState(false);
   const [masDatosAbierto, setMasDatosAbierto] = useState(false);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
@@ -76,6 +77,7 @@ export function NuevaCuentaModal({ open, empresa, crearCuenta, comercialesAsigna
 
   useEffect(() => {
     if (!open) return undefined;
+    setErrorGuardado('');
     const timer = window.setTimeout(() => primerCampoRef.current?.focus(), 0);
     return () => window.clearTimeout(timer);
   }, [open]);
@@ -108,9 +110,10 @@ export function NuevaCuentaModal({ open, empresa, crearCuenta, comercialesAsigna
   const errorCampo = campo => intentado ? errores[campo] : '';
   const claseCampo = campo => `dx-ncta-in${errorCampo(campo) ? ' is-error' : ''}${campo === 'ruc' ? ' is-mono' : ''}`;
   const resumenErrores = [errores.ruc, errores.razon_social, errores.nombre_comercial, errores.telefono, errores.email, errores.email_corporativo].filter(Boolean);
-  const guardar = event => {
+  const guardar = async event => {
     event.preventDefault();
     setIntentado(true);
+    setErrorGuardado('');
     if (Object.keys(errores).length || cuentaDuplicada) {
       if (errores.email_corporativo) setMasDatosAbierto(true);
       return;
@@ -132,11 +135,14 @@ export function NuevaCuentaModal({ open, empresa, crearCuenta, comercialesAsigna
     };
     setSaving(true);
     try {
-      crearCuenta?.(cuenta);
-      onNotify?.(`Cuenta creada: ${cuenta.razon_social || cuenta.nombre_comercial}`);
+      const cuentaGuardada = await crearCuenta?.(cuenta);
+      const cuentaFinal = cuentaGuardada || cuenta;
+      onNotify?.(`Cuenta creada: ${cuentaFinal.razon_social || cuentaFinal.nombre_comercial}`);
       setForm(inicial());
       setIntentado(false);
-      onCreated?.(cuenta);
+      onCreated?.(cuentaFinal);
+    } catch (error) {
+      setErrorGuardado(error?.message || 'No se pudo guardar la cuenta. Intenta nuevamente.');
     } finally {
       setSaving(false);
     }
@@ -152,6 +158,7 @@ export function NuevaCuentaModal({ open, empresa, crearCuenta, comercialesAsigna
     <div className="dx-ncta-panel" role="dialog" aria-modal="true" aria-labelledby="dx-ncta-title">
       <div className="dx-ncta-head"><div><div className="dx-ncta-eyebrow">Comercial · Cuentas</div><h2 className="dx-ncta-title" id="dx-ncta-title">Nueva cuenta</h2><p className="dx-ncta-sub">Los campos con <em>*</em> son obligatorios. El resto se puede completar después desde la ficha.</p></div><button type="button" className="dx-ncta-x" aria-label="Cerrar" onClick={solicitarCierre}>{I.x}</button></div>
       <form id="dx-ncta-form" className="dx-ncta-body" onSubmit={guardar} noValidate>
+        {errorGuardado && <div className="dx-ncta-alert" role="alert">{I.alertCircle}<div><strong>No se creó la cuenta.</strong><span> {errorGuardado}</span></div></div>}
         {intentado && (resumenErrores.length > 0 || cuentaDuplicada) && <div className="dx-ncta-alert" role="alert">{I.alertCircle}<div><strong>{cuentaDuplicada ? 'Ya existe una cuenta con este documento.' : `Revisa ${resumenErrores.length} ${resumenErrores.length === 1 ? 'campo' : 'campos'} antes de crear la cuenta.`}</strong>{resumenErrores.length > 0 && <span> {resumenErrores.join(' ')}</span>}</div></div>}
         <section className="dx-ncta-sec">
           <div className="dx-ncta-sec-h"><span className="dx-ncta-num">1</span><h3>Identificación</h3></div>

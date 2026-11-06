@@ -189,6 +189,20 @@ export async function crearOrdenVenta(empresaId, form, usuarioId) {
 // ─── Confirmar OV: reserva stock en almacén de despacho ───────────────────────
 // estado: pendiente → parcialmente_despachada (se hace al crear la guía)
 // Este método solo actualiza estado y reserva stock.
+// Si la empresa activó el módulo «Venta» del WMS, la reserva la hace el almacén (pedido de salida
+// con reserva por ubicación y respeto de lo protegido para operaciones). Si no, se mantiene el flujo anterior.
+async function ventaGestionadaPorWms(supabase, empresaId) {
+  const { data, error } = await supabase.from('empresa_wms_config').select('modulos').eq('empresa_id', empresaId).maybeSingle();
+  if (error) return false;
+  return data?.modulos?.venta === true;
+}
+
+async function ovGestionadaPorWms(supabase, empresaId, ovId) {
+  const { data, error } = await supabase.rpc('wms_ov_gestionada', { p_empresa_id: empresaId, p_ov_id: ovId });
+  if (error) throw new Error(error.message || 'No se pudo verificar el despacho de la orden de venta.');
+  return data === true;
+}
+
 export async function confirmarOrdenVenta(ovId, usuarioId) {
   const supabase = await getSupabaseClient();
   const { data: ov, error } = await supabase.from('ordenes_venta').select('*').eq('id', ovId).single();
@@ -197,6 +211,16 @@ export async function confirmarOrdenVenta(ovId, usuarioId) {
   if (!ov.almacen_despacho_id) throw new Error('La OV no tiene almacén de despacho asignado');
 
   const { data: lineas } = await supabase.from('ordenes_venta_lineas').select('*').eq('orden_venta_id', ovId);
+
+  if (await ventaGestionadaPorWms(supabase, ov.empresa_id)) {
+    const { data: resultado, error: errorRpc } = await supabase.rpc('wms_confirmar_orden_venta', { p_empresa_id: ov.empresa_id, p_ov_id: ovId });
+    if (errorRpc) throw new Error(errorRpc.message || 'No se pudo confirmar la orden de venta.');
+    const porMaterial = new Map((lineas || []).map(l => [l.material_id, l.descripcion]));
+    const erroresReserva = (resultado?.faltantes || []).map(f =>
+      `${porMaterial.get(f.material_id) || f.material_id}: faltan ${f.faltante} por reservar; el almacén lo despachará cuando haya stock.`);
+    return { ok: true, erroresReserva, gestionadaPorWms: true };
+  }
+
   const erroresReserva = [];
   for (const l of lineas || []) {
     if (!l.material_id) continue;
@@ -271,6 +295,14 @@ export async function anularOrdenVenta(ovId, motivo, usuarioId) {
   const { data: ov } = await supabase.from('ordenes_venta').select('*').eq('id', ovId).single();
   if (!ov) throw new Error('OV no encontrada');
   if (ov.estado === 'anulada') throw new Error('La OV ya está anulada');
+
+  if (await ovGestionadaPorWms(supabase, ov.empresa_id, ovId)) {
+    const { error: errorRpc } = await supabase.rpc('wms_anular_orden_venta', { p_empresa_id: ov.empresa_id, p_ov_id: ovId, p_motivo: motivo });
+    if (errorRpc) throw new Error(errorRpc.message || 'No se pudo anular la orden de venta.');
+    const { data: anulada, error: errorLectura } = await supabase.from('ordenes_venta').select('*').eq('id', ovId).single();
+    if (errorLectura) throw errorLectura;
+    return anulada;
+  }
 
   // Liberar reservas si estaban activas
   if (ov.almacen_despacho_id && ['confirmada', 'parcialmente_despachada'].includes(ov.estado)) {

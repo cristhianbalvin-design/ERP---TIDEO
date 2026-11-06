@@ -30,35 +30,15 @@ export const CAMPOS_OBLIGATORIOS_GR = {
   transportista: ['transportista_ruc', 'transportista_razon_social', 'transportista_nro_mtc'],
 };
 
-// ─── Correlativo (atómico: read-then-upsert; suficiente para uso no concurrente) ──
+// ─── Correlativo de guías: RPC atómica que bloquea el contador y salta números ya usados ──
+// (la unicidad es empresa + serie + número, aunque el contador sea por sociedad)
 async function siguienteCorrelativo(supabase, empresaId, tipoDocumento, serie = 'T001', sociedadId = null) {
-  let query = supabase
-    .from('correlativos_documentos')
-    .select('*')
-    .eq('empresa_id', empresaId)
-    .eq('tipo_documento', tipoDocumento)
-    .eq('serie', serie);
-  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
-  const { data: existing } = await query.maybeSingle();
-
-  const ultimo = Number(existing?.ultimo_numero ?? 0);
-  const siguiente = ultimo + 1;
-
-  if (existing) {
-    await supabase.from('correlativos_documentos')
-      .update({ ultimo_numero: siguiente, updated_at: new Date().toISOString() })
-      .eq('id', existing.id);
-  } else {
-    await supabase.from('correlativos_documentos').insert({
-      id: mkId('cor'), empresa_id: empresaId,
-      tipo_documento: tipoDocumento, serie,
-      sociedad_id: sociedadId,
-      ultimo_numero: siguiente,
-      updated_at: new Date().toISOString(),
-    });
-  }
-
-  return { numero: siguiente, numero_completo: `${serie}-${String(siguiente).padStart(8, '0')}` };
+  if (tipoDocumento !== 'guia_remision') throw new Error(`Correlativo no soportado: ${tipoDocumento}`);
+  const { data, error } = await supabase.rpc('guia_reservar_numero', {
+    p_empresa_id: empresaId, p_serie: serie, p_sociedad_id: sociedadId || null,
+  });
+  if (error) throw new Error(error.message || 'No se pudo obtener el número de guía.');
+  return { numero: Number(data?.numero), numero_completo: data?.numero_completo };
 }
 
 // ─── Validar campos obligatorios SUNAT ────────────────────────────────────────
@@ -226,6 +206,11 @@ export async function crearGuia(empresaId, form, usuarioId) {
   const serie = form.serie || 'T001';
   const guiaId = mkId('gr');
   const { lineas: lineasForm = [], ...guiaDatos } = form;
+  if (guiaDatos.orden_venta_id) {
+    const { data: gestionada, error: errorWms } = await supabase.rpc('wms_ov_gestionada', { p_empresa_id: empresaId, p_ov_id: guiaDatos.orden_venta_id });
+    if (errorWms) throw new Error(errorWms.message || 'No se pudo verificar la orden de venta.');
+    if (gestionada === true) throw new Error('Esta orden de venta se despacha desde Operaciones › Almacén › Despachos, que emite la guía al despachar.');
+  }
   const { sociedadOrigenId, sociedadDestinoId } = await resolverSociedadesGuia(supabase, empresaId, guiaDatos, lineasForm);
   const { numero, numero_completo } = await siguienteCorrelativo(supabase, empresaId, 'guia_remision', serie, sociedadOrigenId);
 
@@ -379,6 +364,11 @@ export async function confirmarEntrega(guiaId, usuarioId) {
     );
   }
 
+  // Guía emitida por el WMS al despachar: el stock y la OV ya se actualizaron; solo se registra la entrega.
+  if (Array.isArray(guia.kardex_salida_ids) && guia.kardex_salida_ids.length > 0) {
+    return actualizarGuia(guiaId, { estado: 'entregada' }, usuarioId);
+  }
+
   const kardexIds = [];
   if (guia.almacen_origen_id && guia.lineas?.length) {
     for (const linea of guia.lineas) {
@@ -506,18 +496,26 @@ export async function anularGuia(guiaId, motivo, usuarioId) {
     }
   }
 
-  // Revertir cantidad_despachada en OV vinculada (solo si la guía había sido entregada)
-  if (guia.orden_venta_id && guia.lineas?.length && guia.estado === 'entregada') {
+  // Revertir cantidad_despachada en OV vinculada (si la guía había sido entregada o si la emitió el WMS al despachar)
+  if (guia.orden_venta_id && guia.lineas?.length && (guia.estado === 'entregada' || kardexIds.length > 0)) {
     await sincronizarDespachoOV(guia.orden_venta_id, guia.lineas, 'restar');
   }
 
-  return actualizarGuia(guiaId, {
+  const anulada = await actualizarGuia(guiaId, {
     estado: 'anulada',
     anulado: true,
     anulado_motivo: motivo,
     anulado_por: usuarioId || null,
     anulado_at: new Date().toISOString(),
   }, usuarioId);
+
+  // Si la OV la despacha el WMS, el pedido de salida se reabre y vuelve a reservar lo liberado.
+  if (guia.orden_venta_id) {
+    const supabase = await getSupabaseClient();
+    const { error: errorWms } = await supabase.rpc('wms_reabrir_demanda_por_guia', { p_empresa_id: guia.empresa_id, p_guia_id: guiaId });
+    if (errorWms) console.error('anularGuia: no se pudo reabrir el pedido del almacén:', errorWms.message);
+  }
+  return anulada;
 }
 
 // ─── CRUD Transportistas ─────────────────────────────────────────────────────

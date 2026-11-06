@@ -94,3 +94,13 @@ describe('lógica de Inventario & Kardex', () => {
     expect(calcularStockMaterial(resultado[0]).estado).toBe('agotado');
   });
 });
+
+describe('custodia de terceros en el inventario propio', () => {
+  it('no suma la mercadería de clientes al disponible ni al valor', () => {
+    const [material] = consolidarStockPorMaterial([
+      { material_id: 'm1', fisico: 10, reservado: 2, materiales: { id: 'm1', costo_promedio: 5 }, ubicaciones: { uso: 'almacenaje' } },
+      { material_id: 'm1', fisico: 30, reservado: 0, materiales: { id: 'm1', costo_promedio: 5 }, ubicaciones: { uso: 'almacenaje', propietario_cuenta_id: 'cli1' } },
+    ]);
+    expect(calcularStockMaterial(material)).toMatchObject({ fisico: 40, deTerceros: 30, disponible: 8, valor: 50 });
+  });
+});
