@@ -87,6 +87,7 @@ export function LugarEditorModal({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [linkError, setLinkError] = useState(false);
   const nameRef = useRef(null);
 
   useEffect(() => {
@@ -95,13 +96,13 @@ export function LugarEditorModal({
       setErrors({});
       setFormError('');
       setSubmitted(false);
+      setLinkError(false);
     }
   }, [open, initial]);
 
   function validate(current) {
     const next = validarLugar(current);
-    if (current.map_url && !parsearCoordenadasMaps(current.map_url)
-      && (current.latitud === '' || current.longitud === '')) {
+    if (linkError) {
       next.ubicacion = 'No encontramos coordenadas en ese enlace. Ábrelo en Google Maps '
         + 'y copia el enlace completo, o marca el punto en el mapa.';
     }
@@ -110,7 +111,7 @@ export function LugarEditorModal({
 
   useEffect(() => {
     if (submitted) setErrors(validate(form));
-  }, [form, submitted]);
+  }, [form, submitted, linkError]);
 
   const duplicate = encontrarNombreLugarDuplicado(lugares, form, lugar?.id);
   const lat = form.latitud !== '' && form.longitud !== ''
@@ -120,6 +121,10 @@ export function LugarEditorModal({
     || route.destino_lugar_id === lugar?.id);
   const completed = MORE.filter(([key]) => String(val(form, key)).trim()).length;
   const account = cuentas.find(item => item.id === form.cuenta_id);
+  const locationError = linkError
+    ? 'No encontramos coordenadas en ese enlace. Ábrelo en Google Maps '
+      + 'y copia el enlace completo, o marca el punto en el mapa.'
+    : errors.ubicacion;
 
   function update(key, value) {
     setForm(current => ({ ...current, [key]: value }));
@@ -236,9 +241,9 @@ export function LugarEditorModal({
             {field('nombre', 'Nombre', 'p. ej. Almacén Cliente Pisco', true)}
             {duplicate && (
               <div className="dx-transporte-composer-alert is-amber" role="status">
-                Ya existe <b>{duplicate.nombre}</b> como{' '}
+                <span>Ya existe <b>{duplicate.nombre}</b> como{' '}
                 {form.cuenta_id ? 'lugar de este cliente' : 'lugar general'}.
-                {' '}No se pueden repetir nombres activos.
+                {' '}No se pueden repetir nombres activos.</span>
                 {' '}<button
                   type="button"
                   className="dx-btn link"
@@ -290,7 +295,9 @@ export function LugarEditorModal({
               <i>2</i> Ubicación <b className="dx-ui-required"> *</b>
               {' '}<small>obligatoria · la usan las rutas para estimar distancia</small>
             </h3>
-            <div className="dx-transporte-place-status">{pointStatus}</div>
+            <div className={`dx-transporte-place-status${locationError ? ' is-error' : ''}`}>
+              {pointStatus}
+            </div>
             <div className="dx-transporte-place-or">o pega un enlace</div>
             <label className="dx-ui-field" htmlFor="lugar-maps-url">
               <span>Enlace de Google Maps</span>
@@ -302,18 +309,20 @@ export function LugarEditorModal({
                 onChange={event => {
                   const url = event.target.value;
                   const coords = parsearCoordenadasMaps(url);
+                  setLinkError(Boolean(url.trim()) && !coords);
+                  if (coords) setErrors(current => ({ ...current, ubicacion: '' }));
                   setForm(current => ({ ...current, map_url: url, ...(coords || {}) }));
                 }}
               />
               <small className="dx-transporte-composer-hint">
                 En Google Maps: Compartir → Copiar enlace. El punto aparece en el mapa.
               </small>
-              {errors.ubicacion && form.map_url && (
-                <small className="dx-ui-field-error" role="alert">{errors.ubicacion}</small>
+              {locationError && form.map_url && (
+                <small className="dx-ui-field-error" role="alert">{locationError}</small>
               )}
             </label>
-            {errors.ubicacion && !form.map_url && (
-              <small className="dx-ui-field-error" role="alert">{errors.ubicacion}</small>
+            {locationError && !form.map_url && (
+              <small className="dx-ui-field-error" role="alert">{locationError}</small>
             )}
           </section>
 
@@ -367,16 +376,18 @@ export function LugarEditorModal({
                 coords: [Number(item.latitud), Number(item.longitud)],
                 title: item.nombre,
               }))}
-            alMarcar={point => setForm(current => ({
+            alMarcar={point => { setLinkError(false); setErrors(current => ({ ...current, ubicacion: '' }));
+              setForm(current => ({
               ...current,
               latitud: String(point.lat),
               longitud: String(point.lng),
-            }))}
-            alMover={point => setForm(current => ({
+            })); }}
+            alMover={point => { setLinkError(false); setErrors(current => ({ ...current, ubicacion: '' }));
+              setForm(current => ({
               ...current,
               latitud: String(point.lat),
               longitud: String(point.lng),
-            }))}
+            })); }}
             leyenda={lat
               ? 'Arrastra el marcador para afinarlo'
               : 'Haz clic en el mapa para marcar el punto'}

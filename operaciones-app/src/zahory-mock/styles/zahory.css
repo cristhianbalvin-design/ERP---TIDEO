@@ -8787,3 +8787,13 @@ width:20px;height:20px}
 .dx-transporte-tarifa-segmented.dx-transporte-composer-segmented { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); flex-wrap:nowrap; }
 .dx-transporte-tarifa-segmented.dx-transporte-composer-segmented>button { min-width:0; padding-inline:4px; overflow-wrap:anywhere; white-space:normal; font-size:12px; }
 @container panel (max-width:520px) { .dx-transporte-tarifa-segmented.dx-transporte-composer-segmented>button { font-size:10px; } }
+
+.dx-transporte-place-status.is-error { border-color:var(--dx-ui-red-fg); }
+.dx-transporte-place-nogps { flex-shrink:0; white-space:nowrap; }
+.dx-transporte-tarifa-segmented>button.is-on {
+  background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg);
+}
+.dx-transporte-composer-estimate-link {
+  padding:0 3px; border:0; background:transparent; color:var(--dx-ui-cyan);
+  font:inherit; font-weight:700; cursor:pointer;
+}

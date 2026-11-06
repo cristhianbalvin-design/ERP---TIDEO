@@ -37,7 +37,8 @@ export function TransporteMapa({ className = '', puntos = [], puntoNuevo = null,
       .filter(Boolean);
     if (coords.length === 1) instance.setView(coords[0], 10, { animate: false });
     else if (coords.length > 1) instance.fitBounds(coords, { paddingTopLeft: [40, 40],
-      paddingBottomRight: [40, 90], maxZoom: 10, animate: false });
+      paddingBottomRight: [40, view.soloLectura ? Math.min(90, node.current.clientHeight * .2) : 90],
+      maxZoom: 10, animate: false });
     else instance.setView(DEFAULT_CENTER, 6, { animate: false });
   }
   useEffect(() => {

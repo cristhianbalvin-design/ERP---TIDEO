@@ -207,6 +207,8 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
   const [tarifaActiva, setTarifaActiva] = useState(!route);
   const [regreso, setRegreso] = useState(!route);
   const [manualEstimate, setManualEstimate] = useState(Boolean(route));
+  const [manualEdited, setManualEdited] = useState(false);
+  const [estimateRestored, setEstimateRestored] = useState(false);
   const [recents, setRecents] = useState([]);
   const [lastCode, setLastCode] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -279,6 +281,8 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
   }
   function select(side, place) {
     if (route) setTrayectoChanged(true);
+    setManualEdited(false);
+    setEstimateRestored(false);
     setDuplicateDismissed(false);
     setManualEstimate(false);
     update(`${side}_lugar_id`, place?.id || '');
@@ -415,8 +419,11 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
     <section className="dx-transporte-composer" role="dialog" aria-modal="true"
       aria-labelledby="composer-title">
       <header className="dx-transporte-composer-head">
-        <div><h2 id="composer-title">{route ? `Editar ruta ${route.codigo}` : 'Nueva ruta'}</h2>
-          <p>Elige de dónde sale y a dónde va; el resto se calcula y puedes ajustarlo.</p></div>
+        <div><h2 id="composer-title">{route ? 'Editar ruta' : 'Nueva ruta'}</h2>
+          <p>{route ? `${route.codigo} · ${tripCount
+            ? `${tripCount} ${tripCount === 1 ? 'viaje usa' : 'viajes usan'} esta ruta`
+            : 'sin viajes todavía'}`
+            : 'Elige de dónde sale y a dónde va; el resto se calcula y puedes ajustarlo.'}</p></div>
         <button type="button" className="dx-btn icon" aria-label="Cerrar" onClick={close}>×</button>
       </header>
       <div className="dx-transporte-composer-body">
@@ -434,6 +441,8 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
                 aria-label="Invertir origen y destino" onClick={() => {
                   setDuplicateDismissed(false);
                   if (route) setTrayectoChanged(true);
+                  setManualEdited(false);
+                  setEstimateRestored(false);
                   setManualEstimate(false);
                   setDirty(true);
                   setForm(current => ({ ...current,
@@ -450,11 +459,11 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
                   setPlaceForm({ ...NEW_PLACE, nombre: name || '' }); }}
                 recents={recents} error={errors.destino_lugar_id} inputRef={destinationInput} />
             </div>
-            {route && !route.destino_lugar_id && (
+            {route && !route.destino_lugar_id && !form.destino_lugar_id && (
               <div className="dx-transporte-composer-alert is-amber" role="status">
-                Esta ruta se creó antes de Lugares: su destino es el texto
+                <span>Esta ruta se creó antes de Lugares: su destino es el texto
                 «<b>{route.destino_nombre}</b>». Elige el lugar para que el mapa, la distancia
-                y los viajes lo usen.
+                y los viajes lo usen.</span>
               </div>
             )}
             {route && trayectoChanged && tripCount > 0 && (
@@ -497,28 +506,35 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
             <div className="dx-transporte-composer-grid">
               <label className="dx-ui-field"><span>Distancia <b className="dx-ui-required">*</b>
                 {form.distancia_km !== '' && <i className="dx-transporte-composer-tag">
-                  {route && !trayectoChanged ? 'guardado' : manualEstimate ? 'ajustado' : 'estimado'}</i>}
+                  {route && !trayectoChanged && !manualEdited && !estimateRestored ? 'guardado'
+                    : manualEstimate ? 'ajustado' : 'estimado'}</i>}
               </span>
                 <div className="dx-transporte-composer-withunit">
                   <input ref={kmInput} id="composer-distancia_km" type="number" min="0" step="1"
                     value={form.distancia_km} aria-invalid={Boolean(errors.distancia_km)}
-                    onChange={event => { setManualEstimate(true);
+                    onChange={event => { setManualEstimate(true); setManualEdited(true);
                       update('distancia_km', event.target.value); }} /><em>km</em></div>
                 {errors.distancia_km && <small className="dx-ui-field-error">{errors.distancia_km}</small>}
-                <small className="dx-transporte-composer-hint">Línea recta × 1,3 (factor de carretera).
-                  {manualEstimate && <button type="button" className="dx-btn link"
-                    onClick={() => { setManualEstimate(false); setDirty(true); }}>Volver al estimado</button>}
+                <small className="dx-transporte-composer-hint">
+                  {route && !trayectoChanged && !manualEdited && !estimateRestored
+                    ? 'Valor guardado de la ruta.'
+                    : 'Línea recta × 1,3 (factor de carretera).'}
+                  {manualEstimate && (!route || manualEdited) && <button type="button"
+                    className={route ? 'dx-transporte-composer-estimate-link' : 'dx-btn link'}
+                    onClick={() => { setManualEstimate(false); setManualEdited(false);
+                      if (route) setEstimateRestored(true); setDirty(true); }}>Volver al estimado</button>}
                 </small>
               </label>
               <label className="dx-ui-field"><span>Duración <b className="dx-ui-required">*</b>
                 {form.duracion_estimada_horas !== '' && <i className="dx-transporte-composer-tag">
-                  {route && !trayectoChanged ? 'guardado' : manualEstimate ? 'ajustado' : 'estimado'}</i>}
+                  {route && !trayectoChanged && !manualEdited && !estimateRestored ? 'guardado'
+                    : manualEstimate ? 'ajustado' : 'estimado'}</i>}
               </span>
                 <div className="dx-transporte-composer-withunit">
                   <input ref={hoursInput} id="composer-duracion_estimada_horas" type="number"
                     min="0" step="0.5" value={form.duracion_estimada_horas}
                     aria-invalid={Boolean(errors.duracion_estimada_horas)}
-                    onChange={event => { setManualEstimate(true);
+                    onChange={event => { setManualEstimate(true); setManualEdited(true);
                       update('duracion_estimada_horas', event.target.value); }} /><em>h</em></div>
                 {errors.duracion_estimada_horas && <small className="dx-ui-field-error">
                   {errors.duracion_estimada_horas}</small>}
@@ -660,7 +676,7 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
             Ubicación: {mapPoint.lat.toFixed(5)}, {mapPoint.lng.toFixed(5)}</p>}
           <section className="dx-transporte-composer-preview">
             <div className="dx-transporte-composer-preview-head">
-              <span>{form.codigo || lastCode || 'R-000'} · NUEVA</span>
+              <span>{form.codigo || lastCode || 'R-000'} · {route ? form.estado || 'activa' : 'NUEVA'}</span>
               <h3>{form.nombre || 'Origen → Destino'}</h3></div>
             <div className="dx-transporte-composer-stops">
               {[['A', origin], ['B', destination]].map(([letter, place]) =>
@@ -673,12 +689,12 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
               <div><small>Distancia</small><b>{formatearValorUnidad(form.distancia_km, 'km')}</b></div>
               <div><small>Duración</small><b>{formatearValorUnidad(form.duracion_estimada_horas, 'h')}</b></div>
               <div><small>Peajes</small><b>{formatearValorUnidad(form.numero_peajes, '')}</b></div></div>
-            <div className="dx-transporte-composer-preview-tariff">{tarifaActiva
+            {!route && <div className="dx-transporte-composer-preview-tariff">{tarifaActiva
               ? <><span>Tarifa base · {form.tarifa.tipo_unidad || 'Sin unidad'}</span>
                 <b>{form.tarifa.tarifa
                   ? `${formatearImporte(form.tarifa.tarifa, form.tarifa.moneda, 'viaje')} / ${LABELS[form.tarifa.modalidad]}`
                   : 'Sin dato'}</b></>
-              : <><span>Sin tarifa base</span><small>La ruta quedará «sin tarifa»</small></>}</div>
+              : <><span>Sin tarifa base</span><small>La ruta quedará «sin tarifa»</small></>}</div>}
           </section>
           {route && (
             <section className="dx-transporte-composer-preview">
@@ -719,7 +735,8 @@ export function RutaComposer({ empresaId, places, accounts, routes, route = null
         {saveError && <p className="dx-transporte-error" role="alert">{saveError}</p>}
         <button type="button" className="dx-btn" onClick={close}>Cancelar</button>
         <button type="submit" form="composer-form" className="dx-btn primary" disabled={saving}>
-          {saving ? 'Guardando…' : regreso ? 'Guardar 2 rutas' : 'Guardar ruta'}</button>
+          {saving ? 'Guardando…' : route ? 'Guardar cambios'
+            : regreso ? 'Guardar 2 rutas' : 'Guardar ruta'}</button>
       </footer>
       {discard && <div className="dx-transporte-composer-confirm">
         <section role="alertdialog" aria-modal="true" aria-labelledby="composer-discard-title">

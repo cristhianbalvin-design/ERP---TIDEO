@@ -268,6 +268,7 @@ export function TarifaEditor({
                     <button
                       type="button"
                       key={value}
+                      id={value === 'viaje' ? 'tarifa-modalidad' : undefined}
                       className={form.modalidad === value ? 'is-on' : ''}
                       aria-pressed={form.modalidad === value}
                       onClick={() => updateField('modalidad', value)}
@@ -356,10 +357,11 @@ export function TarifaEditor({
                 className={`dx-transporte-composer-alert ${attempted ? 'is-red' : 'is-amber'}`}
                 role="status"
               >
-                Ya hay una tarifa vigente igual:{' '}
-                <b>{formatearImporte(conflict.tarifa, conflict.moneda, conflict.modalidad)}</b>,
-                desde {formatearFechaTransporte(conflict.vigente_desde)}. Dos tarifas iguales no
-                pueden estar vigentes a la vez.
+                <span>Ya hay una tarifa vigente igual:{' '}
+                  <b>{formatearImporte(conflict.tarifa, conflict.moneda, conflict.modalidad)}
+                    {' '}por {conflict.modalidad}</b>, desde{' '}
+                  {formatearFechaTransporte(conflict.vigente_desde)}. Dos tarifas iguales no
+                  pueden estar vigentes a la vez: cambia la vigencia o edita esa tarifa.</span>
                 {' '}<button type="button" className="dx-btn link" onClick={() => onEditConflict(conflict)}>
                   Editar esa tarifa
                 </button>
@@ -398,7 +400,7 @@ export function TarifaEditor({
               </label>
             </div>
           </details>
-          {Object.entries(errors).filter(([, message]) => message).length > 0 && attempted && (
+          {Object.entries(errors).some(([key, message]) => key !== 'overlap' && message) && attempted && (
             <div className="dx-transporte-composer-alert is-red" role="alert">
               Revisa los campos indicados.
             </div>

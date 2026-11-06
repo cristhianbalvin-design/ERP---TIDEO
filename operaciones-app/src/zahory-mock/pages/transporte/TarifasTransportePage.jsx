@@ -18,7 +18,7 @@ import {
   formatearFechaTransporte, formatearImporte, validarFormularioTarifa, encontrarCruceTarifa,
 } from './transporteUtils.js';
 
-const BLANK = { ruta_id: '', cuenta_id: null, tipo_unidad: '', modalidad: 'km', tarifa: '',
+const BLANK = { ruta_id: '', cuenta_id: null, tipo_unidad: '', modalidad: 'viaje', tarifa: '',
   moneda: 'PEN', minimo_facturable: '', vigente_desde: fechaActualLocal(), vigente_hasta: '',
   estado: 'activa', notas: '' };
 const cuentaLabel = account => account?.nombre_comercial || account?.razon_social || account?.id || 'Cliente';
@@ -139,6 +139,7 @@ export function TarifasTransportePage() {
   }
   async function save(event) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     const errors = validarFormularioTarifa(form);
     if (!form.ruta_id) errors.ruta_id = 'Elige la ruta.';
     if (form.cuenta_id === '' || form.cuenta_id === '__select_client__') {
@@ -154,7 +155,7 @@ export function TarifasTransportePage() {
         'minimo_facturable', 'vigente_desde', 'vigente_hasta', 'overlap'];
       const first = order.find(key => errors[key]);
       requestAnimationFrame(() => {
-        document.getElementById(tarifaErrorFieldId(first))?.focus();
+        formElement.querySelector(`#${tarifaErrorFieldId(first)}`)?.focus();
       });
       return;
     }
