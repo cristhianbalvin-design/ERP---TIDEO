@@ -203,23 +203,43 @@ export default function Inicio() {
   const toastTimer = useRef(null), tourFrame = useRef(null);
   const sociedadId = sociedadActiva?.id === SOCIEDAD_TODAS_ID ? null : sociedadActiva?.id || null;
   useEffect(() => {
-    let activo = true;
+    let activo = true, timer, cancelarEspera;
+    const esperas = [1500, 3000, 5000];
     setData(null); setError(''); setCargando(true);
     if (!empresa?.id) { setCargando(false); return () => { activo = false; }; }
     (async () => {
       try {
         const cliente = await getSupabaseClient();
         if (!cliente) throw Error();
-        const { data: resultado, error: fallo } = await cliente.rpc('inicio_pendientes', {
-          p_empresa_id: empresa.id, p_sociedad_id: sociedadId
-        });
-        if (fallo) throw fallo;
-        if (activo) { setData(resultado); setScope(resultado?.filas_mias > 0 ? 'mios' : 'area'); setArea('Todas'); }
+        for (let intento = 0; activo; intento++) {
+          let respuesta;
+          try {
+            respuesta = await cliente.rpc('inicio_pendientes', {
+              p_empresa_id: empresa.id, p_sociedad_id: sociedadId
+            });
+          } catch (fallo) {
+            if (!(fallo instanceof TypeError) || intento >= esperas.length) throw fallo;
+          }
+          if (!activo) return;
+          const { data: resultado, error: fallo, status } = respuesta || {};
+          if (respuesta && !fallo) {
+            setData(resultado); setScope(resultado?.filas_mias > 0 ? 'mios' : 'area'); setArea('Todas');
+            return;
+          }
+          const transitorio = !respuesta || (fallo?.code !== '42501' &&
+            (fallo?.code === '57014' || [0, 500, 502, 503, 504].includes(status)));
+          if (!transitorio || intento >= esperas.length) throw fallo;
+          await new Promise(resolve => {
+            cancelarEspera = resolve;
+            timer = setTimeout(resolve, esperas[intento]);
+          });
+          cancelarEspera = null;
+        }
       } catch {
         if (activo) setError('No se pudo cargar tu inicio. Inténtalo de nuevo.');
       } finally { if (activo) setCargando(false); }
     })();
-    return () => { activo = false; };
+    return () => { activo = false; clearTimeout(timer); cancelarEspera?.(); };
   }, [empresa?.id, sociedadId, recarga]);
   const prefijo = `dx-inicio:${authUser?.id || ''}:${empresa?.id || ''}:`;
   useEffect(() => {
