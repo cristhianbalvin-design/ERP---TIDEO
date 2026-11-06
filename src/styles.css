@@ -3907,7 +3907,7 @@ body {
 /* Responsive */
 @media (max-width: 900px) {
   .app-shell { align-items: stretch; }
-  .main-col { min-width: 0; width: calc(100vw - 64px); overflow-x: hidden; }
+  .main-col { min-width: 0; width: calc(100vw - 72px); overflow-x: hidden; }
   .header { height: 52px; }
   .header-title { font-size: 14px; }
   /* dropdown en móvil: anclar a la derecha dentro del viewport */
@@ -4504,5 +4504,5 @@ body {
   }
 }
 
-.main.dx-main-inicio { padding: 0; background: #F4F6F8; }
+.main.dx-main-inicio { padding: 0; scrollbar-gutter: auto; background: #F4F6F8; }
 .dark .main.dx-main-inicio { background: #020617; }

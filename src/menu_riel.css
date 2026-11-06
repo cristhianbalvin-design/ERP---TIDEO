@@ -1,7 +1,7 @@
 .dx-nav-shell {
   --navy-900: #0F1B30;
   --navy-800: #14223C;
-  width: 64px;
+  width: 72px;
   height: 100dvh;
   position: sticky;
   top: 0;
@@ -17,10 +17,10 @@
   --navy-800: #0C1628;
 }
 .dx-nav-shell.dx-nav-pinned {
-  width: 280px;
+  width: 304px;
 }
 .dx-nav-rail {
-  width: 64px;
+  width: 72px;
   height: 100%;
   flex: none;
   display: flex;
@@ -129,7 +129,7 @@
   pointer-events: none;
 }
 .dx-nav-panel {
-  width: 216px;
+  width: 232px;
   height: 100%;
   flex: none;
   display: flex;
@@ -140,7 +140,7 @@
 }
 .dx-nav-panel.is-overlay {
   position: absolute;
-  left: 64px;
+  left: 72px;
   top: 0;
   box-shadow: var(--shadow-lg);
 }
@@ -313,7 +313,7 @@
 }
 @media (max-width:900px) {
   .dx-nav-shell.dx-nav-pinned {
-    width: 64px;
+    width: 72px;
   }
 }
 @media (max-width:760px) {
@@ -373,7 +373,7 @@
   }
 }
 html[data-dx-diagnostico-work-mode="true"] .dx-nav-shell {
-  width: 64px;
+  width: 72px;
 }
 
 .dx-nav-shell { font-family: 'DM Sans', sans-serif; }
