@@ -99,11 +99,15 @@ test('genera ocho semanas lunes-domingo incluyendo la actual y acumulado neto', 
   const semanas = calcularSemanasCaja({ empresaId: 'e', moneda: 'PEN', hoy: '2026-10-14', movimientos: [
     { empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-12', tipo: 'ingreso', monto: 100 },
     { empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-13', tipo: 'debito', monto: 35 },
+    { empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-14', tipo: 'egreso', monto: 200, vinculo_tipo: 'transferencia_cuenta' },
+    { empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-14', tipo: 'ingreso', monto: 200, vinculo_tipo: 'transferencia_cuenta' },
     { empresa_id: 'e', moneda: 'USD', fecha: '2026-10-14', tipo: 'ingreso', monto: 500 },
   ] });
   assert.equal(semanas.length, 8);
   assert.equal(semanas[7].inicio, '2026-10-12');
   assert.equal(semanas[7].fin, '2026-10-18');
+  assert.equal(semanas[7].ingresos, 100);
+  assert.equal(semanas[7].egresos, 35);
   assert.equal(semanas[7].neto, 65);
   assert.equal(semanas[7].acumulado, 65);
 });
@@ -112,10 +116,13 @@ test('suma caja neta solo del mes, sociedad y moneda indicados', () => {
   const movimientos = [
     { empresa_id: 'e', sociedad_id: 's1', moneda: 'PEN', fecha: '2026-10-01', tipo: 'credito', monto: 90 },
     { empresa_id: 'e', sociedad_id: 's1', moneda: 'PEN', fecha: '2026-10-05', tipo: 'egreso', monto: 30 },
+    { empresa_id: 'e', sociedad_id: 's1', moneda: 'PEN', fecha: '2026-10-05', tipo: 'egreso', monto: 200, vinculo_tipo: 'transferencia_cuenta' },
+    { empresa_id: 'e', sociedad_id: 's2', moneda: 'PEN', fecha: '2026-10-05', tipo: 'ingreso', monto: 200, vinculo_tipo: 'transferencia_cuenta' },
     { empresa_id: 'e', sociedad_id: 's2', moneda: 'PEN', fecha: '2026-10-05', tipo: 'ingreso', monto: 100 },
     { empresa_id: 'e', sociedad_id: 's1', moneda: 'USD', fecha: '2026-10-05', tipo: 'ingreso', monto: 100 },
   ];
   assert.equal(calcularCajaNetaMes({ movimientos, periodo: '2026-10', empresaId: 'e', sociedadIds: ['s1'], multisociedad: true, moneda: 'PEN' }), 60);
+  assert.equal(calcularCajaNetaMes({ movimientos, periodo: '2026-10', empresaId: 'e', sociedadIds: ['s2'], multisociedad: true, moneda: 'PEN' }), 100);
 });
 
 test('filtra retenciones y facturación por cliente, período, sociedad y tipo de comprobante', () => {

@@ -892,6 +892,31 @@ export const finanzasService = {
     return data;
   },
 
+  async registrarTransferenciaTesoreria(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_transferencia_tesoreria', { p_payload: payload });
+    if (error) {
+      const mensajes = {
+        NO_AUTENTICADO: 'Inicia sesión para registrar la transferencia.',
+        CUENTAS_REQUERIDAS: 'Selecciona las cuentas de origen y destino.',
+        CUENTAS_IGUALES: 'Las cuentas de origen y destino deben ser distintas.',
+        MONTO_INVALIDO: 'El monto enviado y el recibido deben ser mayores a cero.',
+        CUENTA_NO_ENCONTRADA: 'Una de las cuentas no existe.',
+        EMPRESA_NO_COINCIDE: 'Las cuentas deben pertenecer a la misma empresa.',
+        PERMISO_DENEGADO: 'No tienes permiso para registrar transferencias en Tesorería.',
+        CUENTA_INACTIVA: 'Ambas cuentas deben estar activas.',
+        CUENTA_DETRACCIONES: 'No se permiten cuentas de detracciones en esta transferencia.',
+        SOCIEDAD_DISTINTA: 'Las cuentas deben pertenecer a la misma sociedad.',
+        ALCANCE_DENEGADO: 'Las cuentas están fuera de tu alcance societario.',
+        TIPO_CAMBIO_REQUERIDO: 'Indica un tipo de cambio válido en soles por unidad extranjera.',
+        CONVERSION_NO_SOPORTADA: 'La conversión directa entre estas monedas no está soportada.',
+      };
+      const codigo = String(error.message || '').match(/\b([A-Z_]+):/)?.[1];
+      throw new Error(mensajes[codigo] || error.message || 'No se pudo registrar la transferencia.');
+    }
+    return data;
+  },
+
   async registrarMovimientoTesoreria(payload) {
     const supabase = await getSupabaseClient();
     const movimiento = await normalizarMovimientoTesoreriaCobro(supabase, payload);
