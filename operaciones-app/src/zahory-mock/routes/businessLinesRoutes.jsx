@@ -4,9 +4,9 @@ import { PasaporteEquiposPage } from '../pages/flota/PasaporteEquiposPage.jsx';
 import { ActasDespachosPage } from '../pages/flota/ActasDespachosPage.jsx';
 import { CertificacionesActivoPage } from '../pages/flota/CertificacionesActivoPage.jsx';
 import { GarantiasFlotaPage } from '../pages/flota/GarantiasFlotaPage.jsx';
+import { LiquidacionFlotaPage } from '../pages/flota/LiquidacionFlotaPage.jsx';
 import {
   DashboardRentalPage,
-  LiquidacionRentalPage,
 } from '../pages/AlquileresPages.jsx';
 import {
   AnalisisSOS,
@@ -82,7 +82,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'flota': return <FlotaPanelPage onNav={onNavigate} />;
     case 'contratos-rental': return <ContratosRentalPage onNav={onNavigate} />;
     case 'checkout': return <ActasDespachosPage />;
-    case 'liquidacion': return <LiquidacionRentalPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
+    case 'liquidacion': return <LiquidacionFlotaPage />;
     case 'pasaporte-equipos': return <PasaporteEquiposPage />;
     case 'gestion-garantias': return <GarantiasFlotaPage />;
     case 'certificaciones-activo': return <CertificacionesActivoPage />;
