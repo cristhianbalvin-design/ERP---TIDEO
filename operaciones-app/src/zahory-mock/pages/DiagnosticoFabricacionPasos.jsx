@@ -128,7 +128,14 @@ function BuscadorMaterial({ empresaId, value, onChange, disabled }) {
   );
 }
 
-const PIEZA_VACIA = { nombre: '', cantidad: 1, material: null, observaciones: '' };
+const PIEZA_VACIA = { nombre: '', cantidad: 1, material: null, consumo_material: '', observaciones: '' };
+// Total de material que recibe la Hoja de Costeo: consumo por pieza × cantidad.
+export const totalMaterialPieza = pieza => {
+  const consumo = Number(String(pieza?.consumo_material ?? '').replace(',', '.'));
+  const cantidad = Number(pieza?.cantidad);
+  return consumo > 0 && cantidad > 0 ? Math.round(consumo * cantidad * 10000) / 10000 : null;
+};
+const textoNumero = valor => (valor === null || valor === undefined || valor === '' ? '' : Number(valor).toLocaleString('es-PE', { maximumFractionDigits: 4 }));
 
 export function FabricacionPiezasPaso({ empresaId, diagnosticoId, piezas, onPiezas, canEdit, onVerPlano, nombreSugerido }) {
   const [editando, setEditando] = useState(null);
@@ -138,19 +145,19 @@ export function FabricacionPiezasPaso({ empresaId, diagnosticoId, piezas, onPiez
   const [confirmarBorrar, setConfirmarBorrar] = useState(null);
   const abrir = pieza => {
     setError('');
-    if (pieza) { setEditando(pieza.id); setBorrador({ nombre: pieza.nombre, cantidad: pieza.cantidad, material: pieza.material, observaciones: pieza.observaciones || '' }); }
+    if (pieza) { setEditando(pieza.id); setBorrador({ nombre: pieza.nombre, cantidad: pieza.cantidad, material: pieza.material, consumo_material: pieza.consumo_material ?? '', observaciones: pieza.observaciones || '' }); }
     else { setEditando('nueva'); setBorrador({ ...PIEZA_VACIA, nombre: piezas.length ? '' : (nombreSugerido || '') }); }
   };
   const guardar = async () => {
     setGuardando(true); setError('');
     try {
-      const datos = { nombre: borrador.nombre, cantidad: borrador.cantidad, material_id: borrador.material?.id || null, observaciones: borrador.observaciones };
+      const datos = { nombre: borrador.nombre, cantidad: borrador.cantidad, material_id: borrador.material?.id || null, consumo_material: borrador.material ? borrador.consumo_material : null, observaciones: borrador.observaciones };
       if (editando === 'nueva') {
         const creada = await crearPiezaFabricacion(empresaId, diagnosticoId, { ...datos, orden: piezas.length + 1 });
         onPiezas([...piezas, { ...creada, material: borrador.material }]);
       } else {
         const guardada = await actualizarPiezaFabricacion(empresaId, editando, datos);
-        onPiezas(piezas.map(pieza => pieza.id === editando ? { ...pieza, ...guardada, cantidad: Number(guardada.cantidad), material: borrador.material } : pieza));
+        onPiezas(piezas.map(pieza => pieza.id === editando ? { ...pieza, ...guardada, cantidad: Number(guardada.cantidad), consumo_material: guardada.consumo_material === null ? null : Number(guardada.consumo_material), material: borrador.material } : pieza));
       }
       setEditando(null);
     } catch (saveError) { setError(mensajeErrorFabricacion(saveError)); }
@@ -176,6 +183,7 @@ export function FabricacionPiezasPaso({ empresaId, diagnosticoId, piezas, onPiez
                 <div className="dx-fab-piece-top"><span className="dx-ui-icon is-cyan" aria-hidden="true">⚙</span><div><b title={pieza.nombre}>{pieza.nombre}</b><small>Cantidad: {formatoCantidad(pieza.cantidad)}</small></div></div>
                 <dl>
                   <dt>Material</dt><dd className={pieza.material_id ? '' : 'is-missing'} title={textoMaterial(pieza.material)}>{pieza.material_id ? textoMaterial(pieza.material) || 'Material del catálogo' : 'Elegir del catálogo'}</dd>
+                  {pieza.material_id && <><dt>Consumo</dt><dd className={pieza.consumo_material ? '' : 'is-missing'}>{pieza.consumo_material ? `${textoNumero(pieza.consumo_material)} ${pieza.material?.unidad || ''} por pieza → ${textoNumero(totalMaterialPieza(pieza))} ${pieza.material?.unidad || ''}`.replace(/\s+/g, ' ').trim() : 'Falta consumo'}</dd></>}
                   <dt>Plano</dt><dd className={pieza.plano_origen ? '' : 'is-missing'}>{pieza.plano_origen === 'subido' ? (pieza.plano_nombre_original || 'Plano subido') : pieza.plano_origen === 'catalogo' ? 'Dibujo del catálogo' : 'Sin plano'}</dd>
                   <dt>Características</dt><dd>{pieza.caracteristicas.length ? `${pieza.caracteristicas.length} (${criticas} crítica${criticas === 1 ? '' : 's'})` : '—'}</dd>
                 </dl>
@@ -201,6 +209,8 @@ export function FabricacionPiezasPaso({ empresaId, diagnosticoId, piezas, onPiez
             <div className="dx-fab-field"><label htmlFor="fab-pieza-nombre">Nombre de la pieza *</label><input id="fab-pieza-nombre" className="dx-fab-input" value={borrador.nombre} onChange={event => setBorrador(current => ({ ...current, nombre: event.target.value }))} /></div>
             <div className="dx-fab-field"><label htmlFor="fab-pieza-cantidad">Cantidad *</label><input id="fab-pieza-cantidad" className="dx-fab-input" type="number" min="0" step="any" inputMode="decimal" value={borrador.cantidad} onChange={event => setBorrador(current => ({ ...current, cantidad: event.target.value }))} /></div>
             <div className="dx-fab-field"><label htmlFor="fab-material">Material (catálogo de materiales)</label><BuscadorMaterial empresaId={empresaId} value={borrador.material} onChange={material => setBorrador(current => ({ ...current, material }))} /><span className="dx-fab-hint">Obligatorio para emitir. Solo materiales activos de la empresa.</span></div>
+            {borrador.material && <div className="dx-fab-field"><label htmlFor="fab-pieza-consumo">Consumo por pieza{borrador.material.unidad ? ` (${borrador.material.unidad})` : ''} *</label><input id="fab-pieza-consumo" className="dx-fab-input" type="number" min="0" step="any" inputMode="decimal" value={borrador.consumo_material ?? ''} onChange={event => setBorrador(current => ({ ...current, consumo_material: event.target.value }))} /><span className="dx-fab-hint">En la unidad del material. Ej.: largo de barra con sobremedida de corte.</span></div>}
+            {borrador.material && <div className="dx-fab-field"><span className="dx-fab-label">Total para la Hoja de Costeo</span><div className="dx-fab-total" aria-live="polite">{totalMaterialPieza(borrador) ? `${textoNumero(totalMaterialPieza(borrador))} ${borrador.material.unidad || ''} de ${borrador.material.descripcion || 'material'}` : '—'}</div></div>}
             <div className="dx-fab-field dx-fab-span"><label htmlFor="fab-pieza-obs">Observaciones</label><input id="fab-pieza-obs" className="dx-fab-input" value={borrador.observaciones} placeholder="Tratamiento, norma, notas del cliente…" onChange={event => setBorrador(current => ({ ...current, observaciones: event.target.value }))} /></div>
           </div>
           {error && <div className="dx-fab-error" role="alert">{error}</div>}
@@ -439,7 +449,7 @@ export function FabricacionPlanoPaso({ empresaId, sociedadId, diagnosticoId, pie
   );
 }
 
-export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, trabajosIncompletos = [], cambiosSinGuardar = false, emitido = false, origenTexto, resumen, onResumen, canEdit, children }) {
+export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, trabajosIncompletos = [], cambiosSinGuardar = false, emitido = false, origenTexto, resumen, onResumen, canEdit, ficha = null, children }) {
   const datos = resumenFabricacion(piezas);
   const incompletas = piezas.filter(pieza => faltantesPieza(pieza).length);
   return (
@@ -458,7 +468,7 @@ export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, trabajos
             {!piezas.length && <li className="is-warn">Agrega al menos una pieza</li>}
             {piezas.map(pieza => {
               const faltan = faltantesPieza(pieza);
-              return <li key={pieza.id} className={faltan.length ? 'is-warn' : ''}>{pieza.nombre}: {faltan.length ? `falta ${faltan.join(' y ')}` : `material y plano con ${pieza.caracteristicas.length} característica${pieza.caracteristicas.length === 1 ? '' : 's'}`}</li>;
+              return <li key={pieza.id} className={faltan.length ? 'is-warn' : ''}>{pieza.nombre}: {faltan.length ? `falta ${faltan.join(' y ')}` : `material (${textoNumero(totalMaterialPieza(pieza))} ${pieza.material?.unidad || ''}) y plano con ${pieza.caracteristicas.length} característica${pieza.caracteristicas.length === 1 ? '' : 's'}`.replace(/\s+\)/, ')')}</li>;
             })}
             <li className={totalTareas && totalHH > 0 ? '' : 'is-warn'}>{!totalTareas ? 'Sin trabajos a realizar' : totalHH > 0 ? `${totalTareas} tarea${totalTareas === 1 ? '' : 's'} con horas` : `${totalTareas} tarea${totalTareas === 1 ? '' : 's'} sin horas-hombre`}</li>
             {trabajosIncompletos.length > 0 && <li className="is-warn">Hay trabajos sin actividades ni tareas: {trabajosIncompletos.join(', ')}</li>}
@@ -480,10 +490,24 @@ export function FabricacionRevisionPaso({ piezas, totalTareas, totalHH, trabajos
             ))}
             {!piezas.length && <p className="dx-fab-empty">Sin piezas.</p>}
           </div>
-          <p className="dx-fab-hint dx-fab-pad-x">El PDF con el plano globeado llega en la siguiente etapa.</p>
+          {ficha && <div className="dx-fab-ficha">
+            {!emitido && <div className="dx-fab-field"><label htmlFor="fab-ficha-emisor">Firma del emisor</label>
+              <select id="fab-ficha-emisor" className="dx-fab-input" value={ficha.emisorId || ''} disabled={!canEdit || ficha.guardandoEmisor} onChange={event => ficha.onEmisor(event.target.value)}>
+                <option value="">Sin firma</option>
+                {ficha.emisores.map(persona => <option key={persona.id} value={persona.id}>{persona.etiqueta || persona.nombre}</option>)}
+              </select>
+              <span className="dx-fab-hint">Se imprime al pie de la ficha. Al emitir queda fija en la versión.</span></div>}
+            {emitido && ficha.emisorNombre && <p className="dx-fab-hint">Firma: {ficha.emisorNombre}</p>}
+            <div className="dx-fab-ficha-acciones">
+              {!emitido && <button type="button" className="btn btn-secondary" onClick={ficha.onDescargarBorrador} disabled={Boolean(ficha.descargando)} aria-busy={ficha.descargando === 'borrador'}>{ficha.descargando === 'borrador' ? 'Generando PDF…' : '⤓ Descargar ficha (borrador)'}</button>}
+              {ficha.versiones.map(version => <button key={version.id} type="button" className={emitido && version === ficha.versiones[0] ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => ficha.onDescargarVersion(version)} disabled={Boolean(ficha.descargando)} aria-busy={ficha.descargando === version.id}>{ficha.descargando === version.id ? 'Generando PDF…' : `⤓ Ficha v${version.version}${version === ficha.versiones[0] ? '' : ' (anterior)'}`}</button>)}
+            </div>
+            {ficha.mensaje && <p className={`dx-fab-hint${ficha.mensajeError ? ' is-error' : ''}`} role={ficha.mensajeError ? 'alert' : 'status'}>{ficha.mensaje}</p>}
+            {!emitido && <p className="dx-fab-hint">El borrador lleva la marca BORRADOR. Al emitir se guarda la ficha como versión fija.</p>}
+          </div>}
         </section>
       </div>
-      {incompletas.length > 0 && <div className="dx-fab-note is-amber">Para emitir, todas las piezas deben tener material y plano. Faltan: {incompletas.map(pieza => pieza.nombre).join(', ')}.</div>}
+      {incompletas.length > 0 && <div className="dx-fab-note is-amber">Para emitir, todas las piezas deben tener material, consumo y plano. Faltan: {incompletas.map(pieza => pieza.nombre).join(', ')}.</div>}
       {children}
     </>
   );

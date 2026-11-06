@@ -29,6 +29,8 @@ describe('diagnosticoFabricacionService · lógica', () => {
     ] });
     expect(pieza.cantidad).toBe(3);
     expect(pieza.material).toBeNull();
+    expect(pieza.consumo_material).toBeNull();
+    expect(normalizarPieza({ consumo_material: '0.8' }).consumo_material).toBe(0.8);
     expect(pieza.caracteristicas.map(item => item.numero)).toEqual([1, 2]);
     expect(pieza.caracteristicas[0].critica).toBe(true);
     expect(normalizarCaracteristica({ numero: '7', pos_x: '0', pos_y: '100', critica: null })).toMatchObject({ numero: 7, pos_x: 0, pos_y: 100, critica: false });
@@ -36,13 +38,15 @@ describe('diagnosticoFabricacionService · lógica', () => {
 
   it('indica lo que falta para emitir, igual que la base', () => {
     expect(faltantesPieza({})).toEqual(['material', 'plano']);
-    expect(faltantesPieza({ material_id: 'm1' })).toEqual(['plano']);
-    expect(faltantesPieza({ material_id: 'm1', plano_origen: 'catalogo' })).toEqual([]);
+    expect(faltantesPieza({ material_id: 'm1' })).toEqual(['plano', 'consumo']);
+    expect(faltantesPieza({ material_id: 'm1', plano_origen: 'catalogo' })).toEqual(['consumo']);
+    expect(faltantesPieza({ material_id: 'm1', plano_origen: 'catalogo', consumo_material: 0 })).toEqual(['consumo']);
+    expect(faltantesPieza({ material_id: 'm1', plano_origen: 'catalogo', consumo_material: 0.8 })).toEqual([]);
   });
 
   it('resume piezas, unidades, características críticas e incompletas', () => {
     expect(resumenFabricacion([
-      { cantidad: 2, material_id: 'm1', plano_origen: 'subido', caracteristicas: [{ critica: true }, { critica: false }] },
+      { cantidad: 2, material_id: 'm1', consumo_material: 0.5, plano_origen: 'subido', caracteristicas: [{ critica: true }, { critica: false }] },
       { cantidad: 5, caracteristicas: [{ critica: true }] },
     ])).toEqual({ piezas: 2, unidades: 7, caracteristicas: 3, criticas: 2, incompletas: 1 });
   });
