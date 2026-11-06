@@ -55,3 +55,9 @@ enabled = true
 # La función valida su clave secreta exacta; esta clave no es un JWT.
 verify_jwt = false
 entrypoint = "./functions/notificaciones-dispatch/index.ts"
+
+[functions.notificaciones-whatsapp-webhook]
+enabled = true
+# Valida la firma HMAC de Meta y el token de verificación.
+verify_jwt = false
+entrypoint = "./functions/notificaciones-whatsapp-webhook/index.ts"

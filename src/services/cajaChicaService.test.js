@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCierreFondoRpcArgs, calcularFondos, listarTransferenciasPaginadas } from './cajaChicaService.js';
+import {
+  buildCierreFondoRpcArgs,
+  calcularFondos,
+  listarTransferenciasPaginadas,
+  traducirErrorCategoriaEgreso,
+  validarCategoriaEgresoFondo,
+} from './cajaChicaService.js';
 
 const fondoBase = (overrides = {}) => ({
   id: 'fondo-test',
@@ -38,6 +44,22 @@ test('calcularFondos suma entradas y resta salidas de transferencias', () => {
   assert.equal(fondo.monto_transferido, 10);
   assert.equal(fondo.monto_recibido, 20);
   assert.equal(fondo.tiene_movimientos, true);
+});
+
+test('registrar un egreso de fondo requiere categoría antes de llamar al RPC', () => {
+  assert.throws(() => validarCategoriaEgresoFondo({ fondo_id: 'fondo-test', categoria: '  ' }), {
+    code: 'CATEGORIA_REQUERIDA',
+    message: /categoría del Estado de Resultados/,
+  });
+  assert.equal(validarCategoriaEgresoFondo({ categoria: 'Materiales' }).categoria, 'Materiales');
+});
+
+test('el error CATEGORIA_REQUERIDA de la RPC se traduce a un mensaje claro', () => {
+  const traducido = traducirErrorCategoriaEgreso({ code: 'P0001', details: 'CATEGORIA_REQUERIDA' });
+  assert.equal(traducido.code, 'CATEGORIA_REQUERIDA');
+  assert.match(traducido.message, /categoría del Estado de Resultados/);
+  const original = { code: 'otro_error' };
+  assert.equal(traducirErrorCategoriaEgreso(original), original);
 });
 
 test('una transferencia anulada no afecta el saldo', () => {

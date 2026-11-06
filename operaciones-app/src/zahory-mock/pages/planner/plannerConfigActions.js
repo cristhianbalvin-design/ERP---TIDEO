@@ -44,6 +44,7 @@ async function guardarCambiosMaquina(sesion, payload) {
     puestoId: payload.puesto_id,
     horasDia: payload.horas_dia || 8,
     estado: payload.estado || 'disponible',
+    activoId: payload.activo_id,
   });
 }
 
@@ -69,14 +70,14 @@ export function crearAccionGuardarTaller({ sesion, ejecutar, onGuardado }) {
         await guardarPuesto({ ...comunes, id: puesto.id, bahia_id: real(puesto.bahia_id), codigo: puesto.codigo, nombre: puesto.nombre.trim(), capacidad: Number(puesto.capacidad) || 1, orden: puesto.orden, activo: true });
       }
       for (const maquina of diferencias.maquinasNuevas) {
-        await agregarMaquina({ ...comunes, tipo: { clave: maquina.tipo_clave, nombre: maquina.nombre }, bahiaId: real(maquina.bahia_id), puestoId: maquina.puesto_id ? real(maquina.puesto_id) : null, nombre: maquina.nombre, horasDia: Number(maquina.horas_dia) || 8 });
+        await agregarMaquina({ ...comunes, tipo: { clave: maquina.tipo_clave, nombre: maquina.nombre }, bahiaId: real(maquina.bahia_id), puestoId: maquina.puesto_id ? real(maquina.puesto_id) : null, nombre: maquina.nombre, horasDia: Number(maquina.horas_dia) || 8, activoId: maquina.activo_id || null });
       }
       for (const maquina of diferencias.maquinasEditadas) {
         await cambiarTipoMaquina({ empresaId: sesion.empresaId, id: maquina.id, tipoClave: maquina.tipo_clave, nombre: maquina.nombre });
-        await actualizarMaquina({ ...comunes, id: maquina.id, bahiaId: real(maquina.bahia_id), puestoId: maquina.puesto_id ? real(maquina.puesto_id) : null, horasDia: Number(maquina.horas_dia) || 8, estado: maquina.estado || 'disponible' });
+        await actualizarMaquina({ ...comunes, id: maquina.id, bahiaId: real(maquina.bahia_id), puestoId: maquina.puesto_id ? real(maquina.puesto_id) : null, horasDia: Number(maquina.horas_dia) || 8, estado: maquina.estado || 'disponible', activoId: maquina.activo_id || null });
       }
       for (const maquina of diferencias.maquinasQuitadas) {
-        await actualizarMaquina({ ...comunes, id: maquina.id, bahiaId: maquina.bahia_id, puestoId: maquina.puesto_id, horasDia: Number(maquina.horas_dia) || 8, estado: 'baja' });
+        await actualizarMaquina({ ...comunes, id: maquina.id, bahiaId: maquina.bahia_id, puestoId: maquina.puesto_id, horasDia: Number(maquina.horas_dia) || 8, estado: 'baja', activoId: null });
       }
       for (const puesto of diferencias.puestosQuitados) await desactivarPuesto({ empresaId: sesion.empresaId, id: puesto.id });
       for (const bahia of diferencias.bahiasQuitadas) await desactivarBahia({ empresaId: sesion.empresaId, id: bahia.id });

@@ -71,7 +71,12 @@ export const crearEntradasDevengoCxp = (
 
   if (!filas.length) {
     if (hasScopedFilters) return [];
-    return [{ cecoId: cxp?.centro_costo_id || null, amount: toAmount(cxp?.devengoAmount), distributed: false }];
+    return [{
+      cecoId: cxp?.centro_costo_id || null,
+      amount: toAmount(cxp?.devengoAmount),
+      distributed: false,
+      ...(cxp?.tipo_gasto ? { subcategoria: cxp.tipo_gasto } : {}),
+    }];
   }
 
   const totalDistribuido = filas.reduce((total, fila) => total + toAmount(fila.monto), 0);
@@ -85,7 +90,12 @@ export const crearEntradasDevengoCxp = (
         ? Math.round(montoDevengableCents * toAmount(fila.monto) / totalDistribuido)
         : 0;
     asignadoCents += montoCents;
-    return { cecoId: fila.ceco_id, amount: fromCents(montoCents), distributed: true };
+    return {
+      cecoId: fila.ceco_id,
+      amount: fromCents(montoCents),
+      distributed: true,
+      ...(cxp?.tipo_gasto ? { subcategoria: cxp.tipo_gasto } : {}),
+    };
   });
 
   if (!hasScopedFilters) return entradas;

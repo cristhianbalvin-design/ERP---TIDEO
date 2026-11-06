@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { I } from './icons.jsx';
 import { DASHBOARD_TABS, getVisibleDashboardTabs, resolveDashboardTab } from './dashboardsTabs.js';
 
-const Dashboard = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Dashboard })));
+const Dashboard = lazy(() => import('./pages_dashboard_general.jsx').then(m => ({ default: m.Dashboard })));
 const BIComercial = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIComercial })));
 const BIOperativo = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIOperativo })));
 const BIFinanciero = lazy(() => import('./pages_bi_fin.jsx').then(m => ({ default: m.BIFinanciero })));

@@ -44,6 +44,7 @@ export function ZahoryRoutes({ route, routeParams, onNavigate }) {
     default:
       content = renderBusinessLinesRoute(route, {
         onNavigate,
+        routeParams,
         currentOT,
         setCurrentOT,
         currentOF,

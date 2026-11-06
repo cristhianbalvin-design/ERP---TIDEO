@@ -38,7 +38,7 @@ const logoExtension = (file) => {
 const normalizarLead = l => ({
   ...l,
   nombre: l.nombre || l.nombre_contacto,
-  empresa_contacto: l.empresa_contacto || l.empresa_nombre,
+  empresa_contacto: l.empresa_contacto || l.empresa_nombre || '',
   cargo: l.cargo || null,
   urgencia: l.urgencia || 'media',
   dias_sin_actividad: Number(l.dias_sin_actividad || 0),
@@ -100,6 +100,7 @@ export async function persistirLead(supabase, empresaId, lead) {
     industria: lead.industria || null,
     telefono: lead.telefono || null,
     email: lead.email || null,
+    linkedin_url: lead.linkedin_url || null,
     fuente: lead.fuente || 'backoffice',
     cargo: lead.cargo || null,
     urgencia: lead.urgencia || 'media',
@@ -122,7 +123,7 @@ export async function persistirLead(supabase, empresaId, lead) {
 export async function actualizarLead(supabase, leadId, datos) {
   const allowed = [
     'nombre_contacto', 'empresa_nombre', 'razon_social', 'numero_documento', 'tipo_documento', 'industria',
-    'telefono', 'email', 'fuente', 'cargo', 'urgencia', 'registrado_desde',
+    'telefono', 'email', 'linkedin_url', 'fuente', 'cargo', 'urgencia', 'registrado_desde',
     'responsable', 'responsable_id', 'campana', 'campana_id',
     'dias_sin_actividad', 'fecha_creacion', 'motivo_descarte', 'necesidad',
     'presupuesto_estimado', 'moneda', 'estado', 'convertido', 'cuenta_id',
@@ -304,6 +305,7 @@ export async function persistirOportunidad(supabase, empresaId, opp) {
     empresa_id: empresaId,
     cuenta_id: opp.cuenta_id || null,
     lead_id: opp.lead_id || opp.lead_origen || null,
+    campana_id: opp.campana_id || null,
     contacto_id: opp.contacto_id || null,
     nombre: opp.nombre || 'Nueva oportunidad',
     servicio_interes: opp.servicio_interes || null,
@@ -456,6 +458,19 @@ export async function siguienteNumeroOSCliente(supabase, empresaId) {
 }
 
 export async function persistirOSCliente(supabase, empresaId, osc) {
+  if (osc.cuenta_id) {
+    const cuentaResult = await supabase
+      .from('cuentas')
+      .select('id')
+      .eq('id', osc.cuenta_id)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    if (cuentaResult.error) throw cuentaResult.error;
+    if (!cuentaResult.data) {
+      throw new Error('La cuenta seleccionada no existe en la empresa activa. Recarga la pantalla y vuelve a seleccionarla.');
+    }
+  }
+
   const row = {
     id: osc.id,
     empresa_id: empresaId,
@@ -801,7 +816,9 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
   });
 
   return {
-    cuentas: (cuentasR.data || []).map(normalizarCuenta),
+    cuentas: (cuentasR.data || [])
+      .filter(cuenta => cuenta?.empresa_id === empresaId)
+      .map(normalizarCuenta),
     leads: (leadsR.data || []).map(normalizarLead),
     contactos: (contactosR.data || []).map(normalizarContacto),
     oportunidades: (oppsR.data || []).map(normalizarOportunidad),

@@ -208,6 +208,9 @@ const resolverCategoriaEr = (erConfig = [], label, { hasOt = false } = {}) => {
   return resolverCategoriaPorTipoSistema(erConfig, inferTipoSistema(label), { hasOt });
 };
 
+export const esCategoriaInversionCajaChica = (categoria, erConfig = []) =>
+  resolverCategoriaEr(erConfig, categoria, { hasOt: false })?.tipo_sistema === 'inversiones';
+
 // La naturaleza solo reasigna gastos operativos/directos. Ingresos y gastos
 // financieros conservan su clasificación explícita para no distorsionar margen
 // bruto ni resultado financiero.
@@ -266,6 +269,12 @@ export const cxpCanDevengarEr = cxp => {
   if (excludedCxpMotives.has(cxpMotive(cxp))) return false;
   return cxpDevengoAmount(cxp) > 0;
 };
+
+export const filtrarComprasGastosParaEr = comprasGastos =>
+  (comprasGastos || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
+
+export const filtrarCajaChicaSinGastoVinculado = filas =>
+  (filas || []).filter(r => r.gasto_id == null);
 
 export const compraCoversCxp = (cxp, comprasGastos = []) => {
   const cxpId = cxp?.id;
@@ -517,7 +526,7 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds,
   if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
+  return filtrarComprasGastosParaEr(data);
 }
 
 async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null) {
@@ -525,7 +534,7 @@ async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null)
   let query = supabase
     .from('cxp')
     // Corrección 5: se agrega no_devengar_er al SELECT.
-    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id, ot_vinc_id, no_devengar_er, sociedad_id')
+    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, tipo_gasto, centro_costo_id, ot_vinc_id, no_devengar_er, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha_emision', start)
     .lt('fecha_emision', next);
@@ -613,7 +622,7 @@ async function loadPagosFinancieros(supabase, empresaId, periodo, sociedadIds = 
 }
 
 // Corrección 1: caja_chica nunca era consultada; los egresos sin gasto_id desaparecían del ER.
-async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null) {
+async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null, erConfigPromise = cargarConfiguracionER(empresaId)) {
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('caja_chica')
@@ -623,10 +632,11 @@ async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null) {
     .lt('fecha', next)
     .neq('estado', 'anulado');
   if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
-  const { data, error } = await query;
+  const [{ data, error }, erConfig] = await Promise.all([query, erConfigPromise]);
   if (error) throw error;
   // Excluir registros con gasto_id para no duplicar lo que ya recoge loadComprasGastos.
-  return (data || []).filter(r => r.gasto_id == null);
+  return filtrarCajaChicaSinGastoVinculado(data).filter(r =>
+    !esCategoriaInversionCajaChica(r.categoria, erConfig));
 }
 
 async function loadNaturalezasCeco(supabase, empresaId, cecoIds = []) {
@@ -678,6 +688,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds, scopeSociedades);
   const result = emptyResult(periodo);
 
+  const erConfigPromise = cargarConfiguracionER(empresaId);
   const [facturas, ventasSinComprobante, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
     loadFacturas(supabase, empresaId, periodo, cebeIds, scopeSociedades),
     loadVentasSinComprobante(supabase, empresaId, periodo, scopeSociedades),
@@ -686,8 +697,8 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     loadNomina(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
     loadPagosFinancieros(supabase, empresaId, periodo, scopeSociedades),
     loadCxPDevengos(supabase, empresaId, periodo, scopeSociedades),
-    loadCajaChica(supabase, empresaId, periodo, scopeSociedades),
-    cargarConfiguracionER(empresaId),
+    loadCajaChica(supabase, empresaId, periodo, scopeSociedades, erConfigPromise),
+    erConfigPromise,
   ]);
   const cxpDistribuciones = await loadCxPDistribucionesCeco(supabase, empresaId, cxpDevengos);
   const distribucionesPorCxp = new Map();
@@ -828,6 +839,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
         documento: cxp.factura_numero || cxp.tipo_comprobante,
         tercero: cxp.nombre_emisor,
         origen: cxp.origen,
+        subcategoria: cxp.tipo_gasto || null,
         cecoId,
       });
     });

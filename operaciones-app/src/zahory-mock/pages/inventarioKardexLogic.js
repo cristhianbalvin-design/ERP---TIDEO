@@ -48,6 +48,7 @@ export function consolidarStockPorMaterial(stock = [], catalogo = null) {
       ubicacion: fila.ubicaciones?.nombre || fila.ubicaciones?.codigo || fila.ubicacion_nombre || 'General',
       ubicacion_codigo: fila.ubicaciones?.codigo || fila.ubicacion_codigo || '',
       uso: fila.ubicaciones?.uso || fila.uso || 'almacenaje',
+      de_tercero: Boolean(fila.ubicaciones?.propietario_cuenta_id || fila.de_tercero),
       lote: fila.lote || '—',
     });
   }
@@ -57,13 +58,16 @@ export function consolidarStockPorMaterial(stock = [], catalogo = null) {
 export function calcularStockMaterial(material, filas = material?.filas || []) {
   const fisico = filas.reduce((total, fila) => total + numero(fila.fisico), 0);
   const reservado = filas.reduce((total, fila) => total + numero(fila.reservado), 0);
-  const noDisponible = filas.reduce((total, fila) => total + (['cuarentena', 'merma'].includes(fila.uso) ? numero(fila.fisico) : 0), 0);
-  const disponible = Math.max(fisico - reservado - noDisponible, 0);
+  const noDisponible = filas.reduce((total, fila) => total + (!fila.de_tercero && ['cuarentena', 'merma'].includes(fila.uso) ? numero(fila.fisico) : 0), 0);
+  // Mercadería en custodia de terceros: está en el almacén pero no es propia; no suma a disponible ni a valor.
+  const deTerceros = filas.reduce((total, fila) => total + (fila.de_tercero ? numero(fila.fisico) : 0), 0);
+  const tercerosLibres = filas.reduce((total, fila) => total + (fila.de_tercero ? Math.max(numero(fila.fisico) - numero(fila.reservado), 0) : 0), 0);
+  const disponible = Math.max(fisico - reservado - noDisponible - tercerosLibres, 0);
   const reorden = numero(material?.punto_reorden || material?.stock_minimo) + numero(material?.stock_seguridad);
   const estado = disponible === 0 ? 'agotado' : reorden > 0 && disponible <= reorden ? 'bajo' : 'normal';
   const moneda = String(material?.moneda || 'PEN').toUpperCase();
   const costoPromedio = moneda === 'USD' ? numero(material?.costo_promedio_usd) : numero(material?.costo_promedio);
-  return { fisico, reservado, noDisponible, disponible, reorden, costoPromedio, moneda, valor: fisico * costoPromedio, estado };
+  return { fisico, reservado, noDisponible, deTerceros, disponible, reorden, costoPromedio, moneda, valor: (fisico - deTerceros) * costoPromedio, estado };
 }
 
 const TIPOS = {
