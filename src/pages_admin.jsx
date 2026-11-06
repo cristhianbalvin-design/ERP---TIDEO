@@ -1066,7 +1066,7 @@ function Roles() {
             <div style={{color:'#fff'}}>
               {SIDEBAR.map((g,gi)=>{
                 if (g.plataforma && !role.permisos.plataforma) return null;
-                const items = g.items.filter(it => role.permisos.todo || allowed.has(it.key) || (it.accessAnyOf || []).some(key => allowed.has(key)));
+                const items = g.items.filter(it => it.key === 'inicio' || role.permisos.todo || allowed.has(it.key) || (it.accessAnyOf || []).some(key => allowed.has(key)));
                 if (!items.length) return null;
                 return (
                   <div key={gi}>

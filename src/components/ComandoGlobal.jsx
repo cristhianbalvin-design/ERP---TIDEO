@@ -1,8 +1,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Command } from 'cmdk';
+import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 
 export default function ComandoGlobal({ open, onOpenChange, items, favoritos, recientes, score, onSelect, onAria }) {
   const [query, setQuery] = useState('');
+  const { solicitarApertura } = useAsistenteErp();
   useEffect(() => {
     if (!open) setQuery('');
   }, [open]);
@@ -42,7 +44,7 @@ export default function ComandoGlobal({ open, onOpenChange, items, favoritos, re
             {group('Resultados', results)}
             {!results.length && <div className="dx-nav-empty">No encontramos pantallas.</div>}
             <Command.Group>
-              <Command.Item value="preguntar-aria" onSelect={onAria}>Preguntar a Aria: {query}</Command.Item>
+              <Command.Item value="preguntar-aria" onSelect={() => { onAria(); solicitarApertura(query); }}>Preguntar a Aria: {query}</Command.Item>
             </Command.Group>
           </>
         ) : (

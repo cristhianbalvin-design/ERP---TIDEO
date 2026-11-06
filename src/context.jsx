@@ -290,13 +290,13 @@ const DICCIONARIO_COMERCIAL_DEFAULT = [
 ];
 
 function getInitialNavigation() {
-  if (typeof window === 'undefined') return { pagina: 'dashboard', params: {} };
+  if (typeof window === 'undefined') return { pagina: 'inicio', params: {} };
   const [hashRoute = '', hashQuery = ''] = window.location.hash.replace(/^#\/?/, '').trim().split('?');
   const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
   const savedPage = localStorage.getItem('tideo_active_page')?.trim();
-  const initial = normalizeDashboardRoute(hashRoute || queryPage || savedPage || 'dashboard');
+  const initial = normalizeDashboardRoute(hashRoute || queryPage || savedPage || 'inicio');
   return {
-    pagina: initial.pagina || 'dashboard',
+    pagina: initial.pagina || 'inicio',
     params: { ...(initial.pestana ? { pestana: initial.pestana } : {}), ...Object.fromEntries(new URLSearchParams(hashQuery)) },
   };
 }
