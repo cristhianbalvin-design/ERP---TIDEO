@@ -13,11 +13,7 @@ import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
 import ComandoGlobal from './components/ComandoGlobal.jsx';
 import { leerMenuUsuario, guardarMenuUsuario, alternarFavorito, agregarReciente } from './menuFavoritos.js';
 import './menu_riel.css';
-import ariaImagen from './assets/aria/d_base.webp';
-
-function IconoAria({ size = 20 }) {
-  return <svg width={size} height={size} viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2" /></svg>;
-}
+import AriaLogo from './components/AriaLogo.jsx';
 
 
 const IconoHoy = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>;
@@ -114,7 +110,7 @@ const SIDEBAR = [
     { key: 'bi_cs', label: 'BI Customer Success', icon: I.trend },
   ]},
   { section: 'Aria', standalone: true, items: [
-    { key: 'aria', action: 'openAria', label: 'Aria - Asistente IA', ariaLabel: 'Preguntar a Aria', icon: <IconoAria size={20} /> },
+    { key: 'aria', action: 'openAria', label: 'Aria - Asistente IA', ariaLabel: 'Preguntar a Aria', icon: <AriaLogo size={20} /> },
   ]},
   { section: 'Version Movil', standalone: true, items: [
     { key: 'campo', label: 'Versión Móvil', icon: I.mobile },
@@ -600,7 +596,7 @@ export function Sidebar({
       setTip(null);
       if (group.standalone) handleItem(group.items[0]);else setPanelKey(group.key);
     }}>
-      {group.key === 'aria' ? <span className="dx-nav-aria"><img src={ariaImagen} alt="" /></span> : group.icon}{count > 0 && <span className="dx-nav-count">{capBadge(count)}</span>}
+      {group.key === 'aria' ? <span className="dx-nav-aria"><AriaLogo size={36} /></span> : group.icon}{count > 0 && <span className="dx-nav-count">{capBadge(count)}</span>}
     </button>;
   };
   const row = (item, conEstrella = true) => <div
@@ -738,7 +734,7 @@ export function Sidebar({
       type="button"
       onClick={openCommand}>{I.search}<span>Buscar</span></button><button
       type="button"
-      onClick={solicitarApertura}><IconoAria /><span>Aria</span></button><button
+      onClick={solicitarApertura}><AriaLogo /><span>Aria</span></button><button
       type="button"
       aria-expanded={drawer}
       onClick={() => setDrawer(!drawer)}>{I.list}<span>Menú</span></button></nav>}
@@ -1013,7 +1009,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
       )}
 
       {(active !== 'inicio' || isCompactHeader) && <button type="button" className="icon-btn" onClick={() => window.dispatchEvent(new Event('dx-nav-command'))} aria-label="Buscar pantallas" title="Buscar pantallas (Ctrl K)">{I.search}</button>}
-      <button type="button" className="icon-btn" onClick={solicitarApertura} aria-label="Preguntar a Aria" title="Preguntar a Aria"><IconoAria size={18} /></button>
+      <button type="button" className="icon-btn" onClick={solicitarApertura} aria-label="Preguntar a Aria" title="Preguntar a Aria"><AriaLogo size={18} /></button>
 
       {/* Separador — oculto en móvil */}
       {!isCompactHeader && <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 4px'}}/>}

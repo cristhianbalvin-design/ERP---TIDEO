@@ -1,3 +1,4 @@
+import AriaFab from '../components/AriaFab.jsx';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context.jsx';
@@ -169,10 +170,7 @@ function Agenda({ agenda }) {
 function Superposicion({ overlay, data, aviso }) {
   const pendientes = data?.filas_mias > 0 ? data.filas_mias : data?.filas_area > 0 ? data.filas_area : 0;
   return createPortal(<div className="dxi-root" ref={overlay}>
-    <button className="dxi-fab" id="fab" aria-label="Pregúntale a Aria"><span className="dxi-tp">Pregúntale a Aria</span>
-      {pendientes > 0 && <span className="dxi-cnt" id="fabN">{pendientes}</span>}
-      <span className="dxi-fab-av" id="fabAv" data-s="reposo" />
-    </button>
+    <AriaFab inicio pendientes={pendientes > 0 ? pendientes : null} />
     <div className="dxi-mor" id="mor"><img className="dxi-hum" id="morH" alt="" />
       <div className="dxi-rob" id="morW"><img id="morR" alt="" /><b className="dxi-re" style={{ left: '34.3%' }} />
         <b className="dxi-re" style={{ left: '59.7%' }} /></div><i className="dxi-bst" /><i className="dxi-scn" /></div>

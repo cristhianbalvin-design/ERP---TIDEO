@@ -21,16 +21,16 @@ export const assets = {
   robot
 };
 export const ojos = [{
-  box: [34.18, 29.395, 49.023, 37.988],
-  ex: 7.24,
-  ey: 4.55,
+  box: [35.938, 27.734, 47.656, 34.766],
+  ex: 6.67,
+  ey: 4.17,
   sclera: ls,
   mask: lm,
   iris: li
 }, {
-  box: [51.27, 29.395, 66.113, 37.988],
-  ex: 7.24,
-  ey: 4.55,
+  box: [51.953, 26.953, 63.672, 33.984],
+  ex: 6.67,
+  ey: 4.17,
   sclera: rs,
   mask: rm,
   iris: ri

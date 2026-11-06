@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Avatar as MotorAvatar } from './motorAria.js';
+import { Avatar as MotorAvatar } from './avatarMotor.js';
 export default function Avatar({
   robot = false,
   hablando = false

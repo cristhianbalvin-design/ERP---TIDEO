@@ -386,8 +386,10 @@ html[data-dx-diagnostico-work-mode="true"] .dx-nav-shell {
 .dx-nav-badge { background: #E5484D; color: white; font-size: 10px; }
 .dx-nav-star { opacity: 0; color: #FFC857; }
 .dx-nav-row:hover .dx-nav-star, .dx-nav-star:focus-visible, .dx-nav-star.is-favorite { opacity: 1; }
-.dx-nav-aria { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: #101F3A; box-shadow: 0 0 0 2px #00BCD4; position: relative; display: block; }
-.dx-nav-aria img { position: absolute; width: 190%; max-width: none; left: -45%; top: -10%; }
+.dx-nav-aria { position: relative; display: grid; place-items: center; width: 46px; height: 46px; }
+.dx-nav-aria::before { content: ""; position: absolute; inset: -6px; background: radial-gradient(circle, rgba(0,188,212,.35) 0%, transparent 70%); opacity: .75; pointer-events: none; }
+.dx-nav-rail-button:hover .dx-nav-aria::before { opacity: 1; }
+.dx-nav-aria svg { width: 36px; height: 36px; display: block; position: relative; }
 .dx-header-fecha { color: rgba(255,255,255,.6); font: 500 12.5px 'DM Sans', sans-serif; white-space: nowrap; }
 .dx-header-search { display: flex; align-items: center; gap: 8px; height: 36px; width: min(320px, 25vw); padding: 0 10px; border: 0; border-radius: 10px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.62); font: 13px 'DM Sans', sans-serif; cursor: pointer; }
 .dx-header-search svg { width: 19px; height: 19px; flex: none; }
