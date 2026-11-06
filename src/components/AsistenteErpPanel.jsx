@@ -74,6 +74,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
   const mensajesRef = useRef(null);
   const ultimaConsulta = useRef(null);
   const solicitudInicial = useRef(solicitudApertura);
+  const solicitudEnviada = useRef(solicitudApertura);
   const habilitado = Boolean(authSession && empresa?.id);
   const sociedadId = sociedadActiva?.id && !['todas', 'all', '**todas**'].includes(String(sociedadActiva.id).toLowerCase()) ? sociedadActiva.id : undefined;
   const sugerencias = sugerenciasPorTipo[contexto?.tipo] || sugerenciasPredeterminadas;
@@ -141,11 +142,16 @@ export function AsistenteErpPanel({ pantallaActiva }) {
       if (cause.status === 429) setCuotaRestante(0);
     } finally { setConsultando(false); }
   };
+  useEffect(() => {
+    if (solicitudEnviada.current === solicitudApertura || !habilitado || consultando) return;
+    solicitudEnviada.current = solicitudApertura;
+    if (solicitudApertura?.texto) enviar(solicitudApertura.texto);
+  }, [solicitudApertura, habilitado, consultando]);
   const enviarForm = event => { event.preventDefault(); enviar(); };
 
   if (!habilitado) return null;
   return <div className="dx-asis">
-    <button ref={botonRef} className="dx-asis-fab" type="button" aria-label="Abrir Aria, asistente de OPERA" aria-expanded={abierto} aria-haspopup="dialog" tabIndex={abierto ? -1 : 0} onClick={() => setAbierto(true)}>
+    <button ref={botonRef} style={pantallaActiva === 'inicio' ? { display: 'none' } : undefined} className="dx-asis-fab" type="button" aria-label="Abrir Aria, asistente de OPERA" aria-expanded={abierto} aria-haspopup="dialog" tabIndex={abierto ? -1 : 0} onClick={() => setAbierto(true)}>
       <IconoAria size={26} />
     </button>
     <span className="dx-asis-hint" aria-hidden="true">Pregúntale a Aria</span>

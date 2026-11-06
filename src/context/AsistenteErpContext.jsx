@@ -5,9 +5,9 @@ const solicitarAperturaVacia = () => {};
 
 export function AsistenteErpProvider({ children }) {
   const [contexto, setContexto] = useState(null);
-  const [solicitudApertura, setSolicitudApertura] = useState(0);
+  const [solicitudApertura, setSolicitudApertura] = useState({ nonce: 0, texto: null });
   const publicarContexto = useCallback(value => setContexto(value?.tipo && value?.id ? value : null), []);
-  const solicitarApertura = useCallback(() => setSolicitudApertura(nonce => nonce + 1), []);
+  const solicitarApertura = useCallback(texto => setSolicitudApertura(prev => ({ nonce: prev.nonce + 1, texto: typeof texto === 'string' ? texto.trim() : null })), []);
   const value = useMemo(() => ({ contexto, publicarContexto, solicitudApertura, solicitarApertura }), [contexto, publicarContexto, solicitudApertura, solicitarApertura]);
   return <AsistenteErpContext.Provider value={value}>{children}</AsistenteErpContext.Provider>;
 }
