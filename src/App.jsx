@@ -15,6 +15,7 @@ import { AsistenteErpPanel } from './components/AsistenteErpPanel.jsx';
 // Core CRM / BI
 const OrganigramaV2 = lazy(() => import('./pages_organigrama_v2.jsx'));
 const Dashboard       = lazy(() => import('./pages_dashboard_general.jsx').then(m => ({ default: m.Dashboard })));
+const InicioPage = lazy(() => import('./pages_inicio.jsx'));
 const DashboardsPage   = lazy(() => import('./pages_dashboards.jsx'));
 const Leads           = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Leads })));
 const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Pipeline })));
@@ -289,7 +290,7 @@ function MainLayout({ onShowApplicationWelcome }) {
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
-  const activeAllowed = active === 'notificaciones_config'
+  const activeAllowed = active === 'inicio' ? true : active === 'notificaciones_config'
     ? Boolean(role?.permisos?.todo)
     : active === 'costeo_variables'
     ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
@@ -303,7 +304,7 @@ function MainLayout({ onShowApplicationWelcome }) {
 
   useEffect(() => {
     if (!isSuperadmin && PLATFORM_PAGES.has(active)) {
-      navigate('dashboard');
+      navigate('inicio');
       return;
     }
     if (!activeAllowed) {
@@ -344,6 +345,7 @@ function MainLayout({ onShowApplicationWelcome }) {
     }
 
     switch (active) {
+      case 'inicio':           return <InicioPage />;
       case 'dashboard':        return <DashboardsPage role={role} activeParams={activeParams} onTabChange={pestana => navigate('dashboard', { pestana })} />;
       case 'marketing':        return <Marketing />;
       case 'planner':          return <Planner />;
@@ -459,7 +461,7 @@ function MainLayout({ onShowApplicationWelcome }) {
   );
 }
 
-const ADMINISTRATION_HOME = 'dashboard';
+const ADMINISTRATION_HOME = 'inicio';
 
 function ApplicationEntry() {
   const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard'));

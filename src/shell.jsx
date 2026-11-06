@@ -20,6 +20,9 @@ function IconoAria({ size = 20 }) {
 
 
 const SIDEBAR = [
+  { section: 'Inicio', standalone: true, items: [
+    { key: 'inicio', label: 'Inicio', fixedLabel: true, icon: I.home },
+  ]},
   { section: 'Dashboards', standalone: true, items: [
     { key: 'dashboard', label: 'Dashboards', fixedLabel: true, icon: I.dashboard, accessAnyOf: DASHBOARDS_ACCESS_ANY_OF },
   ]},
@@ -128,7 +131,7 @@ if (import.meta.env.DEV) {
   const faltantes = SIDEBAR.flatMap(g => g.items)
     .filter(it => !it.action)
     .map(it => it.key)
-    .filter(key => key !== 'mi_portal' && !pantallasRegistradas.has(key));
+    .filter(key => key !== 'mi_portal' && key !== 'inicio' && !pantallasRegistradas.has(key));
   if (faltantes.length) {
     console.warn(
       `[Roles y Permisos] ${faltantes.length} pantalla(s) del sidebar no estan registradas en MOCK.pantallasPermisos y quedaran ocultas para todo rol sin acceso total: ${faltantes.join(', ')}`
@@ -431,7 +434,7 @@ export function Sidebar({
       it.action === 'openAria' ? Boolean(app.authUser && app.empresa?.id)
         : it.adminOnly ? Boolean(role?.permisos?.todo)
         : it.requiereVerCostos ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
-        : puedeVerPantalla(role, it.key, it.accessAnyOf || [])
+        : it.key === 'inicio' || puedeVerPantalla(role, it.key, it.accessAnyOf || [])
     ).map(it => {
       const navKey = it.action ? it.key : NAV_MODULE_KEYS[it.key] || it.key;
       return {
@@ -453,9 +456,10 @@ export function Sidebar({
     };
   }).filter(Boolean), [activeItemKey, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
   const activeGroupKey = visibleGroups.find(group => group.active && !group.standalone)?.key;
-  const selectedKey = panelKey || activeGroupKey;
+  const selectedKey = panelKey === '__root__' ? visibleGroups.find(group => group.standalone && group.active)?.key : panelKey || activeGroupKey || visibleGroups.find(group => group.standalone && group.active)?.key;
   const selected = visibleGroups.find(group => group.key === selectedKey && !group.standalone);
-  const showPanel = Boolean(selected && (!overlay || panelKey || mobile && drawer || costeoWorkMode));
+  const showPanel = Boolean(costeoWorkMode || (mobile ? drawer : !overlay || panelKey));
+  const expanded = compact || diagnosticoWorkMode ? (mobile ? drawer : Boolean(panelKey)) : !collapsed;
   const items = visibleGroups.flatMap(group => group.items.filter(item => !item.action).map(item => ({
     ...item,
     seccion: group.section
@@ -523,10 +527,10 @@ export function Sidebar({
   useEffect(() => {
     const button = railList.current?.querySelector('[data-selected="true"]');
     setPillTop(button ? button.offsetTop : null);
-  }, [selectedKey, active, visibleGroups, drawer]);
+  }, [selectedKey, active, visibleGroups, drawer, showPanel, panelKey]);
   useEffect(() => {
-    if (!overlay) setPanelKey(null);
-  }, [active, overlay]);
+    setPanelKey(null);
+  }, [active]);
   const updateMenu = next => {
     setMenuUsuario(next);
     guardarMenuUsuario(userId, next);
@@ -543,14 +547,23 @@ export function Sidebar({
     updateMenu(agregarReciente(menuUsuario, item.key));
     onNav(item.key);
   };
-  const toggleCollapsed = () => setCollapsed(prev => {
-    const next = !prev;
+  const toggleCollapsed = () => {
+    if (compact || diagnosticoWorkMode) {
+      if (mobile) {
+        setDrawer(!drawer);
+        setPanelKey(drawer ? null : '__root__');
+      } else {
+        setPanelKey(panelKey ? null : '__root__');
+      }
+      return;
+    }
+    const next = !collapsed;
+    setCollapsed(next);
     try {
       localStorage.setItem('tideo_sidebar_collapsed', String(next));
     } catch {}
     setPanelKey(null);
-    return next;
-  });
+  };
   const showTip = (event, label) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setTip({
@@ -560,7 +573,7 @@ export function Sidebar({
     });
   };
   const groupButton = group => {
-    const selectedGroup = group.standalone ? group.active && !panelKey : (selectedKey === group.key && showPanel) || (group.key === 'configuracion' && group.active && !panelKey);
+    const selectedGroup = group.standalone ? group.active && (!panelKey || panelKey === '__root__') : (selectedKey === group.key && showPanel) || (group.key === 'configuracion' && group.active && !panelKey);
     const count = group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0);
     return <button
       type="button"
@@ -597,7 +610,9 @@ export function Sidebar({
   </div>;
   const footerGroups = visibleGroups.filter(group => group.key === 'aria' || group.key === 'configuracion');
   const mainGroups = visibleGroups.filter(group => group.key !== 'aria' && group.key !== 'configuracion');
-  const inicio = items.find(item => item.key === 'dashboard') || items[0];
+  const inicio = items.find(item => item.key === 'inicio');
+  const principales = items.filter(item => item.key === 'inicio' || item.key === 'dashboard');
+  const areas = visibleGroups.filter(group => !group.standalone);
   return <>
     {mobile && drawer && <button
       className="dx-nav-backdrop"
@@ -639,28 +654,39 @@ export function Sidebar({
           type="button"
           className="dx-nav-rail-button dx-nav-pin"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Fijar panel' : 'Desfijar panel'}>{collapsed ? I.chevRight : I.chevLeft}</button></div>
+          aria-label={expanded ? 'Contraer menú' : 'Expandir menú'}
+          title={expanded ? 'Contraer menú' : 'Expandir menú'}>{expanded ? I.chevLeft : I.chevRight}</button></div>
       </nav>
       {showPanel && <nav
         className={'dx-nav-panel' + (overlay ? ' is-overlay' : '')}
-        aria-label={'Pantallas de ' + selected.section}>
-        <div className="dx-nav-panel-title"><strong>{selected.section}</strong><button
+        aria-label={selected ? 'Pantallas de ' + selected.section : 'Menú'}>
+        <div className="dx-nav-panel-title">{selected && <button type="button" className="dx-nav-panel-back" onClick={() => setPanelKey('__root__')} aria-label="Todas las áreas" title="Todas las áreas">{I.chevLeft}</button>}<strong>{selected ? selected.section : 'Menú'}</strong><button
           type="button"
           className="dx-nav-panel-pin"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Fijar panel' : 'Desfijar panel'}
-          title={collapsed ? 'Fijar panel' : 'Desfijar panel'}>{collapsed ? I.chevRight : I.chevLeft}</button></div>
+          aria-label={expanded ? 'Contraer menú' : 'Expandir menú'}
+          title={expanded ? 'Contraer menú' : 'Expandir menú'}>{expanded ? I.chevLeft : I.chevRight}</button></div>
         <button
           type="button"
           className="dx-nav-search"
           onClick={openCommand}>{I.search}<span>Buscar</span><kbd>Ctrl K</kbd></button>
         <div className="dx-nav-panel-list">
+          {selected ? <>
           {selected.items.some(item => menuUsuario.favoritos.includes(item.key)) && <>
             <h3>Favoritos</h3>
             {selected.items.filter(item => menuUsuario.favoritos.includes(item.key)).map(row)}
           </>}
           <h3>Pantallas</h3>
           {selected.items.filter(item => !menuUsuario.favoritos.includes(item.key)).map(row)}
+          </> : <>
+            {principales.map(row)}
+            {items.some(item => menuUsuario.favoritos.includes(item.key)) && <>
+              <h3>Favoritos</h3>
+              {items.filter(item => menuUsuario.favoritos.includes(item.key)).map(row)}
+            </>}
+            <h3>Áreas</h3>
+            {areas.map(group => <div className={'dx-nav-row' + (group.active ? ' is-active' : '')} key={group.key}><button type="button" className="dx-nav-item" onClick={() => setPanelKey(group.key)}>{group.icon}<span>{group.section}</span>{I.chevRight}</button></div>)}
+          </>}
         </div>
       </nav>}
       {costeoWorkMode &&
@@ -698,7 +724,7 @@ export function Sidebar({
       aria-label="Navegación móvil"><button
       type="button"
       disabled={!inicio}
-      onClick={() => inicio && handleItem(inicio)}>{I.dashboard}<span>Inicio</span></button><button
+      onClick={() => inicio && handleItem(inicio)}>{I.home}<span>Inicio</span></button><button
       type="button"
       onClick={openCommand}>{I.search}<span>Buscar</span></button><button
       type="button"

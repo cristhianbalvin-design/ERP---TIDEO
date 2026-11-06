@@ -151,6 +151,14 @@
   color: white;
   padding: 0 4px 12px;
 }
+.dx-nav-panel-back {
+  color: inherit;
+  background: transparent;
+  padding: 4px;
+  margin-right: 6px;
+}
+.dx-nav-panel-back svg { width: 16px; height: 16px; }
+.dx-nav-panel-title strong { flex: 1; }
 .dx-nav-panel-pin {
   color: inherit;
   background: transparent;
@@ -307,11 +315,10 @@
   .dx-nav-shell.dx-nav-pinned {
     width: 64px;
   }
-  .dx-nav-panel-pin, .dx-nav-pin {
-    display: none;
-  }
 }
 @media (max-width:760px) {
+  .dx-nav-panel-pin, .dx-nav-pin { display: none; }
+
   .dx-nav-shell {
     display: none;
   }
