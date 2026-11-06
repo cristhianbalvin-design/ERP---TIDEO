@@ -1,3 +1,4 @@
+import AriaFab from './AriaFab.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context.jsx';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
@@ -63,6 +64,12 @@ export function AsistenteErpPanel({ pantallaActiva }) {
   const { empresa, sociedadActiva, authSession, authUser } = useApp();
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
+  const [pendientes, setPendientes] = useState(null);
+  useEffect(() => {
+    const recibir = event => setPendientes(event.detail ?? null);
+    window.addEventListener('dx-inicio-pendientes', recibir);
+    return () => window.removeEventListener('dx-inicio-pendientes', recibir);
+  }, []);
   const [pregunta, setPregunta] = useState('');
   const [mensajes, setMensajes] = useState([]);
   const [error, setError] = useState(null);
@@ -151,10 +158,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
 
   if (!habilitado) return null;
   return <div className="dx-asis">
-    <button ref={botonRef} style={pantallaActiva === 'inicio' ? { display: 'none' } : undefined} className="dx-asis-fab" type="button" aria-label="Abrir Aria, asistente de OPERA" aria-expanded={abierto} aria-haspopup="dialog" tabIndex={abierto ? -1 : 0} onClick={() => setAbierto(true)}>
-      <IconoAria size={26} />
-    </button>
-    <span className="dx-asis-hint" aria-hidden="true">Pregúntale a Aria</span>
+    <AriaFab ref={botonRef} pendientes={pendientes} abierto={abierto} oculto={pantallaActiva === 'inicio'} onClick={() => setAbierto(true)} />
     {abierto && <>
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">

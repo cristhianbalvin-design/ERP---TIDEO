@@ -13,7 +13,7 @@ import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
 import ComandoGlobal from './components/ComandoGlobal.jsx';
 import { leerMenuUsuario, guardarMenuUsuario, alternarFavorito, agregarReciente } from './menuFavoritos.js';
 import './menu_riel.css';
-import ariaImagen from './assets/aria/d_base.webp';
+import ariaImagen from './assets/aria/b_base.webp?no-inline';
 
 function IconoAria({ size = 20 }) {
   return <svg width={size} height={size} viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2" /></svg>;
