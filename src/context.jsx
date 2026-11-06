@@ -6504,33 +6504,21 @@ export function AppProvider({ children }) {
     const now = new Date().toISOString().split('T')[0];
     const monedaDatos = String(datos.moneda || 'PEN').trim().toUpperCase();
     if (datos.tipo === 'transferencia') {
-      const cuentaOrigen = (cuentasBancarias || []).find(c => c.id === datos.cuenta_origen_id);
-      const cuentaDestino = (cuentasBancarias || []).find(c => c.id === datos.cuenta_destino_id);
-      const base = { empresa_id: empresa.id, fecha: datos.fecha || now, descripcion: datos.descripcion || 'Transferencia entre cuentas', monto: Number(datos.monto || 0), categoria: 'transferencia', es_manual: true, referencia: datos.referencia || null, creado_en: new Date().toISOString() };
-      const movE = {
-        ...base,
-        id: generateId('mov'),
-        tipo: 'egreso',
-        moneda: cuentaOrigen?.moneda || monedaDatos,
-        cuenta_bancaria_id: datos.cuenta_origen_id || null,
-        tc_aplicado: datos.cuenta_origen_id ? 1 : null,
-        monto_en_moneda_cuenta: datos.cuenta_origen_id ? Number(datos.monto || 0) : null,
-      };
-      const movI = {
-        ...base,
-        id: generateId('mov'),
-        tipo: 'ingreso',
-        moneda: cuentaDestino?.moneda || monedaDatos,
-        cuenta_bancaria_id: datos.cuenta_destino_id || null,
-        tc_aplicado: datos.cuenta_destino_id ? 1 : null,
-        monto_en_moneda_cuenta: datos.cuenta_destino_id ? Number(datos.monto || 0) : null,
-      };
-      setMovimientosTesoreria(prev => [...prev, movE, movI]);
-      if (isSupabaseConfigured()) {
-        finSync(async () => {
-          await finanzasService.registrarMovimientoTesoreria(movE);
-          await finanzasService.registrarMovimientoTesoreria(movI);
-        });
+      if (!isSupabaseConfigured()) throw new Error('La transferencia requiere conexión con Supabase.');
+      const resultado = await finanzasService.registrarTransferenciaTesoreria({
+        empresa_id: empresa.id, cuenta_origen_id: datos.cuenta_origen_id,
+        cuenta_destino_id: datos.cuenta_destino_id, monto_origen: Number(datos.monto),
+        fecha: datos.fecha || now, tipo_cambio: datos.tipo_cambio || null,
+        referencia: datos.referencia || null, descripcion: datos.descripcion || null,
+      });
+      try {
+        const sb = await getSupabaseClient();
+        const { data, error } = await sb.from('movimientos_tesoreria').select('*')
+          .eq('empresa_id', empresa.id).in('id', [resultado.movimiento_egreso_id, resultado.movimiento_ingreso_id]);
+        if (error || data?.length !== 2) throw error || new Error('Movimientos incompletos');
+        setMovimientosTesoreria(prev => [...data, ...prev.filter(m => !data.some(n => n.id === m.id))]);
+      } catch (_) {
+        addNotificacion('Transferencia registrada. Actualiza la pantalla para ver los movimientos.');
       }
     } else {
       const cuentaSeleccionada = (cuentasBancarias || []).find(c =>

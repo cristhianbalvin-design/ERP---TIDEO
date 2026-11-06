@@ -930,14 +930,14 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <div className="dx-ai-flow-notice" role="status" style={{ marginTop: 8, padding: '12px 14px', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--orange) 38%, var(--border))', background: 'color-mix(in srgb, var(--orange) 8%, var(--surface))' }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>
               {sugerenciaCategoriaIA.flujo_sugerido === 'prestamo' && 'Esto parece un préstamo. Se registra desde Financiamiento y Deuda, no como egreso.'}
-              {sugerenciaCategoriaIA.flujo_sugerido === 'cambio_moneda' && 'Esto parece un cambio de moneda. No hay un módulo para registrar esa operación; no la registres como egreso.'}
+              {sugerenciaCategoriaIA.flujo_sugerido === 'cambio_moneda' && 'Esto parece un cambio de moneda. Regístralo en Tesorería entre cuentas propias, sin crear un egreso.'}
               {sugerenciaCategoriaIA.flujo_sugerido === 'transferencia' && 'Esto parece una transferencia de fondos propios. Se registra en Tesorería entre cuentas o en Caja Chica entre fondos, no como egreso.'}
             </div>
             <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 5 }}>{sugerenciaCategoriaIA.razon}</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 9 }}>
               {sugerenciaCategoriaIA.flujo_sugerido === 'prestamo' && <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('financiamiento'); }}>Ir a Financiamiento y Deuda</button>}
+              {['transferencia', 'cambio_moneda'].includes(sugerenciaCategoriaIA.flujo_sugerido) && <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('tesoreria', { formulario: 'transferencia' }); }}>Ir a Tesorería</button>}
               {sugerenciaCategoriaIA.flujo_sugerido === 'transferencia' && <>
-                <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('tesoreria'); }}>Ir a Tesorería</button>
                 <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('caja'); }}>Ir a Caja Chica</button>
               </>}
               <button className="btn btn-ghost" type="button" onClick={() => setSugerenciaCategoriaIA(null)}>Descartar</button>
