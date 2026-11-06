@@ -251,6 +251,54 @@ export function parsearCoordenadasMaps(value = '') {
   return { latitud, longitud };
 }
 
+export function validarLugar(form = {}) {
+  const errors = {};
+  if (!String(form.nombre || '').trim()) errors.nombre = 'Ingresa el nombre del lugar.';
+  const lat = form.latitud === '' || form.latitud == null ? null : Number(form.latitud);
+  const lng = form.longitud === '' || form.longitud == null ? null : Number(form.longitud);
+  if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)
+    || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    errors.ubicacion = 'Marca la ubicación en el mapa o pega un enlace con coordenadas.';
+  }
+  return errors;
+}
+
+export function encontrarNombreLugarDuplicado(lugares = [], form = {}, excluirId = null) {
+  const nombre = String(form.nombre || '').trim().toLocaleLowerCase('es-PE');
+  if (!nombre) return null;
+  const cuentaId = form.cuenta_id || null;
+  return lugares.find(item => item.id !== excluirId && item.estado !== 'inactivo'
+    && String(item.nombre || '').trim().toLocaleLowerCase('es-PE') === nombre
+    && (item.cuenta_id || null) === cuentaId) || null;
+}
+
+export function encontrarCruceTarifa(tarifas = [], form = {}, excluirId = null) {
+  if ((form.estado || 'activa') !== 'activa' || !form.vigente_desde) return null;
+  const end = form.vigente_hasta || '9999-12-31';
+  return tarifas.find(item => item.id !== excluirId && item.estado === 'activa'
+    && item.ruta_id === (form.ruta_id || null)
+    && (item.cuenta_id || null) === (form.cuenta_id || null)
+    && item.tipo_unidad === form.tipo_unidad && item.modalidad === form.modalidad
+    && item.moneda === form.moneda && item.vigente_desde <= end
+    && (item.vigente_hasta || '9999-12-31') >= form.vigente_desde) || null;
+}
+
+export function ejemploCobroTarifa(tarifa, ruta) {
+  if (!tarifa || !ruta || !(Number(tarifa.tarifa) > 0)) return null;
+  const modalidad = tarifa.modalidad;
+  const capacidad = Number((String(tarifa.tipo_unidad || '').match(/(\d+)\s*t\b/i) || [])[1]) || 25;
+  const cantidad = { viaje: 1, km: Number(ruta.distancia_km) || 0,
+    tonelada: capacidad, hora: Number(ruta.duracion_estimada_horas) || 0 }[modalidad];
+  const subtotal = Number(tarifa.tarifa) * cantidad;
+  const minimo = Number(tarifa.minimo_facturable) || 0;
+  return { cantidad, subtotal, total: Math.max(subtotal, minimo), aplicaMinimo: minimo > subtotal };
+}
+
+export function contarUsosLugarEnRutas(lugarId, rutas = []) {
+  return rutas.filter(route => route.origen_lugar_id === lugarId
+    || route.destino_lugar_id === lugarId).length;
+}
+
 export function validarComposerRuta(form, tarifaActiva = true) {
   const errors = {};
   if (!form.origen_lugar_id) errors.origen_lugar_id = 'Selecciona un lugar de origen.';

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { AccesoTransporte } from './AccesoTransporte.jsx';
 import { usePermisosTransporte } from './usePermisosTransporte.js';
-import { ModalShell } from '../../components/ModalShell.jsx';
 import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 import { DxBuscador } from '../../components/dx/DxBuscador.jsx';
 import { DxFiltroMoneda } from '../../components/dx/DxFiltroMoneda.jsx';
@@ -13,20 +12,28 @@ import {
   listarTarifas, listarTiposUnidadTransporte, resolverTarifa,
 } from '../../../services/transporteTarifasService.js';
 import { TarifaGrupo } from './TarifaGrupo.jsx';
+import { TarifaEditor } from './TarifaEditor.jsx';
 import {
   catalogoTiposUnidad, etiquetaContador, estadoVigencia, fechaActualLocal,
-  formatearFechaTransporte, formatearImporte, validarFormularioTarifa,
+  formatearFechaTransporte, formatearImporte, validarFormularioTarifa, encontrarCruceTarifa,
 } from './transporteUtils.js';
 
-const BLANK = { ruta_id: null, cuenta_id: null, tipo_unidad: '', modalidad: 'km', tarifa: '',
+const BLANK = { ruta_id: '', cuenta_id: null, tipo_unidad: '', modalidad: 'viaje', tarifa: '',
   moneda: 'PEN', minimo_facturable: '', vigente_desde: fechaActualLocal(), vigente_hasta: '',
   estado: 'activa', notas: '' };
 const cuentaLabel = account => account?.nombre_comercial || account?.razon_social || account?.id || 'Cliente';
 
-function FormField({ label, name, value, onChange, type = 'text', error, ...props }) {
-  return <label className="dx-ui-field"><span>{label}</span><input name={name} type={type} value={value ?? ''}
-    onChange={onChange} aria-invalid={Boolean(error)} {...props} />
-    {error && <small className="dx-ui-field-error">{error}</small>}</label>;
+function tarifaErrorFieldId(field) {
+  const ids = {
+    ruta_id: 'tarifa-route-button',
+    cuenta_id: 'tarifa-cliente',
+    tipo_unidad: 'tarifa-unit',
+    tarifa: 'tarifa-precio',
+    vigente_desde: 'tarifa-desde',
+    vigente_hasta: 'tarifa-hasta',
+    overlap: 'tarifa-desde',
+  };
+  return ids[field] || `tarifa-${field}`;
 }
 
 export function TarifasTransportePage() {
@@ -48,6 +55,7 @@ export function TarifasTransportePage() {
   const [form, setForm] = useState(BLANK);
   const [modalBaseline, setModalBaseline] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -79,6 +87,20 @@ export function TarifasTransportePage() {
   }, [empresaId, access.ver]);
   useEffect(() => { reload(); }, [reload]);
 
+  useEffect(() => {
+    if (!submitted) return;
+    const errors = validarFormularioTarifa(form);
+    if (!form.ruta_id) errors.ruta_id = 'Elige la ruta.';
+    if (form.cuenta_id === '' || form.cuenta_id === '__select_client__') {
+      errors.cuenta_id = 'Elige el cliente.';
+    }
+    const tariffForm = form.ruta_id === '__all__' ? { ...form, ruta_id: null } : form;
+    if (encontrarCruceTarifa(tarifas, tariffForm, form.id)) {
+      errors.overlap = 'Ya hay una tarifa vigente igual. Edita esa tarifa o cambia la vigencia.';
+    }
+    setFieldErrors(errors);
+  }, [submitted, form, tarifas]);
+
   const today = fechaActualLocal();
   const filtered = useMemo(() => tarifas.filter(item => {
     const route = rutas.find(row => row.id === item.ruta_id);
@@ -97,31 +119,53 @@ export function TarifasTransportePage() {
   }, [filtered, rutas]);
 
   function open(item = null, rutaId = null) {
-    const next = item ? { ...BLANK, ...item, tarifa: String(item.tarifa ?? ''),
+    const next = item ? {
+      ...BLANK,
+      ...item,
+      ruta_id: item.ruta_id || '__all__',
+      tarifa: String(item.tarifa ?? ''),
       minimo_facturable: item.minimo_facturable ?? '', vigente_hasta: item.vigente_hasta || '' }
       : { ...BLANK, ruta_id: rutaId };
     setForm(next);
     setModalBaseline(JSON.stringify(next));
     setFieldErrors({});
+    setSubmitted(false);
     setFormError('');
     setAnnulTarget(null);
     setModal(true);
   }
   function update(name, value) {
     setForm(current => ({ ...current, [name]: value }));
-    setFieldErrors(current => ({ ...current, [name]: '' }));
   }
   async function save(event) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     const errors = validarFormularioTarifa(form);
-    setFieldErrors(errors);
-    if (Object.keys(errors).length) return;
+    if (!form.ruta_id) errors.ruta_id = 'Elige la ruta.';
+    if (form.cuenta_id === '' || form.cuenta_id === '__select_client__') {
+      errors.cuenta_id = 'Elige el cliente.';
+    }
+    const tariffForm = form.ruta_id === '__all__' ? { ...form, ruta_id: null } : form;
+    const conflict = encontrarCruceTarifa(tarifas, tariffForm, form.id);
+    if (conflict) errors.overlap = 'Ya hay una tarifa vigente igual. Edita esa tarifa o cambia la vigencia.';
+    setSubmitted(true);
+    setFormError('');
+    if (Object.keys(errors).length) {
+      const order = ['ruta_id', 'cuenta_id', 'tipo_unidad', 'modalidad', 'tarifa', 'moneda',
+        'minimo_facturable', 'vigente_desde', 'vigente_hasta', 'overlap'];
+      const first = order.find(key => errors[key]);
+      requestAnimationFrame(() => {
+        formElement.querySelector(`#${tarifaErrorFieldId(first)}`)?.focus();
+      });
+      return;
+    }
     setSaving(true);
     try {
       const payload = { ...form, ruta_id: form.ruta_id || null, cuenta_id: form.cuenta_id || null,
         tipo_unidad: form.tipo_unidad.trim(), tarifa: Number(form.tarifa),
         minimo_facturable: form.minimo_facturable === '' ? null : Number(form.minimo_facturable),
         vigente_hasta: form.vigente_hasta || null, notas: form.notas || null };
+      payload.ruta_id = form.ruta_id === '__all__' ? null : form.ruta_id || null;
       if (form.id) await actualizarTarifa(empresaId, form.id, payload);
       else await crearTarifa(empresaId, payload);
       setModal(false);
@@ -233,58 +277,11 @@ export function TarifasTransportePage() {
     </section>
     {notice && <div className="dx-transporte-notice" role="status">{notice}
       <button aria-label="Cerrar aviso" onClick={() => setNotice('')}>×</button></div>}
-    <ModalShell open={modal} title={form.id ? 'Editar tarifa' : 'Nueva tarifa'}
-      subtitle="Define los criterios y el periodo de aplicación." variant="dx-modal dx-transporte-modal"
-      titleClassName="dx-modal-title" subtitleClassName="dx-modal-subtitle" closeClassName="dx-modal-close"
-      dirty={JSON.stringify(form) !== modalBaseline} busy={saving} onClose={() => setModal(false)}
-      footer={(form.id ? access.editar : access.crear) && <button form="tariff-form" type="submit"
-        className="dx-btn primary" disabled={saving}>Guardar</button>}>
-      {modal && <form id="tariff-form" className="dx-transporte-form" onSubmit={save}>
-        <div className="dx-ui-form-grid">
-          <DxReferenceSelector label="Ruta" options={rutas} value={form.ruta_id}
-            onChange={value => update('ruta_id', value)} getLabel={item => `${item.codigo} · ${item.nombre}`}
-            optionalLabel="Todas las rutas" name="ruta_id" error={fieldErrors.ruta_id} />
-          <DxReferenceSelector label="Cliente" options={cuentas} value={form.cuenta_id}
-            onChange={value => update('cuenta_id', value)} getLabel={cuentaLabel} optionalLabel="Tarifa base"
-            name="cuenta_id" error={fieldErrors.cuenta_id} />
-          <label className="dx-ui-field"><span>Tipo de unidad</span><select className="dx-ui-select"
-            value={form.tipo_unidad} onChange={event => update('tipo_unidad', event.target.value)}>
-            <option value="">Selecciona unidad</option>{catalogoTiposUnidad(types, [], form.tipo_unidad)
-              .map(type => <option key={type}>{type}</option>)}</select>
-            {fieldErrors.tipo_unidad && <small className="dx-ui-field-error">{fieldErrors.tipo_unidad}</small>}</label>
-          <label className="dx-ui-field"><span>Modalidad</span><select className="dx-ui-select"
-            value={form.modalidad} onChange={event => update('modalidad', event.target.value)}>
-            {['viaje', 'km', 'tonelada', 'hora'].map(value => <option key={value} value={value}>
-              {({ viaje: 'Por viaje', km: 'Por km', tonelada: 'Por tonelada', hora: 'Por hora' })[value]}</option>)}</select>
-          </label>
-          <FormField label="Precio" name="tarifa" type="number" min="0.0001" step="0.0001"
-            value={form.tarifa} onChange={event => update('tarifa', event.target.value)} error={fieldErrors.tarifa} />
-          <label className="dx-ui-field"><span>Moneda</span><select className="dx-ui-select"
-            value={form.moneda} onChange={event => update('moneda', event.target.value)}>
-            <option value="PEN">PEN (S/)</option><option value="USD">USD (US$)</option></select></label>
-          <FormField label="Mínimo facturable" type="number" min="0" step="0.01"
-            value={form.minimo_facturable} onChange={event => update('minimo_facturable', event.target.value)}
-            error={fieldErrors.minimo_facturable} />
-          <FormField label="Vigente desde" type="date" value={form.vigente_desde}
-            onChange={event => update('vigente_desde', event.target.value)} error={fieldErrors.vigente_desde} />
-          <FormField label="Vigente hasta" type="date" value={form.vigente_hasta}
-            onChange={event => update('vigente_hasta', event.target.value)} error={fieldErrors.vigente_hasta} />
-          <label className="dx-ui-field"><span>Estado</span><select className="dx-ui-select"
-            value={form.estado} onChange={event => update('estado', event.target.value)}>
-            <option value="activa">Activa</option><option value="inactiva">Inactiva</option></select></label>
-          <label className="dx-ui-field dx-ui-field-full"><span>Notas</span><textarea value={form.notas || ''}
-            onChange={event => update('notas', event.target.value)} /></label>
-        </div>
-        {formError && <p className="dx-transporte-error" role="alert">{formError}</p>}
-        {form.id && access.editar && form.estado === 'activa' && <button type="button"
-          className="dx-btn" onClick={() => setAnnulTarget(form)}>Anular tarifa</button>}
-        {annulTarget && <div className="dx-transporte-confirm"><section role="alertdialog" aria-modal="true">
-          <h2>¿Anular tarifa?</h2><p>La tarifa dejará de estar activa.</p>
-          <button type="button" className="dx-btn" onClick={() => setAnnulTarget(null)}>Volver</button>
-          <button type="button" className="dx-btn primary" disabled={saving}
-            onClick={() => annul(annulTarget)}>Confirmar anulación</button>
-        </section></div>}
-      </form>}
-    </ModalShell>
+    <TarifaEditor open={modal} form={form} update={update} save={save} saving={saving}
+      routes={rutas} accounts={cuentas} types={catalogoTiposUnidad(types, tarifas, form.tipo_unidad)}
+      tariffs={tarifas} errors={fieldErrors} formError={formError}
+      dirty={JSON.stringify(form) !== modalBaseline} canCreate={access.crear} canEdit={access.editar}
+      onClose={() => setModal(false)} onEditConflict={item => open(item)} onAnnul={annul}
+      annulTarget={annulTarget} setAnnulTarget={setAnnulTarget} />
   </section>;
 }

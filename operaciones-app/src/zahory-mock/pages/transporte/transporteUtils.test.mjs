@@ -378,3 +378,46 @@ test('el duplicado solo considera rutas activas en el mismo sentido', () => {
   assert.equal(utils.encontrarRutaDuplicada(routes, 'B', 'A'), null);
   assert.equal(utils.encontrarRutaDuplicada(routes, '', 'B'), null);
 });
+
+
+test('valida nombre y GPS obligatorios del lugar', () => {
+  assert.deepEqual(utils.validarLugar({}), {
+    nombre: 'Ingresa el nombre del lugar.',
+    ubicacion: 'Marca la ubicaci\u00f3n en el mapa o pega un enlace con coordenadas.',
+  });
+  assert.deepEqual(utils.validarLugar({ nombre: 'Dep\u00f3sito', latitud: 0, longitud: 0 }), {});
+});
+
+test('detecta nombre duplicado activo solo en el mismo \u00e1mbito de cliente', () => {
+  const lugares = [{ id: 'a', nombre: 'Almac\u00e9n', cuenta_id: null, estado: 'activo' },
+    { id: 'b', nombre: 'Almac\u00e9n', cuenta_id: 'cliente', estado: 'activo' }];
+  assert.equal(utils.encontrarNombreLugarDuplicado(lugares, { nombre: 'almac\u00e9n' }).id, 'a');
+  assert.equal(utils.encontrarNombreLugarDuplicado(lugares, { nombre: 'Almac\u00e9n',
+    cuenta_id: 'cliente' }).id, 'b');
+  assert.equal(utils.encontrarNombreLugarDuplicado(lugares, { nombre: 'Almac\u00e9n' }, 'a'), null);
+});
+
+test('detecta cruces de tarifa con igualdad de criterios y vigencias solapadas', () => {
+  const row = { id: 't1', estado: 'activa', ruta_id: 'r1', cuenta_id: null,
+    tipo_unidad: 'Cami\u00f3n 2 ejes', modalidad: 'km', moneda: 'PEN',
+    vigente_desde: '2026-01-01', vigente_hasta: '2026-06-30' };
+  assert.equal(utils.encontrarCruceTarifa([row], { ...row, id: undefined,
+    vigente_desde: '2026-06-30', vigente_hasta: null }).id, 't1');
+  assert.equal(utils.encontrarCruceTarifa([row], { ...row, id: undefined,
+    vigente_desde: '2026-07-01', vigente_hasta: null }), null);
+});
+
+test('calcula ejemplo con m\u00ednimo facturable', () => {
+  assert.deepEqual(utils.ejemploCobroTarifa({ tarifa: 2, modalidad: 'km',
+    tipo_unidad: 'Cami\u00f3n 2 ejes', minimo_facturable: 300 },
+  { distancia_km: 100, duracion_estimada_horas: 2 }),
+  { cantidad: 100, subtotal: 200, total: 300, aplicaMinimo: true });
+});
+
+test('cuenta una ruta una sola vez aunque el lugar sea origen y destino', () => {
+  assert.equal(utils.contarUsosLugarEnRutas('a', [
+    { origen_lugar_id: 'a', destino_lugar_id: 'a' },
+    { origen_lugar_id: 'b', destino_lugar_id: 'a' },
+    { origen_lugar_id: 'b', destino_lugar_id: 'c' },
+  ]), 2);
+});
