@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { emitirDiagnosticoTecnico, listarHistorialEstadosDiagnostico, reabrirDiagnosticoTecnico } from '../../services/diagnosticoTecnicoService.js';
 
-export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, permitirEmision = true, cambiosSinGuardar, onCambioCompleto, informeAction = null, emitirRef = null }) {
+export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, permitirEmision = true, cambiosSinGuardar, onCambioCompleto, informeAction = null, emitirRef = null, emitir = null }) {
   const [historial, setHistorial] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState('');
@@ -28,7 +28,7 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
     setBusy(true); setError(''); setNotice('');
     try {
       const resultado = dialogo === 'emitir'
-        ? await emitirDiagnosticoTecnico(diagnostico.id)
+        ? await (emitir ? emitir() : emitirDiagnosticoTecnico(diagnostico.id))
         : await reabrirDiagnosticoTecnico(diagnostico.id, motivo.trim());
       setDialogo(''); setMotivo('');
       setNotice(dialogo === 'emitir' ? 'Diagnóstico emitido correctamente.' : 'Diagnóstico reabierto correctamente.');

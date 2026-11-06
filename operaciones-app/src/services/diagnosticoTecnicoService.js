@@ -1,8 +1,8 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { catalogoComponentesService } from '../../../src/services/catalogoComponentesService.js';
 
-const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,resumen_diagnostico,resumen_origen,elaborado_por,emitido_por,emitido_en,created_at,updated_at,referencia_cliente';
-const LINEA_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,actividad_id,tarea_id,hallazgo,cargo_id,horas_mano_obra,activo_id,horas_maquina,orden,created_at,updated_at';
+const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,resumen_diagnostico,resumen_origen,elaborado_por,emitido_por,emitido_en,created_at,updated_at,referencia_cliente,ficha_emisor';
+const LINEA_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,actividad_id,tarea_id,hallazgo,cargo_id,horas_mano_obra,activo_id,horas_maquina,orden,pieza_id,created_at,updated_at';
 const MATERIAL_COLUMNS = 'id,empresa_id,linea_id,material_id,descripcion,cantidad,unidad,orden,created_at';
 const FAMILIA_COLUMNS = 'id,empresa_id,nombre,activo';
 const TIPO_SERVICIO_COLUMNS = 'id,empresa_id,codigo,nombre,clasificacion,estado,rol,familia_trabajo_id';
@@ -754,6 +754,7 @@ const linePayload = (empresaId, diagnosticoId, linea) => ({
   activo_id: linea.activo_id || null,
   horas_maquina: linea.activo_id ? Number(linea.horas_maquina) || 0 : 0,
   orden: Number(linea.orden) || 0,
+  pieza_id: linea.pieza_id || null,
 });
 
 const materialPayload = (empresaId, lineaId, material, orden) => ({

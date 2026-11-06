@@ -8956,3 +8956,19 @@ width:20px;height:20px}
 .dx-transporte-composer-segmented button { flex:1 1 auto; min-width:max-content; white-space:nowrap; }
 .dx-transporte-composer-duplicate>span { flex:1 1 100%; }
 .dx-transporte-composer-duplicate .dx-btn.link { min-height:0; padding:0; border:0; background:transparent; color:inherit; font-weight:600; }
+/* Fabricación etapa 3: consumo por pieza, pieza por tarea y ficha técnica */
+.dx-cascada-pieza { width:100%; min-width:140px; height:36px; padding:0 8px; border:1px solid var(--dx-cascada-field, var(--dx-ui-border, #C9CFD8)); border-radius:8px; background:var(--dx-cascada-card, var(--dx-ui-card, #FFFFFF)); color:var(--dx-cascada-ink, var(--dx-ui-ink, #1A2B4A)); font:13px 'DM Sans',sans-serif; }
+.dx-cascada-pieza:focus-visible { outline:2px solid var(--dx-cascada-cyan, #00ACC1); outline-offset:2px; }
+[data-theme='dark'] .dx-cascada-pieza { border-color:#475569; background:#16202F; color:#E6ECF5; }
+.dx-fab .dx-fab-label { color:var(--dx-ui-gray); font-size:12px; font-weight:700; }
+.dx-fab .dx-fab-total { display:flex; align-items:center; min-height:44px; padding:0 12px; border:1px dashed var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-weight:700; overflow-wrap:anywhere; }
+.dx-fab .dx-fab-ficha { display:flex; flex-direction:column; gap:10px; padding:14px 18px 18px; border-top:1px solid var(--dx-ui-line-soft); }
+.dx-fab .dx-fab-ficha-acciones { display:flex; flex-wrap:wrap; gap:8px; }
+.dx-fab .dx-fab-ficha-acciones .btn { min-height:40px; }
+.dx-fab .dx-fab-hint.is-error { color:var(--dx-ui-red-fg); }
+/* La vista previa de la ficha es una hoja blanca también en modo oscuro */
+.dx-fab .dx-fab-sheet tr,.dx-fab .dx-fab-sheet td { background:#FFFFFF; color:#1F2937; }
+@container (max-width:760px) {
+  .dx-fab .dx-fab-ficha { padding:12px; }
+  .dx-fab .dx-fab-ficha-acciones .btn { flex:1 1 100%; }
+}
