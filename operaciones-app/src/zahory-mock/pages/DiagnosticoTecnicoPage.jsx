@@ -46,8 +46,11 @@ import { validarBorradorDiagnostico } from '../../services/validarBorradorDiagno
 import { markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 import { fechaLocalISO } from './fechaLocal.js';
 import { agruparLineasPorTrabajo, datosInicialesValidos, pasoFinal, pasosDeCreacion, pasosDiagnostico, pasoTrabajos, trabajosSinTareas } from './diagnosticoFlujo.js';
-import { FabricacionOrigenNuevo, FabricacionOrigenPaso, FabricacionPiezasPaso, FabricacionPlanoPaso, FabricacionRevisionPaso } from './DiagnosticoFabricacionPasos.jsx';
-import { faltantesPieza, guardarReferenciaCliente, listarPiezasFabricacion } from '../../services/diagnosticoFabricacionService.js';
+import { FabricacionOrigenNuevo, FabricacionOrigenPaso, FabricacionPiezasPaso, FabricacionPlanoPaso, FabricacionRevisionPaso, markupDibujoCatalogo } from './DiagnosticoFabricacionPasos.jsx';
+import { construirFichaFabricacion, nombreArchivoFicha } from './fichaFabricacion.js';
+import { listarEmisoresConFirma } from '../../services/emisorPersonal.js';
+import { obtenerIdentidadEmpresa } from '../../services/diagnosticoInformeService.js';
+import { emitirDiagnosticoFabricacion, faltantesPieza, guardarEmisorFicha, guardarReferenciaCliente, listarDibujosCatalogo, listarFichasFabricacion, listarPiezasFabricacion } from '../../services/diagnosticoFabricacionService.js';
 
 const EMPTY_FORM = { tipo: '', referencia: null };
 const EMPTY_LINE = {
@@ -392,6 +395,9 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [fabPiezas, setFabPiezas] = useState([]);
   const [fabPiezaId, setFabPiezaId] = useState('');
   const [fabPiezasError, setFabPiezasError] = useState('');
+  const [fabEmisores, setFabEmisores] = useState([]);
+  const [fabFichas, setFabFichas] = useState([]);
+  const [fabFichaEstado, setFabFichaEstado] = useState({ descargando: '', guardandoEmisor: false, mensaje: '', error: false });
   const [metaOpen, setMetaOpen] = useState(false);
   const [hallazgoView, setHallazgoView] = useState('lista');
   const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
@@ -436,10 +442,21 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     return () => dispatchDiagnosticoWorkMode(false);
   }, [selected?.id, selected?.tipo, form.tipo]);
 
+  // Paso al abrir: un borrador abre donde se trabaja y un emitido en el paso final.
+  const abrirEnPasoInicial = diagnostico => {
+    const emitido = diagnostico?.estado === 'emitido';
+    if (diagnostico?.tipo === 'fabricacion') {
+      setInformePanel(false);
+      setWorkStep(emitido ? pasoFinal('fabricacion') : 2);
+      return;
+    }
+    setInformePanel(emitido);
+    setWorkStep(emitido ? pasoFinal('mantenimiento') : 4);
+  };
+
   useEffect(() => {
     setHallazgoView('lista');
-    setInformePanel(false);
-    setWorkStep(selected?.tipo === 'fabricacion' ? (selected.estado === 'emitido' ? pasoFinal('fabricacion') : 2) : 4);
+    abrirEnPasoInicial(selected);
   }, [selected?.id]);
 
   // Hoja de Costeo vigente creada desde este diagnóstico (trazabilidad).
@@ -535,6 +552,20 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       .catch(loadError => { if (vigente) setFabPiezasError(errorMessage(loadError)); });
     return () => { vigente = false; };
   }, [access.ver, empresaId, selected?.id, selected?.tipo, selected?.estado]);
+
+  // Ficha técnica de fabricación: emisores con firma y versiones emitidas.
+  useEffect(() => {
+    let vigente = true;
+    if (selected?.tipo !== 'fabricacion' || !access.ver || !empresaId) { setFabFichas([]); return () => { vigente = false; }; }
+    listarFichasFabricacion(empresaId, selected.id).then(rows => { if (vigente) setFabFichas(rows); }).catch(() => { if (vigente) setFabFichas([]); });
+    return () => { vigente = false; };
+  }, [access.ver, empresaId, selected?.id, selected?.tipo, selected?.estado]);
+  useEffect(() => {
+    let vigente = true;
+    if (selected?.tipo !== 'fabricacion' || !empresaId) return () => { vigente = false; };
+    listarEmisoresConFirma(empresaId).then(rows => { if (vigente) setFabEmisores(rows); }).catch(() => { if (vigente) setFabEmisores([]); });
+    return () => { vigente = false; };
+  }, [empresaId, selected?.tipo]);
 
 
   useEffect(() => {
@@ -662,7 +693,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       };
       setDatosIniciales(current => ({ ...current, ...initialData, componente_catalogo_id: detail.componente_catalogo_id || null, corregirComponente: false }));
       setDatosInicialesGuardados(initialData);
-      setWorkStep(detail.tipo === 'mantenimiento' ? 1 : detail.estado === 'emitido' ? pasoFinal(detail.tipo) : 2);
+      abrirEnPasoInicial(detail);
       if (detail.tipo === 'fabricacion') { setFabPiezas([]); setFabPiezaId(''); }
       if (typeof window !== 'undefined' && window.location?.hash !== undefined) {
         const query = new URLSearchParams(window.location?.hash?.split('?')[1] || '');
@@ -1219,7 +1250,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       setGenerandoHojaCosteo(false);
     }
   };
-  const renderLineas = lines => <DiagnosticoLineasTabla lines={lines} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />;
+  const renderLineas = lines => <DiagnosticoLineasTabla lines={lines} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} piezas={selected?.tipo === 'fabricacion' ? fabPiezas : null} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />;
   const renderFamilyGroup = group => {
     const familyId = group.familia.id;
     const nombre = group.familia.nombre;
@@ -1261,6 +1292,71 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     detalle: [form.referencia?.cliente, form.referencia?.etapa ? etiquetaEtapa(form.referencia.etapa) : '', form.referencia?.activo].filter(Boolean).join(' · ') || 'Sin cliente',
   };
   const fabPiezasIncompletas = !fabPiezas.length || fabPiezas.some(pieza => faltantesPieza(pieza).length > 0);
+  const armarFichaFabricacion = async borrador => {
+    const necesitaDibujos = fabPiezas.some(pieza => pieza.plano_origen === 'catalogo');
+    const [dibujos, empresa] = await Promise.all([
+      necesitaDibujos ? listarDibujosCatalogo(empresaId, sesion.sociedadActiva?.id || null) : Promise.resolve([]),
+      obtenerIdentidadEmpresa(empresaId),
+    ]);
+    if (necesitaDibujos && fabPiezas.some(pieza => pieza.plano_origen === 'catalogo' && !dibujos.some(dibujo => dibujo.id === pieza.componente_catalogo_id))) {
+      throw new Error('No se encontró el dibujo del catálogo de alguna pieza.');
+    }
+    return construirFichaFabricacion({
+      piezas: fabPiezas, dibujos, lineas: lineasActuales, catalogs, empresa, borrador,
+      conclusion: resumenVisible, emisor: selected?.ficha_emisor || null, marcarDibujo: markupDibujoCatalogo,
+      cabecera: {
+        origen_tipo: selected?.recepcion_id ? 'Recepción' : 'Oportunidad', origen_numero: form.referencia?.numero || '',
+        cliente: form.referencia?.cliente || '', activo: form.referencia?.activo || '',
+        referencia_cliente: datosIniciales.referencia_cliente || selected?.referencia_cliente || '',
+        tecnico: selected?.tecnico_nombre || '', fecha: datosIniciales.fecha_inspeccion || selected?.fecha_inspeccion || '',
+      },
+    });
+  };
+  const descargarFicha = async (clave, obtener) => {
+    if (fabFichaEstado.descargando) return;
+    setFabFichaEstado(current => ({ ...current, descargando: clave, mensaje: '', error: false }));
+    let url = null;
+    try {
+      const { ficha, version } = await obtener();
+      const { generarPdfFicha } = await import('./FichaFabricacionPdf.jsx');
+      const { blob, warnings = [] } = await generarPdfFicha(ficha);
+      url = URL.createObjectURL(blob);
+      const enlace = document.createElement('a');
+      enlace.href = url; enlace.download = nombreArchivoFicha(ficha, version);
+      document.body.appendChild(enlace); enlace.click(); enlace.remove();
+      if (mountedRef.current) setFabFichaEstado(current => ({ ...current, mensaje: warnings.length ? `PDF generado con avisos: ${warnings.join(' ')}` : '', error: false }));
+    } catch (pdfError) {
+      if (mountedRef.current) setFabFichaEstado(current => ({ ...current, mensaje: `No se pudo generar la ficha: ${errorMessage(pdfError)}`, error: true }));
+    } finally {
+      if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (mountedRef.current) setFabFichaEstado(current => ({ ...current, descargando: '' }));
+    }
+  };
+  const cambiarEmisorFicha = async personaId => {
+    if (!selected) return;
+    const persona = fabEmisores.find(item => String(item.id) === String(personaId)) || null;
+    setFabFichaEstado(current => ({ ...current, guardandoEmisor: true, mensaje: '', error: false }));
+    try {
+      const guardado = await guardarEmisorFicha(empresaId, selected.id, persona);
+      const fichaEmisor = guardado?.ficha_emisor !== undefined ? guardado.ficha_emisor : persona;
+      setSelected(current => current?.id === selected.id ? { ...current, ficha_emisor: fichaEmisor } : current);
+    } catch (saveError) {
+      setFabFichaEstado(current => ({ ...current, mensaje: `No se pudo guardar la firma: ${errorMessage(saveError)}`, error: true }));
+    } finally {
+      setFabFichaEstado(current => ({ ...current, guardandoEmisor: false }));
+    }
+  };
+  const fichaRevision = selected?.tipo === 'fabricacion' ? {
+    emisores: fabEmisores, emisorId: selected.ficha_emisor?.persona_id || '', emisorNombre: fabFichas[0]?.snapshot?.emisor?.nombre || selected.ficha_emisor?.nombre || '',
+    onEmisor: cambiarEmisorFicha, guardandoEmisor: fabFichaEstado.guardandoEmisor, descargando: fabFichaEstado.descargando,
+    mensaje: fabFichaEstado.mensaje, mensajeError: fabFichaEstado.error, versiones: fabFichas,
+    onDescargarBorrador: () => descargarFicha('borrador', async () => ({ ficha: await armarFichaFabricacion(true), version: null })),
+    onDescargarVersion: version => descargarFicha(version.id, async () => ({ ficha: { ...version.snapshot, borrador: false, version: version.version, emitido_en: version.snapshot?.emitido_en || version.emitido_en }, version: version.version })),
+  } : null;
+  const emitirFabricacion = async () => {
+    const ficha = await armarFichaFabricacion(false);
+    return emitirDiagnosticoFabricacion(selected.id, ficha);
+  };
   const borradoresDeReferencia = reference => diagnosticos.filter(row => row.tipo === 'fabricacion' && row.estado === 'borrador' && (fabOrigen === 'recepcion' ? row.recepcion_id === reference?.id : row.oportunidad_id === reference?.id));
   const renderFabNuevo = () => <div className="dx-ui dx-fab dx-fab-body">
     <FabricacionOrigenNuevo
@@ -1288,7 +1384,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     {workStep === 1 && <FabricacionOrigenPaso origenTexto={fabOrigenTexto} datos={datosIniciales} onDatos={cambios => setDatosIniciales(current => ({ ...current, ...cambios }))} tecnicos={tecnicosInicio} canEdit={canEditInitialData} dirty={initialDataDirty} guardando={saving} onGuardar={saveInitialData} />}
     {workStep === 2 && <FabricacionPiezasPaso empresaId={empresaId} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} canEdit={canEditLines} nombreSugerido={String(form.referencia?.activo || '').split(' · ').pop()} onVerPlano={piezaId => { setFabPiezaId(piezaId); setWorkStep(3); }} />}
     {workStep === 3 && <FabricacionPlanoPaso empresaId={empresaId} sociedadId={sesion.sociedadActiva?.id || null} diagnosticoId={selected.id} piezas={fabPiezas} onPiezas={setFabPiezas} piezaId={fabPiezaId} onPiezaId={setFabPiezaId} canEdit={canEditLines} />}
-    {workStep === pasoFinal('fabricacion') && <FabricacionRevisionPaso piezas={fabPiezas} totalTareas={lineasActuales.length} totalHH={totalHH} trabajosIncompletos={trabajosIncompletos.map(group => group.familia.nombre)} cambiosSinGuardar={cambiosSinGuardar} emitido={isReadOnly} origenTexto={fabOrigenTexto} resumen={resumenVisible} onResumen={value => cambiarResumen(value, 'editado')} canEdit={canEditLines} />}
+    {workStep === pasoFinal('fabricacion') && <FabricacionRevisionPaso piezas={fabPiezas} totalTareas={lineasActuales.length} totalHH={totalHH} trabajosIncompletos={trabajosIncompletos.map(group => group.familia.nombre)} cambiosSinGuardar={cambiosSinGuardar} emitido={isReadOnly} origenTexto={fabOrigenTexto} resumen={resumenVisible} onResumen={value => cambiarResumen(value, 'editado')} canEdit={canEditLines} ficha={fichaRevision} />}
   </div>;
 
   return (
@@ -1434,7 +1530,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {pasos.map((label, index) => <button key={label} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} type="button" aria-current={workStep === index + 1 ? 'step' : undefined} onClick={async () => { const step = index + 1; if (step === pasoFinal(selected.tipo)) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><i>{workStep > index + 1 ? '✓' : index + 1}</i><span>{index + 1} · {label}</span></button>)}
           </nav><div className="dx-work-mobile-step" aria-live="polite"><strong>Paso {workStep} de {pasos.length} · {pasos[workStep - 1]}</strong><div className="dx-work-mobile-segments" data-pasos={pasos.length} aria-label="Ir a un paso del diagnóstico">{pasos.map((label, index) => <button key={label} type="button" aria-label={`Paso ${index + 1}: ${label}`} aria-current={workStep === index + 1 ? 'step' : undefined} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} onClick={async () => { const step = index + 1; if (step === pasoFinal(selected.tipo)) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><span>{label}</span></button>)}</div></div></div>
           {selected.tipo === 'fabricacion' && renderFabPasos()}
-          {access.ver && (selected.tipo !== 'fabricacion' || workStep === pasoFinal('fabricacion')) && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} permitirEmision={workStep === pasoFinal(selected.tipo)} emitirRef={selected.tipo === 'fabricacion' ? emitirFabricacionRef : undefined} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button> : null} />}
+          {access.ver && (selected.tipo !== 'fabricacion' || workStep === pasoFinal('fabricacion')) && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} permitirEmision={workStep === pasoFinal(selected.tipo)} emitirRef={selected.tipo === 'fabricacion' ? emitirFabricacionRef : undefined} emitir={selected.tipo === 'fabricacion' ? emitirFabricacion : null} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button> : null} />}
           {selected.estado === 'emitido' && (selected.tipo !== 'fabricacion' || workStep === pasoFinal('fabricacion')) && <div className="dx-inf-open-row"><button type="button" className="btn btn-primary" onClick={generarHojaCosteo} disabled={generandoHojaCosteo} aria-busy={generandoHojaCosteo}>{generandoHojaCosteo ? 'Abriendo Hoja de Costeo…' : hojaVinculada ? `Abrir Hoja de Costeo ${hojaVinculada.numero}` : 'Generar hoja de costeo'}</button>{hojaVinculada?.desfasada && <span className="dx-hc-sync-note">La hoja se creó con una emisión anterior: ábrela para {hojaVinculada.estado === 'aprobada' || hojaVinculada.con_cotizacion ? 'crear una nueva versión' : 'actualizarla'}.</span>}</div>}
           {selected.estado !== 'emitido' && hojaVinculada && <div className="dx-hc-sync-info" role="status">Este diagnóstico ya tiene la Hoja de Costeo {hojaVinculada.numero}. Al volver a emitirlo, la hoja mostrará un aviso para traer los cambios.</div>}
           {errorHojaCosteo && <div className="alert alert-error" role="alert">{errorHojaCosteo}</div>}

@@ -166,11 +166,13 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     let active = true;
     (async () => {
       try {
-        const result = puedeEditar
+        // Con el diagnóstico emitido no se puede crear un borrador nuevo: se carga el vigente.
+        const crearBorrador = puedeEditar && diagnostico.estado !== 'emitido';
+        const result = crearBorrador
           ? await Promise.all([obtenerOCrearBorrador(diagnostico.recepcion_id, diagnostico.id), obtenerInformeVigente(diagnostico.recepcion_id)])
           : await obtenerInformeVigente(diagnostico.recepcion_id);
         if (!active) return;
-        if (puedeEditar) {
+        if (crearBorrador) {
           const [draft, current] = result;
           setInforme(draft);
           setBorrador(draft);
@@ -220,7 +222,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     setGenerandoIA(true); setIaError(''); setConfirmarReemplazo(false);
     try {
       if (cambiosSinGuardar && onGuardarDiagnosticoPendiente) await onGuardarDiagnosticoPendiente();
-      await obtenerOCrearBorrador(diagnostico.recepcion_id, diagnostico.id);
+      if (diagnostico.estado !== 'emitido') await obtenerOCrearBorrador(diagnostico.recepcion_id, diagnostico.id);
       const result = await generarConclusionIA(diagnostico.id);
       if (esMantenimiento) {
         onResumenChange?.(result.conclusion, 'editado');

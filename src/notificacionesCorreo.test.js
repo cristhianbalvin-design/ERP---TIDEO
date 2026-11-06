@@ -53,7 +53,7 @@ test('arma resumen de contratos por vencer en orden ascendente y resalta hasta 7
     },
   });
   assert.equal(correo.asunto, 'Contratos por vencer · 3 colaboradores · 21/10/2026');
-  assert.match(correo.html, /<h1[^>]*>Contratos por vencer<\/h1><p>Revisa estos contratos\.<\/p>/);
+  assert.match(correo.html, /<h1[^>]*>Contratos por vencer<\/h1><p>3 colaboradores con contratos por vencer\.<\/p>/);
   assert.ok(correo.html.indexOf('Luis') < correo.html.indexOf('Mia'));
   assert.ok(correo.html.indexOf('Mia') < correo.html.indexOf('Ana'));
   assert.equal((correo.html.match(/color:#9B1C1C;/g) || []).length, 8);
@@ -116,7 +116,7 @@ test('arma resumen de documentos por vencer con orden, columnas y escape', () =>
   assert.match(correo.html, /Colaborador<\/th>[\s\S]*Documento<\/th>[\s\S]*Vence<\/th>[\s\S]*Días<\/th>/);
   assert.ok(correo.html.indexOf('&lt;Luis&gt;') < correo.html.indexOf('Ana'));
   assert.ok(correo.html.includes('DNI &amp; permiso'));
-  assert.ok(correo.html.includes('&lt;urgentes&gt;'));
+  assert.ok(!correo.html.includes('&lt;urgentes&gt;'));
   assert.match(correo.texto, /Colaborador \| Documento \| Vence \| Días\n<Luis> \| DNI & permiso \| 25\/10\/2026 \| 4/);
   assert.equal((correo.html.match(/color:#9B1C1C;/g) || []).length, 4);
 });
@@ -183,4 +183,32 @@ test('arma partes pendientes de equipo con alerta y singular OT', () => {
   assert.match(correo.html, /de tu equipo/);
   assert.equal((correo.html.match(/color:#9B1C1C;/g) || []).length, 5);
   assert.match(correo.texto, /OT \| Servicio \| Cliente \| Técnico \| Estado/);
+});
+
+test('usa la marca OPERA y el asunto por defecto', () => {
+  const correo = construirCorreoNotificacion();
+  assert.equal(correo.asunto, 'Notificación de OPERA');
+  assert.match(correo.html, />OPERA<\/td>/);
+  assert.ok(correo.html.includes('Notificación automática de OPERA ERP.'));
+  assert.ok(!correo.html.includes('TIDEO'));
+});
+
+test('usa frases breves con singular y plural en los resúmenes de vencimiento', () => {
+  const casos = [
+    ['contrato_por_vencer', '1 colaborador con contrato por vencer.', '50 colaboradores con contratos por vencer.'],
+    ['contrato_vencido', '1 colaborador con contrato vencido sin renovar.', '50 colaboradores con contratos vencidos sin renovar.'],
+    ['documento_por_vencer', '1 documento por vencer.', '50 documentos por vencer.'],
+  ];
+  for (const [evento_codigo, singular, plural] of casos) {
+    for (const [total, frase] of [[1, singular], [50, plural]]) {
+      const correo = construirCorreoNotificacion({
+        evento_codigo, mensaje: 'Mensaje original que no debe aparecer.',
+        payload: { total, items: [{ nombre: 'Persona', dias_restantes: 2, dias_vencido: 2 }] },
+      });
+      assert.ok(correo.html.includes(`<p>${frase}</p>`));
+      assert.ok(correo.texto.startsWith(`${frase}\n\n`));
+      assert.ok(!correo.html.includes('Mensaje original que no debe aparecer.'));
+      assert.ok(!correo.texto.includes('Mensaje original que no debe aparecer.'));
+    }
+  }
 });

@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
-const SEL = 'id, empresa_id, nombre, tipo, canal, fecha_inicio, fecha_fin, presupuesto, moneda, estado, descripcion, created_at, updated_at';
+const SEL = 'id, empresa_id, nombre, tipo, canal, fecha_inicio, fecha_fin, presupuesto, moneda, estado, descripcion, mensaje_base, fuente_codigo, created_at, updated_at';
 
 function generateCampanaId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {

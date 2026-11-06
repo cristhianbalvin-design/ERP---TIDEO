@@ -119,6 +119,7 @@ export function calcularSemanasCaja({ movimientos = [], empresaId, sociedadIds =
     const finN = inicioN + 6;
     const inicio = dateFromDays(inicioN); const fin = dateFromDays(finN);
     const rows = movimientos.filter(row => row.empresa_id === empresaId && inSocietyScope(row, sociedadIds, multisociedad)
+      && String(row.vinculo_tipo || row.vinculado_tipo || '').toLowerCase() !== 'transferencia_cuenta'
       && normalizarMonedaBI(row.moneda) === normalizarMonedaBI(moneda)
       && String(row.fecha || row.fecha_movimiento || '').slice(0, 10) >= inicio && String(row.fecha || row.fecha_movimiento || '').slice(0, 10) <= fin);
     const ingresos = rows.filter(row => ['ingreso', 'credito'].includes(String(row.tipo || row.tipo_movimiento || '').toLowerCase())).reduce((sum, row) => sum + amount(row.monto ?? row.monto_movimiento), 0);
@@ -130,6 +131,7 @@ export function calcularSemanasCaja({ movimientos = [], empresaId, sociedadIds =
 
 export function calcularCajaNetaMes({ movimientos = [], periodo, empresaId, sociedadIds = [], multisociedad = false, moneda = 'PEN' }) {
   return movimientos.filter(row => row.empresa_id === empresaId && inSocietyScope(row, sociedadIds, multisociedad)
+    && String(row.vinculo_tipo || row.vinculado_tipo || '').toLowerCase() !== 'transferencia_cuenta'
     && String(row.fecha || row.fecha_movimiento || '').slice(0, 7) === periodo && normalizarMonedaBI(row.moneda) === normalizarMonedaBI(moneda))
     .reduce((neto, row) => {
       const tipo = String(row.tipo || row.tipo_movimiento || '').toLowerCase();

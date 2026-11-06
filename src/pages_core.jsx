@@ -8,6 +8,7 @@ import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
 import { canUserSeeOwner, getAssignableUsers, getUserCategory, getUserHierarchyLevel } from './lib/hierarchy.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { campanasService } from './services/campanasService.js';
+import CampanaAudiencia from './components/CampanaAudiencia.jsx';
 import { maestrosService } from './services/maestrosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { ETIQUETA_ESTADO_OF, listarOFDeOS, urlOperaciones } from './services/ordenesFabricacionAdminService.js';
@@ -489,340 +490,6 @@ const getPersonalAsignableOT = (personalOperativo = [], personalAdmin = []) => {
   return Array.from(porId.values()).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
 };
 
-function Dashboard({ role }) {
-  const { financiamientos, navigate, empresa, cxp } = useApp();
-  const [cebeWarning, setCebeWarning] = useState(false);
-  const canFin = role.permisos.ver_finanzas || role.permisos.todo;
-  const isSuperadmin = role.permisos.plataforma;
-
-  const todayDash = new Date().toISOString().split('T')[0];
-  const cxpVencidas = (cxp || []).filter(c => {
-    if (!c.fecha_vencimiento || Number(c.saldo ?? c.monto_total ?? 0) <= 0 || c.estado === 'pagada') return false;
-    return c.fecha_vencimiento < todayDash;
-  });
-  const cxpPorVencer7 = (cxp || []).filter(c => {
-    if (!c.fecha_vencimiento || Number(c.saldo ?? c.monto_total ?? 0) <= 0 || c.estado === 'pagada') return false;
-    const dias = Math.floor((new Date(`${c.fecha_vencimiento}T00:00:00`) - new Date(`${todayDash}T00:00:00`)) / 86400000);
-    return dias >= 0 && dias <= 7;
-  });
-  const montoCxpVencido = cxpVencidas.reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0);
-
-  useEffect(() => {
-    let mounted = true;
-    if (!empresa?.id) return;
-    maestrosService.getCentrosBeneficio(empresa.id)
-      .then(rows => {
-        if (mounted) setCebeWarning(!(rows || []).some(r => r.estado === 'activo'));
-      })
-      .catch(() => {
-        if (mounted) setCebeWarning(false);
-      });
-    return () => { mounted = false; };
-  }, [empresa?.id]);
-
-  const kpis = [
-    { label: 'Leads este mes', val: '24', delta: '+12%', up: true, icon: I.target, color: 'cyan' },
-    { label: 'Oportunidades activas', val: money(185000), delta: '+8%', up: true, icon: I.pipe, color: 'purple' },
-    { label: 'Ventas del mes', val: money(342000), delta: '+15%', up: true, icon: I.dollar, color: 'green', fin: true },
-    { label: 'OTs activas', val: '12', sub: '3 en riesgo SLA', icon: I.wrench, color: 'orange' },
-    { label: 'Facturación del mes', val: money(298000), delta: '+6%', up: true, icon: I.receipt, color: 'cyan', fin: true },
-    { label: 'Pendiente por cobrar', val: money(172900), sub: 'S/ 51.3K vencido', icon: I.dollar, color: 'danger', fin: true },
-    { label: 'CxP vencidas', val: money(montoCxpVencido), sub: `${cxpVencidas.length} documento${cxpVencidas.length !== 1 ? 's' : ''}`, icon: I.clock, color: 'danger', fin: true },
-    { label: 'CxP por vencer (7d)', val: String(cxpPorVencer7.length), sub: cxpPorVencer7.length > 0 ? 'Requieren atención' : 'Al día', icon: I.bell, color: cxpPorVencer7.length > 0 ? 'orange' : 'green', fin: true },
-  ].filter(k => !k.fin || canFin);
-
-  const healthDist = {
-    verde:    MOCK.healthScoresDetalle.filter(h => h.semaforo === 'verde').length,
-    amarillo: MOCK.healthScoresDetalle.filter(h => h.semaforo === 'amarillo').length,
-    rojo:     MOCK.healthScoresDetalle.filter(h => h.semaforo === 'rojo').length,
-  };
-  const atRisk = MOCK.healthScoresDetalle
-    .filter(h => h.score_total < 50)
-    .map(h => ({ ...h, nombre: MOCK.cuentas.find(c => c.id === h.cuenta_id)?.razon_social || h.cuenta_id }));
-  const cuentaNombre = id => MOCK.cuentas.find(c => c.id === id)?.razon_social || id;
-  const upcomingRenovaciones = [...(MOCK.renovaciones || [])]
-    .sort((a, b) => a.dias_restantes - b.dias_restantes)
-    .slice(0, 3);
-  const deudaPorVencer = (financiamientos || []).filter(f => {
-    const cuota = (f.tabla_amortizacion || []).find(c => c.estado === 'pendiente');
-    if (!cuota || f.estado !== 'vigente') return false;
-    const dias = Math.ceil((new Date(cuota.fecha + 'T00:00:00') - new Date('2026-04-28T00:00:00')) / 86400000);
-    return dias >= 0 && dias <= 7;
-  });
-
-  return (
-    <>
-      {cebeWarning && (
-        <div className="alert alert-danger" style={{marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12}}>
-          <span>No existe ningún CEBE activo. Crea al menos uno en Maestros Base para poder operar correctamente.</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('maestros')}>Ir a Maestros Base</button>
-        </div>
-      )}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Dashboard General</h1>
-          <div className="page-sub">Vista consolidada — {new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-        </div>
-        <div className="row">
-          <button className="btn btn-secondary">{I.filter} Filtrar período</button>
-          <button className="btn btn-secondary">{I.download} Exportar</button>
-        </div>
-      </div>
-
-      {isSuperadmin && (
-        <div className="card" style={{padding:16, marginBottom:20, background:'linear-gradient(135deg, rgba(0,188,212,0.08), transparent)', borderColor:'rgba(0,188,212,0.3)'}}>
-          <div className="row" style={{gap:12}}>
-            <div className="kpi-icon cyan" style={{position:'static'}}>{I.shield}</div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700, fontFamily:'Sora'}}>Vista Superadmin TIDEO</div>
-              <div className="text-muted" style={{fontSize:12}}>Acceso a panel de plataforma multitenant. Gestionando 2 empresas activas.</div>
-            </div>
-            <span className="badge badge-cyan"><span className="dot" style={{background:'currentColor'}}/>2 tenants</span>
-          </div>
-        </div>
-      )}
-
-      <div className="kpi-grid">
-        {kpis.map((k, i) => (
-          <div key={i} className="kpi-card hover-raise">
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value">{k.val}</div>
-            {k.delta && <div className={'kpi-delta ' + (k.up ? 'up' : 'down')}>{k.up ? I.arrowUp : I.arrowDown}{k.delta} vs mes anterior</div>}
-            {k.sub && <div className="kpi-delta" style={{color: k.color === 'danger' ? 'var(--danger)' : 'var(--fg-muted)'}}>{k.sub}</div>}
-            <div className={'kpi-icon ' + k.color}>{k.icon}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-head">
-            <h3>Ventas vs Costos — Últimos 6 meses</h3>
-            <span className="badge badge-cyan">Margen prom. 37%</span>
-          </div>
-          <div className="card-body">
-            <BarsChart/>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head"><h3>OTs por estado</h3></div>
-          <div className="card-body">
-            <DonutChart/>
-            <div className="col mt-4" style={{gap:6}}>
-              {[
-                {l:'Programadas', v:4, c:'var(--cyan)'},
-                {l:'En ejecución', v:5, c:'var(--orange)'},
-                {l:'Cerradas técnicas', v:2, c:'var(--purple)'},
-                {l:'Facturadas', v:3, c:'var(--green)'},
-              ].map((x,i) => (
-                <div key={i} className="row" style={{justifyContent:'space-between', fontSize:12}}>
-                  <span className="row" style={{gap:6}}><span style={{width:8,height:8,borderRadius:999,background:x.c}}/>{x.l}</span>
-                  <strong>{x.v}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid-2 mt-6">
-        {deudaPorVencer.length > 0 && (
-          <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
-            <div className="card-head"><h3>Cuotas por vencer</h3><button className="btn btn-secondary btn-sm" onClick={() => navigate('financiamiento')}>Ver deuda</button></div>
-            <div className="card-body">
-              {deudaPorVencer.map(f => {
-                const cuota = (f.tabla_amortizacion || []).find(c => c.estado === 'pendiente');
-                const dias = Math.ceil((new Date(cuota.fecha + 'T00:00:00') - new Date('2026-04-28T00:00:00')) / 86400000);
-                return (
-                  <div key={f.id} style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:'13px' }}>
-                    <span>{f.entidad}</span>
-                    <span style={{ fontWeight:600 }}>{moneyD(cuota.total)}</span>
-                    <span style={{ color:'var(--orange)' }}>Vence en {dias} días</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        <div className="card">
-          <div className="card-head">
-            <h3>Alertas operativas</h3>
-            <span className="text-muted" style={{fontSize:12}}>Prioridad alta</span>
-          </div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead><tr><th>OT</th><th>Cliente</th><th>SLA</th><th>Responsable</th></tr></thead>
-              <tbody>
-                {MOCK.ots.filter(o => o.estado === 'ejecucion' || o.sla === 'vencido').slice(0,4).map(o => (
-                  <tr key={o.id}>
-                    <td className="mono">{o.id}</td>
-                    <td>{o.cliente}</td>
-                    <td><span className={'badge ' + (o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'En riesgo':'En plazo'}</span></td>
-                    <td className="text-muted">{o.responsable}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <h3>Pendientes desde campo</h3>
-            <span className="badge badge-cyan">2 por revisar</span>
-          </div>
-          <div className="card-body col" style={{gap:10}}>
-            {MOCK.compras.filter(c => c.campo).map(c => (
-              <div key={c.id} className="row" style={{gap:12, padding:10, border:'1px solid var(--border)', borderRadius:8}}>
-                <div className="kpi-icon cyan" style={{position:'static',width:34,height:34}}>{I.camera}</div>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontWeight:600, fontSize:13}}>Compra {c.id} · {c.proveedor}</div>
-                  <div className="text-muted" style={{fontSize:12}}>{c.ot} · {money(c.monto)}</div>
-                </div>
-                <span className="badge badge-cyan">Desde campo</span>
-              </div>
-            ))}
-            <div style={{padding:10, border:'1px dashed var(--border)', borderRadius:8, fontSize:12, color:'var(--fg-muted)', textAlign:'center'}}>
-              3 partes diarios pendientes de aprobación del supervisor
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── F3: Customer Success Overview ────────────────────────── */}
-      <div className="grid-2 mt-6">
-        <div className="card">
-          <div className="card-head">
-            <h3>Customer Health Portfolio</h3>
-            <span className="badge badge-purple" style={{fontSize:10}}>F3 · Customer Success</span>
-          </div>
-          <div className="card-body">
-            <div className="row" style={{gap:8, marginBottom:16, justifyContent:'space-around'}}>
-              {[
-                { label:'Saludable', count: healthDist.verde,    color:'var(--green)',   cls:'health-green' },
-                { label:'Observación',count: healthDist.amarillo, color:'var(--warning)', cls:'health-orange' },
-                { label:'Crítico',   count: healthDist.rojo,     color:'var(--danger)',  cls:'health-red' },
-              ].map((s, i) => (
-                <div key={i} style={{textAlign:'center'}}>
-                  <div style={{fontSize:34, fontWeight:800, color:s.color, lineHeight:1}}>{s.count}</div>
-                  <div style={{fontSize:11, color:'var(--fg-subtle)', marginTop:4}}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            {atRisk.length > 0 && (
-              <div className="col" style={{gap:8}}>
-                <div style={{fontSize:11, color:'var(--fg-subtle)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2}}>Clientes en riesgo</div>
-                {atRisk.map((h, i) => (
-                  <div key={i} className="row" style={{gap:10, padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8}}>
-                    <span className={'health-dot health-' + (h.score_total < 40 ? 'red' : 'orange')}/>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13, fontWeight:600}}>{h.nombre}</div>
-                      <div className="text-muted" style={{fontSize:11}}>Score {h.score_total} · {h.tendencia}</div>
-                    </div>
-                    <span className={'badge ' + (h.score_total < 40 ? 'badge-red' : 'badge-yellow')}>{h.semaforo}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <h3>Renovaciones próximas</h3>
-            <span className="badge badge-cyan" style={{fontSize:10}}>{upcomingRenovaciones.length} pendientes</span>
-          </div>
-          <div className="card-body col" style={{gap:10}}>
-            {upcomingRenovaciones.map((r, i) => (
-              <div key={i} className="row" style={{gap:12, padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8}}>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontWeight:600, fontSize:13}}>{cuentaNombre(r.cuenta_id)}</div>
-                  <div className="text-muted" style={{fontSize:11}}>{r.servicio} · {money(r.monto_contrato)}</div>
-                </div>
-                <div style={{textAlign:'right'}}>
-                  <span className={'badge ' + (r.dias_restantes <= 30 ? 'badge-red' : r.dias_restantes <= 60 ? 'badge-yellow' : 'badge-green')}>
-                    {r.dias_restantes}d
-                  </span>
-                  <div style={{fontSize:10, color:'var(--fg-muted)', marginTop:2}}>{r.fecha_vencimiento}</div>
-                </div>
-              </div>
-            ))}
-            {upcomingRenovaciones.length === 0 && (
-              <div className="text-muted" style={{textAlign:'center', padding:16, fontSize:13}}>Sin renovaciones próximas.</div>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Simple bar/donut charts
-function BarsChart() {
-  const data = [
-    { m:'Nov', v:280, c:180 }, { m:'Dic', v:320, c:200 },
-    { m:'Ene', v:260, c:175 }, { m:'Feb', v:310, c:195 },
-    { m:'Mar', v:355, c:220 }, { m:'Abr', v:342, c:216 },
-  ];
-  const max = 400;
-  return (
-    <svg viewBox="0 0 600 240" width="100%" height="240">
-      {[0, 100, 200, 300, 400].map((y, i) => (
-        <g key={i}>
-          <line x1="40" y1={220 - y/max*200} x2="590" y2={220 - y/max*200} stroke="var(--border-subtle)"/>
-          <text x="32" y={224 - y/max*200} textAnchor="end" fontSize="10" fill="var(--fg-subtle)">{y}K</text>
-        </g>
-      ))}
-      {data.map((d, i) => {
-        const x = 70 + i * 90;
-        return (
-          <g key={i}>
-            <rect x={x} y={220 - d.v/max*200} width="28" height={d.v/max*200} fill="var(--cyan)" rx="2"/>
-            <rect x={x+32} y={220 - d.c/max*200} width="28" height={d.c/max*200} fill="var(--navy)" opacity="0.6" rx="2"/>
-            <text x={x+30} y="234" textAnchor="middle" fontSize="11" fill="var(--fg-muted)">{d.m}</text>
-          </g>
-        );
-      })}
-      <g transform="translate(420, 10)">
-        <rect x="0" y="0" width="10" height="10" fill="var(--cyan)" rx="2"/>
-        <text x="16" y="9" fontSize="11" fill="var(--fg)">Ventas</text>
-        <rect x="70" y="0" width="10" height="10" fill="var(--navy)" opacity="0.6" rx="2"/>
-        <text x="86" y="9" fontSize="11" fill="var(--fg)">Costos</text>
-      </g>
-    </svg>
-  );
-}
-
-function DonutChart() {
-  const segs = [
-    { v: 4, c: 'var(--cyan)' },
-    { v: 5, c: 'var(--orange)' },
-    { v: 2, c: 'var(--purple)' },
-    { v: 3, c: 'var(--green)' },
-  ];
-  const total = segs.reduce((s, x) => s + x.v, 0);
-  let offset = 0;
-  const R = 60, C = 2 * Math.PI * R;
-  return (
-    <svg viewBox="0 0 180 180" width="100%" height="180">
-      <g transform="translate(90 90) rotate(-90)">
-        {total === 0
-          ? <circle r={R} cx="0" cy="0" fill="none" stroke="var(--border)" strokeWidth="22"/>
-          : segs.map((s, i) => {
-              const len = (s.v / total) * C;
-              const el = <circle key={i} r={R} cx="0" cy="0" fill="none" stroke={s.c} strokeWidth="22" strokeDasharray={`${len} ${C-len}`} strokeDashoffset={-offset}/>;
-              offset += len;
-              return el;
-            })
-        }
-      </g>
-      <text x="90" y="85" textAnchor="middle" fontFamily="Sora" fontWeight="700" fontSize="28" fill="var(--fg)">{total}</text>
-      <text x="90" y="105" textAnchor="middle" fontSize="11" fill="var(--fg-muted)">OTs activas</text>
-    </svg>
-  );
-}
-
 // ============ LEADS KANBAN ============
 function Leads() {
   const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, monedasActivas, searchQuery, campanas, roles, industrias, actividades, historialEstados, oportunidades, cotizaciones, addNotificacion, authUser } = useApp();
@@ -840,7 +507,7 @@ function Leads() {
     .filter(l => canUserSeeOwner({ viewer: authUser, ownerUserId: l.responsable_id, ownerName: l.responsable, users: usuarios, roles }))
     .filter(l =>
       l.nombre.toLowerCase().includes(query) ||
-      l.empresa_contacto.toLowerCase().includes(query) ||
+      (l.empresa_contacto || '').toLowerCase().includes(query) ||
       (l.necesidad || '').toLowerCase().includes(query)
     )
     .filter(l => !filterLeadFuente || l.fuente === filterLeadFuente)
@@ -872,7 +539,7 @@ function Leads() {
   const opcionesIndustria = industrias?.length ? industrias.map(i => i.nombre || i) : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'];
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [editandoLead, setEditandoLead] = useState(null);
-  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', numero_documento:'', tipo_documento:TIPO_DOCUMENTO_RUC, industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
+  const formNuevoBase = { nombre:'', cargo:'', linkedin_url:'', empresa_contacto:'', razon_social:'', numero_documento:'', tipo_documento:TIPO_DOCUMENTO_RUC, industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
   const [formNuevo, setFormNuevo] = useState(formNuevoBase);
   const [errores, setErrores] = useState({});
   const esPersonaNaturalForm = formNuevo.tipo_documento === TIPO_DOCUMENTO_DNI;
@@ -937,7 +604,7 @@ function Leads() {
       contacto_cargo: modalConvertir.cargo || '',
       contacto_telefono: modalConvertir.telefono || '',
       contacto_email: modalConvertir.email || '',
-      nombre_oportunidad: `${modalConvertir.necesidad?.slice(0,50) || 'Venta'} — ${modalConvertir.empresa_contacto}`,
+      nombre_oportunidad: `${String(modalConvertir.necesidad || '').split(/\r?\n/)[0].trim().slice(0,50) || 'Venta'} — ${String((modalConvertir.tipo_documento === TIPO_DOCUMENTO_DNI ? (modalConvertir.nombre || modalConvertir.nombre_contacto) : (modalConvertir.empresa_contacto || modalConvertir.nombre || modalConvertir.nombre_contacto)) || '').trim()}`,
       monto_estimado: potencial.monto || '',
       moneda: (() => { const m = potencial.moneda || empresa?.moneda || 'PEN'; const codes = monedasActivas.map(x => x.codigo); return codes.includes(m) ? m : (codes[0] || empresa?.moneda || 'PEN'); })(),
       etapa_inicial: 'calificacion'
@@ -994,6 +661,7 @@ function Leads() {
       ...formNuevoBase,
       nombre: lead.nombre || lead.nombre_contacto || '',
       cargo: lead.cargo || '',
+      linkedin_url: lead.linkedin_url || '',
       empresa_contacto: lead.empresa_contacto || lead.empresa_nombre || '',
       razon_social: lead.razon_social || '',
       numero_documento: lead.numero_documento || '',
@@ -1043,13 +711,14 @@ function Leads() {
     } : {
       nombre: formNuevo.nombre,
       cargo: formNuevo.cargo,
-      empresa_contacto: esPersonaNatural ? null : formNuevo.empresa_contacto,
+      empresa_contacto: formNuevo.empresa_contacto,
       razon_social: esPersonaNatural ? null : (formNuevo.razon_social || formNuevo.empresa_contacto),
       numero_documento: formNuevo.numero_documento || null,
       tipo_documento: formNuevo.tipo_documento,
       industria: formNuevo.industria || null,
       telefono: formNuevo.telefono,
       email: formNuevo.email,
+      linkedin_url: formNuevo.linkedin_url || null,
       fuente: formNuevo.fuente || 'Manual',
       campana_id: formNuevo.campana_id || null,
       campana: campanas.find(c => c.id === formNuevo.campana_id)?.nombre || null,
@@ -1129,9 +798,8 @@ function Leads() {
 
   const getEtiquetaTipoLead = (lead) => {
     const tipo = String(lead.tipo_documento || '').trim().toUpperCase();
-    const documento = String(lead.numero_documento || '').replace(/\D/g, '');
-    const esPersona = tipo === TIPO_DOCUMENTO_DNI || (!tipo && documento.length === 8);
-    const esEmpresa = tipo === TIPO_DOCUMENTO_RUC || (!tipo && documento.length === 11);
+    const esPersona = tipo === TIPO_DOCUMENTO_DNI;
+    const esEmpresa = tipo === TIPO_DOCUMENTO_RUC || tipo === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO;
 
     if (esPersona) return { label: 'PERSONA', color: '#be185d', background: '#fce7f3', border: '#f9a8d4' };
     if (esEmpresa) return { label: 'EMPRESA', color: '#1d4ed8', background: '#dbeafe', border: '#93c5fd' };
@@ -1530,8 +1198,8 @@ function Leads() {
                 <div style={{padding:'20px 22px 22px', background:'linear-gradient(135deg, rgba(6,182,212,0.10), rgba(26,43,74,0.04))', borderBottom:'1px solid var(--border)'}}>
                   <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, alignItems:'stretch'}}>
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
-                      <div className="eyebrow" style={{marginBottom:8}}>Empresa objetivo</div>
-                      <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{sel.empresa_contacto || 'Empresa pendiente'}</div>
+                      <div className="eyebrow" style={{marginBottom:8}}>{sel.tipo_documento === TIPO_DOCUMENTO_DNI ? "PERSONA" : "EMPRESA"}</div>
+                      <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{sel.tipo_documento === TIPO_DOCUMENTO_DNI ? (sel.nombre || sel.nombre_contacto || 'Sin nombre') : (sel.empresa_contacto || 'Empresa pendiente')}</div>
                        <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.razon_social || sel.nombre || sel.nombre_contacto || 'Sin razon social legal'}{sel.numero_documento ? ` · ${sel.tipo_documento || TIPO_DOCUMENTO_RUC} ${sel.numero_documento}` : ''}</div>
                     </div>
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
@@ -1547,7 +1215,7 @@ function Leads() {
                     <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
                       <SectionTitle icon={I.building} title="Empresa" color="var(--cyan)" />
                       <div style={{display:'grid', gap:13}}>
-                        <Field label="Nombre comercial" value={sel.empresa_contacto} strong />
+                        <Field label={sel.tipo_documento === TIPO_DOCUMENTO_DNI ? "Empresa donde labora" : "Nombre comercial"} value={sel.empresa_contacto} strong />
                          {sel.tipo_documento !== TIPO_DOCUMENTO_DNI && <Field label="Razon social legal" value={sel.razon_social} />}
                          <Field label={sel.tipo_documento || TIPO_DOCUMENTO_RUC} value={sel.numero_documento} />
                         <Field label="Industria" value={sel.industria} />
@@ -1560,6 +1228,7 @@ function Leads() {
                         <Field label="Cargo" value={sel.cargo} />
                         <Field label="Telefono" value={sel.telefono} />
                         <Field label="Email" value={sel.email} />
+                        <div><div className="eyebrow">LinkedIn</div>{(() => { try { const raw = String(sel.linkedin_url || '').trim(); if (!raw || /[\s\\]/.test(raw)) return 'Sin dato'; const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); return url.protocol === 'https:' && !url.username && !url.password ? <a href={url.href} target="_blank" rel="noopener noreferrer">{raw}</a> : raw; } catch { return sel.linkedin_url || 'Sin dato'; } })()}</div>
                       </div>
                     </div>
                   </div>
@@ -1896,6 +1565,7 @@ function Leads() {
                           style={!convForm.fuente ? {borderColor:'var(--danger)'} : {}}
                           onChange={e=>setConvForm(p=>({...p,fuente:e.target.value}))}>
                           <option value="">Seleccionar...</option>
+                          {convForm.fuente && !['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].includes(convForm.fuente) && <option value={convForm.fuente}>{convForm.fuente}</option>}
                           {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
                         </select>
                       </div>
@@ -2185,12 +1855,14 @@ function Leads() {
                 <input className={'input'+(errores.telefono?' border-danger':'')} type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formNuevo.telefono} onChange={e=>updateNuevo('telefono',sanitizePhone(e.target.value))} placeholder="9XXXXXXXX" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.telefono && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.telefono}</span>}
               </div>
+              <div className="input-group"><label>LinkedIn {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" value={formNuevo.linkedin_url} onChange={e=>updateNuevo('linkedin_url',e.target.value)} placeholder="https://linkedin.com/in/..." disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" type="email" value={formNuevo.email} onChange={e=>updateNuevo('email',e.target.value)} placeholder="contacto@empresa.pe" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>{esPersonaNaturalForm ? 'Datos del documento' : 'Datos de la empresa'}</div>
             {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde Cuentas y Contactos.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              {esPersonaNaturalForm && <div className="input-group"><label>Empresa donde labora</label><input className="input" value={formNuevo.empresa_contacto} onChange={e=>updateNuevo('empresa_contacto',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>}
               {!esPersonaNaturalForm && <>
               <div className="input-group">
                 <label>Nombre comercial * {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label>
@@ -2249,6 +1921,7 @@ function Leads() {
               </div>
               <div className="input-group"><label>Fuente {campoBloqueadoConvertido && <LockHint>Trazabilidad del lead</LockHint>}</label><select className="select" value={formNuevo.fuente} onChange={e=>updateNuevo('fuente',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="">Seleccionar...</option>
+                {formNuevo.fuente && !['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].includes(formNuevo.fuente) && <option value={formNuevo.fuente}>{formNuevo.fuente}</option>}
                 {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
               </select></div>
               <div className="input-group">
@@ -6037,6 +5710,7 @@ function OSCliente() {
 
 function Marketing() {
   const { campanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana, leads, oportunidades, empresa, monedasActivas } = useApp();
+  const [audiencia, setAudiencia] = useState(null);
   const [tab, setTab] = useState('campanas');
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -6044,12 +5718,12 @@ function Marketing() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const TIPOS = ['ads', 'email', 'evento', 'outbound', 'contenido', 'referidos'];
+  const TIPOS = ['ads', 'email', 'evento', 'outbound', 'contenido', 'referidos', 'base_propia'];
   const CANALES = ['Google Ads', 'LinkedIn', 'Email', 'WhatsApp', 'Evento', 'Campo', 'Otro'];
   const ESTADOS_LABEL = { borrador: 'Borrador', activa: 'Activa', pausada: 'Pausada', finalizada: 'Finalizada' };
   const estadoBadge = { borrador: 'badge-gray', activa: 'badge-green', pausada: 'badge-orange', finalizada: 'badge-cyan' };
 
-  const formBase = { nombre: '', tipo: 'ads', canal: 'Google Ads', fecha_inicio: '', fecha_fin: '', presupuesto: '', moneda: empresa?.moneda || 'PEN', estado: 'borrador', descripcion: '' };
+  const formBase = { nombre: '', tipo: 'ads', canal: 'Google Ads', fecha_inicio: '', fecha_fin: '', presupuesto: '', moneda: empresa?.moneda || 'PEN', estado: 'borrador', descripcion: '', mensaje_base: '', fuente_codigo: '' };
   const [form, setForm] = useState(formBase);
   const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
 
@@ -6076,7 +5750,7 @@ function Marketing() {
   const roiGlobal = presupuestoTotal > 0 ? ((ingAtribTotal - presupuestoTotal) / presupuestoTotal * 100).toFixed(0) : null;
 
   const abrirNuevo = () => { setForm(formBase); setFormError(''); setPanelNuevo(true); setEditando(null); setDetalle(null); };
-  const abrirEditar = (c) => { setForm({ nombre: c.nombre, tipo: c.tipo, canal: c.canal, fecha_inicio: c.fecha_inicio || '', fecha_fin: c.fecha_fin || '', presupuesto: c.presupuesto || '', moneda: c.moneda || 'PEN', estado: c.estado, descripcion: c.descripcion || '' }); setFormError(''); setEditando(c); setPanelNuevo(false); setDetalle(null); };
+  const abrirEditar = (c) => { setForm({ nombre: c.nombre, tipo: c.tipo, canal: c.canal, fecha_inicio: c.fecha_inicio || '', fecha_fin: c.fecha_fin || '', presupuesto: c.presupuesto || '', moneda: c.moneda || 'PEN', estado: c.estado, descripcion: c.descripcion || '', mensaje_base: c.mensaje_base || '', fuente_codigo: c.fuente_codigo || '' }); setFormError(''); setEditando(c); setPanelNuevo(false); setDetalle(null); };
   const cerrar = () => { setPanelNuevo(false); setEditando(null); setFormError(''); };
 
   const confirmarEliminar = async (c) => {
@@ -6101,12 +5775,14 @@ function Marketing() {
       else await crearCampana(datos);
       cerrar();
     } catch (err) {
-      setFormError(err?.message || 'No se pudo guardar la campana.');
+      setFormError(err?.code === '23505' || /campanas_fuente_codigo_uidx/i.test(err?.message || '') ? 'El código de fuente ya está en uso por otra campaña.' : (err?.message || 'No se pudo guardar la campaña.'));
     }
     finally { setSaving(false); }
   };
 
   const panelOpen = panelNuevo || !!editando;
+
+  if (audiencia) return <CampanaAudiencia campana={campanas.find(c => c.id === audiencia.id) || audiencia} onVolver={() => setAudiencia(null)} />;
 
   return (
     <>
@@ -6141,7 +5817,7 @@ function Marketing() {
                       return (
                         <tr key={c.id} className="hover-row" onClick={() => { setDetalle(c); cerrar(); }} style={{cursor:'pointer'}}>
                           <td><div style={{fontWeight:600,fontSize:13}}>{c.nombre}</div><div className="text-muted" style={{fontSize:11}}>{c.descripcion?.slice(0,55)}{(c.descripcion?.length||0)>55?'…':''}</div></td>
-                          <td><span className="badge badge-gray" style={{fontSize:11,textTransform:'capitalize'}}>{c.tipo}</span><span style={{marginLeft:6,fontSize:11,color:'var(--fg-muted)'}}>{c.canal}</span></td>
+                          <td><span className="badge badge-gray" style={{fontSize:11,textTransform:'capitalize'}}>{c.tipo === 'base_propia' ? 'Base propia' : c.tipo}</span><span style={{marginLeft:6,fontSize:11,color:'var(--fg-muted)'}}>{c.canal}</span></td>
                           <td className="text-muted" style={{fontSize:12}}>{c.fecha_inicio}{c.fecha_fin ? ' → '+c.fecha_fin : ''}</td>
                           <td className="num">{money(c.presupuesto)}</td>
                           <td style={{fontWeight:700}}>{m.leadsGen}</td>
@@ -6149,6 +5825,7 @@ function Marketing() {
                           <td><span className={'badge '+estadoBadge[c.estado]} style={{textTransform:'capitalize'}}>{ESTADOS_LABEL[c.estado]}</span></td>
                           <td onClick={e=>e.stopPropagation()}>
                             <div className="row" style={{gap:6}}>
+                              <button className="btn btn-sm btn-secondary" onClick={()=>setAudiencia(c)}>Audiencia</button>
                               <button className="btn btn-sm btn-secondary" onClick={()=>abrirEditar(c)}>Editar</button>
                               {c.estado==='borrador'&&<button className="btn btn-sm btn-primary" onClick={()=>cambiarEstadoCampana(c.id,'activa')}>Activar</button>}
                               {c.estado==='activa'&&<button className="btn btn-sm btn-secondary" onClick={()=>cambiarEstadoCampana(c.id,'pausada')}>Pausar</button>}
@@ -6204,7 +5881,7 @@ function Marketing() {
               <div style={{padding:'0 24px 24px'}}>
                 <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
                   <span className={'badge '+estadoBadge[c.estado]}>{ESTADOS_LABEL[c.estado]}</span>
-                  <span className="badge badge-gray" style={{textTransform:'capitalize'}}>{c.tipo}</span>
+                  <span className="badge badge-gray" style={{textTransform:'capitalize'}}>{c.tipo === 'base_propia' ? 'Base propia' : c.tipo}</span>
                   <span className="badge badge-gray">{c.canal}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
@@ -6236,6 +5913,7 @@ function Marketing() {
                   </>
                 )}
                 <div className="row" style={{gap:8,marginTop:16}}>
+                  <button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>setAudiencia(c)}>Audiencia</button>
                   <button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>abrirEditar(c)}>Editar</button>
                   {c.estado==='borrador'&&<button className="btn btn-primary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'activa');setDetalle({...c,estado:'activa'});}}>Activar</button>}
                   {c.estado==='activa'&&<button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'pausada');setDetalle({...c,estado:'pausada'});}}>Pausar</button>}
@@ -6260,11 +5938,6 @@ function Marketing() {
               <button className="icon-btn" onClick={cerrar}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardar}>
-              {formError && (
-                <div style={{padding:'10px 12px', border:'1px solid rgba(239,68,68,0.35)', background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderRadius:8, fontSize:12, marginBottom:14}}>
-                  {formError}
-                </div>
-              )}
               <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--fg-muted)'}}>Datos de la campaña</div>
               <div className="grid-2" style={{gap:14,marginBottom:20}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
@@ -6273,7 +5946,7 @@ function Marketing() {
                 </div>
                 <div className="input-group">
                   <label>Tipo</label>
-                  <select className="select" value={form.tipo} onChange={e=>upd('tipo',e.target.value)}>{TIPOS.map(t=><option key={t} value={t}>{t}</option>)}</select>
+                  <select className="select" value={form.tipo} onChange={e=>upd('tipo',e.target.value)}>{TIPOS.map(t=><option key={t} value={t}>{t === 'base_propia' ? 'Base propia' : t}</option>)}</select>
                 </div>
                 <div className="input-group">
                   <label>Canal</label>
@@ -6302,10 +5975,16 @@ function Marketing() {
                   <select className="select" value={form.estado} onChange={e=>upd('estado',e.target.value)}>{Object.entries(ESTADOS_LABEL).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Código de fuente (opcional)</label>
+                  <input className="input" value={form.fuente_codigo} onChange={e=>upd('fuente_codigo',e.target.value)}/>
+                  <small>Debe coincidir con la fuente que envía la landing.</small>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Descripción</label>
                   <textarea className="input" rows={3} value={form.descripcion} onChange={e=>upd('descripcion',e.target.value)} placeholder="Objetivo y público de la campaña"/>
                 </div>
               </div>
+              {formError && <div role="alert" style={{color:'var(--danger)', marginBottom:10}}>{formError}</div>}
               <div className="row" style={{justifyContent:'flex-end',gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrar} disabled={saving}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : (editando ? 'Guardar cambios' : 'Crear campaña')}</button>
@@ -7563,4 +7242,4 @@ function AgendaComercial() {
   );
 }
 
-export { Dashboard, Leads, Marketing, BIComercial, BIOperativo, Pipeline, Actividades, AgendaComercial, OSCliente };
+export { Leads, Marketing, BIComercial, BIOperativo, Pipeline, Actividades, AgendaComercial, OSCliente };

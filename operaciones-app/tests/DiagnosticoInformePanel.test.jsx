@@ -11,13 +11,13 @@ vi.mock('../src/zahory-mock/pages/InformePdf.jsx', () => ({ generarPdfInforme: (
 import { DiagnosticoInformePanel } from '../src/zahory-mock/pages/DiagnosticoInformePanel.jsx';
 
 const draft = options => ({ id: 'inf-1', empresa_id: 'e1', estado: 'borrador', opciones: { conclusion: '', conclusion_origen: 'manual', conclusion_confirmada: false, incluir_mediciones: false, mostrar_horas: false, ocultar_conformes: false, ...options } });
-const diagnosis = { id: 'd1', recepcion_id: 'r1', tipo: 'fabricacion', estado: 'emitido', hallazgos: [], lineas: [] };
+const diagnosis = { id: 'd1', recepcion_id: 'r1', tipo: 'fabricacion', estado: 'borrador', hallazgos: [], lineas: [] };
 let renderer;
 const text = node => node?.children?.map(child => typeof child === 'string' ? child : text(child)).join('') || '';
 const byLabel = label => renderer.root.findAll(node => node.type === 'label' && text(node).includes(label))[0];
 const button = label => renderer.root.findAllByType('button').find(node => text(node).trim() === label);
 async function render(overrides = {}) {
-  await act(async () => { renderer = create(<DiagnosticoInformePanel diagnostico={diagnosis} catalogos={{}} cabecera={{}} puedeEditar onClose={vi.fn()} {...overrides} />); await Promise.resolve(); });
+  await act(async () => { renderer = create(<DiagnosticoInformePanel diagnostico={diagnosis} catalogos={{}} cabecera={{}} puedeEditar puedeEmitirDiagnostico onEmitirDiagnostico={vi.fn(async () => true)} onClose={vi.fn()} {...overrides} />); await Promise.resolve(); });
 }
 
 beforeEach(() => {
@@ -55,6 +55,21 @@ describe('DiagnosticoInformePanel', () => {
     expect(api.obtenerOCrearBorrador).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByProps({ id: 'dx-inf-conclusion' }).props.disabled).toBe(true);
     expect(button('Guardar borrador')).toBeUndefined();
+  });
+
+  it('con el diagnóstico emitido carga el informe vigente sin pedir un borrador nuevo', async () => {
+    const emitido = { id: 'v1', estado: 'emitido', version: 1, opciones: draft().opciones, snapshot: { version: 1, cabecera: {} } };
+    api.obtenerInformeVigente.mockResolvedValue({ borrador: null, emitidos: [emitido] });
+    await render({ diagnostico: { ...diagnosis, tipo: 'mantenimiento', estado: 'emitido' } });
+    expect(api.obtenerOCrearBorrador).not.toHaveBeenCalled();
+    expect(api.obtenerInformeVigente).toHaveBeenCalledWith('r1');
+    expect(renderer.root.findAll(node => node.props?.role === 'alert').map(text).join(' ')).not.toContain('No existe un diagnóstico');
+    expect(button('Emitir informe')).toBeUndefined();
+    renderer.unmount(); renderer = null;
+    api.obtenerInformeVigente.mockResolvedValue({ borrador: draft(), emitidos: [emitido] });
+    await render({ diagnostico: { ...diagnosis, estado: 'emitido' } });
+    expect(api.obtenerOCrearBorrador).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ id: 'dx-inf-conclusion' }).props.disabled).toBe(false);
   });
 
   it('deshabilita confirmación con texto sin guardar y confirma con un UPDATE independiente', async () => {

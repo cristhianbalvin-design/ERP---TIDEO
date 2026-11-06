@@ -43,7 +43,6 @@ import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { portalFase2Service, sha256Text, plantillaConstanciaHtml } from './services/portalFase2Service.js';
 import { biometricoService } from './services/biometricoService.js';
-import { whatsappService } from './services/whatsappService.js';
 import { geofencingService } from './services/geofencingService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
@@ -498,9 +497,6 @@ export function AppProvider({ children }) {
   const [portalFirmaOtpIntentos, setPortalFirmaOtpIntentos] = useState(useSupabase ? [] : (MOCK.portalFirmaOtpIntentos || []));
   const [biometricoPerfiles, setBiometricoPerfiles] = useState(useSupabase ? [] : (MOCK.biometricoPerfiles || []));
   const [biometricoLotes, setBiometricoLotes] = useState(useSupabase ? [] : (MOCK.biometricoLotes || []));
-  const [whatsappPlantillas, setWhatsappPlantillas] = useState(useSupabase ? [] : (MOCK.whatsappPlantillas || []));
-  const [whatsappMatriz, setWhatsappMatriz] = useState(useSupabase ? [] : (MOCK.whatsappMatriz || []));
-  const [whatsappEnvios, setWhatsappEnvios] = useState(useSupabase ? [] : (MOCK.whatsappEnvios || []));
   const [geocercas, setGeocercas] = useState(useSupabase ? [] : (MOCK.geocercas || []));
   const [geocercaAsignaciones, setGeocercaAsignaciones] = useState(useSupabase ? [] : (MOCK.geocercaAsignaciones || []));
   const [ubicacionConsentimientos, setUbicacionConsentimientos] = useState(useSupabase ? [] : (MOCK.ubicacionConsentimientos || []));
@@ -1302,16 +1298,10 @@ export function AppProvider({ children }) {
         } catch (_err) { /* fase 2 portal empleado puede no estar migrada */ }
 
         try {
-          const [bioData, waData] = await Promise.all([
-            biometricoService.listar(empresa.id),
-            whatsappService.listar(empresa.id),
-          ]);
+          const bioData = await biometricoService.listar(empresa.id);
           if (mounted) {
             setBiometricoPerfiles(bioData.perfiles || []);
             setBiometricoLotes(bioData.lotes || []);
-            setWhatsappPlantillas(waData.templates || []);
-            setWhatsappMatriz(waData.rutas || []);
-            setWhatsappEnvios(waData.logs || []);
           }
         } catch (_err) { /* ola 5A integraciones puede no estar migrada */ }
 
@@ -6504,33 +6494,21 @@ export function AppProvider({ children }) {
     const now = new Date().toISOString().split('T')[0];
     const monedaDatos = String(datos.moneda || 'PEN').trim().toUpperCase();
     if (datos.tipo === 'transferencia') {
-      const cuentaOrigen = (cuentasBancarias || []).find(c => c.id === datos.cuenta_origen_id);
-      const cuentaDestino = (cuentasBancarias || []).find(c => c.id === datos.cuenta_destino_id);
-      const base = { empresa_id: empresa.id, fecha: datos.fecha || now, descripcion: datos.descripcion || 'Transferencia entre cuentas', monto: Number(datos.monto || 0), categoria: 'transferencia', es_manual: true, referencia: datos.referencia || null, creado_en: new Date().toISOString() };
-      const movE = {
-        ...base,
-        id: generateId('mov'),
-        tipo: 'egreso',
-        moneda: cuentaOrigen?.moneda || monedaDatos,
-        cuenta_bancaria_id: datos.cuenta_origen_id || null,
-        tc_aplicado: datos.cuenta_origen_id ? 1 : null,
-        monto_en_moneda_cuenta: datos.cuenta_origen_id ? Number(datos.monto || 0) : null,
-      };
-      const movI = {
-        ...base,
-        id: generateId('mov'),
-        tipo: 'ingreso',
-        moneda: cuentaDestino?.moneda || monedaDatos,
-        cuenta_bancaria_id: datos.cuenta_destino_id || null,
-        tc_aplicado: datos.cuenta_destino_id ? 1 : null,
-        monto_en_moneda_cuenta: datos.cuenta_destino_id ? Number(datos.monto || 0) : null,
-      };
-      setMovimientosTesoreria(prev => [...prev, movE, movI]);
-      if (isSupabaseConfigured()) {
-        finSync(async () => {
-          await finanzasService.registrarMovimientoTesoreria(movE);
-          await finanzasService.registrarMovimientoTesoreria(movI);
-        });
+      if (!isSupabaseConfigured()) throw new Error('La transferencia requiere conexión con Supabase.');
+      const resultado = await finanzasService.registrarTransferenciaTesoreria({
+        empresa_id: empresa.id, cuenta_origen_id: datos.cuenta_origen_id,
+        cuenta_destino_id: datos.cuenta_destino_id, monto_origen: Number(datos.monto),
+        fecha: datos.fecha || now, tipo_cambio: datos.tipo_cambio || null,
+        referencia: datos.referencia || null, descripcion: datos.descripcion || null,
+      });
+      try {
+        const sb = await getSupabaseClient();
+        const { data, error } = await sb.from('movimientos_tesoreria').select('*')
+          .eq('empresa_id', empresa.id).in('id', [resultado.movimiento_egreso_id, resultado.movimiento_ingreso_id]);
+        if (error || data?.length !== 2) throw error || new Error('Movimientos incompletos');
+        setMovimientosTesoreria(prev => [...data, ...prev.filter(m => !data.some(n => n.id === m.id))]);
+      } catch (_) {
+        addNotificacion('Transferencia registrada. Actualiza la pantalla para ver los movimientos.');
       }
     } else {
       const cuentaSeleccionada = (cuentasBancarias || []).find(c =>
@@ -11892,26 +11870,6 @@ export function AppProvider({ children }) {
     return data;
   };
 
-  const guardarWhatsappPlantillaCtx = async (plantilla) => {
-    const data = await whatsappService.guardarPlantilla(empresa?.id || plantilla.empresa_id || 'emp_001', plantilla);
-    setWhatsappPlantillas(prev => data.id && prev.some(t => t.id === data.id) ? prev.map(t => t.id === data.id ? data : t) : [data, ...prev]);
-    addNotificacion('Plantilla WhatsApp guardada.');
-    return data;
-  };
-
-  const guardarWhatsappRutaCtx = async (ruta) => {
-    const data = await whatsappService.guardarRuta(empresa?.id || ruta.empresa_id || 'emp_001', ruta);
-    setWhatsappMatriz(prev => data.id && prev.some(r => r.id === data.id) ? prev.map(r => r.id === data.id ? data : r) : [data, ...prev]);
-    addNotificacion('Matriz WhatsApp actualizada.');
-    return data;
-  };
-
-  const registrarWhatsappSimuladoCtx = async (envio) => {
-    const data = await whatsappService.encolarSimulado(empresa?.id || envio.empresa_id || 'emp_001', envio);
-    setWhatsappEnvios(prev => [data, ...prev]);
-    return data;
-  };
-
   const guardarGeocercaCtx = async (geocerca) => {
     const data = await geofencingService.guardarGeocerca(empresa?.id || geocerca.empresa_id || 'emp_001', geocerca);
     setGeocercas(prev => data.id && prev.some(g => g.id === data.id) ? prev.map(g => g.id === data.id ? data : g) : [data, ...prev]);
@@ -11970,6 +11928,15 @@ export function AppProvider({ children }) {
     ? cuentas.filter(cuenta => cuenta?.empresa_id === empresa.id)
     : cuentas;
 
+  const recargarLeads = async () => {
+    const sb = await getSupabaseClient();
+    const comprobacion = await sb.from('leads').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id);
+    if (comprobacion.error) throw comprobacion.error;
+    const data = await loadCrmFromSupabase(sb, empresa.id);
+    if (!data) throw new Error('No se pudieron cargar los leads.');
+    setLeads(recalcularDiasSinActividadLeads(data.leads || [], data.actividades || [], data.agendaEventos || []));
+  };
+
   const contextValue = {
     isDataLoaded,
     isRrhhLoaded,
@@ -11990,7 +11957,7 @@ export function AppProvider({ children }) {
     usuarios, setUsuarios,
     posiciones, posicionesUsuarios, unidadesOrganizacionales,
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
-    leads, setLeads, updateLeadState, historialEstados,
+    leads, setLeads, recargarLeads, updateLeadState, historialEstados,
     campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
     cuentas: cuentasDelTenant, setCuentas, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
@@ -12132,9 +12099,6 @@ export function AppProvider({ children }) {
     portalFirmaOtpIntentos, setPortalFirmaOtpIntentos,
     biometricoPerfiles, setBiometricoPerfiles,
     biometricoLotes, setBiometricoLotes,
-    whatsappPlantillas, setWhatsappPlantillas,
-    whatsappMatriz, setWhatsappMatriz,
-    whatsappEnvios, setWhatsappEnvios,
     geocercas, setGeocercas,
     geocercaAsignaciones, setGeocercaAsignaciones,
     ubicacionConsentimientos, setUbicacionConsentimientos,
@@ -12173,7 +12137,6 @@ export function AppProvider({ children }) {
     registrarAcuseBoletaPortalCtx, registrarVisualizacionBoletaPortalCtx,
     iniciarOtpFirmaPortalCtx, validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
     guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
-    guardarWhatsappPlantillaCtx, guardarWhatsappRutaCtx, registrarWhatsappSimuladoCtx,
     guardarGeocercaCtx, eliminarGeocercaCtx, guardarGeocercaAsignacionCtx, registrarConsentimientoUbicacionCtx, evaluarSarNoLlegadaCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,

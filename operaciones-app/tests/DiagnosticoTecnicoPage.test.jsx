@@ -27,12 +27,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.session }));
 vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => null }));
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
-vi.mock('../src/services/diagnosticoFabricacionService.js', async importOriginal => ({ ...(await importOriginal()), listarPiezasFabricacion: vi.fn(async () => mocks.piezas || []), guardarReferenciaCliente: vi.fn(async () => ({})) }));
+vi.mock('../src/services/diagnosticoFabricacionService.js', async importOriginal => ({ ...(await importOriginal()), listarPiezasFabricacion: vi.fn(async () => mocks.piezas || []), guardarReferenciaCliente: vi.fn(async () => ({})),
+  listarDibujosCatalogo: vi.fn(async () => [{ id: 'comp-1', nombre: 'Eje', svg: '<svg width="100" height="50"></svg>', zonas: [] }]),
+  listarFichasFabricacion: vi.fn(async () => []), guardarEmisorFicha: vi.fn(async () => ({})),
+  emitirDiagnosticoFabricacion: vi.fn(async (id, ficha) => { mocks.fichaEmitida = ficha; return mocks.service.emitirDiagnosticoTecnico(id); }) }));
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => mocks.supabase }));
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   usuarioPuedeInforme: mocks.informePermission,
   generarConclusionIA: mocks.generateConclusion,
   obtenerOCrearBorrador: mocks.getDraft,
+  obtenerIdentidadEmpresa: async () => null,
 }));
 vi.mock('../src/zahory-mock/pages/DiagnosticoInformePanel.jsx', () => ({
   DiagnosticoInformePanel: props => <div className="mock-report-panel">{props.encabezadoControles}<button type="button" className="dx-informe-emitir" onClick={async () => { const result = await props.onEmitirDiagnostico?.(); await props.onRecargarDiagnostico?.(result); }}>Emitir informe</button></div>,
@@ -1001,7 +1005,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
       return { ...detail('one', 'fabricacion', [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [] }]), estado: loads > 1 ? 'emitido' : 'borrador' };
     });
     await renderPage();
-    mocks.piezas = [{ id: 'pieza-1', nombre: 'Eje', cantidad: 1, material_id: 'mat-1', material: { descripcion: 'Acero' }, plano_origen: 'catalogo', componente_catalogo_id: 'comp-1', caracteristicas: [] }];
+    mocks.piezas = [{ id: 'pieza-1', nombre: 'Eje', cantidad: 1, material_id: 'mat-1', consumo_material: 0.8, material: { descripcion: 'Acero', unidad: 'm' }, plano_origen: 'catalogo', componente_catalogo_id: 'comp-1', caracteristicas: [] }];
     await openFirstRow(100);
     expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
     await goToPaso('Revisión e informe');
@@ -1011,6 +1015,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { emit.props.onClick(); });
     await act(async () => { buttonContaining(renderer, 'Confirmar').props.onClick(); await wait(30); });
     expect(mocks.service.emitirDiagnosticoTecnico).toHaveBeenCalledTimes(1);
+    expect(mocks.fichaEmitida).toMatchObject({ tipo: 'fabricacion', borrador: false, piezas: [{ nombre: 'Eje', total_material: 0.8, dibujo_nombre: 'Eje' }] });
     expect(loads).toBeGreaterThanOrEqual(2);
     expect(textOf(renderer.root)).toMatch(/emitidos son de solo lectura\./);
     expect(buttonContaining(renderer, 'Agregar')).toBeFalsy();
@@ -1262,10 +1267,23 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(buttonByText(renderer, 'Guardar cambios').props.disabled).toBe(true);
   });
 
+  it('abre Mantenimiento en Hallazgos si es borrador y en Diagnóstico e informe si está emitido', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('two', 'mantenimiento'));
+    await renderPage({ trabajo: 'two' });
+    await act(async () => { await wait(100); });
+    expect(textOf(renderer.root)).toContain('Paso 4 de 6');
+    renderer.unmount(); renderer = null;
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({ ...detail('two', 'mantenimiento'), estado: 'emitido' });
+    await renderPage({ trabajo: 'two' });
+    await act(async () => { await wait(100); });
+    expect(textOf(renderer.root)).toContain('Paso 6 de 6');
+  });
+
   it('shows graceful placeholders when the initial-data migration is missing', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({ ...detail('two', 'mantenimiento'), datos_iniciales_migracion_disponible: false });
     await renderPage();
     await act(async () => { listRows()[1].props.onClick(); await wait(100); });
+    await act(async () => { renderer.root.findAllByProps({ className: 'dx-work-steps' })[0].findAllByType('button')[0].props.onClick(); await wait(0); });
     expect(textOf(renderer.root)).toContain('Datos iniciales: —');
     await act(async () => { renderer.root.findAllByProps({ className: 'dx-work-steps' })[0].findAllByType('button')[2].props.onClick(); await wait(0); });
     expect(buttonByText(renderer, 'Guardar cambios')).toBeFalsy();

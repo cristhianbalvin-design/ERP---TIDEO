@@ -5,7 +5,7 @@ import { catalogoComponentesService } from '../../../src/services/catalogoCompon
 const BUCKET = 'diagnostico-planos';
 const MAX_BYTES = 10 * 1024 * 1024;
 const MIME_PLANO = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-const PIEZA_COLUMNS = 'id,empresa_id,diagnostico_id,orden,nombre,cantidad,material_id,observaciones,plano_origen,plano_ruta,plano_imagen_ruta,plano_nombre_original,plano_mime,plano_pagina,plano_ancho,plano_alto,componente_catalogo_id,created_at,updated_at';
+const PIEZA_COLUMNS = 'id,empresa_id,diagnostico_id,orden,nombre,cantidad,material_id,observaciones,plano_origen,plano_ruta,plano_imagen_ruta,plano_nombre_original,plano_mime,plano_pagina,plano_ancho,plano_alto,componente_catalogo_id,consumo_material,created_at,updated_at';
 const CARACTERISTICA_COLUMNS = 'id,empresa_id,pieza_id,numero,nombre,tipo,nominal,tolerancia_menos,tolerancia_mas,unidad,critica,pos_x,pos_y,zona_id,medida_id,created_at,updated_at';
 const MATERIAL_COLUMNS = 'id,codigo,descripcion,unidad';
 
@@ -30,12 +30,26 @@ export function mensajeErrorFabricacion(error) {
 }
 const toError = error => new Error(mensajeErrorFabricacion(error));
 
+// Una vez emitida una ficha, sus planos se conservan: la versión congelada los sigue usando.
+async function conservaPlanos(supabase, diagnosticoId) {
+  if (!diagnosticoId) return true;
+  const { count, error } = await supabase.from('diagnostico_fabricacion_fichas').select('id', { count: 'exact', head: true }).eq('diagnostico_id', diagnosticoId);
+  return error ? true : (count || 0) > 0;
+}
+
 const numero = value => (value === '' || value === null || value === undefined ? null : Number(value));
+const consumoValido = value => {
+  const valor = numero(String(value ?? '').replace(',', '.'));
+  if (valor === null) return null;
+  if (!(valor > 0)) throw new Error('El consumo por pieza debe ser mayor que cero.');
+  return valor;
+};
 
 export function normalizarPieza(row) {
   return {
     ...row,
     cantidad: Number(row.cantidad || 0),
+    consumo_material: row.consumo_material === null || row.consumo_material === undefined || row.consumo_material === '' ? null : Number(row.consumo_material),
     material: row.material || null,
     caracteristicas: (row.caracteristicas || []).map(normalizarCaracteristica).sort((a, b) => a.numero - b.numero),
   };
@@ -54,6 +68,7 @@ export function faltantesPieza(pieza) {
   const faltan = [];
   if (!pieza?.material_id) faltan.push('material');
   if (!pieza?.plano_origen) faltan.push('plano');
+  if (pieza?.material_id && !(Number(pieza?.consumo_material) > 0)) faltan.push('consumo');
   return faltan;
 }
 
@@ -114,6 +129,7 @@ export async function crearPiezaFabricacion(empresaId, diagnosticoId, datos) {
     nombre,
     cantidad,
     material_id: datos?.material_id || null,
+    consumo_material: consumoValido(datos?.consumo_material),
     observaciones: String(datos?.observaciones || '').trim() || null,
   }).select(PIEZA_COLUMNS).single();
   if (error) throw toError(error);
@@ -135,6 +151,7 @@ export async function actualizarPiezaFabricacion(empresaId, piezaId, datos) {
     cambios.cantidad = cantidad;
   }
   if (Object.prototype.hasOwnProperty.call(datos, 'material_id')) cambios.material_id = datos.material_id || null;
+  if (Object.prototype.hasOwnProperty.call(datos, 'consumo_material')) cambios.consumo_material = consumoValido(datos.consumo_material);
   if (Object.prototype.hasOwnProperty.call(datos, 'observaciones')) cambios.observaciones = String(datos.observaciones || '').trim() || null;
   const { data, error } = await getSupabaseClient().from('diagnostico_fabricacion_piezas')
     .update(cambios).eq('empresa_id', empresaId).eq('id', piezaId).select(PIEZA_COLUMNS).single();
@@ -149,7 +166,7 @@ export async function eliminarPiezaFabricacion(empresaId, pieza) {
   const { error } = await supabase.from('diagnostico_fabricacion_piezas').delete().eq('empresa_id', empresaId).eq('id', pieza.id);
   if (error) throw toError(error);
   const rutas = [...new Set([pieza.plano_ruta, pieza.plano_imagen_ruta].filter(Boolean))];
-  if (rutas.length) await supabase.storage.from(BUCKET).remove(rutas).catch(() => {});
+  if (rutas.length && !(await conservaPlanos(supabase, pieza.diagnostico_id))) await supabase.storage.from(BUCKET).remove(rutas).catch(() => {});
 }
 
 export async function buscarMaterialesCatalogo(empresaId, texto = '') {
@@ -248,7 +265,7 @@ export async function subirPlanoPieza(empresaId, diagnosticoId, pieza, archivo, 
     }).eq('empresa_id', empresaId).eq('id', pieza.id).select(PIEZA_COLUMNS).single();
     if (error) throw toError(error);
     const anteriores = [...new Set([pieza.plano_ruta, pieza.plano_imagen_ruta].filter(ruta => ruta && !subidas.includes(ruta)))];
-    if (anteriores.length) await bucket.remove(anteriores).catch(() => {});
+    if (anteriores.length && !(await conservaPlanos(supabase, pieza.diagnostico_id))) await bucket.remove(anteriores).catch(() => {});
     return data;
   } catch (uploadError) {
     if (subidas.length) await bucket.remove(subidas).catch(() => {});
@@ -274,7 +291,7 @@ export async function usarDibujoCatalogoPieza(empresaId, pieza, componenteId) {
   }).eq('empresa_id', empresaId).eq('id', pieza.id).select(PIEZA_COLUMNS).single();
   if (error) throw toError(error);
   const anteriores = [...new Set([pieza.plano_ruta, pieza.plano_imagen_ruta].filter(Boolean))];
-  if (anteriores.length) await supabase.storage.from(BUCKET).remove(anteriores).catch(() => {});
+  if (anteriores.length && !(await conservaPlanos(supabase, pieza.diagnostico_id))) await supabase.storage.from(BUCKET).remove(anteriores).catch(() => {});
   return data;
 }
 
@@ -329,4 +346,44 @@ export async function guardarReferenciaCliente(empresaId, diagnosticoId, referen
     .select('id,referencia_cliente').single();
   if (error) throw toError(error);
   return data;
+}
+
+// ---- Etapa 3: emisor y ficha técnica ----
+
+export async function guardarEmisorFicha(empresaId, diagnosticoId, emisor) {
+  requireEmpresa(empresaId);
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const valor = emisor ? {
+    persona_id: emisor.id || emisor.persona_id || null,
+    personal_tipo: emisor.personal_tipo || null,
+    nombre: emisor.nombre || '',
+    cargo: emisor.cargo || '',
+    firma_bucket: emisor.firma_bucket || null,
+    firma_storage_path: emisor.firma_storage_path || null,
+    firma_url: emisor.firma_url || null,
+  } : null;
+  const { data, error } = await getSupabaseClient().from('diagnosticos_tecnicos')
+    .update({ ficha_emisor: valor })
+    .eq('empresa_id', empresaId).eq('id', diagnosticoId).eq('estado', 'borrador')
+    .select('id,ficha_emisor').single();
+  if (error) throw toError(error);
+  return data;
+}
+
+export async function listarFichasFabricacion(empresaId, diagnosticoId) {
+  requireEmpresa(empresaId);
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const { data, error } = await getSupabaseClient().from('diagnostico_fabricacion_fichas')
+    .select('id,version,snapshot,emitido_en').eq('empresa_id', empresaId).eq('diagnostico_id', diagnosticoId)
+    .order('version', { ascending: false });
+  if (error) throw toError(error);
+  return data || [];
+}
+
+export async function emitirDiagnosticoFabricacion(diagnosticoId, ficha) {
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const { data, error } = await getSupabaseClient().rpc('emitir_diagnostico_fabricacion', { p_id: diagnosticoId, p_ficha: ficha });
+  if (error) throw toError(error);
+  const fila = Array.isArray(data) ? data[0] : data;
+  return fila ? { id: fila.id, estado: fila.estado, emitido_por: fila.emitido_por, emitido_en: fila.emitido_en } : null;
 }
