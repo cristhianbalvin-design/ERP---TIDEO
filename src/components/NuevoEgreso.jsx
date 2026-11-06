@@ -5,6 +5,7 @@ import { FileUpload } from './FileUpload.jsx';
 import { finanzasService } from '../services/finanzasService.js';
 import { cajaChicaService } from '../services/cajaChicaService.js';
 import { convertirEgresoCajaChica } from '../services/cajaChicaConversion.js';
+import { cambiosNoGastoEdicion, cxpPendiente } from '../services/egresoNoGastoEdicion.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
@@ -627,9 +628,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             .from('tipos_gasto_empresa')
             .select('*')
             .eq('empresa_id', empresa.id)
-            .eq('activo', true)
             .order('orden');
-          if (origen === 'caja_chica') tiposQuery.eq('aplica_caja_chica', true);
+          if (!esEdicion) tiposQuery.eq('activo', true);
+          if (origen === 'caja_chica' && !esEdicion) tiposQuery.eq('aplica_caja_chica', true);
           const [{ data: tiposData, error: tiposError }, { data: catsData, error: categoriasError }] = await Promise.all([
             tiposQuery,
             sb.from('er_categorias').select('id, nombre, seccion, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true).order('orden'),
@@ -637,7 +638,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           if (tiposError) throw tiposError;
           const catalogoDisponible = !categoriasError && Boolean(catsData?.length);
           const tiposBase = (tiposData?.length ? tiposData : TIPOS_GASTO_DEFECTO)
-            .filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+            .filter(t => esEdicion || origen !== 'caja_chica' || t.aplica_caja_chica !== false);
           const capMap = Object.fromEntries((catalogoDisponible ? catsData : []).map(c => [c.nombre, !!c.es_capitalizacion]));
           const tipos = tiposBase.map(t => ({
               ...t,
@@ -674,10 +675,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   useEffect(() => {
     if (!registroEditar?.id || !tiposGasto.length) return;
-    const tipoExistente = tiposGasto.find(tipo => tipo.activo !== false && tipo.nombre === registroEditar.subcategoria)
+    const tipoExistente = tiposGasto.find(tipo => tipo.nombre === registroEditar.subcategoria)
       || tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
     if (tipoExistente && tipoSel?.id !== tipoExistente.id) setTipoSel(tipoExistente);
-  }, [registroEditar?.id, registroEditar?.categoria, registroEditar?.subcategoria, tiposGasto, tipoSel?.id]);
+  }, [registroEditar?.id, registroEditar?.categoria, registroEditar?.subcategoria, tiposGasto]);
 
   useEffect(() => {
     if (!categoriasERCargadas || esEdicion) return;
@@ -718,8 +719,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   // ── Paso 1: selección de tipo ─────────────────────────────────────────────
   const tiposGastoFiltrados = useMemo(
-    () => tiposGasto.filter(t => matchIniciales(`${t.nombre} ${t.categoria_er}`, buscarTipo)),
-    [tiposGasto, buscarTipo]
+    () => tiposGasto.filter(t => t.activo !== false && (origen !== 'caja_chica' || t.aplica_caja_chica !== false)).filter(t => matchIniciales(`${t.nombre} ${t.categoria_er}`, buscarTipo)),
+    [tiposGasto, buscarTipo, origen]
   );
 
   const seleccionarTipo = t => {
@@ -1432,7 +1433,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       ['Fecha',          form.fecha],
       ['Monto',          `${form.moneda} ${monto.toFixed(2)}${form.moneda !== 'PEN' ? ` (S/ ${montoPEN.toFixed(2)})` : ''}`],
       esPagoCajaChica && egresoCajaChica && !egresoCajaChica.error && egresoCajaChica.moneda_original
-        ? ['Descuento del fondo', `Se descontará del fondo: ${egresoCajaChica.moneda} ${egresoCajaChica.monto.toFixed(2)} (${egresoCajaChica.moneda_original} ${egresoCajaChica.monto_original.toFixed(2)} ${egresoCajaChica.moneda_original === 'PEN' ? '÷' : '×'} TC ${egresoCajaChica.tipo_cambio})`]
+        ? ['Descuento del fondo', `Se descontará del fondo: ${egresoCajaChica.moneda} ${egresoCajaChica.monto.toFixed(2)} (${egresoCajaChica.moneda_original} ${egresoCajaChica.monto_original.toFixed(2)} ${egresoCajaChica.moneda_original === 'PEN' ? '÷' : '×'} TC ${Number(egresoCajaChica.tipo_cambio).toFixed(4)})`]
         : null,
       ['CECO',           cecoNombre],
       form.ot_vinc_id ? ['OT vinculada', etiquetaOT(otsActivas.find(o => o.id === form.ot_vinc_id))] : null,
@@ -1581,10 +1582,30 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const proveedorNombreEdicion = proveedorEdicion
           ? (proveedorEdicion.razon_social || proveedorEdicion.nombre_comercial || proveedorEdicion.id)
           : (form.proveedor_texto || null);
+        const tipoAnterior = tiposGasto.find(tipo => tipo.nombre === registroEditar.subcategoria);
+        const cambiosER = cambiosNoGastoEdicion(tipoAnterior, tipoSel, true);
+        let cuentasPendientes = [];
+        if (cambiosER.cxp) {
+          if (sb) {
+            const consultas = [sb.from('cxp').select('id, estado, saldo, monto_total, monto_pagado, gasto_id')
+              .eq('empresa_id', empresa.id).eq('gasto_id', gastoId)];
+            if (registroEditar.cxp_id) consultas.push(sb.from('cxp').select('id, estado, saldo, monto_total, monto_pagado, gasto_id')
+              .eq('empresa_id', empresa.id).eq('id', registroEditar.cxp_id));
+            const resultados = await Promise.all(consultas);
+            resultados.forEach(({ data, error }) => {
+              if (error) throw error;
+              cuentasPendientes.push(...(data || []));
+            });
+          } else {
+            cuentasPendientes = cxp.filter(cuenta => cuenta.gasto_id === gastoId || cuenta.id === registroEditar.cxp_id);
+          }
+          cuentasPendientes = [...new Map(cuentasPendientes.filter(cxpPendiente).map(cuenta => [cuenta.id, cuenta])).values()];
+        }
         const camposEdicion = {
           descripcion: form.concepto.trim(),
           categoria: categoriaEdicion,
           subcategoria: tipoSel?.nombre || null,
+          ...cambiosER.gasto,
           monto: montoEdicion,
           moneda: form.moneda,
           fecha: form.fecha,
@@ -1600,6 +1621,15 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           ot_vinc_id: registroEditar.ot_vinc_id || form.ot_vinc_id || null,
           updated_at: new Date().toISOString(),
         };
+        if (sb) {
+          for (const cuenta of cuentasPendientes) {
+            await finanzasService.actualizarNoDevengarERCxP(cuenta.id, empresa.id, cambiosER.cxp.no_devengar_er);
+          }
+        }
+        if (cuentasPendientes.length) {
+          const ids = new Set(cuentasPendientes.map(cuenta => cuenta.id));
+          setCxp(prev => prev.map(cuenta => ids.has(cuenta.id) ? { ...cuenta, ...cambiosER.cxp } : cuenta));
+        }
         const actualizado = sb
           ? await finanzasService.actualizarGasto(gastoId, camposEdicion)
           : { ...registroEditar, ...camposEdicion };
@@ -1904,7 +1934,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           console.warn('[NuevoEgreso] no se pudo compensar compras_gastos:', rollbackError?.message || rollbackError);
         }
       }
-      setComprasGastos(prev => prev.filter(g => g.id !== gastoId));
+      if (!esEdicion) setComprasGastos(prev => prev.filter(g => g.id !== gastoId));
       if (!esEdicion) setGastoId(nuevoGastoId());
       const mensajeError = err?.message || 'Error al guardar el egreso. Intente nuevamente.';
       setErrorGuardado(mensajeError);

@@ -1087,6 +1087,22 @@ export const finanzasService = {
     return data;
   },
 
+  async actualizarNoDevengarERCxP(cxpId, empresaId, noDevengarER) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cxp')
+      .update({ no_devengar_er: noDevengarER })
+      .eq('id', cxpId)
+      .eq('empresa_id', empresaId)
+      .or('estado.is.null,estado.not.in.(pagada,anulada)')
+      .or('saldo.is.null,saldo.gt.0')
+      .select('id')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('No se pudo actualizar la CxP pendiente; verifica su estado y permisos.');
+    return data;
+  },
+
   async actualizarCxPCentralizado(cxpId, campos, origen) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.rpc('generar_cxp_centralizado', {
