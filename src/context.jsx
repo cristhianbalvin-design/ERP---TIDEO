@@ -43,7 +43,6 @@ import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { portalFase2Service, sha256Text, plantillaConstanciaHtml } from './services/portalFase2Service.js';
 import { biometricoService } from './services/biometricoService.js';
-import { whatsappService } from './services/whatsappService.js';
 import { geofencingService } from './services/geofencingService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
@@ -498,9 +497,6 @@ export function AppProvider({ children }) {
   const [portalFirmaOtpIntentos, setPortalFirmaOtpIntentos] = useState(useSupabase ? [] : (MOCK.portalFirmaOtpIntentos || []));
   const [biometricoPerfiles, setBiometricoPerfiles] = useState(useSupabase ? [] : (MOCK.biometricoPerfiles || []));
   const [biometricoLotes, setBiometricoLotes] = useState(useSupabase ? [] : (MOCK.biometricoLotes || []));
-  const [whatsappPlantillas, setWhatsappPlantillas] = useState(useSupabase ? [] : (MOCK.whatsappPlantillas || []));
-  const [whatsappMatriz, setWhatsappMatriz] = useState(useSupabase ? [] : (MOCK.whatsappMatriz || []));
-  const [whatsappEnvios, setWhatsappEnvios] = useState(useSupabase ? [] : (MOCK.whatsappEnvios || []));
   const [geocercas, setGeocercas] = useState(useSupabase ? [] : (MOCK.geocercas || []));
   const [geocercaAsignaciones, setGeocercaAsignaciones] = useState(useSupabase ? [] : (MOCK.geocercaAsignaciones || []));
   const [ubicacionConsentimientos, setUbicacionConsentimientos] = useState(useSupabase ? [] : (MOCK.ubicacionConsentimientos || []));
@@ -1302,16 +1298,10 @@ export function AppProvider({ children }) {
         } catch (_err) { /* fase 2 portal empleado puede no estar migrada */ }
 
         try {
-          const [bioData, waData] = await Promise.all([
-            biometricoService.listar(empresa.id),
-            whatsappService.listar(empresa.id),
-          ]);
+          const bioData = await biometricoService.listar(empresa.id);
           if (mounted) {
             setBiometricoPerfiles(bioData.perfiles || []);
             setBiometricoLotes(bioData.lotes || []);
-            setWhatsappPlantillas(waData.templates || []);
-            setWhatsappMatriz(waData.rutas || []);
-            setWhatsappEnvios(waData.logs || []);
           }
         } catch (_err) { /* ola 5A integraciones puede no estar migrada */ }
 
@@ -11892,26 +11882,6 @@ export function AppProvider({ children }) {
     return data;
   };
 
-  const guardarWhatsappPlantillaCtx = async (plantilla) => {
-    const data = await whatsappService.guardarPlantilla(empresa?.id || plantilla.empresa_id || 'emp_001', plantilla);
-    setWhatsappPlantillas(prev => data.id && prev.some(t => t.id === data.id) ? prev.map(t => t.id === data.id ? data : t) : [data, ...prev]);
-    addNotificacion('Plantilla WhatsApp guardada.');
-    return data;
-  };
-
-  const guardarWhatsappRutaCtx = async (ruta) => {
-    const data = await whatsappService.guardarRuta(empresa?.id || ruta.empresa_id || 'emp_001', ruta);
-    setWhatsappMatriz(prev => data.id && prev.some(r => r.id === data.id) ? prev.map(r => r.id === data.id ? data : r) : [data, ...prev]);
-    addNotificacion('Matriz WhatsApp actualizada.');
-    return data;
-  };
-
-  const registrarWhatsappSimuladoCtx = async (envio) => {
-    const data = await whatsappService.encolarSimulado(empresa?.id || envio.empresa_id || 'emp_001', envio);
-    setWhatsappEnvios(prev => [data, ...prev]);
-    return data;
-  };
-
   const guardarGeocercaCtx = async (geocerca) => {
     const data = await geofencingService.guardarGeocerca(empresa?.id || geocerca.empresa_id || 'emp_001', geocerca);
     setGeocercas(prev => data.id && prev.some(g => g.id === data.id) ? prev.map(g => g.id === data.id ? data : g) : [data, ...prev]);
@@ -12141,9 +12111,6 @@ export function AppProvider({ children }) {
     portalFirmaOtpIntentos, setPortalFirmaOtpIntentos,
     biometricoPerfiles, setBiometricoPerfiles,
     biometricoLotes, setBiometricoLotes,
-    whatsappPlantillas, setWhatsappPlantillas,
-    whatsappMatriz, setWhatsappMatriz,
-    whatsappEnvios, setWhatsappEnvios,
     geocercas, setGeocercas,
     geocercaAsignaciones, setGeocercaAsignaciones,
     ubicacionConsentimientos, setUbicacionConsentimientos,
@@ -12182,7 +12149,6 @@ export function AppProvider({ children }) {
     registrarAcuseBoletaPortalCtx, registrarVisualizacionBoletaPortalCtx,
     iniciarOtpFirmaPortalCtx, validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
     guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
-    guardarWhatsappPlantillaCtx, guardarWhatsappRutaCtx, registrarWhatsappSimuladoCtx,
     guardarGeocercaCtx, eliminarGeocercaCtx, guardarGeocercaAsignacionCtx, registrarConsentimientoUbicacionCtx, evaluarSarNoLlegadaCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
