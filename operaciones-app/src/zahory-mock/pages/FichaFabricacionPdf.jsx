@@ -40,6 +40,8 @@ const fecha = valor => {
   const date = new Date(valor);
   return Number.isNaN(date.getTime()) ? String(valor) : new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima' }).format(date);
 };
+// Helvetica del PDF no trae el signo menos tipográfico (U+2212): se imprime como guion.
+const pdfTexto = valor => String(valor ?? '').replace(/\u2212/g, '-');
 const num = valor => (valor === null || valor === undefined ? '' : Number(valor).toLocaleString('es-PE', { maximumFractionDigits: 4 }));
 const campo = (label, value) => (presente(value) ? <View key={label} style={S.info}><Text style={S.label}>{label}</Text><Text style={S.value}>{String(value)}</Text></View> : null);
 
@@ -101,7 +103,7 @@ export default function FichaFabricacionPdf({ ficha, imagenes = {} }) {
             <Text style={[S.tableCell, { width: COLS[1] }]}>{item.parte || '—'}</Text>
             <Text style={[S.tableCell, { width: COLS[2] }]}>{item.nombre}</Text>
             <Text style={[S.tableCell, { width: COLS[3] }]}>{item.nominal || '—'}</Text>
-            <Text style={[S.tableCell, { width: COLS[4] }]}>{item.tolerancia || '—'}</Text>
+            <Text style={[S.tableCell, { width: COLS[4] }]}>{item.tolerancia ? pdfTexto(item.tolerancia) : '—'}</Text>
             <Text style={[S.tableCell, { width: COLS[5] }, item.critica ? S.crit : null]}>{item.critica ? 'Sí' : ''}</Text>
           </View>)}
         </View> : <Text style={S.muted}>Sin características registradas.</Text>}
@@ -118,9 +120,9 @@ export default function FichaFabricacionPdf({ ficha, imagenes = {} }) {
         </View>)}
       </View> : null}
 
-      {presente(ficha?.conclusion) || emisor ? <View wrap={false}>
-        {presente(ficha?.conclusion) ? <><Text style={S.sectionTitle}>Conclusión</Text><Text style={S.conclusion}>{ficha.conclusion}</Text></> : null}
-        {emisor && presente(emisor.nombre) ? <View style={S.signature}>
+      {presente(ficha?.conclusion) || emisor ? <View>
+        {presente(ficha?.conclusion) ? <><Text style={S.sectionTitle} minPresenceAhead={30}>Conclusión</Text><Text style={S.conclusion}>{ficha.conclusion}</Text></> : null}
+        {emisor && presente(emisor.nombre) ? <View style={S.signature} wrap={false}>
           {imagenes.firma ? <Image src={imagenes.firma} style={S.signatureImage} /> : <View style={{ height: 30 }} />}
           <View style={S.signLine} />
           <Text style={S.bold}>{emisor.nombre}</Text>

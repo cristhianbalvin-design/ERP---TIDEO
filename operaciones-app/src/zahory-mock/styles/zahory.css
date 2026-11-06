@@ -8675,6 +8675,8 @@ width:20px;height:20px}
 .dx-fab .dx-fab-ficha-acciones { display:flex; flex-wrap:wrap; gap:8px; }
 .dx-fab .dx-fab-ficha-acciones .btn { min-height:40px; }
 .dx-fab .dx-fab-hint.is-error { color:var(--dx-ui-red-fg); }
+/* La vista previa de la ficha es una hoja blanca también en modo oscuro */
+.dx-fab .dx-fab-sheet tr,.dx-fab .dx-fab-sheet td { background:#FFFFFF; color:#1F2937; }
 @container (max-width:760px) {
   .dx-fab .dx-fab-ficha { padding:12px; }
   .dx-fab .dx-fab-ficha-acciones .btn { flex:1 1 100%; }
