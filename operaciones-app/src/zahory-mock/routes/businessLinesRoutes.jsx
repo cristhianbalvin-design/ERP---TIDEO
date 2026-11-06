@@ -1,9 +1,12 @@
+import { FlotaPanelPage } from '../pages/flota/FlotaPanelPage.jsx';
+import { ContratosRentalPage } from '../pages/flota/ContratosRentalPage.jsx';
+import { PasaporteEquiposPage } from '../pages/flota/PasaporteEquiposPage.jsx';
+import { ActasDespachosPage } from '../pages/flota/ActasDespachosPage.jsx';
+import { CertificacionesActivoPage } from '../pages/flota/CertificacionesActivoPage.jsx';
+import { GarantiasFlotaPage } from '../pages/flota/GarantiasFlotaPage.jsx';
+import { LiquidacionFlotaPage } from '../pages/flota/LiquidacionFlotaPage.jsx';
 import {
   DashboardRentalPage,
-  FlotaRentalPage,
-  ContratosRentalPage,
-  DespachosRentalPage,
-  LiquidacionRentalPage,
 } from '../pages/AlquileresPages.jsx';
 import {
   AnalisisSOS,
@@ -42,9 +45,6 @@ import {
   DetallePedidoPage,
   CatalogoPrecios,
   DespachosRepuestos,
-  PasaporteEquipos,
-  GestionGarantias,
-  CertificacionesActivo,
   CotizacionesVenta,
   OrdenesVenta,
   GuiasDespachos,
@@ -79,13 +79,13 @@ export function renderBusinessLinesRoute(route, context) {
 
   switch (route) {
     case 'dashboard-rental': return <DashboardRentalPage onNav={onNavigate} />;
-    case 'flota': return <FlotaRentalPage onNav={onNavigate} />;
+    case 'flota': return <FlotaPanelPage onNav={onNavigate} />;
     case 'contratos-rental': return <ContratosRentalPage onNav={onNavigate} />;
-    case 'checkout': return <DespachosRentalPage onNav={onNavigate} />;
-    case 'liquidacion': return <LiquidacionRentalPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
-    case 'pasaporte-equipos': return <PasaporteEquipos setCurrent={onNavigate} />;
-    case 'gestion-garantias': return <GestionGarantias setCurrent={onNavigate} />;
-    case 'certificaciones-activo': return <CertificacionesActivo />;
+    case 'checkout': return <ActasDespachosPage />;
+    case 'liquidacion': return <LiquidacionFlotaPage />;
+    case 'pasaporte-equipos': return <PasaporteEquiposPage />;
+    case 'gestion-garantias': return <GarantiasFlotaPage />;
+    case 'certificaciones-activo': return <CertificacionesActivoPage />;
     case 'monitoreo-equipos': return <PlaceholderPage title="Monitoreo de Equipos" />;
 
     case 'dashboard-transporte': return <DashboardTransporte onNav={onNavigate} />;

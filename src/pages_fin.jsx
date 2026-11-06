@@ -14,6 +14,7 @@ import {
   monedasDifierenMovimientoCuenta,
   montoMovimientoEnCuenta,
 } from './services/tesoreriaService.js';
+import { calcularTransferencia, obtenerTcSugerido } from './services/transferenciaTesoreria.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
 import { agruparDetallesPorTipoGasto } from './utils/erAgrupacionTipoGasto.js';
@@ -2262,8 +2263,70 @@ function BarChartProyeccion({ semanas, saldoInicialPorMoneda = {} }) {
   );
 }
 
-function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
-  const empty = { tipo: 'ingreso', fecha: new Date().toISOString().slice(0,10), descripcion: '', monto: '', categoria: '', cuenta_origen_id: '', cuenta_destino_id: '', moneda: '', referencia: '' };
+function TransferenciaPanel({ cuentasBancarias, onClose, onGuardar, onTipo }) {
+  const [form, setForm] = useState({ tipo: 'transferencia', fecha: new Date().toISOString().slice(0, 10), cuenta_origen_id: '', cuenta_destino_id: '', monto: '', tipo_cambio: '', referencia: '', descripcion: '' });
+  const [tcRef, setTcRef] = useState(null);
+  const [fechaRef, setFechaRef] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
+  const cuentas = (cuentasBancarias || []).filter(c => c.estado === 'activo' && !c.es_cuenta_detracciones);
+  const origen = cuentas.find(c => c.id === form.cuenta_origen_id);
+  const destinos = cuentas.filter(c => origen && c.id !== origen.id && (c.sociedad_id || null) === (origen.sociedad_id || null));
+  const destino = destinos.find(c => c.id === form.cuenta_destino_id);
+  const distinta = origen && destino && (origen.moneda || 'PEN').toUpperCase() !== (destino.moneda || 'PEN').toUpperCase();
+  const monedaExtranjera = distinta ? ((origen.moneda || 'PEN').toUpperCase() === 'PEN' ? destino.moneda : origen.moneda) : '';
+
+  useEffect(() => {
+    let vigente = true;
+    setTcRef(null); setFechaRef('');
+    setForm(prev => ({ ...prev, tipo_cambio: '' }));
+    if (!distinta || !form.fecha || !isSupabaseConfigured()) return () => { vigente = false; };
+    (async () => {
+      try {
+        const sb = await getSupabaseClient();
+        const { data, error: queryError } = await sb.from('tipo_cambio_historico').select('fecha,usd,eur')
+          .eq('moneda_base', 'PEN').lte('fecha', form.fecha).order('fecha', { ascending: false }).limit(1).maybeSingle();
+        if (queryError) throw queryError;
+        const tc = obtenerTcSugerido(data, monedaExtranjera);
+        if (vigente) { setTcRef(tc); setFechaRef(data?.fecha || ''); setForm(prev => ({ ...prev, tipo_cambio: tc ?? '' })); }
+      } catch (_) { if (vigente) setTcRef(null); }
+    })();
+    return () => { vigente = false; };
+  }, [form.fecha, origen?.id, destino?.id, monedaExtranjera]);
+
+  let calculo = null;
+  try { calculo = calcularTransferencia({ cuentaOrigen: origen, cuentaDestino: destino, monto: form.monto, tipoCambio: form.tipo_cambio, tcReferencia: tcRef }); } catch (_) {}
+  const guardar = async event => {
+    event.preventDefault(); setError('');
+    try {
+      calcularTransferencia({ cuentaOrigen: origen, cuentaDestino: destino, monto: form.monto, tipoCambio: form.tipo_cambio, tcReferencia: tcRef });
+      setSaving(true); await onGuardar(form); onClose();
+    } catch (err) { setError(err?.message || 'No se pudo registrar la transferencia.'); }
+    finally { setSaving(false); }
+  };
+  return <>
+    <div className="side-panel-backdrop" onClick={onClose}/>
+    <div className="side-panel" style={{width:'min(520px, 96vw)'}}>
+      <div className="side-panel-head"><div><div className="eyebrow">Tesorería</div><div style={{fontSize:20,fontWeight:700}}>Movimiento manual</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+      <form className="side-panel-body" onSubmit={guardar} data-local-form="true" style={{display:'flex',flexDirection:'column',gap:12}}>
+        <div className="input-group"><label>Tipo *</label><select className="input" value="transferencia" onChange={e => onTipo(e.target.value)}><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option><option value="transferencia">Transferencia entre cuentas</option></select></div>
+        <div className="input-group"><label>Cuenta origen *</label><select className="input" required value={form.cuenta_origen_id} onChange={e => setForm(prev => ({ ...prev, cuenta_origen_id: e.target.value, cuenta_destino_id: '' }))}><option value="">Seleccionar...</option>{cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre} — {c.banco} ({c.moneda})</option>)}</select></div>
+        <div className="input-group"><label>Cuenta destino *</label><select className="input" required value={form.cuenta_destino_id} onChange={set('cuenta_destino_id')}><option value="">Seleccionar...</option>{destinos.map(c => <option key={c.id} value={c.id}>{c.nombre} — {c.banco} ({c.moneda})</option>)}</select></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}><div className="input-group"><label>Fecha *</label><input className="input" type="date" required value={form.fecha} onChange={set('fecha')}/></div><div className="input-group"><label>Monto {origen?.moneda || ''} *</label><input className="input" type="number" step="0.01" min="0.01" required value={form.monto} onChange={set('monto')}/></div></div>
+        {distinta && <div className="input-group"><label>Tipo de cambio * (PEN por {monedaExtranjera})</label><input className="input" type="number" step="0.000001" min="0.000001" required value={form.tipo_cambio} onChange={set('tipo_cambio')}/><div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>{tcRef ? `Referencia: ${tcRef} PEN por ${monedaExtranjera} (${fechaRef})` : 'Sin tipo de cambio histórico disponible; ingresa la tasa manualmente.'}</div></div>}
+        {origen && destino && <div className="dx-ai-flow-notice" style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div>Monto recibido: {calculo ? `${calculo.montoRecibido.toFixed(2)} ${destino.moneda || 'PEN'}` : '—'}</div>{distinta && <div>Diferencia estimada en PEN: {calculo?.diferenciaCambioPen != null ? calculo.diferenciaCambioPen.toFixed(2) : '—'} (referencial, no afecta el Estado de Resultados)</div>}</div>}
+        <div className="input-group"><label>Referencia</label><input className="input" value={form.referencia} onChange={set('referencia')}/></div>
+        <div className="input-group"><label>Descripción</label><input className="input" value={form.descripcion} onChange={set('descripcion')}/></div>
+        {error && <div role="alert" style={{color:'var(--danger)'}}>{error}</div>}
+        <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:8}}><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Registrar transferencia'}</button></div>
+      </form>
+    </div>
+  </>;
+}
+
+function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar, tipoInicial }) {
+  const empty = { tipo: tipoInicial || 'ingreso', fecha: new Date().toISOString().slice(0,10), descripcion: '', monto: '', categoria: '', cuenta_origen_id: '', cuenta_destino_id: '', moneda: '', referencia: '' };
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -2280,6 +2343,8 @@ function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
     setSaving(true);
     try { await onGuardar(form); onClose(); } finally { setSaving(false); }
   };
+
+  if (form.tipo === 'transferencia') return <TransferenciaPanel cuentasBancarias={cuentasBancarias} onClose={onClose} onGuardar={onGuardar} onTipo={tipo => setForm(prev => ({ ...prev, tipo }))}/>;
 
   return (
     <>
@@ -2843,10 +2908,13 @@ function Tesoreria() {
   const {
     movimientosTesoreria, movimientosBanco, cxc, cxp, facturas, cuentas, cuentasBancarias = [],
     conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, empresa, addNotificacion, actualizarCuentaBancaria, crearCuentaBancaria,
-    registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
+    registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco, activeParams, navigate,
     empresaConfig, financiamientos = [], periodosNomina = [],
     tipoCambioHoy, convertirMonto, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
+  useEffect(() => {
+    if (activeParams?.formulario === 'transferencia') { setPanelManual('transferencia'); navigate('tesoreria', {}); }
+  }, [activeParams?.formulario]);
   const modoVistaSociedadTesoreria = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -2949,6 +3017,7 @@ function Tesoreria() {
   const normalizeFinText = value => String(value || '').trim().toLowerCase();
   const monedaMov = (m, fallback = 'PEN') => String(m?.moneda || fallback || 'PEN').trim().toUpperCase();
   const fechaMov = m => m?.fecha || m?.fecha_movimiento || m?.fecha_operacion || m?.created_at || m?.creado_en || '';
+  const esTransferenciaCuenta = m => normalizeFinText(m?.vinculo_tipo || m?.vinculado_tipo) === 'transferencia_cuenta';
   const esIngresoMov = m => ['ingreso', 'credito', 'crédito'].includes(normalizeFinText(m?.tipo));
   const esEgresoMov = m => ['egreso', 'debito', 'débito'].includes(normalizeFinText(m?.tipo));
   const movTieneCuentaExplicita = m => Boolean(m?.cuenta_bancaria_id);
@@ -3364,7 +3433,7 @@ function Tesoreria() {
     [movimientosEmpresa, periodoTesoreria]
   );
   const movimientosEgresoPeriodo = useMemo(
-    () => movimientosPeriodoTesoreria.filter(esEgresoMov),
+    () => movimientosPeriodoTesoreria.filter(m => !esTransferenciaCuenta(m) && esEgresoMov(m)),
     [movimientosPeriodoTesoreria],
   );
   const pagosPeriodoCuentaPorMoneda = useMemo(() => movimientosEgresoPeriodo.reduce((acc, mov) => {
@@ -3527,7 +3596,7 @@ function Tesoreria() {
   const pagosOrigenEntries = Object.entries(pagosPeriodoOrigenPorMoneda).filter(([, value]) => Math.abs(Number(value || 0)) > 0.009);
   const sinCuentaTienePendientes = Object.values(movimientosSinCuentaPorMoneda || {}).some(value => Math.abs(Number(value || 0)) > 0.009);
   const sinCuentaEntries = sinCuentaTienePendientes ? totalesEntries(movimientosSinCuentaPorMoneda) : [['USD', 0]];
-  const ingresosPeriodoCount = movimientosPeriodoTesoreria.filter(esIngresoMov).length;
+  const ingresosPeriodoCount = movimientosPeriodoTesoreria.filter(m => !esTransferenciaCuenta(m) && esIngresoMov(m)).length;
   const egresosPeriodoCount = movimientosEgresoPeriodo.length;
   const facturasPendientesCount = cxcPendienteRows.length;
   const pendienteCxCEntries = totalesEntries(pendienteCxC);
@@ -3560,7 +3629,7 @@ function Tesoreria() {
             <option value="">Todos</option>
             {periodoOpcionesTesoreria.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <button className="btn btn-secondary" onClick={() => setPanelManual(true)}>{I.plus} Movimiento manual</button>
+          <button className="btn btn-secondary" onClick={() => setPanelManual('ingreso')}>{I.plus} Movimiento manual</button>
           <button className="btn btn-secondary" onClick={() => setShowImport(true)}>{I.download} Importar extracto</button>
         </div>
       </div>
@@ -4077,7 +4146,7 @@ function Tesoreria() {
         </>
       )}
 
-      {panelManual && <ManualMovimientoPanel cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setPanelManual(false)} onGuardar={registrarMovimientoManual} />}
+      {panelManual && <ManualMovimientoPanel tipoInicial={panelManual} cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setPanelManual(false)} onGuardar={registrarMovimientoManual} />}
       {showImport && <ImportarExtractoModal cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setShowImport(false)} onImportar={importarMovimientosBanco} />}
     </>
   );

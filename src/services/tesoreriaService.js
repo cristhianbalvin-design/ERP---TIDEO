@@ -6,6 +6,7 @@ const fechaMovimiento = mov =>
 
 const isInPeriod = (mov, period) => String(fechaMovimiento(mov) || '').slice(0, 7) === period;
 
+const esTransferenciaCuenta = mov => String(mov?.vinculo_tipo || mov?.vinculado_tipo || '').toLowerCase() === 'transferencia_cuenta';
 const tipoMovimiento = mov => String(mov?.tipo || '').toLowerCase();
 const esIngreso = mov => ['ingreso', 'credito', 'crédito'].includes(tipoMovimiento(mov));
 const esEgreso = mov => ['egreso', 'debito', 'débito'].includes(tipoMovimiento(mov));
@@ -119,6 +120,7 @@ export function calcularMovimientosMesPorMoneda(movimientos = [], tipo = 'ingres
   return sumByCurrency(
     movimientos.filter(mov =>
       mov?.estado !== 'anulado' &&
+      !esTransferenciaCuenta(mov) &&
       predicadoTipo(mov) &&
       (!periodo || String(fechaMovimiento(mov) || '').slice(0, 7) === periodo)
     ),
@@ -143,12 +145,12 @@ export function buildTesoreriaSummary({
   );
 
   const ingresosPorMoneda = sumByCurrency(
-    movimientosPeriodo.filter(esIngreso),
+    movimientosPeriodo.filter(mov => !esTransferenciaCuenta(mov) && esIngreso(mov)),
     mov => mov.monto,
     monedaMovimiento
   );
   const egresosPorMoneda = sumByCurrency(
-    movimientosPeriodo.filter(esEgreso),
+    movimientosPeriodo.filter(mov => !esTransferenciaCuenta(mov) && esEgreso(mov)),
     mov => mov.monto,
     monedaMovimiento
   );
