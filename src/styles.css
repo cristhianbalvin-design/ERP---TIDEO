@@ -4348,7 +4348,7 @@ body {
 .dx-asis-backdrop { position:fixed; inset:0; z-index:1201; border:0; background:rgba(15,27,48,.38); pointer-events:auto; }
 .dx-asis-panel { position:fixed; z-index:1202; top:0; right:0; bottom:0; width:min(420px,92vw); display:flex; flex-direction:column; overflow:hidden; background:var(--dx-asis-card); color:var(--dx-asis-text); border-left:1px solid var(--dx-asis-line); box-shadow:0 12px 32px rgba(26,43,74,.18); pointer-events:auto; animation:dx-asis-slide .2s ease-out; }
 .dx-asis-head { flex:none; padding:14px 16px; border-bottom:1px solid var(--dx-asis-line-soft); display:flex; align-items:flex-start; gap:12px; background:var(--dx-asis-head); }
-.dx-asis-ico { width:40px; height:40px; border-radius:50%; background:var(--dx-asis-avatar); color:#fff; display:grid; place-items:center; flex:none; }
+.dx-asis-ico { width:44px; height:44px; display:grid; place-items:center; flex:none; }
 .dx-asis-eyebrow { color:var(--dx-asis-cyan-text); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
 .dx-asis-title { margin:2px 0 0; color:var(--dx-asis-text); font-family:'Sora',sans-serif; font-size:18px; font-weight:600; }
 .dx-asis-sub { margin-top:2px; color:var(--dx-asis-muted); font-size:12.5px; }
@@ -4365,7 +4365,7 @@ body {
 .dx-asis-message { display:flex; align-items:flex-end; gap:8px; max-width:100%; }
 .dx-asis-message.me { align-self:flex-end; max-width:86%; }
 .dx-asis-message.ai { align-self:flex-start; max-width:92%; }
-.dx-asis-mini { width:24px; height:24px; flex:none; display:grid; place-items:center; align-self:flex-start; margin-top:2px; border-radius:50%; background:var(--dx-asis-avatar); color:#fff; }
+.dx-asis-mini { width:24px; height:24px; flex:none; display:grid; place-items:center; align-self:flex-start; margin-top:2px; }
 .dx-asis-sug:hover { border-color:var(--dx-asis-cyan); }
 .dx-asis-msg { max-width:none; min-width:0; padding:10px 12px; border-radius:14px; font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
 .dx-asis-msg.me { align-self:flex-end; background:var(--dx-asis-user); color:var(--dx-asis-user-text); border-bottom-right-radius:4px; }
