@@ -13,15 +13,19 @@ import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
 import ComandoGlobal from './components/ComandoGlobal.jsx';
 import { leerMenuUsuario, guardarMenuUsuario, alternarFavorito, agregarReciente } from './menuFavoritos.js';
 import './menu_riel.css';
+import ariaImagen from './assets/aria/d_base.webp';
 
 function IconoAria({ size = 20 }) {
   return <svg width={size} height={size} viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2" /></svg>;
 }
 
 
+const IconoHoy = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>;
+const etiquetaSeccion = texto => ({ Administracion: "Administración", Logistica: "Logística", Configuracion: "Configuración" }[texto] || texto);
+
 const SIDEBAR = [
   { section: 'Inicio', standalone: true, items: [
-    { key: 'inicio', label: 'Inicio', fixedLabel: true, icon: I.home },
+    { key: 'inicio', label: 'Inicio', fixedLabel: true, icon: IconoHoy },
   ]},
   { section: 'Dashboards', standalone: true, items: [
     { key: 'dashboard', label: 'Dashboards', fixedLabel: true, icon: I.dashboard, accessAnyOf: DASHBOARDS_ACCESS_ANY_OF },
@@ -402,6 +406,12 @@ export function Sidebar({
   const [panelKey, setPanelKey] = useState(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [tip, setTip] = useState(null);
+  const [pendientesInicio, setPendientesInicio] = useState(null);
+  useEffect(() => {
+    const recibir = event => setPendientesInicio(event.detail);
+    window.addEventListener('dx-inicio-pendientes', recibir);
+    return () => window.removeEventListener('dx-inicio-pendientes', recibir);
+  }, []);
   const [pillTop, setPillTop] = useState(null);
   const railList = useRef(null);
   const sidebarRef = useRef(null);
@@ -441,7 +451,7 @@ export function Sidebar({
         ...it,
         navKey,
         label: it.action || it.fixedLabel ? it.label : getLabel(navKey, it.label),
-        badge: capBadge(badges[it.key])
+        badge: capBadge(it.key === 'inicio' ? pendientesInicio : badges[it.key])
       };
     });
     if (visibleItems.length === 0) return null;
@@ -449,12 +459,12 @@ export function Sidebar({
     return {
       ...group,
       key,
-      section: getSectionLabel(key, group.section),
+      section: etiquetaSeccion(getSectionLabel(key, group.section)),
       icon: SECTION_ICONS[group.section] || visibleItems[0]?.icon || I.package,
       items: visibleItems,
       active: visibleItems.some(it => it.key === activeItemKey)
     };
-  }).filter(Boolean), [activeItemKey, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
+  }).filter(Boolean), [activeItemKey, role, badges, pendientesInicio, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
   const activeGroupKey = visibleGroups.find(group => group.active && !group.standalone)?.key;
   const selectedKey = panelKey === '__root__' ? visibleGroups.find(group => group.standalone && group.active)?.key : panelKey || activeGroupKey || visibleGroups.find(group => group.standalone && group.active)?.key;
   const selected = visibleGroups.find(group => group.key === selectedKey && !group.standalone);
@@ -574,7 +584,7 @@ export function Sidebar({
   };
   const groupButton = group => {
     const selectedGroup = group.standalone ? group.active && (!panelKey || panelKey === '__root__') : (selectedKey === group.key && showPanel) || (group.key === 'configuracion' && group.active && !panelKey);
-    const count = group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0);
+    const count = group.key === 'inicio' ? pendientesInicio || 0 : group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0);
     return <button
       type="button"
       key={group.key}
@@ -590,10 +600,10 @@ export function Sidebar({
       setTip(null);
       if (group.standalone) handleItem(group.items[0]);else setPanelKey(group.key);
     }}>
-      {group.icon}{count > 0 && <span className="dx-nav-count">{capBadge(count)}</span>}
+      {group.key === 'aria' ? <span className="dx-nav-aria"><img src={ariaImagen} alt="" /></span> : group.icon}{count > 0 && <span className="dx-nav-count">{capBadge(count)}</span>}
     </button>;
   };
-  const row = item => <div
+  const row = (item, conEstrella = true) => <div
     className={'dx-nav-row' + (activeItemKey === item.key ? ' is-active' : '')}
     key={item.key}>
     <button
@@ -608,8 +618,8 @@ export function Sidebar({
       aria-pressed={menuUsuario.favoritos.includes(item.key)}
       onClick={() => updateMenu(alternarFavorito(menuUsuario, item.key))}>★</button>
   </div>;
-  const footerGroups = visibleGroups.filter(group => group.key === 'aria' || group.key === 'configuracion');
-  const mainGroups = visibleGroups.filter(group => group.key !== 'aria' && group.key !== 'configuracion');
+  const footerGroups = visibleGroups.filter(group => group.key === 'aria');
+  const mainGroups = visibleGroups.filter(group => group.key !== 'aria');
   const inicio = items.find(item => item.key === 'inicio');
   const principales = items.filter(item => item.key === 'inicio' || item.key === 'dashboard');
   const areas = visibleGroups.filter(group => !group.standalone);
@@ -669,23 +679,23 @@ export function Sidebar({
         <button
           type="button"
           className="dx-nav-search"
-          onClick={openCommand}>{I.search}<span>Buscar</span><kbd>Ctrl K</kbd></button>
+          onClick={openCommand}>{I.search}<span>Buscar pantalla</span><kbd>Ctrl K</kbd></button>
         <div className="dx-nav-panel-list">
           {selected ? <>
           {selected.items.some(item => menuUsuario.favoritos.includes(item.key)) && <>
             <h3>Favoritos</h3>
-            {selected.items.filter(item => menuUsuario.favoritos.includes(item.key)).map(row)}
+            {selected.items.filter(item => menuUsuario.favoritos.includes(item.key)).map(item => row(item))}
           </>}
           <h3>Pantallas</h3>
-          {selected.items.filter(item => !menuUsuario.favoritos.includes(item.key)).map(row)}
+          {selected.items.filter(item => !menuUsuario.favoritos.includes(item.key)).map(item => row(item))}
           </> : <>
-            {principales.map(row)}
+            {principales.map(item => row(item, false))}
             {items.some(item => menuUsuario.favoritos.includes(item.key)) && <>
               <h3>Favoritos</h3>
-              {items.filter(item => menuUsuario.favoritos.includes(item.key)).map(row)}
+              {items.filter(item => menuUsuario.favoritos.includes(item.key)).map(item => row(item))}
             </>}
             <h3>Áreas</h3>
-            {areas.map(group => <div className={'dx-nav-row' + (group.active ? ' is-active' : '')} key={group.key}><button type="button" className="dx-nav-item" onClick={() => setPanelKey(group.key)}>{group.icon}<span>{group.section}</span>{I.chevRight}</button></div>)}
+            {areas.map(group => <div className={'dx-nav-row' + (group.active ? ' is-active' : '')} key={group.key}><button type="button" className="dx-nav-item" onClick={() => setPanelKey(group.key)}>{group.icon}<span>{group.section}</span>{group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0) > 0 && <b className="dx-nav-badge">{capBadge(group.items.reduce((sum, item) => sum + (badges[item.key] || 0), 0))}</b>}{I.chevRight}</button></div>)}
           </>}
         </div>
       </nav>}
@@ -724,7 +734,7 @@ export function Sidebar({
       aria-label="Navegación móvil"><button
       type="button"
       disabled={!inicio}
-      onClick={() => inicio && handleItem(inicio)}>{I.home}<span>Inicio</span></button><button
+      onClick={() => inicio && handleItem(inicio)}>{IconoHoy}<span>Inicio</span></button><button
       type="button"
       onClick={openCommand}>{I.search}<span>Buscar</span></button><button
       type="button"
@@ -858,6 +868,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
     return () => media.removeEventListener?.('change', onChange);
   }, []);
 
+  const fechaInicio = new Intl.DateTimeFormat('es-PE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Lima' }).format(new Date()).replace(',', '');
   const title = active === 'dashboard' ? 'Dashboards' : SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';
 
   const isSupabase = dataMode === 'supabase';
@@ -910,10 +921,12 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
     <header className={'header' + (isCompactHeader ? ' header-compact' : '')} style={{padding: isCompactHeader ? '0 12px' : '0 20px', gap: isCompactHeader ? 10 : 20}}>
       <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isCompactHeader ? 140 : 'none'}}>{title}</div>
 
+      {active === 'inicio' && !isCompactHeader && <span className="dx-header-fecha">{fechaInicio.charAt(0).toUpperCase() + fechaInicio.slice(1)}</span>}
       <div className="header-spacer"/>
+      {active === 'inicio' && !isCompactHeader && <button type="button" className="dx-header-search" onClick={() => window.dispatchEvent(new Event('dx-nav-command'))}>{I.search}<span>Buscar módulo o documento</span><kbd>Ctrl K</kbd></button>}
 
       {/* Commit actual — oculto en móvil */}
-      {!isCompactHeader && (() => {
+      {active !== 'inicio' && !isCompactHeader && (() => {
         const match = (typeof __COMMIT_MSG__ !== 'undefined' ? __COMMIT_MSG__ : '').match(/^(\d+)\s+cambios/i);
         const commitLabel = match ? match[1] : (typeof __COMMIT_MSG__ !== 'undefined' ? __COMMIT_MSG__ : '');
         if (!commitLabel) return null;
@@ -999,7 +1012,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         />
       )}
 
-      <button type="button" className="icon-btn" onClick={() => window.dispatchEvent(new Event('dx-nav-command'))} aria-label="Buscar pantallas" title="Buscar pantallas (Ctrl K)">{I.search}</button>
+      {(active !== 'inicio' || isCompactHeader) && <button type="button" className="icon-btn" onClick={() => window.dispatchEvent(new Event('dx-nav-command'))} aria-label="Buscar pantallas" title="Buscar pantallas (Ctrl K)">{I.search}</button>}
       <button type="button" className="icon-btn" onClick={solicitarApertura} aria-label="Preguntar a Aria" title="Preguntar a Aria"><IconoAria size={18} /></button>
 
       {/* Separador — oculto en móvil */}

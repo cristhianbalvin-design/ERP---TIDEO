@@ -35,16 +35,16 @@ export class Avatar {
   }
   render() {
     const K = this.kind || 'd';
-    const fx = `<div class="fx">
-      <i class="halo">
+    const fx = `<div class="dxi-fx">
+      <i class="dxi-halo">
       </i>
-      <i class="r">
+      <i class="dxi-r">
       </i>
-      <i class="r r2">
+      <i class="dxi-r dxi-r2">
       </i>
-      <i class="r r3">
+      <i class="dxi-r dxi-r3">
       </i>
-      <div class="orb">
+      <div class="dxi-orb">
       <b>
       </b>
       <b>
@@ -56,28 +56,28 @@ export class Avatar {
       const eyes = K === 'd' ? ['l', 'r'].map(s => {
         const e = A.d_eyes[s],
           b = e.box;
-        return `<div class="eb" style="left:${b[0]}%;top:${b[1]}%;width:${b[2] - b[0]}%;height:${b[3] - b[1]}%;
+        return `<div class="dxi-eb" style="left:${b[0]}%;top:${b[1]}%;width:${b[2] - b[0]}%;height:${b[3] - b[1]}%;
         -webkit-mask-image:url(${e.mask});
         mask-image:url(${e.mask})">
       <img src="${e.sclera}" alt="">
-      <img class="iris" data-ex="${e.ex}" data-ey="${e.ey}" src="${e.iris}" alt="">
+      <img class="dxi-iris" data-ex="${e.ex}" data-ey="${e.ey}" src="${e.iris}" alt="">
       </div>`;
       }).join('') : '';
-      this.h.innerHTML = `<div class="av">${fx}<div class="av-bob">
-      <img class="bs" src="${A[P + 'base']}" alt="Aria">${eyes}
-      <img class="ly eye bl" src="${A[P + 'blink']}" alt="">
-      ${K === 'c' ? `<img class="ly eye think" src="${A.c_think}" alt="">` : ''}
-      <img class="ly mouth m-a" src="${A[P + 'a']}" alt="">
-      <img class="ly mouth m-o" src="${A[P + 'o']}" alt="">
-      <img class="ly mouth m-e" src="${A[P + 'e']}" alt="">
+      this.h.innerHTML = `<div class="dxi-av">${fx}<div class="dxi-av-bob">
+      <img class="dxi-bs" src="${A[P + 'base']}" alt="Aria">${eyes}
+      <img class="dxi-ly dxi-eye dxi-bl" src="${A[P + 'blink']}" alt="">
+      ${K === 'c' ? `<img class="dxi-ly dxi-eye dxi-think" src="${A.c_think}" alt="">` : ''}
+      <img class="dxi-ly dxi-mouth dxi-m-a" src="${A[P + 'a']}" alt="">
+      <img class="dxi-ly dxi-mouth dxi-m-o" src="${A[P + 'o']}" alt="">
+      <img class="dxi-ly dxi-mouth dxi-m-e" src="${A[P + 'e']}" alt="">
       </div>
       </div>`;
     } else {
       const bars = [0, 1, 2, 3, 4].map(i =>
         `<rect x="${43.2 + i * 2.9}" y="63" width="1.8" height="7" rx=".9" fill="#2CF0FF"/>`).join('');
-      this.h.innerHTML = `<div class="av">${fx}<div class="av-bob">
-      <img class="bs" src="${A.b_base}" alt="Aria">
-      <svg class="b-face" viewBox="0 0 100 100">
+      this.h.innerHTML = `<div class="dxi-av">${fx}<div class="dxi-av-bob">
+      <img class="dxi-bs" src="${A.b_base}" alt="Aria">
+      <svg class="dxi-b-face" viewBox="0 0 100 100">
       <defs>
       <filter id="gl${this.id}" x="-120%" y="-120%" width="340%" height="340%">
       <feGaussianBlur stdDeviation="1.6" result="b"/>
@@ -88,44 +88,44 @@ export class Avatar {
       </feMerge>
       </filter>
       </defs>
-      <g class="b-eyes" filter="url(#gl${this.id})">
-      <rect class="b-eye" x="34.3" y="44.5" width="6" height="16" rx="3" fill="#2CF0FF"/>
-      <rect class="b-eye" x="59.7" y="44.5" width="6" height="16" rx="3" fill="#2CF0FF"/>
+      <g class="dxi-b-eyes" filter="url(#gl${this.id})">
+      <rect class="dxi-b-eye" x="34.3" y="44.5" width="6" height="16" rx="3" fill="#2CF0FF"/>
+      <rect class="dxi-b-eye" x="59.7" y="44.5" width="6" height="16" rx="3" fill="#2CF0FF"/>
       </g>
-      <g class="b-m" filter="url(#gl${this.id})">${bars}</g>
+      <g class="dxi-b-m" filter="url(#gl${this.id})">${bars}</g>
       </svg>
       </div>
       </div>`;
     }
-    this.av = $('.av', this.h);
+    this.av = $('.dxi-av', this.h);
     this.vis(null, 0);
     this.state(this.h.dataset.s || 'reposo');
   }
   state(s) {
     this.h.dataset.s = s;
-    const t = $('.think', this.h);
-    if (t) t.classList.toggle('on', s === 'piensa');
-    const eyes = $('.b-eyes', this.h);
+    const t = $('.dxi-think', this.h);
+    if (t) t.classList.toggle('dxi-on', s === 'piensa');
+    const eyes = $('.dxi-b-eyes', this.h);
     if (eyes && s === 'piensa') eyes.style.transform = 'translate(2.5px,-3px)';
-    if (s === 'piensa') $$('.iris', this.h).forEach(i =>
+    if (s === 'piensa') $$('.dxi-iris', this.h).forEach(i =>
       i.style.transform = `translate(${i.dataset.ex * .75}%,${-i.dataset.ey}%)`);
   }
   blink() {
     if (this.h.dataset.s === 'piensa') return;
-    const b = $('.bl', this.h);
+    const b = $('.dxi-bl', this.h);
     if (b) {
-      b.classList.add('on');
-      this.later(() => b.classList.remove('on'));
+      b.classList.add('dxi-on');
+      this.later(() => b.classList.remove('dxi-on'));
     }
-    $$('.b-eye', this.h).forEach(e => {
-      e.classList.add('shut');
-      this.later(() => e.classList.remove('shut'));
+    $$('.dxi-b-eye', this.h).forEach(e => {
+      e.classList.add('dxi-shut');
+      this.later(() => e.classList.remove('dxi-shut'));
     });
   }
   vis(v, e = 1) {
     if ((this.kind || 'd') !== 'b') {
       ['a', 'o', 'e'].forEach(k => {
-        const m = $('.m-' + k, this.h);
+        const m = $('.dxi-m-' + k, this.h);
         if (m) m.style.opacity = k === v ? e : 0;
       });
     } else {
@@ -134,17 +134,17 @@ export class Avatar {
         o: [.2, .7, 1, .7, .2],
         e: [.8, .6, .5, .6, .8]
       }[v] || [.08, .08, .08, .08, .08];
-      $$('.b-m rect', this.h).forEach((r, i) =>
+      $$('.dxi-b-m rect', this.h).forEach((r, i) =>
         r.style.transform = `scaleY(${(w[i] * (v ? .75 + Math.random() * .4 : 1)).toFixed(2)})`);
     }
   }
   point(x, y) {
     if (this.av) this.av.style.transform =
        `rotateY(${x * 7}deg) rotateX(${-y * 4}deg) translate(${x * 6}px,${y * 3}px)`;
-    const eyes = $('.b-eyes', this.h);
+    const eyes = $('.dxi-b-eyes', this.h);
     if (this.h.dataset.s === 'piensa') return;
     if (eyes) eyes.style.transform = `translate(${x * 3}px,${y * 2}px)`;
-    $$('.iris', this.h).forEach(i => i.style.transform = `translate(${x * i.dataset.ex}%,${y * i.dataset.ey}%)`);
+    $$('.dxi-iris', this.h).forEach(i => i.style.transform = `translate(${x * i.dataset.ex}%,${y * i.dataset.ey}%)`);
   }
 }
 export function crearMotor(root, getSteps, abrirAsistente) {
@@ -207,8 +207,8 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     });
   }
   function words(el, t) {
-    el.innerHTML = t.split(' ').map(w => `<span class="w">${w}</span>`).join(' ');
-    return $$('.w', el);
+    el.innerHTML = t.split(' ').map(w => `<span class="dxi-w">${w}</span>`).join(' ');
+    return $$('.dxi-w', el);
   }
   function visemeOf(c, n) {
     c = (c || '').toLowerCase();
@@ -239,7 +239,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
         if (done || my !== token) return;
         done = true;
         pendingResolve = null;
-        ws.forEach(w => w.classList.add('v'));
+        ws.forEach(w => w.classList.add('dxi-v'));
         tgt().vis(null);
         tgt().state('reposo');
         av.state('reposo');
@@ -252,7 +252,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
         if (v[0]) last = v;
         tgt().vis(v[0], v[1]);
         const nv = Math.ceil(idx / s.length * ws.length);
-        ws.forEach((w, i) => w.classList.toggle('v', i < nv));
+        ws.forEach((w, i) => w.classList.toggle('dxi-v', i < nv));
         if (!hasV && idx >= s.length) {
           end();
           return;
@@ -362,8 +362,8 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     const D = reduce ? 1 : 1050,
       hum = $('#morH'),
       rob = $('#morR'),
-      bst = $('.bst', mor),
-      scn = $('.scn', mor);
+      bst = $('.dxi-bst', mor),
+      scn = $('.dxi-scn', mor);
     hum.src = A[KIND + '_base'];
     rob.src = A.b_base;
     mor.style.display = 'block';

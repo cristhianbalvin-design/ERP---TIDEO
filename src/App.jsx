@@ -450,7 +450,7 @@ function MainLayout({ onShowApplicationWelcome }) {
             </button>
           </div>
         )}
-        <main className="main">
+        <main className={active === 'inicio' ? "main dx-main-inicio" : "main"}>
           <Suspense fallback={<PageLoader />}>
             {routeAllowed ? Page() : <PageLoader />}
           </Suspense>
