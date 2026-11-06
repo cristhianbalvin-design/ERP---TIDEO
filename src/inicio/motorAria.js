@@ -85,7 +85,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     if ('eéií'.includes(c)) return ['e', .9];
     if ('oóuú'.includes(c)) return ['o', 1];
     if ('mbp'.includes(c)) return [null, 0];
-    if (' .,:;'.includes(c)) return [null, 0];
+    if (/^[\s\p{P}]$/u.test(c)) return [null, 0];
     return n;
   }
   function speak(av, text, say, el) {
@@ -101,6 +101,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
         start = performance.now(),
         useB = false,
         last = ['e', .4],
+        lastVisemeAt = -Infinity,
         done = false;
       const cps = 13.5;
       const hasV = window.speechSynthesis && voice;
@@ -118,9 +119,12 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       const loop = t => {
         if (destruido || my !== token || done) return;
         idx = useB ? Math.min(s.length - 1, idx + cps / 60) : Math.min(s.length, (t - start) / 1000 * cps);
-        const v = visemeOf(s[Math.floor(idx)], last);
-        if (v[0]) last = v;
-        tgt().vis(v[0], v[1]);
+        if (t - lastVisemeAt >= 90) {
+          const v = visemeOf(s[Math.floor(idx)], last);
+          if (v[0]) last = v;
+          tgt().vis(v[0], v[1]);
+          lastVisemeAt = t;
+        }
         const nv = Math.ceil(idx / s.length * ws.length);
         ws.forEach((w, i) => w.classList.toggle('dxi-v', i < nv));
         if (!hasV && idx >= s.length) {
