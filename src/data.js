@@ -1023,6 +1023,7 @@ export const pantallasPermisos = [
   { key: 'flota_panel', modulo: 'Operaciones', pantalla: 'Panel de Flota', acciones: ['ver','crear','editar'] },
   { key: 'pasaporte_equipos', modulo: 'Operaciones', pantalla: 'Pasaporte de Equipos', acciones: ['ver','crear','editar','eliminar'] },
   { key: 'actas_despachos', modulo: 'Operaciones', pantalla: 'Actas & Despachos', acciones: ['ver','crear','editar','anular'] },
+  { key: 'liquidacion_flota', modulo: 'Operaciones', pantalla: 'Liquidación & DMR', acciones: ['ver','crear','editar','aprobar','anular'] },
   { key: 'certificaciones_activo', modulo: 'Operaciones', pantalla: 'Certificaciones del Activo', acciones: ['ver','crear','editar','anular'] },
   { key: 'garantias_flota', modulo: 'Operaciones', pantalla: 'Gestión de Garantías', acciones: ['ver','crear','editar','anular'] },
   { key: 'diagnostico_tecnico', modulo: 'Operaciones', pantalla: 'Diagnóstico Técnico', acciones: ['ver','crear','editar','aprobar'] },
