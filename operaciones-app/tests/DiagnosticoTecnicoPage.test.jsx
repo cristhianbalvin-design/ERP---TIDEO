@@ -1267,10 +1267,23 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(buttonByText(renderer, 'Guardar cambios').props.disabled).toBe(true);
   });
 
+  it('abre Mantenimiento en Hallazgos si es borrador y en Diagnóstico e informe si está emitido', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('two', 'mantenimiento'));
+    await renderPage({ trabajo: 'two' });
+    await act(async () => { await wait(100); });
+    expect(textOf(renderer.root)).toContain('Paso 4 de 6');
+    renderer.unmount(); renderer = null;
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({ ...detail('two', 'mantenimiento'), estado: 'emitido' });
+    await renderPage({ trabajo: 'two' });
+    await act(async () => { await wait(100); });
+    expect(textOf(renderer.root)).toContain('Paso 6 de 6');
+  });
+
   it('shows graceful placeholders when the initial-data migration is missing', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({ ...detail('two', 'mantenimiento'), datos_iniciales_migracion_disponible: false });
     await renderPage();
     await act(async () => { listRows()[1].props.onClick(); await wait(100); });
+    await act(async () => { renderer.root.findAllByProps({ className: 'dx-work-steps' })[0].findAllByType('button')[0].props.onClick(); await wait(0); });
     expect(textOf(renderer.root)).toContain('Datos iniciales: —');
     await act(async () => { renderer.root.findAllByProps({ className: 'dx-work-steps' })[0].findAllByType('button')[2].props.onClick(); await wait(0); });
     expect(buttonByText(renderer, 'Guardar cambios')).toBeFalsy();

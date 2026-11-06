@@ -231,3 +231,47 @@ export function rangoMesAnterior(hoy = new Date()) {
   const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return { desde: iso(inicio), hasta: iso(fin) };
 }
+
+// ── Custodia: validación por campo (todos los errores en una pasada) ─────────
+const numeroDecimal = v => Number(String(v ?? '').replace(',', '.'));
+
+export function hoyIso(hoy = new Date()) {
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+}
+
+export function validarIngresoCustodia(m = {}) {
+  const errores = {};
+  if (!m.ubicacion_id) errores.ubicacion_id = 'Elige la posición.';
+  if (!m.material) errores.material = 'Elige el material de la lista.';
+  const q = numeroDecimal(m.cantidad);
+  if (String(m.cantidad ?? '').trim() === '') errores.cantidad = 'Indica la cantidad.';
+  else if (!(q > 0)) errores.cantidad = 'La cantidad debe ser mayor a cero.';
+  return errores;
+}
+
+export function validarAsignacionCustodia(m = {}) {
+  const errores = {};
+  if (!m.cuenta_id) errores.cuenta_id = 'Elige el cliente.';
+  if (!m.ubicaciones?.length) errores.ubicaciones = 'Marca al menos una posición libre.';
+  return errores;
+}
+
+export function validarTarifaCustodia(m = {}) {
+  const errores = {};
+  for (const [k, nombre] of [['tarifa_posicion_dia', 'la tarifa por posición-día'], ['tarifa_movimiento', 'la tarifa por movimiento']]) {
+    const v = String(m[k] ?? '').trim();
+    if (v === '') errores[k] = `Indica ${nombre} (puede ser 0).`;
+    else if (!(numeroDecimal(v) >= 0)) errores[k] = 'Debe ser un número igual o mayor a cero.';
+  }
+  return errores;
+}
+
+// La liquidación solo cobra días ya transcurridos: "Hasta" no puede ser posterior a hoy.
+export function validarRangoLiquidacion(rango = {}, hoy = hoyIso()) {
+  const errores = {};
+  if (!rango.desde) errores.desde = 'Indica la fecha inicial.';
+  if (!rango.hasta) errores.hasta = 'Indica la fecha final.';
+  else if (rango.hasta > hoy) errores.hasta = 'Solo se liquidan días ya transcurridos: elige hoy o una fecha anterior.';
+  if (rango.desde && rango.hasta && rango.hasta < rango.desde) errores.hasta = 'Debe ser igual o posterior a la fecha inicial.';
+  return errores;
+}

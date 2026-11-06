@@ -12,13 +12,13 @@ vi.mock('../src/zahory-mock/pages/InformePdf.jsx', () => ({ generarPdfInforme: (
 import { DiagnosticoInformePanel } from '../src/zahory-mock/pages/DiagnosticoInformePanel.jsx';
 
 const draft = options => ({ id: 'inf-1', empresa_id: 'e1', estado: 'borrador', opciones: { conclusion: '', conclusion_origen: 'manual', conclusion_confirmada: false, incluir_mediciones: false, mostrar_horas: false, ocultar_conformes: false, ...options } });
-const diagnosis = { id: 'd1', recepcion_id: 'r1', tipo: 'fabricacion', estado: 'emitido', hallazgos: [], lineas: [] };
+const diagnosis = { id: 'd1', recepcion_id: 'r1', tipo: 'fabricacion', estado: 'borrador', hallazgos: [], lineas: [] };
 let renderer;
 const text = node => node?.children?.map(child => typeof child === 'string' ? child : text(child)).join('') || '';
 const byLabel = label => renderer.root.findAll(node => node.type === 'label' && text(node).includes(label))[0];
 const button = label => renderer.root.findAllByType('button').find(node => text(node).trim() === label);
 async function render(overrides = {}) {
-  await act(async () => { renderer = create(<DiagnosticoInformePanel diagnostico={diagnosis} catalogos={{}} cabecera={{}} puedeEditar onClose={vi.fn()} {...overrides} />); await Promise.resolve(); });
+  await act(async () => { renderer = create(<DiagnosticoInformePanel diagnostico={diagnosis} catalogos={{}} cabecera={{}} puedeEditar puedeEmitirDiagnostico onEmitirDiagnostico={vi.fn(async () => true)} onClose={vi.fn()} {...overrides} />); await Promise.resolve(); });
 }
 
 beforeEach(() => {

@@ -16,6 +16,74 @@ test('estado de vigencia distingue inactiva, futura, vigente y vencida', () => {
   assert.equal(utils.estadoVigencia({ ...base, vigente_hasta: '2026-10-22' }, '2026-10-23'), 'vencida');
 });
 
+test('arma origen y destino desde lugares vinculados y conserva rutas antiguas', () => {
+  const route = { origen_lugar_id: 'a', destino_lugar_id: null, origen_nombre: 'Depósito', destino_nombre: 'Obra antigua', destino_direccion: 'Km 4' };
+  assert.deepEqual(utils.armarParadasDesdeRuta(route, [{ id: 'a', nombre: 'Almacén', direccion: 'Calle 1', latitud: -12 }]), [
+    { tipo: 'origen', lugar_id: 'a', nombre: 'Almacén', direccion: 'Calle 1', latitud: -12, longitud: null },
+    { tipo: 'destino', lugar_id: null, nombre: 'Obra antigua', direccion: 'Km 4', latitud: null, longitud: null },
+  ]);
+});
+
+test('calcula llegada estimada y valida los campos requeridos por paso', () => {
+  assert.equal(utils.llegadaEstimadaViaje('2026-10-28T08:00:00-05:00', 16).toISOString(),
+    '2026-10-29T05:00:00.000Z');
+  assert.deepEqual(utils.validarPasoViaje(1, {}), {
+    cuenta_id: 'Este campo es obligatorio.', fecha_programada: 'Este campo es obligatorio.',
+  });
+  assert.deepEqual(utils.validarPasoViaje(3, {}), {
+    carga_descripcion: 'Describe la carga.', peso_toneladas: 'Indica el peso.',
+    tipo_unidad: 'Selecciona un tipo de unidad.',
+  });
+});
+
+test('programa viajes con tarifa resuelta o precio manual y solo transiciona borradores', () => {
+  assert.equal(utils.puedeProgramarViaje({ tarifa_id: 't1', tarifa_unitaria: 15,
+    procedencia_tarifa: 'cliente' }), true);
+  assert.equal(utils.puedeProgramarViaje({ tarifa_unitaria: 15, procedencia_tarifa: 'manual' }), true);
+  assert.equal(utils.puedeProgramarViaje({ tarifa_unitaria: 0, procedencia_tarifa: 'manual' }), false);
+  assert.equal(utils.puedeProgramarViaje({ tarifa_unitaria: 0, procedencia_tarifa: 'base' }), false);
+  assert.equal(utils.debeCambiarEstadoAlProgramar('borrador'), true);
+  assert.equal(utils.debeCambiarEstadoAlProgramar('programado'), false);
+});
+
+test('conserva en la lista la OS guardada aunque su estado no sea seleccionable', () => {
+  const rows = [{ id: 'os-activa', estado: 'activa' }];
+  assert.deepEqual(utils.incluirOSActual(rows, { id: 'os-guardada', estado: 'en_pausa' }), [
+    { id: 'os-guardada', estado: 'en_pausa' }, rows[0],
+  ]);
+  assert.deepEqual(utils.incluirOSActual(rows, rows[0]), rows);
+});
+
+test('valida que la ventana de parada termine después de su inicio', () => {
+  assert.equal(utils.validarVentanaParada({ ventana_inicio: '08:00', ventana_fin: '09:00' }), '');
+  assert.match(utils.validarVentanaParada({ ventana_inicio: '09:00', ventana_fin: '08:00' }),
+    /posterior/);
+  assert.match(utils.validarVentanaParada({ ventana_inicio: '08:00', ventana_fin: '08:00' }),
+    /posterior/);
+});
+
+test('muestra vencimiento próximo solo dentro de la vigencia actual', () => {
+  const tarifa = { estado: 'activa', vigente_desde: '2026-10-01', vigente_hasta: '2026-10-07' };
+  assert.equal(utils.diasParaVencimientoTarifa(tarifa, '2026-10-01'), 6);
+  assert.equal(utils.diasParaVencimientoTarifa(tarifa, '2026-10-07'), 0);
+  assert.equal(utils.diasParaVencimientoTarifa(tarifa, '2026-10-08'), null);
+});
+
+test('preserva lugar y ventanas en paradas normalizadas', () => {
+  const payload = utils.normalizarPayloadViaje({ paradas: [{ tipo: 'recojo', nombre: 'Almacén',
+    lugar_id: 'place-1', ventana_inicio: '08:00', ventana_fin: '10:30' }] });
+  assert.deepEqual(payload.paradas[0], { tipo: 'recojo', nombre: 'Almacén', lugar_id: 'place-1',
+    ventana_inicio: '08:00', ventana_fin: '10:30', guia_remision_id: null });
+});
+
+test('valida campos por paso y mapea requisitos del asistente', () => {
+  assert.deepEqual(utils.validarPasoViaje(1, {}), { cuenta_id: 'Este campo es obligatorio.', fecha_programada: 'Este campo es obligatorio.' });
+  assert.deepEqual(utils.validarPasoViaje(3, {
+    tipo_unidad: 'Camión', carga_descripcion: 'Carga', peso_toneladas: '2',
+  }), {});
+  assert.deepEqual(utils.mapearRequisitosViaje(['gps', 'epp']), ['GPS', 'EPP']);
+});
+
 test('formateo, modalidad y validaci\u00f3n de tarifa correcta', () => {
   assert.equal(utils.formatearImporte(4.1234, 'PEN', 'km'), 'S/ 4.1234');
   assert.equal(utils.etiquetaModalidad('viaje'), 'Por viaje');
@@ -49,6 +117,21 @@ test('unifica tipos de unidad sin duplicados de mayúsculas o acentos', () => {
     utils.unificarTiposUnidad(['Furgón', 'Camioneta'], ['furgon', 'CAMIONETA', 'Camión 2 ejes']),
     ['Furgón', 'Camioneta', 'Camión 2 ejes'],
   );
+});
+
+test('combina defaults, vehículos, tarifas activas y unidad guardada sin duplicados', () => {
+  assert.deepEqual(utils.catalogoTiposUnidad(
+    ['furgon', 'Camión eléctrico'],
+    [
+      { tipo_unidad: 'Tracto 30 t', estado: 'activa' },
+      { tipo_unidad: 'Unidad retirada', estado: 'inactiva' },
+    ],
+    'Volquete antiguo',
+  ), [
+    'Camioneta', 'Furgón', 'Camión 2 ejes', 'Camión 3 ejes',
+    'Tracto con semirremolque', 'Cama baja', 'Camión eléctrico',
+    'Tracto 30 t', 'Volquete antiguo',
+  ]);
 });
 
 test('formulario de ruta vac\u00edo devuelve todos los obligatorios', () => {
@@ -140,4 +223,158 @@ test('búsqueda normaliza tildes y exige todos los términos en todos los campos
   assert.equal(busqueda.filtrarBusquedaInteligente(rows, 'arequipa 90').length, 1);
   assert.equal(busqueda.filtrarBusquedaInteligente([{ nombre: 'José Pérez' }], 'jose perez').length, 1);
   assert.equal(busqueda.filtrarBusquedaInteligente(rows, 'lima lejos').length, 0);
+});
+
+test('cantidad facturable e ingreso estimado siguen la regla SQL del viaje', () => {
+  assert.equal(utils.cantidadFacturableViaje('viaje', {}), 1);
+  assert.equal(utils.cantidadFacturableViaje('km', { distancia_km: '12.5' }), 12.5);
+  assert.equal(utils.cantidadFacturableViaje('tonelada', { peso_toneladas: 2 }), 2);
+  assert.equal(utils.cantidadFacturableViaje('hora', { duracion_estimada_horas: null }), null);
+  assert.equal(utils.ingresoEstimadoViaje(2.125, 3, 10), 10);
+  assert.equal(utils.ingresoEstimadoViaje(2.125, 3, 0), 6.38);
+  assert.equal(utils.ingresoEstimadoViaje(null, 1, 0), null);
+});
+
+test('agrupa estados, etiqueta y colorea el viaje; conserva las transiciones SQL', () => {
+  assert.equal(utils.grupoEstadoViaje('despachado'), 'en_curso');
+  assert.equal(utils.grupoEstadoViaje('con_incidente'), 'en_curso');
+  assert.equal(utils.grupoEstadoViaje('cancelado'), 'cerrados');
+  assert.equal(utils.etiquetaEstadoViaje('en_liquidacion'), 'En liquidación');
+  assert.equal(utils.colorEstadoViaje('entregado'), 'is-green');
+  assert.deepEqual(utils.accionesPermitidasViaje('borrador'), ['programado','cancelado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('programado'), ['despachado','borrador','cancelado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('despachado'), ['en_ruta','cancelado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('en_ruta'), ['con_incidente','entregado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('con_incidente'), ['en_ruta','entregado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('entregado'), ['en_liquidacion']);
+  assert.deepEqual(utils.accionesPermitidasViaje('en_liquidacion'), ['cerrado','entregado']);
+  assert.deepEqual(utils.accionesPermitidasViaje('cerrado'), []);
+  assert.deepEqual(utils.accionesPermitidasViaje('cancelado'), []);
+});
+
+test('valida formulario de viaje por campo y ordena paradas renumerando secuencia', () => {
+  const invalid = utils.validarFormularioViaje({ moneda:'EUR', modalidad:'otro', paradas:[{nombre:''}] });
+  assert.ok(invalid.cuenta_id);
+  assert.ok(invalid.origen_nombre);
+  assert.ok(invalid.moneda);
+  assert.ok(invalid.modalidad);
+  assert.ok(invalid.parada_0);
+  assert.deepEqual(utils.ordenarParadasViaje([{secuencia:3,nombre:'C'},{secuencia:1,nombre:'A'}]), [
+    {secuencia:1,nombre:'A'},{secuencia:2,nombre:'C'},
+  ]);
+});
+
+test('normaliza referencias y números opcionales vacíos del payload del viaje a null', () => {
+  const payload = utils.normalizarPayloadViaje({
+    os_cliente_id: '', cotizacion_id: '', ruta_id: '', tarifa_id: '', sociedad_id: '',
+    transportista_id: '', vehiculo_id: '', conductor_id: '',
+    distancia_km: '', duracion_estimada_horas: '', peso_toneladas: '', volumen_m3: '',
+    tarifa_unitaria: '', minimo_facturable: '', cantidad_facturable: '',
+    paradas: [{ tipo: 'origen', guia_remision_id: '' }],
+  });
+  for (const key of ['os_cliente_id','cotizacion_id','ruta_id','tarifa_id','sociedad_id','transportista_id','vehiculo_id','conductor_id','distancia_km','duracion_estimada_horas','peso_toneladas','volumen_m3','tarifa_unitaria','minimo_facturable','cantidad_facturable']) assert.equal(payload[key], null, key);
+  assert.equal(payload.paradas[0].guia_remision_id, null);
+  assert.equal(utils.normalizarPayloadViaje({ distancia_km: '12.5' }).distancia_km, 12.5);
+});
+
+test('sincroniza paradas de origen y destino, y mantiene ambas ancladas al ordenar', () => {
+  const stops = utils.sincronizarParadasViaje([{ tipo: 'destino', nombre: '' }, { tipo: 'recojo', nombre: 'B' }, { tipo: 'origen', nombre: '' }], 'Lima', 'Cusco');
+  assert.deepEqual(stops.map(stop => [stop.tipo, stop.nombre]), [['origen','Lima'],['recojo','B'],['destino','Cusco']]);
+  const manual = utils.sincronizarParadasViaje([{ tipo: 'origen', nombre: 'Almacén', nombre_manual: true }, { tipo: 'destino', nombre: 'Cusco' }], 'Lima', 'Arequipa');
+  assert.deepEqual(manual.map(stop => [stop.tipo, stop.nombre]), [['origen','Almacén'],['destino','Arequipa']]);
+});
+
+test('estima ingreso mensual solo para compromisos y separa monedas usando el mes local', () => {
+  const referencia = new Date(2026, 9, 15, 12);
+  const viajes = [
+    { estado:'programado', fecha_programada:'2026-10-02', moneda:'PEN', ingreso_estimado:1000 },
+    { estado:'cancelado', fecha_programada:'2026-10-03', moneda:'PEN', ingreso_estimado:3232 },
+    { estado:'borrador', fecha_programada:'2026-10-04', moneda:'PEN', ingreso_estimado:500 },
+    { estado:'en_ruta', fecha_programada:'2026-10-05', moneda:'USD', ingreso_estimado:250 },
+    { estado:'entregado', fecha_programada:'2026-09-30', moneda:'PEN', ingreso_estimado:99 },
+  ];
+
+  assert.deepEqual(utils.ingresoEstimadoMesViajes(viajes, referencia), { PEN:1000, USD:250 });
+});
+
+test('convierte hora UTC a hora local y de regreso con offset explícito, sin usar zona de la máquina', () => {
+  const utc = '2026-10-28T13:00:00Z';
+  const local = utils.fechaUtcAFechaLocalInput(utc, -300);
+  assert.equal(local, '2026-10-28T08:00');
+  assert.equal(utils.fechaLocalInputAFechaUtc(local, -300), '2026-10-28T13:00:00.000Z');
+});
+
+
+test('estima distancia con haversine, factor de ruta y redondeos aprobados', () => {
+  const estimate = utils.estimarTrayecto({ latitud: 0, longitud: 0 }, { latitud: 1, longitud: 0 });
+  assert.deepEqual(estimate, { distancia_km: 145, duracion_estimada_horas: 2.5 });
+  assert.equal(utils.estimarTrayecto({ latitud: null, longitud: null }, {}), null);
+});
+
+test('extrae coordenadas v\u00e1lidas de enlaces de Google Maps', () => {
+  assert.deepEqual(utils.parsearCoordenadasMaps('https://maps.google.com/@-12.0464,-77.0428,15z'), {
+    latitud: -12.0464, longitud: -77.0428,
+  });
+  assert.deepEqual(utils.parsearCoordenadasMaps('https://maps.google.com/data=!3d-12.0464!4d-77.0428'), {
+    latitud: -12.0464, longitud: -77.0428,
+  });
+  assert.equal(utils.parsearCoordenadasMaps('https://maps.google.com/@91,181,15z'), null);
+  assert.equal(utils.parsearCoordenadasMaps('sin coordenadas'), null);
+});
+
+test('valida los campos requeridos del composer de ruta y tarifa base', () => {
+  const errors = utils.validarComposerRuta({ tarifa: {} });
+  assert.ok(errors.origen_lugar_id);
+  assert.ok(errors.destino_lugar_id);
+  assert.ok(errors.distancia_km);
+  assert.ok(errors.duracion_estimada_horas);
+  assert.ok(errors.codigo);
+  assert.ok(errors.nombre);
+  assert.ok(errors['tarifa.tipo_unidad']);
+  assert.ok(errors['tarifa.modalidad']);
+  assert.ok(errors['tarifa.tarifa']);
+  assert.ok(errors['tarifa.moneda']);
+  assert.ok(errors['tarifa.vigente_desde']);
+  const invalidOptional = utils.validarComposerRuta({
+    numero_peajes: '-1', peajes_estimados: '-1',
+    tarifa: { tipo_unidad: 'Camión', modalidad: 'viaje', tarifa: '10', moneda: 'PEN',
+      minimo_facturable: '-1', vigente_desde: '2026-11-03' },
+  });
+  assert.ok(invalidOptional.numero_peajes);
+  assert.ok(invalidOptional.peajes_estimados);
+  assert.ok(invalidOptional['tarifa.minimo_facturable']);
+  assert.deepEqual(utils.validarComposerRuta({
+    origen_lugar_id: 'a', destino_lugar_id: 'b', distancia_km: '10',
+    duracion_estimada_horas: '1', codigo: 'R-001', nombre: 'A ? B',
+  }, false), {});
+});
+
+test('la vista previa no pega la unidad a un valor vacío', () => {
+  assert.equal(utils.formatearValorUnidad('', 'km'), 'Sin dato');
+  assert.equal(utils.formatearValorUnidad(null, 'h'), 'Sin dato');
+  assert.match(utils.formatearValorUnidad(3400, 'km'), /3,400 km/);
+});
+
+test('la tarifa base lleva separador de miles y céntimos', () => {
+  assert.match(utils.formatearImporte(3400, 'PEN', 'viaje'), /S\/ 3,400\.00/);
+});
+
+test('el precio vacío usa el mensaje propio del composer', () => {
+  const errors = utils.validarComposerRuta({
+    origen_lugar_id: 'A', destino_lugar_id: 'B', distancia_km: 10,
+    duracion_estimada_horas: 1, codigo: 'R-012', nombre: 'A a B',
+    tarifa: { tipo_unidad: 'Tracto', modalidad: 'viaje', tarifa: '', moneda: 'PEN',
+      vigente_desde: '2026-11-03' },
+  });
+  assert.equal(errors['tarifa.tarifa'], 'Indica el precio de la tarifa base.');
+});
+
+test('el duplicado solo considera rutas activas en el mismo sentido', () => {
+  const routes = [
+    { id: 'inactive', estado: 'inactiva', origen_lugar_id: 'A', destino_lugar_id: 'B' },
+    { id: 'active', estado: 'activa', origen_lugar_id: 'A', destino_lugar_id: 'B' },
+  ];
+  assert.equal(utils.encontrarRutaDuplicada(routes, 'A', 'B').id, 'active');
+  assert.equal(utils.encontrarRutaDuplicada(routes, 'B', 'A'), null);
+  assert.equal(utils.encontrarRutaDuplicada(routes, '', 'B'), null);
 });

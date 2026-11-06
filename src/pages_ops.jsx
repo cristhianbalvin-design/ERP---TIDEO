@@ -10,6 +10,7 @@ import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './compo
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { DevolucionesNCPendientes } from './components/DevolucionesNCPendientes.jsx';
+import { CatalogoAltaRapida } from './components/CatalogoAltaRapida.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -707,7 +708,10 @@ function Cuentas() {
     return contactosPorCuenta;
   }, [contactos]);
 
-  const cuentasBase = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
+  const cuentasDelTenant = isSupabaseConfigured() && empresa?.id
+    ? cuentas.filter(c => c?.empresa_id === empresa.id)
+    : cuentas;
+  const cuentasBase = cuentasDelTenant.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
   const cxcPorCuentaMoneda = useMemo(() => {
     const mapa = new Map();
     const facturasPorId = new Map((facturas || []).map(factura => [factura.id, factura]));
@@ -10355,7 +10359,7 @@ const TRANS_FORM_INIT = { ruc: '', razon_social: '', nombre_comercial: '', tipo_
 
 function Remision() {
   const {
-    guiasRemision, ordenesVenta, transportistas, catalogoVenta, almacenes, ots,
+    guiasRemision, ordenesVenta, transportistas, catalogoVenta, setCatalogoVenta, almacenes, ots,
     crearGuiaCtx, emitirGuiaCtx, marcarEnTransitoCtx, confirmarEntregaCtx, anularGuiaCtx,
     crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, actualizarVehiculoCtx, eliminarVehiculoCtx, crearConductorCtx, actualizarConductorCtx, eliminarConductorCtx,
     crearOVCtx, confirmarOVCtx, anularOVCtx,
@@ -10378,6 +10382,7 @@ function Remision() {
 
   const [modalGuia, setModalGuia] = useState(null);
   const [modalOV, setModalOV] = useState(null);
+  const [altaCatalogo, setAltaCatalogo] = useState(false);
   const [modalTrans, setModalTrans] = useState(null);
   const [modalAnular, setModalAnular] = useState(null);
   const [anularMotivo, setAnularMotivo] = useState('');
@@ -11197,7 +11202,7 @@ function Remision() {
                     </tbody>
                   </table>
                 )}
-                {(catalogoVenta || []).length > 0 && (
+                {(catalogoVenta || []).filter(c => c.activo !== false).length > 0 ? (
                   <div style={{marginBottom:8}}>
                     <label className="form-label">Agregar desde catálogo</label>
                     <select className="input" onChange={e => {
@@ -11207,11 +11212,24 @@ function Remision() {
                     }}>
                       <option value="">— Seleccionar producto —</option>
                       {(catalogoVenta || []).filter(c => c.activo !== false).map(c => (
-                        <option key={c.id} value={c.id}>{c.codigo} — {c.descripcion} — {ovForm.moneda === 'USD' ? 'US$' : 'S/'} {Number(c.precio_lista || 0).toFixed(2)}</option>
+                        <option key={c.id} value={c.id}>{c.codigo} — {c.descripcion} — {c.moneda === 'USD' ? 'US$' : 'S/'} {Number(c.precio_lista || 0).toFixed(2)}</option>
                       ))}
                     </select>
+                    <div className="dx-catr-links">¿Falta un producto? <button type="button" onClick={() => setAltaCatalogo(true)}>+ Agregar al catálogo</button><span aria-hidden="true">·</span><a href="/operaciones/#/catalogo" target="_blank" rel="noopener noreferrer">Gestionar catálogo ↗</a></div>
+                  </div>
+                ) : (
+                  <div className="dx-catr-vacio" role="status">Aún no hay productos en el catálogo de venta. Agrega el primero para poder vender desde el almacén.
+                    <div className="dx-catr-links"><button type="button" onClick={() => setAltaCatalogo(true)}>+ Agregar al catálogo</button><span aria-hidden="true">·</span><a href="/operaciones/#/catalogo" target="_blank" rel="noopener noreferrer">Gestionar catálogo ↗</a></div>
                   </div>
                 )}
+                {altaCatalogo && <CatalogoAltaRapida empresaId={empresa?.id} monedaInicial={ovForm.moneda} onCerrar={() => setAltaCatalogo(false)} onGuardado={item => {
+                  setAltaCatalogo(false);
+                  if (item) {
+                    setCatalogoVenta?.(prev => [...(prev || []).filter(c => c.id !== item.id), item].sort((a, b) => String(a.descripcion).localeCompare(String(b.descripcion))));
+                    setOvLinea(p => ({...p, descripcion: item.descripcion, codigo: item.codigo, unidad: item.unidad, precio_unitario: item.precio_lista, catalogo_item_id: item.id, material_id: item.material_id || null}));
+                    addToast?.(`${item.codigo} agregado al catálogo y elegido en la línea.`, 'success');
+                  }
+                }} />}
                 <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
                   <div><label className="form-label">Descripción *</label><input className="input" value={ovLinea.descripcion} onChange={e => setOvLinea(p => ({...p, descripcion: e.target.value}))} /></div>
                   <div><label className="form-label">Cantidad</label><input type="number" className="input" value={ovLinea.cantidad} onChange={e => setOvLinea(p => ({...p, cantidad: e.target.value}))} min={0} step={0.01} /></div>

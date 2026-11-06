@@ -11,19 +11,22 @@ export function DevolucionesNCPendientes({ empresaId, addToast }) {
     if (!empresaId || !isSupabaseConfigured()) return;
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.from('wms_devoluciones')
-      .select('id, numero, cerrada_at, motivo, guia_id, cuenta_id, wms_devolucion_lineas(cantidad_liberada, cantidad_merma, cantidad, costo_unitario)')
+      .select('id, numero, cerrada_at, motivo, guia_id, cuenta_id, orden_venta_id, wms_devolucion_lineas(cantidad_liberada, cantidad_merma, cantidad, costo_unitario)')
       .eq('empresa_id', empresaId).eq('nc_estado', 'pendiente').order('cerrada_at', { ascending: true }).limit(20);
     if (error) return;
     const guias = [...new Set((data || []).map(d => d.guia_id).filter(Boolean))];
     const cuentas = [...new Set((data || []).map(d => d.cuenta_id).filter(Boolean))];
-    const [g, c] = await Promise.all([
+    const ovs = [...new Set((data || []).map(d => d.orden_venta_id).filter(Boolean))];
+    const [g, c, ov] = await Promise.all([
       guias.length ? supabase.from('guias_remision').select('id, numero_completo').in('id', guias) : { data: [] },
       cuentas.length ? supabase.from('cuentas').select('id, razon_social, nombre_comercial').in('id', cuentas) : { data: [] },
+      ovs.length ? supabase.from('ordenes_venta').select('id, cliente_nombre').in('id', ovs) : { data: [] },
     ]);
     const gm = new Map((g.data || []).map(x => [x.id, x.numero_completo]));
     const cm = new Map((c.data || []).map(x => [x.id, x.razon_social || x.nombre_comercial]));
+    const om = new Map((ov.data || []).map(x => [x.id, x.cliente_nombre]));
     setPendientes((data || []).map(d => ({
-      ...d, guia: gm.get(d.guia_id) || 'Sin dato', cliente: cm.get(d.cuenta_id) || 'Sin dato',
+      ...d, guia: gm.get(d.guia_id) || 'Sin dato', cliente: cm.get(d.cuenta_id) || om.get(d.orden_venta_id) || 'Sin dato',
       valor: Math.round((d.wms_devolucion_lineas || []).reduce((t, l) => t + Number(l.cantidad || 0) * Number(l.costo_unitario || 0), 0) * 100) / 100,
     })));
   }, [empresaId]);

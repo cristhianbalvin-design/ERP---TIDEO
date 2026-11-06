@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiencia de campaña</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F4F6F8;--card:#fff;--line:#E4E7EB;--line2:#EEF0F3;--field:#C9CFD8;--head:#F8F9FA;--fg:#1A2B4A;--muted:#6B7280;--cyan:#00ACC1;--cyan-fg:#0B4F5A;--cyan-bg:#E0F7FA;--violet:#5B3A8C;--violet-bg:#F0EAFB;--amber:#8A4B00;--amber-bg:#FFF3E0;--green:#14633A;--green-bg:#E3F6EA;--red:#B3261E;--red-bg:#FDECEA;--gray-bg:#EEF0F3;--btn:#1A2B4A;--btn-fg:#fff}
+.dark{--bg:#0F1720;--card:#17212C;--line:#2B3744;--line2:#232E3A;--field:#3A4755;--head:#1C2733;--fg:#E8EDF3;--muted:#9AA6B2;--cyan:#26C6DA;--cyan-fg:#9CEBF5;--cyan-bg:#10363D;--violet:#C6B2E8;--violet-bg:#2C2340;--amber:#F5C37A;--amber-bg:#3A2A12;--green:#8FDDB0;--green-bg:#143325;--red:#F4A79F;--red-bg:#3B1E1C;--gray-bg:#26313D;--btn:#E8EDF3;--btn-fg:#14202C}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 "DM Sans",system-ui,sans-serif}
+h1,h2,h3{font-family:Sora,"DM Sans",sans-serif;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+.note{max-width:1180px;margin:12px auto 0;padding:8px 14px;border-radius:10px;background:var(--amber-bg);color:var(--amber);font-size:12px;display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.note button{background:none;border:1px solid currentColor;border-radius:8px;padding:3px 10px;color:inherit;cursor:pointer}
+.dx-page{max-width:1180px;margin:0 auto;padding:20px 16px 48px;container-type:inline-size}
+.crumb{background:none;border:0;padding:0;color:var(--muted);cursor:pointer;font-size:13px;margin-bottom:12px}
+.crumb:hover{color:var(--fg)}
+.dx-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
+.eyebrow{font-size:11px;letter-spacing:.09em;font-weight:700;color:var(--cyan-fg);text-transform:uppercase}
+.dx-head h1{font-size:24px;line-height:1.2;margin:4px 0}
+.sub{color:var(--muted);font-size:13px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--field);background:var(--card);cursor:pointer;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--cyan)}
+.btn.primary{background:var(--btn);color:var(--btn-fg);border-color:var(--btn)}
+.btn.small{height:34px;padding:0 10px;font-size:12px;border-radius:8px}
+.btn.link{border-color:transparent;background:none;color:var(--cyan-fg)}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui-kpi{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.dx-ui-kpi strong{font:700 20px Sora,sans-serif}
+.dx-ui-kpi span{font-size:12px;color:var(--muted)}
+.msg{display:flex;gap:12px;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 16px;margin-bottom:16px}
+.msg b{display:block;font-size:12px}
+.msg p{margin:2px 0 0;color:var(--muted);font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.toolbar{display:flex;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.toolbar h2{font-size:15px}
+.count{font-size:12px;color:var(--muted);background:var(--gray-bg);border-radius:999px;padding:2px 8px}
+.search{margin-left:auto;height:40px;width:260px;max-width:100%;border:1px solid var(--field);border-radius:10px;background:var(--card);padding:0 12px}
+.chips{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line2);overflow-x:auto}
+.chip{height:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:0 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:600;color:var(--muted)}
+.chip.on{background:var(--cyan-bg);border-color:var(--cyan);color:var(--cyan-fg)}
+.bulk{display:none;gap:8px;align-items:center;padding:10px 16px;background:var(--cyan-bg);color:var(--cyan-fg);flex-wrap:wrap;font-size:13px;font-weight:600}
+.bulk.on{display:flex}
+.thead,.row{display:grid;grid-template-columns:32px minmax(170px,1.2fr) 130px 104px 112px 300px;gap:12px;align-items:center;padding:0 16px}
+.thead{min-height:38px;background:var(--head);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.row{min-height:70px;padding-top:10px;padding-bottom:10px;border-top:1px solid var(--line2);cursor:pointer}
+.row:hover{background:var(--head)}
+.name{font-weight:600}
+.small{font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-por_enviar{background:var(--amber-bg);color:var(--amber)}.p-enviado{background:var(--cyan-bg);color:var(--cyan-fg)}.p-interesado{background:var(--green-bg);color:var(--green)}.p-lead{background:var(--violet-bg);color:var(--violet)}.p-no_interesado,.p-sin_respuesta{background:var(--gray-bg);color:var(--muted)}.p-no_contactar{background:var(--red-bg);color:var(--red)}
+.late{color:var(--red);font-weight:600}
+.lbl{display:none}
+.acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.acts .btn{flex:none}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.back{position:fixed;inset:0;background:rgba(10,18,28,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+.back.on{display:flex}
+.modal{background:var(--card);border-radius:14px;width:min(680px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;container-type:inline-size}
+.m-h,.m-f{padding:14px 20px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.m-h{border-bottom:1px solid var(--line2)}.m-h h3{font-size:17px}
+.m-f{border-top:1px solid var(--line2);justify-content:flex-end}
+.m-b{padding:18px 20px;overflow:auto}
+.x{width:36px;height:36px;border:0;background:none;font-size:20px;cursor:pointer;color:var(--muted)}
+.dx-ui-form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px 20px;align-items:start}
+.dx-ui-form-grid.is-2{grid-template-columns:repeat(2,1fr)}
+.dx-ui-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.dx-ui-field>span:first-child{font-size:12px;font-weight:600;min-height:18px}
+.dx-ui-field input,.dx-ui-select{height:40px;border:1px solid var(--field);border-radius:10px;padding:0 12px;background:var(--card);width:100%}
+.dx-ui-select{appearance:none;padding:0 34px 0 12px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 17px,calc(100% - 12px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.dx-ui-field textarea{min-height:76px;border:1px solid var(--field);border-radius:10px;padding:10px 12px;background:var(--card);resize:vertical;width:100%}
+.full{grid-column:1/-1}
+.hint{font-size:12px;color:var(--muted)}
+.dx-ui-required{color:var(--red)}
+.alert{padding:10px 12px;border-radius:10px;background:var(--amber-bg);color:var(--amber);font-size:13px;margin-top:14px}
+.imp{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+.imp div{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.imp strong{display:block;font:700 20px Sora,sans-serif}
+.imp span{font-size:12px;color:var(--muted)}
+.drop{border:1.5px dashed var(--field);border-radius:12px;padding:20px;text-align:center}
+.views{display:inline-flex;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--head)}
+.views button{height:32px;border:0;background:none;border-radius:8px;padding:0 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+.views button.on{background:var(--card);color:var(--fg);box-shadow:0 1px 2px rgba(10,18,28,.14)}
+.board{display:none;gap:10px;padding:12px;overflow-x:auto;background:var(--head);align-items:stretch;scroll-snap-type:x proximity;scroll-padding-left:12px}
+.kanban .board{display:flex}
+.kanban .chips,.kanban .bulk,.kanban .thead,.kanban #rows{display:none!important}
+.kcol{flex:0 0 236px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px;min-height:320px;scroll-snap-align:start}
+.kcol.over{border-color:var(--cyan);background:var(--cyan-bg)}
+.khead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:2px 2px 8px}
+.kempty{padding:24px 8px;text-align:center;font-size:12px;color:var(--muted)}
+.kcard{display:block;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer}
+.kcard[draggable=true]{cursor:grab}
+.kcard:hover{border-color:var(--cyan)}
+.kcard.drag{opacity:.45}
+.kmeta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+.kcard .acts{justify-content:flex-start}
+.kcard .acts:empty{display:none}
+.tipo{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.03em;vertical-align:1px}
+.tipo.persona{background:var(--gray-bg);color:var(--muted)}.tipo.empresa{background:var(--violet-bg);color:var(--violet)}
+.prev{grid-column:1/-1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--head)}
+.prev b{display:block;font-size:12px;margin-bottom:6px}.prev div{display:grid;grid-template-columns:130px 1fr;gap:8px;font-size:12px;padding:2px 0}.prev span{color:var(--muted)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--btn);color:var(--btn-fg);padding:10px 14px;border-radius:10px;font-size:13px;display:none;z-index:9;max-width:calc(100vw - 32px)}
+.toast.on{display:block}
+@container (max-width:980px){
+ .thead{display:none}
+ .row{grid-template-columns:32px 1fr 1fr;padding:12px 16px;align-items:start}
+ .row .c-name{grid-column:2/-1}
+ .row .c-1{grid-column:2}.row .c-2{grid-column:3}.row .c-3{grid-column:2}.row .c-4{grid-column:3}
+ .row .acts{grid-column:2/-1;justify-content:flex-start}
+ .lbl{display:block;font-size:11px;color:var(--muted)}
+ .search{margin-left:0;width:100%}
+}
+@container (max-width:600px){
+ .dx-ui-form-grid,.dx-ui-form-grid.is-2{grid-template-columns:1fr}
+ .imp{grid-template-columns:repeat(2,1fr)}
+ .msg{flex-direction:column;align-items:stretch}
+ .dx-ui-kpi-row{grid-template-columns:repeat(2,1fr)}
+}
+@container (max-width:420px){.dx-head h1{font-size:21px}.actions .btn{flex:1}}
+</style>
+</head>
+<body>
+<div class="note"><span><b>Mock para aprobación.</b> Versión 2: tipo de cliente, empresa, cargo, observación y datos que llegan al lead. Personas ficticias.</span><button id="tema" type="button">Modo oscuro</button></div>
+<main class="dx-page">
+ <button class="crumb" type="button">← Marketing Automation</button>
+ <header class="dx-head">
+  <div><div class="eyebrow">Campaña · Base propia</div><h1>Nuevo curso – Exalumnos</h1><div class="sub">LinkedIn · Activa · 05/11/2026 a 30/11/2026</div></div>
+  <div class="actions"><button class="btn" id="btnAgregar" type="button">Agregar persona</button><button class="btn primary" id="btnImportar" type="button">Importar Excel</button></div>
+ </header>
+ <section class="dx-ui-kpi-row" id="kpis" aria-label="Resumen de la campaña"></section>
+ <section class="msg"><div><b>Mensaje base</b><p id="mensaje">Hola {nombre}, soy Cristhian. Abrí un nuevo curso y creo que podría interesarte como exalumno. ¿Te comparto la información?</p></div><button class="btn small" id="editMsg" type="button">Editar</button></section>
+ <section class="card" id="aud">
+  <div class="toolbar"><h2>Audiencia</h2><span class="count" id="total"></span><input class="search" id="q" aria-label="Buscar en la audiencia" placeholder="Buscar nombre, correo o etiqueta"><div class="views" role="group" aria-label="Vista de la audiencia"><button type="button" data-v="lista" class="on" aria-pressed="true">Lista</button><button type="button" data-v="kanban" aria-pressed="false">Kanban</button></div></div>
+  <div class="chips" id="chips"></div>
+  <div class="bulk" id="bulk"><span id="sel"></span><button class="btn small" data-bulk="enviado" type="button">Marcar enviados</button><button class="btn small" data-bulk="sin_respuesta" type="button">Sin respuesta</button><button class="btn small" data-bulk="no_contactar" type="button">No contactar</button></div>
+  <div class="thead"><span></span><span>Persona</span><span>Estado</span><span>Último contacto</span><span>Seguimiento</span><span style="text-align:right">Siguiente acción</span></div>
+  <div id="rows"></div>
+  <div class="board" id="board" aria-label="Kanban de la audiencia"></div>
+ </section>
+</main>
+<div class="back" id="back"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="m-h"><h3 id="mt"></h3><button class="x" id="cerrar" aria-label="Cerrar" type="button">×</button></div><div class="m-b" id="mb"></div><div class="m-f" id="mf"></div></div></div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const EST={por_enviar:'Por enviar',enviado:'Enviado',interesado:'Interesado',no_interesado:'No interesado',sin_respuesta:'Sin respuesta',no_contactar:'No contactar'};
+const HOY='2026-11-05';
+let gente=[
+{id:1,n:'Ana Quispe',e:'ana.ejemplo@correo.pe',l:'linkedin.com/in/ana-ejemplo',t:'Power BI 2025',s:'por_enviar',u:'',f:'',c:'Por confirmar'},
+{id:2,n:'Bruno Salazar',e:'',l:'linkedin.com/in/bruno-ejemplo',t:'Power BI 2025',s:'por_enviar',u:'',f:'',c:'Por confirmar'},
+{id:3,n:'Carla Medina',e:'carla.ejemplo@correo.pe',l:'linkedin.com/in/carla-ejemplo',t:'Excel con IA',s:'enviado',u:'2026-11-03',f:'2026-11-04',c:'Confirmado'},
+{id:4,n:'Diego Torres',e:'',l:'linkedin.com/in/diego-ejemplo',t:'Excel con IA',s:'enviado',u:'2026-11-05',f:'2026-11-10',c:'Confirmado'},
+{id:5,n:'Elena Rojas',e:'elena.ejemplo@correo.pe',l:'linkedin.com/in/elena-ejemplo',t:'Power BI 2024',s:'interesado',u:'2026-11-04',f:'2026-11-06',c:'Confirmado'},
+{id:6,n:'Fabio Paredes',e:'fabio.ejemplo@correo.pe',l:'linkedin.com/in/fabio-ejemplo',t:'Power BI 2024',s:'interesado',u:'2026-11-02',f:'',c:'Confirmado',lead:true},
+{id:7,n:'Gabriela Núñez',e:'',l:'linkedin.com/in/gabriela-ejemplo',t:'Excel con IA',s:'no_interesado',u:'2026-11-01',f:'',c:'Confirmado'},
+{id:8,n:'Hugo Ramos',e:'hugo.ejemplo@correo.pe',l:'',t:'Power BI 2025',s:'sin_respuesta',u:'2026-10-28',f:'',c:'Por confirmar'},
+{id:9,n:'Irene Vargas',e:'irene.ejemplo@correo.pe',l:'linkedin.com/in/irene-ejemplo',t:'Power BI 2024',s:'no_contactar',u:'2026-10-30',f:'',c:'Revocado'}];
+const EXTRA={1:['persona','Datamart Perú','Analista de BI',''],2:['persona','','Controller','Pidió horarios de noche'],3:['persona','Minera Andina','Jefa de Planeamiento',''],4:['empresa','Logística Sur SAC','Gerente de Operaciones','Quiere capacitar a 6 personas'],5:['persona','','Consultora',''],6:['persona','Banco Ejemplo','Analista Senior',''],7:['persona','','',''],8:['persona','Retail Norte','Coordinador',''],9:['persona','','','']};
+gente.forEach(x=>{const e=EXTRA[x.id];x.tipo=e[0];x.emp=e[1];x.car=e[2];x.obs=e[3]});
+const CAMP=document.querySelector('h1').textContent;
+const lab=x=>[x.car,x.emp].filter(Boolean).join(' · ')||'Sin dato';
+const chip=x=>`<span class="tipo ${x.tipo}">${x.tipo==='empresa'?'EMPRESA':'PERSONA'}</span>`;
+let filtro='todos',seleccion=new Set(),q='',vista='lista';
+const COLS=[['por_enviar','Por enviar'],['enviado','Enviado'],['sin_respuesta','Sin respuesta'],['interesado','Interesado'],['lead','Lead creado'],['no_interesado','No interesado'],['no_contactar','No contactar']];
+const col=x=>x.lead?'lead':x.s;
+const $=s=>document.querySelector(s);
+const fecha=d=>d?d.split('-').reverse().join('/'):'Sin dato';
+const nombre=x=>x.n.split(' ')[0];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),3200)}
+function pill(x){return x.lead?'<span class="pill p-lead"><i></i>Lead creado</span>':`<span class="pill p-${x.s}"><i></i>${EST[x.s]}</span>`}
+function accion(x){
+ if(x.lead)return '<button class="btn small" data-a="verlead" type="button">Ver lead</button>';
+ if(x.s==='por_enviar')return (x.l?'<button class="btn small primary" data-a="abrir" type="button">Copiar y abrir LinkedIn</button>':'')+'<button class="btn small" data-a="enviado" type="button">Marcar enviado</button>';
+ if(x.s==='enviado'||x.s==='sin_respuesta')return '<button class="btn small" data-a="interesado" type="button">Interesado</button><button class="btn small" data-a="no_interesado" type="button">No interesado</button>';
+ if(x.s==='interesado')return '<button class="btn small primary" data-a="lead" type="button">Pasar a Leads</button>';
+ return '';
+}
+function vencido(x){return x.f&&x.f<HOY&&!x.lead&&!['no_interesado','no_contactar'].includes(x.s)}
+function render(){
+ const cuenta=k=>gente.filter(x=>x.s===k).length;
+ const kp=[[gente.length,gente.length===1?'persona':'personas'],[cuenta('por_enviar'),'por enviar'],[gente.filter(x=>x.u).length,gente.filter(x=>x.u).length===1?'contactada':'contactadas'],[cuenta('interesado'),cuenta('interesado')===1?'interesada':'interesadas'],[gente.filter(x=>x.lead).length,gente.filter(x=>x.lead).length===1?'lead creado':'leads creados'],[gente.filter(vencido).length,'seguimientos vencidos']];
+ $('#kpis').innerHTML=kp.map(k=>`<div class="dx-ui-kpi"><strong>${k[0]}</strong><span>${k[1]}</span></div>`).join('');
+ $('#chips').innerHTML=[['todos','Todos',gente.length],...Object.keys(EST).map(k=>[k,EST[k],cuenta(k)])].map(c=>`<button class="chip ${filtro===c[0]?'on':''}" data-f="${c[0]}" type="button">${c[1]} · ${c[2]}</button>`).join('');
+ const t=q.toLowerCase();
+ const v=gente.filter(x=>(vista==='kanban'||filtro==='todos'||x.s===filtro)&&(!t||[x.n,x.e,x.t].join(' ').toLowerCase().includes(t)));
+ $('#total').textContent=v.length+(v.length===1?' persona':' personas');
+ $('#rows').innerHTML=v.length?v.map(x=>`<div class="row" role="button" tabindex="0" data-id="${x.id}"><input type="checkbox" aria-label="Seleccionar a ${esc(x.n)}" ${seleccion.has(x.id)?'checked':''}><div class="c-name"><div class="name">${esc(x.n)}${chip(x)}</div><div class="small">${esc(lab(x))}</div><div class="small">${esc(x.t)}${x.c==='Por confirmar'?' · Consentimiento por confirmar':''}</div></div><div class="c-1"><span class="lbl">Estado</span>${pill(x)}</div><div class="c-2 small"><span class="lbl">Último contacto</span>${fecha(x.u)}</div><div class="c-3 small ${vencido(x)?'late':''}"><span class="lbl">Seguimiento</span>${fecha(x.f)}${vencido(x)?' · vencido':''}</div><div class="c-4 acts">${accion(x)}</div></div>`).join(''):'<div class="empty">No hay personas con estos filtros.</div>';
+ $('#board').innerHTML=COLS.map(([k,n])=>{const c=v.filter(x=>col(x)===k);const pk=k==='lead'?'lead':k;return `<section class="kcol" data-col="${k}" aria-label="${n}"><div class="khead"><span class="pill p-${pk}"><i></i>${n}</span><span class="count">${c.length}</span></div>${c.length?c.map(tarjeta).join(''):'<div class="kempty">Sin personas</div>'}</section>`}).join('');
+ const b=$('#bulk');b.classList.toggle('on',seleccion.size>0);$('#sel').textContent=seleccion.size+(seleccion.size===1?' seleccionada':' seleccionadas');
+}
+function tarjeta(x){return `<article class="kcard" role="button" tabindex="0" data-id="${x.id}" draggable="${x.lead?'false':'true'}"><div class="name">${esc(x.n)}${chip(x)}</div><div class="small">${esc(lab(x))}</div><div class="small">${esc(x.t)}</div>${x.c==='Por confirmar'?'<div class="small">Consentimiento por confirmar</div>':''}<div class="kmeta small"><div><span class="lbl" style="display:block">Último contacto</span>${fecha(x.u)}</div><div class="${vencido(x)?'late':''}"><span class="lbl" style="display:block">Seguimiento</span>${fecha(x.f)}${vencido(x)?' · vencido':''}</div></div><div class="acts">${accion(x)}</div></article>`}
+function mover(x,k){if(col(x)===k)return;if(x.lead){toast('Esta persona ya es lead; continúa en Leads y Scoring');return}if(k==='lead'){if(x.s!=='interesado'){toast('Primero márcala como Interesada');return}x.lead=true;toast('Lead creado en “Nuevo” y vinculado a la campaña')}else{poner(x,k);toast(`${nombre(x)} pasó a ${EST[k]}`)}render()}
+function poner(x,s){x.s=s;if(s==='enviado'){x.u=HOY;x.f='2026-11-10'}if(['interesado','no_interesado','sin_respuesta'].includes(s)&&!x.u)x.u=HOY;if(s==='no_contactar')x.c='Revocado';if(s!=='enviado')x.f=s==='interesado'?x.f:''}
+function abrir(t,b,f){$('#mt').textContent=t;$('#mb').innerHTML=b;$('#mf').innerHTML=f;$('#back').classList.add('on');const c=$('#mb input,#mb select,#mb textarea');if(c)c.focus()}
+function cerrar(){$('#back').classList.remove('on')}
+function ficha(x){
+ const op=o=>o.map(v=>`<option ${v===x.c?'selected':''}>${v}</option>`).join('');
+ abrir(x.n,`<div class="dx-ui-form-grid is-2"><label class="dx-ui-field"><span>Estado</span><select class="dx-ui-select" id="fS">${Object.keys(EST).map(k=>`<option value="${k}" ${k===x.s?'selected':''}>${EST[k]}</option>`).join('')}</select></label><label class="dx-ui-field"><span>Canal</span><select class="dx-ui-select"><option>LinkedIn</option><option>Correo</option><option>WhatsApp</option><option>Llamada</option></select></label><label class="dx-ui-field"><span>Último contacto</span><input type="date" id="fU" value="${x.u}"></label><label class="dx-ui-field"><span>Próximo seguimiento</span><input type="date" id="fF" value="${x.f}"></label><label class="dx-ui-field full"><span>Consentimiento para promociones</span><select class="dx-ui-select" id="fC">${op(['Por confirmar','Confirmado','Revocado'])}</select><span class="hint">Guarda cómo y cuándo lo dio en la observación.</span></label><label class="dx-ui-field"><span>Tipo de cliente</span><select class="dx-ui-select" id="fT"><option value="persona" ${x.tipo==='persona'?'selected':''}>Persona</option><option value="empresa" ${x.tipo==='empresa'?'selected':''}>Empresa</option></select></label><label class="dx-ui-field"><span>Cargo</span><input id="fCa" value="${esc(x.car)}"></label><label class="dx-ui-field full"><span>Empresa</span><input id="fE" value="${esc(x.emp)}"><span class="hint">Persona: dónde labora. Empresa: quién compra.</span></label><label class="dx-ui-field full"><span>Observación</span><textarea id="fO" placeholder="Sin dato">${esc(x.obs)}</textarea></label><div class="prev"><b>Así llegará al lead</b><div><span>Tipo</span>${x.tipo==='empresa'?'EMPRESA':'PERSONA'}</div><div><span>Empresa</span>${esc(x.emp)||'Sin dato'}</div><div><span>Cargo</span>${esc(x.car)||'Sin dato'}</div><div><span>LinkedIn</span>${esc(x.l)||'Sin dato'}</div><div><span>Oportunidad</span>${esc(CAMP)}</div><div><span>Observación</span>${esc(x.obs)||'Sin dato'}</div></div></div>`,'<button class="btn" data-m="cerrar" type="button">Cancelar</button><button class="btn primary" data-m="guardar" type="button">Guardar</button>');
+ $('#mf').querySelector('[data-m=guardar]').onclick=()=>{poner(x,$('#fS').value);x.u=$('#fU').value;x.f=$('#fF').value;x.c=$('#fC').value;x.tipo=$('#fT').value;x.car=$('#fCa').value;x.emp=$('#fE').value;x.obs=$('#fO').value;cerrar();render();toast('Seguimiento guardado')};
+}
+function persona(){abrir('Agregar persona',`<div class="dx-ui-form-grid is-2"><label class="dx-ui-field"><span>Tipo de cliente <span class="dx-ui-required">*</span></span><select class="dx-ui-select" id="nT"><option value="persona">Persona</option><option value="empresa">Empresa</option></select></label><label class="dx-ui-field"><span>Nombre completo <span class="dx-ui-required">*</span></span><input id="nN" placeholder="Nombres y apellidos"></label><label class="dx-ui-field"><span id="nEL">Empresa donde labora</span><input id="nE"></label><label class="dx-ui-field"><span>Cargo</span><input id="nC"></label><label class="dx-ui-field"><span>Perfil de LinkedIn</span><input id="nL" placeholder="linkedin.com/in/..."></label><label class="dx-ui-field"><span>Correo</span><input type="email"></label><label class="dx-ui-field"><span>Teléfono</span><input></label><label class="dx-ui-field"><span>Etiqueta</span><input placeholder="Ejemplo: Power BI 2025"></label><label class="dx-ui-field full"><span>Consentimiento para promociones</span><select class="dx-ui-select"><option>Por confirmar</option><option>Confirmado</option></select></label><label class="dx-ui-field full"><span>Observación</span><textarea id="nO"></textarea></label></div>`,'<button class="btn" data-m="cerrar" type="button">Cancelar</button><button class="btn primary" data-m="ok" type="button">Agregar</button>');
+ $('#nT').onchange=e=>{$('#nEL').innerHTML=e.target.value==='empresa'?'Empresa <span class="dx-ui-required">*</span>':'Empresa donde labora'};
+ $('#mf').querySelector('[data-m=ok]').onclick=()=>{const n=$('#nN').value.trim(),t=$('#nT').value,em=$('#nE').value.trim();if(!n){toast('Escribe el nombre');return}if(t==='empresa'&&!em){toast('Escribe la empresa');return}gente.unshift({id:Date.now(),n,e:'',l:$('#nL').value,t:'Sin etiqueta',s:'por_enviar',u:'',f:'',c:'Por confirmar',tipo:t,emp:em,car:$('#nC').value,obs:$('#nO').value});cerrar();render();toast('Persona agregada')};}
+function importar(){abrir('Importar audiencia',`<div class="drop"><b>Exalumnos.xlsx</b><div class="small">Columnas: Apellidos, Nombres, Linkedin, Empresa, Cargo y Estado (también correo, teléfono, observación y tipo)</div></div><div class="imp"><div><strong>100</strong><span>filas leídas</span></div><div><strong>96</strong><span>personas nuevas</span></div><div><strong>3</strong><span>ya existen</span></div><div><strong>1</strong><span>sin dato de contacto</span></div></div><div class="hint">Apellidos y Nombres se unen como “Nombres Apellidos”: Quispe + Ana = Ana Quispe. Sin columna de tipo, se importan como Persona. Las personas repetidas se reconocen por LinkedIn, correo o teléfono.</div><div class="hint" style="margin-top:6px">Estado: 62 Por enviar · 30 Enviado · 5 Interesado · 3 sin reconocer (pasan a Por enviar).</div><div class="alert">Quienes tengan “No contactar” no se agregarán aunque aparezcan en el archivo.</div>`,'<button class="btn" data-m="cerrar" type="button">Cancelar</button><button class="btn primary" data-m="ok" type="button">Agregar 99 personas</button>');
+ $('#mf').querySelector('[data-m=ok]').onclick=()=>{cerrar();toast('99 personas agregadas (ejemplo)')};}
+function mensaje(){abrir('Mensaje base',`<label class="dx-ui-field"><span>Texto del mensaje</span><textarea id="tM" rows="5">${esc($('#mensaje').textContent)}</textarea><span class="hint">{nombre} se reemplaza por el nombre de cada persona al copiar.</span></label>`,'<button class="btn" data-m="cerrar" type="button">Cancelar</button><button class="btn primary" data-m="ok" type="button">Guardar</button>');
+ $('#mf').querySelector('[data-m=ok]').onclick=()=>{$('#mensaje').textContent=$('#tM').value;cerrar();toast('Mensaje guardado')};}
+document.addEventListener('click',e=>{
+ const vb=e.target.closest('[data-v]');if(vb){vista=vb.dataset.v;$('#aud').classList.toggle('kanban',vista==='kanban');document.querySelectorAll('[data-v]').forEach(b=>{const on=b===vb;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});render();return}
+ const c=e.target.closest('[data-f]');if(c){filtro=c.dataset.f;render();return}
+ const bk=e.target.closest('[data-bulk]');if(bk){gente.filter(x=>seleccion.has(x.id)).forEach(x=>poner(x,bk.dataset.bulk));seleccion.clear();render();toast('Personas actualizadas');return}
+ if(e.target.dataset.m==='cerrar'||e.target.id==='cerrar'||e.target.id==='back'){cerrar();return}
+ const r=e.target.closest('.row,.kcard');if(!r)return;const x=gente.find(p=>p.id==r.dataset.id);
+ if(e.target.type==='checkbox'){e.target.checked?seleccion.add(x.id):seleccion.delete(x.id);render();return}
+ const a=e.target.closest('[data-a]');
+ if(!a){ficha(x);return}
+ const k=a.dataset.a;
+ if(k==='abrir'){poner(x,'por_enviar');toast(`Mensaje para ${nombre(x)} copiado. Al volver, marca “Enviado”.`);x.copiado=true;return}
+ if(k==='lead'){x.lead=true;toast(`Lead creado en “Nuevo” y vinculado a la campaña`)}
+ else if(k==='verlead'){toast('Abriría el lead en Leads y Scoring')}
+ else poner(x,k);
+ render();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrar();const r=e.target.closest&&e.target.closest('.row,.kcard');if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();ficha(gente.find(p=>p.id==r.dataset.id))}});
+let arrastrado=null;const bd=$('#board');
+bd.addEventListener('dragstart',e=>{const c=e.target.closest('.kcard');if(!c)return;arrastrado=c.dataset.id;e.dataTransfer.setData('text/plain',arrastrado);c.classList.add('drag')});
+bd.addEventListener('dragend',e=>{const c=e.target.closest('.kcard');if(c)c.classList.remove('drag');bd.querySelectorAll('.over').forEach(x=>x.classList.remove('over'))});
+bd.addEventListener('dragover',e=>{const c=e.target.closest('.kcol');if(!c)return;e.preventDefault();bd.querySelectorAll('.over').forEach(x=>x!==c&&x.classList.remove('over'));c.classList.add('over')});
+bd.addEventListener('drop',e=>{const c=e.target.closest('.kcol');if(!c||!arrastrado)return;e.preventDefault();const x=gente.find(p=>p.id==arrastrado);arrastrado=null;mover(x,c.dataset.col)});
+$('#q').oninput=e=>{q=e.target.value;render()};
+$('#btnAgregar').onclick=persona;$('#btnImportar').onclick=importar;$('#editMsg').onclick=mensaje;
+$('#tema').onclick=()=>{const d=document.documentElement.classList.toggle('dark');$('#tema').textContent=d?'Modo claro':'Modo oscuro'};
+render();
+</script>
+</body>
+</html>

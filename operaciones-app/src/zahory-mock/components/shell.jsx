@@ -103,6 +103,7 @@ export const SIDEBAR_ZONES = [
         roles: ['gerente'],
         items: [
           { id: 'transporte-viajes',       label: 'Monitor de Viajes',  icon: 'mine' },
+          { id: 'transporte-lugares',      label: 'Lugares',            icon: 'map' },
           { id: 'transporte-ruta',         label: 'Hoja de Ruta',       icon: 'arrow' },
           { id: 'transporte-tarifas',      label: 'Maestro de Rutas',   icon: 'rates' },
           { id: 'transporte-tarifas-config', label: 'Tarifas Transporte', icon: 'rates' },
@@ -178,7 +179,7 @@ export const SIDEBAR_ZONES = [
         id: 'venta-repuestos', label: 'Venta de Repuestos', emoji: '🛒',
         roles: ['gerente'],
         items: [
-          { id: 'catalogo',               label: 'Catálogo CAT',        icon: 'box' },
+          { id: 'catalogo',               label: 'Catálogo de venta',   icon: 'box' },
           { id: 'repuestos-cotizaciones', label: 'Cotizaciones Venta',  icon: 'report' },
           { id: 'repuestos-ordenes',      label: 'Órdenes de Venta',    icon: 'orders' },
           { id: 'repuestos-despachos',    label: 'Guías & Despachos',   icon: 'download' },

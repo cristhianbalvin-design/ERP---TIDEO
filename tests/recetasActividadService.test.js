@@ -1,4 +1,5 @@
-import test, { mock } from 'node:test';
+// Migrado de node:test a vitest: mock.module exigía --experimental-test-module-mocks y fallaba sin esa opción.
+import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 
 const llamadas = [];
@@ -10,11 +11,9 @@ const cliente = {
   },
 };
 
-mock.module('../lib/supabaseClient.js', {
-  namedExports: { getSupabaseClient: async () => cliente },
-});
+vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: async () => cliente }));
 
-const { recetasActividadService } = await import('./recetasActividadService.js');
+const { recetasActividadService } = await import('../src/services/recetasActividadService.js');
 
 test('guardarReceta envía una sola RPC con filas normalizadas', async () => {
   llamadas.length = 0;

@@ -442,10 +442,21 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     return () => dispatchDiagnosticoWorkMode(false);
   }, [selected?.id, selected?.tipo, form.tipo]);
 
+  // Paso al abrir: un borrador abre donde se trabaja y un emitido en el paso final.
+  const abrirEnPasoInicial = diagnostico => {
+    const emitido = diagnostico?.estado === 'emitido';
+    if (diagnostico?.tipo === 'fabricacion') {
+      setInformePanel(false);
+      setWorkStep(emitido ? pasoFinal('fabricacion') : 2);
+      return;
+    }
+    setInformePanel(emitido);
+    setWorkStep(emitido ? pasoFinal('mantenimiento') : 4);
+  };
+
   useEffect(() => {
     setHallazgoView('lista');
-    setInformePanel(false);
-    setWorkStep(selected?.tipo === 'fabricacion' ? (selected.estado === 'emitido' ? pasoFinal('fabricacion') : 2) : 4);
+    abrirEnPasoInicial(selected);
   }, [selected?.id]);
 
   // Hoja de Costeo vigente creada desde este diagnóstico (trazabilidad).
@@ -682,7 +693,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       };
       setDatosIniciales(current => ({ ...current, ...initialData, componente_catalogo_id: detail.componente_catalogo_id || null, corregirComponente: false }));
       setDatosInicialesGuardados(initialData);
-      setWorkStep(detail.tipo === 'mantenimiento' ? 1 : detail.estado === 'emitido' ? pasoFinal(detail.tipo) : 2);
+      abrirEnPasoInicial(detail);
       if (detail.tipo === 'fabricacion') { setFabPiezas([]); setFabPiezaId(''); }
       if (typeof window !== 'undefined' && window.location?.hash !== undefined) {
         const query = new URLSearchParams(window.location?.hash?.split('?')[1] || '');

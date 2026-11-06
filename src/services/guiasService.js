@@ -30,35 +30,15 @@ export const CAMPOS_OBLIGATORIOS_GR = {
   transportista: ['transportista_ruc', 'transportista_razon_social', 'transportista_nro_mtc'],
 };
 
-// ─── Correlativo (atómico: read-then-upsert; suficiente para uso no concurrente) ──
+// ─── Correlativo de guías: RPC atómica que bloquea el contador y salta números ya usados ──
+// (la unicidad es empresa + serie + número, aunque el contador sea por sociedad)
 async function siguienteCorrelativo(supabase, empresaId, tipoDocumento, serie = 'T001', sociedadId = null) {
-  let query = supabase
-    .from('correlativos_documentos')
-    .select('*')
-    .eq('empresa_id', empresaId)
-    .eq('tipo_documento', tipoDocumento)
-    .eq('serie', serie);
-  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
-  const { data: existing } = await query.maybeSingle();
-
-  const ultimo = Number(existing?.ultimo_numero ?? 0);
-  const siguiente = ultimo + 1;
-
-  if (existing) {
-    await supabase.from('correlativos_documentos')
-      .update({ ultimo_numero: siguiente, updated_at: new Date().toISOString() })
-      .eq('id', existing.id);
-  } else {
-    await supabase.from('correlativos_documentos').insert({
-      id: mkId('cor'), empresa_id: empresaId,
-      tipo_documento: tipoDocumento, serie,
-      sociedad_id: sociedadId,
-      ultimo_numero: siguiente,
-      updated_at: new Date().toISOString(),
-    });
-  }
-
-  return { numero: siguiente, numero_completo: `${serie}-${String(siguiente).padStart(8, '0')}` };
+  if (tipoDocumento !== 'guia_remision') throw new Error(`Correlativo no soportado: ${tipoDocumento}`);
+  const { data, error } = await supabase.rpc('guia_reservar_numero', {
+    p_empresa_id: empresaId, p_serie: serie, p_sociedad_id: sociedadId || null,
+  });
+  if (error) throw new Error(error.message || 'No se pudo obtener el número de guía.');
+  return { numero: Number(data?.numero), numero_completo: data?.numero_completo };
 }
 
 // ─── Validar campos obligatorios SUNAT ────────────────────────────────────────

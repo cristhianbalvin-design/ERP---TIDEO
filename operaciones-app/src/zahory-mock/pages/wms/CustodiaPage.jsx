@@ -6,11 +6,14 @@ import {
 } from '../../../services/wmsMultipropositoService.js';
 import { AvisoSoloLectura, Encabezado, PaginaPrevia } from './WmsComun.jsx';
 import { estadoPrevio, mensajeError, useWmsBase } from './useWmsBase.js';
-import { formatoCantidad, formatoMoneda, previsualizarLiquidacion, rangoMesAnterior } from './wmsMultiLogic.js';
+import {
+  formatoCantidad, formatoMoneda, hoyIso, previsualizarLiquidacion, rangoMesAnterior,
+  validarAsignacionCustodia, validarIngresoCustodia, validarRangoLiquidacion, validarTarifaCustodia,
+} from './wmsMultiLogic.js';
 
 const vacio = { almacenes: [], clientes: [], libres: [], stock: [], cuentas: [] };
 
-function BuscarMaterial({ empresaId, sociedadId, valor, onElegir }) {
+function BuscarMaterial({ empresaId, sociedadId, valor, onElegir, error }) {
   const [texto, setTexto] = useState(valor ? `${valor.codigo} · ${valor.descripcion}` : '');
   const [resultados, setResultados] = useState([]);
   useEffect(() => {
@@ -26,10 +29,11 @@ function BuscarMaterial({ empresaId, sociedadId, valor, onElegir }) {
     return () => { vigente = false; clearTimeout(t); };
   }, [texto, empresaId, sociedadId, valor]);
   return <div className="dx-ui-field"><label htmlFor="dx-wcus-mat">Material<span className="dx-ui-required" aria-hidden="true">*</span></label>
-    <input id="dx-wcus-mat" type="search" placeholder="Busca por código o descripción" value={texto} onChange={e => { setTexto(e.target.value); if (valor) onElegir(null); }} />
-    {resultados.length > 0 && <select className="dx-ui-select dx-w-listbox" size={Math.min(6, resultados.length)} aria-label="Resultados de materiales" onChange={e => { const m = resultados.find(r => r.material_id === e.target.value); if (m) { onElegir(m); setTexto(`${m.codigo} · ${m.descripcion}`); setResultados([]); } }}>
+    <input id="dx-wcus-mat" type="search" placeholder="Busca por código o descripción" value={texto} aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'dx-wcus-mat-err' : undefined} onChange={e => { setTexto(e.target.value); if (valor) onElegir(null); }} />
+    {resultados.length > 0 && <select className="dx-ui-select dx-w-listbox" size={Math.max(2, Math.min(6, resultados.length))} aria-label="Resultados de materiales" onChange={e => { const m = resultados.find(r => r.material_id === e.target.value); if (m) { onElegir(m); setTexto(`${m.codigo} · ${m.descripcion}`); setResultados([]); } }}>
       {resultados.map(m => <option key={m.material_id} value={m.material_id}>{m.codigo} · {m.descripcion}</option>)}
     </select>}
+    {error && <small className="dx-ui-field-error" id="dx-wcus-mat-err" role="alert">{error}</small>}
   </div>;
 }
 
@@ -74,7 +78,21 @@ export function CustodiaPage() {
     catch (e) { setErrorModal(mensajeError(e)); }
     finally { setOcupado(false); }
   };
-  const abrir = m => { setErrorModal(''); setAviso(''); setModal(m); };
+  const abrir = m => { setErrorModal(''); setAviso(''); setModal({ ...m, errores: {} }); };
+  // Errores por campo: se muestran todos a la vez y el foco va al primer campo inválido.
+  const conErrores = (errores, ids) => {
+    setErrorModal('');
+    setModal(actual => ({ ...actual, errores }));
+    const primero = ids.find(([k]) => errores[k]);
+    if (primero) requestAnimationFrame(() => globalThis.document?.querySelector('.ops-zahory-host')?.shadowRoot?.getElementById(primero[1])?.focus());
+    return Object.keys(errores).length > 0;
+  };
+  const cambiar = (campo, valor) => setModal(actual => ({ ...actual, [campo]: valor, errores: { ...actual.errores, [campo]: undefined } }));
+  const err = campo => modal?.errores?.[campo];
+  const errorCampo = (campo, id) => err(campo) ? <small className="dx-ui-field-error" id={`${id}-err`} role="alert">{err(campo)}</small> : null;
+  const invalido = (campo, id) => (err(campo) ? { 'aria-invalid': 'true', 'aria-describedby': `${id}-err` } : {});
+  const hoy = hoyIso();
+  const erroresRango = validarRangoLiquidacion(rango, hoy);
 
   const calcular = async () => {
     setOcupado(true); setError('');
@@ -116,7 +134,7 @@ export function CustodiaPage() {
         </div>
         <div className="dx-w-side">
           <div className="dx-ui-card">
-            <div className="dx-w-bar"><h2>Clientes en custodia</h2><span className="dx-ui-count">{clientes.length} clientes</span></div>
+            <div className="dx-w-bar"><h2>Clientes en custodia</h2><span className="dx-ui-count">{clientes.length} {clientes.length === 1 ? 'cliente' : 'clientes'}</span></div>
             {!clientes.length ? <div className="dx-ui-empty">Aún no hay posiciones asignadas a clientes en este almacén.</div>
               : <div className="dx-w-scroll"><table className="dx-w-table">
                 <thead><tr><th>Cliente</th><th className="num">Posiciones</th><th className="num dx-w-hide-m">Materiales</th><th className="num dx-w-hide-m">Unidades</th><th className="num">Tarifa / pos-día</th></tr></thead>
@@ -147,10 +165,10 @@ export function CustodiaPage() {
               <h3>Liquidación de almacenaje</h3>
               <p className="sub">Posiciones ocupadas cada día × tarifa, más los movimientos de ingreso y salida × tarifa.</p>
               <div className="dx-ui-form-grid is-2">
-                <div className="dx-ui-field"><label htmlFor="dx-wcus-desde">Desde<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-desde" type="date" value={rango.desde} onChange={e => setRango({ ...rango, desde: e.target.value })} /></div>
-                <div className="dx-ui-field"><label htmlFor="dx-wcus-hasta">Hasta<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-hasta" type="date" value={rango.hasta} onChange={e => setRango({ ...rango, hasta: e.target.value })} /></div>
+                <div className="dx-ui-field"><label htmlFor="dx-wcus-desde">Desde<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-desde" type="date" max={rango.hasta || hoy} value={rango.desde} aria-invalid={erroresRango.desde ? 'true' : undefined} onChange={e => setRango({ ...rango, desde: e.target.value })} />{erroresRango.desde && <small className="dx-ui-field-error" role="alert">{erroresRango.desde}</small>}</div>
+                <div className="dx-ui-field"><label htmlFor="dx-wcus-hasta">Hasta<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-hasta" type="date" min={rango.desde || undefined} max={hoy} value={rango.hasta} aria-invalid={erroresRango.hasta ? 'true' : undefined} onChange={e => setRango({ ...rango, hasta: e.target.value })} />{erroresRango.hasta && <small className="dx-ui-field-error" role="alert">{erroresRango.hasta}</small>}</div>
               </div>
-              <button type="button" className="dx-btn" disabled={ocupado || !rango.desde || !rango.hasta} onClick={calcular}>Calcular</button>
+              <button type="button" className="dx-btn" disabled={ocupado || Object.keys(erroresRango).length > 0} onClick={calcular}>Calcular</button>
               {liq && <>
                 <div className="dx-w-kv"><span>Posiciones-día</span><b>{formatoCantidad(liq.posiciones_dia)} × {formatoMoneda(liq.tarifa_posicion_dia, liq.moneda)}</b></div>
                 <div className="dx-w-kv"><span>Almacenaje</span><b>{formatoMoneda(pre.almacenaje, liq.moneda)}</b></div>
@@ -167,32 +185,33 @@ export function CustodiaPage() {
       </>}
 
     {modal && <div className="dx-w-overlay" onMouseDown={e => { if (e.target === e.currentTarget && !ocupado) setModal(null); }}>
-      {modal.tipo === 'asignar' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-asig-t" onSubmit={e => { e.preventDefault(); if (!modal.cuenta_id || !modal.ubicaciones.length) { setErrorModal('Elige el cliente y al menos una posición libre.'); return; } ejecutar(() => asignarPosicionesCustodia({ empresa_id: empresaId, almacen_id: almacenId, cuenta_id: modal.cuenta_id, ubicaciones: modal.ubicaciones }), `${modal.ubicaciones.length} posiciones asignadas.`); }}>
+      {modal.tipo === 'asignar' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-asig-t" onSubmit={e => { e.preventDefault(); if (conErrores(validarAsignacionCustodia(modal), [['cuenta_id', 'dx-wcus-cuenta'], ['ubicaciones', 'dx-wcus-libres']])) return; ejecutar(() => asignarPosicionesCustodia({ empresa_id: empresaId, almacen_id: almacenId, cuenta_id: modal.cuenta_id, ubicaciones: modal.ubicaciones }), modal.ubicaciones.length === 1 ? '1 posición asignada.' : `${modal.ubicaciones.length} posiciones asignadas.`); }}>
         <h3 id="dx-wcus-asig-t">Asignar posiciones a un cliente</h3>
-        <div className="dx-ui-field"><label htmlFor="dx-wcus-cuenta">Cliente<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcus-cuenta" value={modal.cuenta_id} onChange={e => setModal({ ...modal, cuenta_id: e.target.value })}><option value="">Selecciona un cliente</option>{datos.cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}</select></div>
+        <div className="dx-ui-field"><label htmlFor="dx-wcus-cuenta">Cliente<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcus-cuenta" value={modal.cuenta_id} {...invalido('cuenta_id', 'dx-wcus-cuenta')} onChange={e => cambiar('cuenta_id', e.target.value)}><option value="">Selecciona un cliente</option>{datos.cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}</select>{errorCampo('cuenta_id', 'dx-wcus-cuenta')}</div>
         <div className="dx-ui-field"><span className="dx-ui-label">Posiciones libres ({libres.length})</span>
           {!libres.length ? <div className="dx-ui-empty">No hay posiciones libres. Crea ubicaciones en el almacén.</div>
-            : <div className="dx-w-lines">{libres.map(l => <label key={l.id} className="dx-w-toggle"><input type="checkbox" className="dx-w-check" checked={modal.ubicaciones.includes(l.id)} onChange={() => setModal({ ...modal, ubicaciones: modal.ubicaciones.includes(l.id) ? modal.ubicaciones.filter(x => x !== l.id) : [...modal.ubicaciones, l.id] })} />{l.codigo}</label>)}</div>}
+            : <div className="dx-w-lines" id="dx-wcus-libres" tabIndex={-1}>{libres.map(l => <label key={l.id} className="dx-w-toggle"><input type="checkbox" className="dx-w-check" checked={modal.ubicaciones.includes(l.id)} onChange={() => cambiar('ubicaciones', modal.ubicaciones.includes(l.id) ? modal.ubicaciones.filter(x => x !== l.id) : [...modal.ubicaciones, l.id])} />{l.codigo}</label>)}</div>}
+          {errorCampo('ubicaciones', 'dx-wcus-libres')}
         </div>
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setModal(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Guardando…' : 'Asignar'}</button></div>
       </form>}
-      {modal.tipo === 'tarifa' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-tar-t" onSubmit={e => { e.preventDefault(); const pd = Number(String(modal.tarifa_posicion_dia).replace(',', '.')); const mv = Number(String(modal.tarifa_movimiento).replace(',', '.')); if (!(pd >= 0) || !(mv >= 0)) { setErrorModal('Las tarifas deben ser cero o mayores.'); return; } ejecutar(() => guardarTarifaCustodia({ empresa_id: empresaId, cuenta_id: clienteId, almacen_id: almacenId, tarifa_posicion_dia: pd, tarifa_movimiento: mv, moneda: modal.moneda }), 'Tarifa guardada.'); }}>
+      {modal.tipo === 'tarifa' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-tar-t" onSubmit={e => { e.preventDefault(); if (conErrores(validarTarifaCustodia(modal), [['tarifa_posicion_dia', 'dx-wcus-tpd'], ['tarifa_movimiento', 'dx-wcus-tmv']])) return; const pd = Number(String(modal.tarifa_posicion_dia).replace(',', '.')); const mv = Number(String(modal.tarifa_movimiento).replace(',', '.')); ejecutar(() => guardarTarifaCustodia({ empresa_id: empresaId, cuenta_id: clienteId, almacen_id: almacenId, tarifa_posicion_dia: pd, tarifa_movimiento: mv, moneda: modal.moneda }), 'Tarifa guardada.'); }}>
         <h3 id="dx-wcus-tar-t">Tarifa de {cliente?.razon_social}</h3>
         <div className="dx-ui-form-grid is-2">
-          <div className="dx-ui-field"><label htmlFor="dx-wcus-tpd">Por posición-día<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-tpd" inputMode="decimal" value={modal.tarifa_posicion_dia} onChange={e => setModal({ ...modal, tarifa_posicion_dia: e.target.value })} /></div>
-          <div className="dx-ui-field"><label htmlFor="dx-wcus-tmv">Por movimiento<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-tmv" inputMode="decimal" value={modal.tarifa_movimiento} onChange={e => setModal({ ...modal, tarifa_movimiento: e.target.value })} /></div>
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-tpd">Por posición-día<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-tpd" inputMode="decimal" value={modal.tarifa_posicion_dia} {...invalido('tarifa_posicion_dia', 'dx-wcus-tpd')} onChange={e => cambiar('tarifa_posicion_dia', e.target.value)} />{errorCampo('tarifa_posicion_dia', 'dx-wcus-tpd')}</div>
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-tmv">Por movimiento<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-tmv" inputMode="decimal" value={modal.tarifa_movimiento} {...invalido('tarifa_movimiento', 'dx-wcus-tmv')} onChange={e => cambiar('tarifa_movimiento', e.target.value)} />{errorCampo('tarifa_movimiento', 'dx-wcus-tmv')}</div>
         </div>
         <div className="dx-ui-field"><label htmlFor="dx-wcus-mon">Moneda</label><select id="dx-wcus-mon" value={modal.moneda} onChange={e => setModal({ ...modal, moneda: e.target.value })}><option value="PEN">Soles (S/)</option><option value="USD">Dólares (US$)</option></select></div>
         {errorModal && <div className="dx-w-note red" role="alert">{errorModal}</div>}
         <div className="dx-w-modal-actions"><button type="button" className="dx-btn" onClick={() => setModal(null)}>Cancelar</button><button className="dx-btn primary" disabled={ocupado}>{ocupado ? 'Guardando…' : 'Guardar tarifa'}</button></div>
       </form>}
-      {modal.tipo === 'ingreso' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-ing-t" onSubmit={e => { e.preventDefault(); const q = Number(String(modal.cantidad).replace(',', '.')); if (!modal.material || !(q > 0) || !modal.ubicacion_id) { setErrorModal('Elige posición, material y una cantidad mayor a cero.'); return; } ejecutar(() => registrarIngresoCustodia({ empresa_id: empresaId, ubicacion_id: modal.ubicacion_id, material_id: modal.material.material_id, cantidad: q, sociedad_id: sociedadId, documento: modal.documento.trim() || null }), `Ingreso de ${formatoCantidad(q)} ${modal.material.codigo} registrado.`); }}>
+      {modal.tipo === 'ingreso' && <form className="dx-w-modal" role="dialog" aria-modal="true" aria-labelledby="dx-wcus-ing-t" onSubmit={e => { e.preventDefault(); if (conErrores(validarIngresoCustodia(modal), [['ubicacion_id', 'dx-wcus-ubi'], ['material', 'dx-wcus-mat'], ['cantidad', 'dx-wcus-cant']])) return; const q = Number(String(modal.cantidad).replace(',', '.')); ejecutar(() => registrarIngresoCustodia({ empresa_id: empresaId, ubicacion_id: modal.ubicacion_id, material_id: modal.material.material_id, cantidad: q, sociedad_id: sociedadId, documento: modal.documento.trim() || null }), `Ingreso de ${formatoCantidad(q)} ${modal.material.codigo} registrado.`); }}>
         <h3 id="dx-wcus-ing-t">Ingreso de mercadería · {cliente?.razon_social}</h3>
-        <div className="dx-ui-field"><label htmlFor="dx-wcus-ubi">Posición<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcus-ubi" value={modal.ubicacion_id} onChange={e => setModal({ ...modal, ubicacion_id: e.target.value })}>{cliente?.ubicaciones.map(u => <option key={u.id} value={u.id}>{u.codigo}</option>)}</select></div>
-        <BuscarMaterial empresaId={empresaId} sociedadId={sociedadId} valor={modal.material} onElegir={m => setModal(actual => ({ ...actual, material: m }))} />
+        <div className="dx-ui-field"><label htmlFor="dx-wcus-ubi">Posición<span className="dx-ui-required" aria-hidden="true">*</span></label><select id="dx-wcus-ubi" value={modal.ubicacion_id} {...invalido('ubicacion_id', 'dx-wcus-ubi')} onChange={e => cambiar('ubicacion_id', e.target.value)}>{cliente?.ubicaciones.map(u => <option key={u.id} value={u.id}>{u.codigo}</option>)}</select>{errorCampo('ubicacion_id', 'dx-wcus-ubi')}</div>
+        <BuscarMaterial empresaId={empresaId} sociedadId={sociedadId} valor={modal.material} error={err('material')} onElegir={m => cambiar('material', m)} />
         <div className="dx-ui-form-grid is-2">
-          <div className="dx-ui-field"><label htmlFor="dx-wcus-cant">Cantidad<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-cant" inputMode="decimal" value={modal.cantidad} onChange={e => setModal({ ...modal, cantidad: e.target.value })} /></div>
+          <div className="dx-ui-field"><label htmlFor="dx-wcus-cant">Cantidad<span className="dx-ui-required" aria-hidden="true">*</span></label><input id="dx-wcus-cant" inputMode="decimal" value={modal.cantidad} {...invalido('cantidad', 'dx-wcus-cant')} onChange={e => cambiar('cantidad', e.target.value)} />{errorCampo('cantidad', 'dx-wcus-cant')}</div>
           <div className="dx-ui-field"><label htmlFor="dx-wcus-doc">Guía del cliente · opcional</label><input id="dx-wcus-doc" maxLength={40} value={modal.documento} onChange={e => setModal({ ...modal, documento: e.target.value })} /></div>
         </div>
         <p className="dx-ui-sub">Entra a costo cero: no suma a tu inventario valorizado.</p>

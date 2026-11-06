@@ -219,3 +219,16 @@ export async function obtenerReporteValorizado({ empresa_id, almacen_id = null }
   const data = await ejecutarRpc('wms_reporte_valorizado', { p_empresa_id: empresa_id, p_almacen_id: almacen_id || null });
   return { materiales: [], almacenes: [], ...(data || {}) };
 }
+
+// ── Catálogo de venta ─────────────────────────────────────────────────────────
+export async function obtenerCatalogoVenta({ empresa_id }) {
+  const data = await ejecutarRpc('wms_catalogo_venta', { p_empresa_id: empresa_id });
+  return { items: [], materiales: [], puede_crear: false, puede_editar: false, ...(data || {}) };
+}
+
+export async function guardarProductoCatalogo({ empresa_id, id = null, material_id = null, precio_lista, moneda, descuento_maximo_pct = 0, activo = true }) {
+  return ejecutarRpc('wms_catalogo_guardar', {
+    p_empresa_id: empresa_id, p_id: id, p_material_id: material_id, p_precio_lista: precio_lista,
+    p_moneda: moneda, p_descuento_maximo_pct: descuento_maximo_pct, p_activo: activo,
+  });
+}
