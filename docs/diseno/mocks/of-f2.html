@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OF · Mock F2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== Tokens: mismos que .dx-otb (Bandeja de OTs) ===== */
+.dx-of{--n:#1A2B4A;--cy:#00ACC1;--cyf:#0B4F5A;--cyb:#E0F7FA;--vi:#5B3A8C;--vib:#F0EAFB;--amf:#8A4B00;--amb:#FFF3E0;--amd:#E08A00;--grf:#14633A;--grb:#E3F6EA;--blf:#1E4E8C;--blb:#E6EFFB;--rdf:#9B1C1C;--rdb:#FDECEC;--rd:#DC2626;--gr:#6B7280;--grb2:#F1F3F5;--grf2:#4B5563;--ink:#1F2937;--line:#E4E7EB;--line2:#EEF0F3;--bd:#C9CFD8;--bg:#F4F6F8;--hd:#F8F9FA;--card:#fff;--hov:#F6FBFC;
+  container-type:inline-size;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans',sans-serif;min-height:100vh}
+[data-theme='dark'] .dx-of{--n:#F8FAFC;--cy:#22D3EE;--cyf:#67E8F9;--cyb:#0A3038;--vi:#D8B4FE;--vib:#321B3B;--amf:#FDBA74;--amb:#3A2810;--amd:#F59E0B;--grf:#86EFAC;--grb:#12351F;--blf:#93C5FD;--blb:#13294B;--rdf:#FCA5A5;--rdb:#3B1414;--rd:#F87171;--gr:#94A3B8;--grb2:#273244;--grf2:#CBD5E1;--ink:#F8FAFC;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.08);--bd:#475569;--bg:#020617;--hd:#0F172A;--card:#0F172A;--hov:#172033}
+*{box-sizing:border-box}body{margin:0;background:#F4F6F8}[data-theme='dark'] body{background:#020617}
+button,input,select{font:inherit}button{cursor:pointer}
+/* Barra del mock (no es parte del diseño) */
+.mockbar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 16px;background:#111827;color:#fff;font:13px 'DM Sans'}
+.mockbar button{height:32px;padding:0 12px;border:1px solid #374151;border-radius:8px;background:#1F2937;color:#fff}
+.mockbar button.on{background:#00ACC1;border-color:#00ACC1;color:#02161A;font-weight:700}
+.mockbar span{opacity:.7;margin-left:auto}
+/* ===== Layout común ===== */
+.dx-of-in{padding:24px 28px 48px;max-width:1280px}
+.dx-of-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.dx-of-eyebrow{color:var(--cyf);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.dx-of-title{margin:4px 0;color:var(--n);font:700 28px/1.2 Sora,sans-serif}
+.dx-of-sub{margin:0;color:var(--gr)}
+.dx-of-primary{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 18px;border:0;border-radius:10px;background:#1A2B4A;color:#fff;font-weight:700;white-space:nowrap}
+[data-theme='dark'] .dx-of-primary{background:#00ACC1;color:#02161A}
+.dx-of-primary:disabled{opacity:.45;cursor:not-allowed}
+.dx-of-ghost{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 16px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--ink);font-weight:600;white-space:nowrap}
+.dx-of-link{border:0;background:none;padding:0;color:var(--cyf);font-weight:700}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* KPI (familia de la Bandeja de OTs) */
+.dx-of-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.dx-of-kpi{display:flex;min-width:0;flex-direction:column;gap:2px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px #0f1b300a;color:inherit;text-align:left}
+.dx-of-kpi:hover{background:var(--hov)}.dx-of-kpi.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+.dx-of-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-ico{display:flex;width:32px;height:32px;align-items:center;justify-content:center;border-radius:9px}
+.dx-of-ico.is-cyan{background:var(--cyb);color:var(--cyf)}.dx-of-ico.is-gray{background:var(--grb2);color:var(--grf2)}.dx-of-ico.is-red{background:var(--rdb);color:var(--rdf)}.dx-of-ico.is-amber{background:var(--amb);color:var(--amf)}
+.dx-of-kpi-val{margin-top:6px;color:var(--n);font:700 26px/1.1 Sora,sans-serif}
+.dx-of-kpi-note{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-kpi.is-danger{border-color:color-mix(in srgb,var(--rd) 40%,var(--line))}.dx-of-kpi.is-danger .dx-of-kpi-val{color:var(--rdf)}
+.dx-of-kpi.is-alert{border-color:color-mix(in srgb,var(--amd) 45%,var(--line))}.dx-of-kpi.is-alert .dx-of-kpi-val{color:var(--amf)}
+/* Tarjeta y barra */
+.dx-of-card{overflow:visible;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px #0f1b300a}
+.dx-of-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line)}
+.dx-of-bar h2{margin:0 auto 0 0;color:var(--n);font:700 16px/1.4 Sora,sans-serif}
+.dx-of-count{margin-left:8px;color:var(--gr);font:500 13px 'DM Sans'}
+.dx-of-search{display:flex;width:300px;max-width:100%;height:44px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--gr)}
+.dx-of-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink)}
+.dx-of-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--hd)}
+.dx-of-chips{display:flex;flex:1;min-width:0;gap:8px;flex-wrap:wrap}
+.dx-of-chip{display:inline-flex;height:36px;align-items:center;gap:8px;padding:0 12px 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;white-space:nowrap}
+.dx-of-chip i{width:8px;height:8px;border-radius:50%;background:var(--gr)}
+.dx-of-chip b{min-width:22px;padding:1px 7px;border-radius:999px;background:var(--grb2);color:var(--grf2);font-size:12px;text-align:center}
+.dx-of-chip.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n);background:var(--hov)}
+/* Estados de la OF */
+.st-borrador{--c:#6B7280}.st-en_ingenieria{--c:#2F6FD6}.st-aprobada{--c:#00ACC1}.st-en_produccion{--c:#2F6FD6}.st-en_calidad{--c:#5B3A8C}.st-lista_entrega{--c:#E08A00}.st-entregada,.st-cerrada{--c:#16A34A}.st-anulada{--c:#DC2626}
+.dx-of-chip i[class^=st-]{background:var(--c)}
+.dx-of-pill{display:inline-flex;width:max-content;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-of-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dx-of-pill.st-borrador{background:var(--grb2);color:var(--grf2)}
+.dx-of-pill.st-en_ingenieria,.dx-of-pill.st-en_produccion{background:var(--blb);color:var(--blf)}
+.dx-of-pill.st-aprobada{background:var(--cyb);color:var(--cyf)}
+.dx-of-pill.st-en_calidad{background:var(--vib);color:var(--vi)}
+.dx-of-pill.st-lista_entrega{background:var(--amb);color:var(--amf)}
+.dx-of-pill.st-entregada,.dx-of-pill.st-cerrada{background:var(--grb);color:var(--grf)}
+.dx-of-pill.st-anulada{background:var(--rdb);color:var(--rdf)}
+.dx-of-pill.is-fab{background:var(--cyb);color:var(--cyf)}.dx-of-pill.is-mix{background:var(--vib);color:var(--vi)}
+/* Filas de la bandeja */
+.dx-of-cols{display:grid;grid-template-columns:minmax(170px,1.2fr) minmax(190px,1.5fr) 132px minmax(110px,.8fr) minmax(120px,.9fr) 120px 112px 20px;column-gap:14px;align-items:center;padding-inline:20px}
+.dx-of-head{height:40px;border-bottom:1px solid var(--line);background:var(--hd);color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-head .r{text-align:right}
+.dx-of-row{min-height:84px;padding-block:14px;border-bottom:1px solid var(--line2);cursor:pointer}
+.dx-of-row:hover{background:var(--hov)}.dx-of-row:focus-visible{outline:2px solid var(--cy);outline-offset:-2px}
+.dx-of-of{display:flex;min-width:0;align-items:flex-start;gap:12px}
+.dx-of-ofi{display:flex;width:40px;height:40px;flex:none;align-items:center;justify-content:center;border-radius:10px;background:var(--cyb);color:var(--cyf)}
+.dx-of-cell{display:flex;min-width:0;flex-direction:column;gap:2px}
+.dx-of-num{color:var(--n);font:700 13px ui-monospace,Menlo,monospace}
+.dx-of-strong{overflow:hidden;color:var(--n);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-muted{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-tag{width:max-content;max-width:100%;overflow:hidden;margin-top:2px;padding:1px 7px;border-radius:6px;background:var(--grb2);color:var(--grf2);font-size:11px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-tag.is-warn{background:var(--amb);color:var(--amf)}
+.dx-of-tag.is-red{background:var(--rdb);color:var(--rdf)}
+.dx-of-prog{display:flex;flex-direction:column;gap:5px}
+.dx-of-prog b{color:var(--n);font:700 13px Sora}
+.dx-of-bar2{height:6px;overflow:hidden;border-radius:999px;background:var(--grb2)}.dx-of-bar2 i{display:block;height:100%;border-radius:999px;background:var(--cy)}
+.dx-of-money{color:var(--n);font:700 14px Sora;white-space:nowrap;text-align:right}
+.dx-of-date{text-align:right}.dx-of-date .dx-of-muted{text-align:right}
+.dx-of-date .is-late{color:var(--rdf)}.dx-of-date .is-soon{color:var(--amf)}
+.dx-of-arrow{color:var(--gr)}
+.dx-of-pag{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;color:var(--gr);font-size:13px}
+/* ===== Crear OF ===== */
+.dx-of-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.dx-of-sec{padding:18px 20px;border-bottom:1px solid var(--line)}
+.dx-of-sec:last-child{border-bottom:0}
+.dx-of-sec h3{display:flex;align-items:center;gap:8px;margin:0 0 4px;color:var(--n);font:700 15px Sora}
+.dx-of-sec h3 .n{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:var(--n);color:var(--card);font:700 12px Sora}
+[data-theme='dark'] .dx-of-sec h3 .n{background:#00ACC1;color:#02161A}
+.dx-of-help{margin:0 0 14px;color:var(--gr);font-size:13px}
+.dx-of-field{position:relative;display:flex;flex-direction:column;gap:6px;max-width:560px}
+.dx-of-field label{min-height:18px;color:var(--grf2);font-size:12px;font-weight:700}
+.dx-of-req{color:var(--rd)}
+.dx-of-combo{display:flex;height:40px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--gr)}
+.dx-of-combo input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink)}
+.dx-of-combo:focus-within{border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 20%,transparent)}
+.dx-of-pop{position:absolute;z-index:20;top:70px;left:0;right:0;max-height:300px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 12px 32px #0f1b3024}
+.dx-of-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:none;color:inherit;text-align:left}
+.dx-of-opt:hover,.dx-of-opt.is-act{background:var(--hov)}
+.dx-of-opt .dx-of-muted{grid-column:1}
+.dx-of-resolved{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--hd)}
+.dx-of-resolved .dx-of-cell{flex:1 1 200px;min-width:0}
+.dx-of-notice{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--amb);color:var(--amf);font-size:13px}
+.dx-of-notice.is-info{background:var(--cyb);color:var(--cyf)}
+.dx-of-radio{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.dx-of-radio label{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer}
+.dx-of-radio label.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+.dx-of-radio input{margin-top:3px;accent-color:#1A2B4A}
+/* Ruta (vista previa y ficha) */
+.dx-of-trab{container-type:inline-size;margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.dx-of-trab-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--hd);border-bottom:1px solid var(--line)}
+.dx-of-trab-h b{color:var(--n);font:700 14px Sora}
+.dx-of-act{padding:8px 14px 0;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-op{display:grid;grid-template-columns:28px minmax(140px,1.4fr) minmax(110px,1fr) 104px minmax(130px,1.1fr) minmax(130px,1.1fr) 90px;column-gap:12px;align-items:center;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-of-op:first-of-type{border-top:0}
+.dx-of-op.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px}
+.dx-of-op .seq{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:7px;background:var(--grb2);color:var(--grf2);font:700 12px Sora}
+.dx-of-op .r{text-align:right}
+.dx-of-op .dx-of-muted,.dx-of-op .dx-of-strong{white-space:normal}
+.dx-of-k{display:none;color:var(--gr);font-size:11px;font-weight:700}
+.dx-of-empty{padding:28px 16px;color:var(--gr);text-align:center;border:1px dashed var(--line);border-radius:12px;margin-top:12px}
+/* Aside */
+.dx-of-aside{position:sticky;top:60px;display:flex;flex-direction:column;gap:12px}
+.dx-of-aside .dx-of-card{padding:16px 18px}
+.dx-of-aside h4{margin:0 0 10px;color:var(--n);font:700 14px Sora}
+.dx-of-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;margin:0;font-size:13px}
+.dx-of-dl dt{color:var(--gr)}.dx-of-dl dd{margin:0;color:var(--ink);font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
+.dx-of-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.dx-of-total span{color:var(--gr);font-weight:700}.dx-of-total b{color:var(--n);font:700 22px Sora}
+.dx-of-foot{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding:12px 0;background:linear-gradient(transparent,var(--bg) 30%)}
+/* ===== Ficha ===== */
+.dx-of-hdr{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.dx-of-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;border:0;background:none;padding:0;color:var(--cyf);font-weight:700}
+.dx-of-tl{display:flex;margin-bottom:16px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.dx-of-tl div{position:relative;display:flex;flex:1;min-width:92px;flex-direction:column;align-items:center;gap:6px;color:var(--gr);font-size:11px;font-weight:700;text-align:center}
+.dx-of-tl div::before{content:'';position:absolute;top:9px;left:-50%;right:50%;height:2px;background:var(--line)}
+.dx-of-tl div:first-child::before{display:none}
+.dx-of-tl i{position:relative;z-index:1;width:20px;height:20px;border:2px solid var(--bd);border-radius:50%;background:var(--card)}
+.dx-of-tl .is-now{color:var(--n)}.dx-of-tl .is-now i{border-color:var(--cy);background:var(--cy);box-shadow:0 0 0 4px var(--cyb)}
+.dx-of-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 20px;padding:18px 20px}
+.dx-of-fields .dx-of-cell span:first-child{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-of-fields .dx-of-cell span:last-child{color:var(--ink);font-weight:600}
+.dx-of-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line)}
+.dx-of-tabs button{height:44px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:none;color:var(--gr);font-weight:700}
+.dx-of-tabs button.is-on{border-color:var(--cy);color:var(--n)}
+.dx-of-soon{margin:14px 20px 18px;padding:12px 14px;border-radius:10px;background:var(--grb2);color:var(--grf2);font-size:13px}
+.view{display:none}.view.on{display:block}
+/* ===== Responsive por contenedor ===== */
+@container (max-width:1100px){
+ .dx-of-kpi .dx-of-ico{display:none}
+ .dx-of-cols{grid-template-columns:minmax(150px,1.1fr) minmax(160px,1.4fr) 124px minmax(90px,.7fr) minmax(110px,.9fr) 110px 100px 16px;column-gap:12px;padding-inline:16px}
+ .dx-of-grid{grid-template-columns:minmax(0,1fr) 280px}
+}
+@container (max-width:900px){
+ .dx-of-in{padding:18px 16px 32px}
+ .dx-of-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .dx-of-bar h2{width:100%}.dx-of-search{flex:1 1 100%;width:auto}
+ .dx-of-head{display:none}
+ .dx-of-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'of estado' 'cli cli' 'prog ops' 'cost date';gap:10px 14px;padding:14px 16px}
+ .a-of{grid-area:of}.a-st{grid-area:estado;justify-self:end}.a-cli{grid-area:cli}.a-prog{grid-area:prog}.a-ops{grid-area:ops;justify-self:end;text-align:right}.a-cost{grid-area:cost;text-align:left}.a-date{grid-area:date}.a-arrow{display:none}
+ .dx-of-grid{grid-template-columns:minmax(0,1fr)}.dx-of-aside{position:static}
+ .dx-of-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* La ruta responde al ancho de su propia tarjeta */
+@container (max-width:760px){
+ .dx-of-op{grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:'seq tar cost' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah';row-gap:4px}
+ .dx-of-op.is-head{display:none}
+ .o-seq{grid-area:seq;align-self:start}.o-tar{grid-area:tar}.o-car{grid-area:car}.o-hh{grid-area:hh}.o-eq{grid-area:eq}.o-bah{grid-area:bah}.o-cost{grid-area:cost}
+ .dx-of-k{display:inline;margin-right:6px}
+}
+@container (max-width:600px){
+ .dx-of-title{font-size:24px}
+ .dx-of-top .dx-of-primary{width:100%;justify-content:center}
+ .dx-of-kpi{padding:12px 14px}.dx-of-kpi-val{font-size:22px}
+ .dx-of-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+ .dx-of-row{grid-template-areas:'of of' 'estado estado' 'cli cli' 'prog prog' 'ops ops' 'cost date'}
+ .a-st{justify-self:start}.a-ops{justify-self:start;text-align:left}
+ .dx-of-fields{grid-template-columns:1fr}
+ .dx-of-foot .dx-of-primary,.dx-of-foot .dx-of-ghost{flex:1;justify-content:center}
+}
+</style>
+</head>
+<body>
+<div class="mockbar">
+  <b>Mock F2 · OF</b>
+  <button data-v="bandeja" class="on">1 · Bandeja</button>
+  <button data-v="crear">2 · Crear OF</button>
+  <button data-v="ficha">3 · Ficha básica</button>
+  <button id="variante">Crear: OS ya tiene OF</button>
+  <button id="tema">Modo oscuro</button>
+  <span>Datos de HC-2026-3707-V2 (capturados) · cliente genérico · filas extra ilustrativas</span>
+</div>
+
+<main class="dx-of">
+<!-- ================= 1 · BANDEJA ================= -->
+<section class="view on" id="v-bandeja"><div class="dx-of-in">
+  <div class="dx-of-top">
+    <div><div class="dx-of-eyebrow">Producción</div><h1 class="dx-of-title">Órdenes de Fabricación</h1><p class="dx-of-sub">Fabricación y recuperación de componentes desde la OS, con la ruta y los materiales de la Hoja de Costeo.</p></div>
+    <button class="dx-of-primary" data-go="crear"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nueva OF</button>
+  </div>
+  <div class="dx-of-kpis">
+    <button class="dx-of-kpi"><div class="dx-of-kpi-top">En curso<span class="dx-of-ico is-cyan"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span></div><div class="dx-of-kpi-val">3</div><div class="dx-of-kpi-note">Ingeniería, producción, calidad o lista</div></button>
+    <button class="dx-of-kpi"><div class="dx-of-kpi-top">Borrador<span class="dx-of-ico is-gray"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></span></div><div class="dx-of-kpi-val">1</div><div class="dx-of-kpi-note">Por revisar antes de producir</div></button>
+    <button class="dx-of-kpi is-danger"><div class="dx-of-kpi-top">Atrasadas<span class="dx-of-ico is-red"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></div><div class="dx-of-kpi-val">1</div><div class="dx-of-kpi-note">Compromiso vencido sin entregar</div></button>
+    <button class="dx-of-kpi is-alert"><div class="dx-of-kpi-top">Vencen en 7 días<span class="dx-of-ico is-amber"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span></div><div class="dx-of-kpi-val">1</div><div class="dx-of-kpi-note">Compromiso hasta el 3 nov 2026</div></button>
+  </div>
+  <div class="dx-of-card">
+    <div class="dx-of-bar">
+      <h2>Órdenes de fabricación <span class="dx-of-count">5 OF</span></h2>
+      <label class="dx-of-search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input aria-label="Buscar OF, OS, cliente o componente" placeholder="Buscar OF, OS, cliente o componente"></label>
+    </div>
+    <div class="dx-of-filters"><div class="dx-of-chips">
+      <button class="dx-of-chip is-on">Todas <b>5</b></button>
+      <button class="dx-of-chip"><i class="st-borrador"></i>Borrador <b>1</b></button>
+      <button class="dx-of-chip"><i class="st-en_produccion"></i>En producción <b>1</b></button>
+      <button class="dx-of-chip"><i class="st-en_calidad"></i>En calidad <b>1</b></button>
+      <button class="dx-of-chip"><i class="st-lista_entrega"></i>Lista para entrega <b>1</b></button>
+      <button class="dx-of-chip"><i class="st-entregada"></i>Entregada <b>1</b></button>
+    </div></div>
+    <div class="dx-of-head dx-of-cols" aria-hidden="true"><span>OF</span><span>Cliente y componente</span><span>Estado</span><span>Avance</span><span>Operaciones</span><span class="r">Costo est.</span><span class="r">Compromiso</span><span></span></div>
+    <div id="rows"></div>
+    <div class="dx-of-pag"><span>Mostrando 5 de 5</span></div>
+  </div>
+</div></section>
+
+<!-- ================= 2 · CREAR OF ================= -->
+<section class="view" id="v-crear"><div class="dx-of-in">
+  <button class="dx-of-back" data-go="bandeja"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Órdenes de Fabricación</button>
+  <div class="dx-of-top"><div><div class="dx-of-eyebrow">Producción</div><h1 class="dx-of-title">Nueva Orden de Fabricación</h1><p class="dx-of-sub">La OF toma los datos de la OS y copia la ruta y los materiales de los Trabajos de fabricación de su hoja.</p></div></div>
+  <div class="dx-of-grid">
+    <div>
+      <div class="dx-of-card">
+        <div class="dx-of-sec">
+          <h3><span class="n">1</span>Orden de servicio</h3>
+          <p class="dx-of-help">Solo OS de fabricación o mixtas.</p>
+          <div id="os-pick">
+            <div class="dx-of-field">
+              <label for="os-q">OS cliente <span class="dx-of-req">*</span></label>
+              <div class="dx-of-combo"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="os-q" placeholder="Buscar por número, cliente o descripción" autocomplete="off"></div>
+              <div class="dx-of-pop" id="os-pop" hidden>
+                <button class="dx-of-opt is-act" data-pick="1"><span class="dx-of-strong">OSC-2026-0598 · Minera Andina Demo</span><span class="dx-of-pill is-fab">Fabricación</span><span class="dx-of-muted">Fabricación de cilindro CH-120 · Hoja HC-2026-3707-V2</span></button>
+                <button class="dx-of-opt" data-pick="1"><span class="dx-of-strong">OSC-2026-0612 · Constructora Demo</span><span class="dx-of-pill is-mix">Mixta</span><span class="dx-of-muted">Reparación y fabricación de vástagos · Hoja HC-2026-4410</span></button>
+                <button class="dx-of-opt" data-pick="1"><span class="dx-of-strong">OSC-2026-0630 · Industrial Norte Demo</span><span class="dx-of-pill is-fab">Fabricación</span><span class="dx-of-muted">Fabricación de bujes y casquillos · Sin hoja de costeo</span></button>
+              </div>
+            </div>
+          </div>
+          <div id="os-sel" hidden>
+            <div class="dx-of-resolved">
+              <span class="dx-of-ofi"><svg class="i" viewBox="0 0 24 24"><path d="M6 3h9l5 5v13H6z"/><path d="M14 3v6h6"/></svg></span>
+              <div class="dx-of-cell"><span class="dx-of-strong">OSC-2026-0598 · Minera Andina Demo</span><span class="dx-of-muted">Fabricación de cilindro CH-120 · Compromiso 12 nov 2026</span></div>
+              <span class="dx-of-pill is-fab">Fabricación</span>
+              <button class="dx-of-link" id="os-change">Cambiar</button>
+            </div>
+            <div id="os-has" hidden>
+              <div class="dx-of-notice"><svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><div>Esta OS ya tiene la <b>OF-26-0001</b> con el plan de la hoja. Puedes crear una OF adicional vacía y armar su ruta a mano.</div></div>
+              <div class="dx-of-radio"><label class="is-on"><input type="radio" checked name="mod"><div><b>OF adicional sin copiar la hoja</b><div class="dx-of-muted">Se crea en borrador, sin operaciones ni materiales.</div></div></label></div>
+            </div>
+          </div>
+        </div>
+        <div class="dx-of-sec" id="prev">
+          <h3><span class="n">2</span>Lo que se copiará de la hoja</h3>
+          <p class="dx-of-help" id="prev-help">Elige una OS para ver la ruta y los materiales que tendrá la OF.</p>
+          <div id="prev-body" hidden>
+            <div class="dx-of-notice is-info"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><div>Hoja <b>HC-2026-3707-V2</b> · solo los Trabajos marcados como <b>Fabricación (OF)</b>. La bahía sale del equipo de cada tarea; si no tiene equipo, la asigna el Planner.</div></div>
+            <div class="dx-of-trab">
+              <div class="dx-of-trab-h"><b>Armado, pruebas y entrega</b><span class="dx-of-pill is-fab">Fabricación (OF)</span><span class="dx-of-muted" style="margin-left:auto">3 tareas · 10 h-hombre · 2 h-máquina</span></div>
+              <div class="dx-of-act">Actividad · Armado y prueba de cilindro</div>
+              <div class="dx-of-op is-head"><span>#</span><span>Tarea</span><span>Cargo</span><span>H-H</span><span>Equipo</span><span>Bahía</span><span class="r">Costo</span></div>
+              <div class="dx-of-op"><span class="o-seq seq">1</span><span class="o-tar dx-of-strong">Armado de cilindro</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>Ayudante Técnico</span><span class="o-hh"><span class="dx-of-k">H-H</span>5 h</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>Sin equipo</span><span class="o-bah"><span class="dx-of-k">Bahía</span><span class="dx-of-tag is-warn">La asigna el Planner</span></span><span class="o-cost dx-of-money">S/ 42.40</span></div>
+              <div class="dx-of-op"><span class="o-seq seq">2</span><span class="o-tar dx-of-strong">Prueba hidráulica</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>Ayudante Técnico</span><span class="o-hh"><span class="dx-of-k">H-H</span>2 h · 2 h-máq.</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>Banco de pruebas hidráulicas</span><span class="o-bah"><span class="dx-of-k">Bahía</span><span class="dx-of-tag">Zona de mecanizado</span></span><span class="o-cost dx-of-money">S/ 20.40</span></div>
+              <div class="dx-of-op"><span class="o-seq seq">3</span><span class="o-tar dx-of-strong">Pintura y embalaje</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>Ayudante Técnico</span><span class="o-hh"><span class="dx-of-k">H-H</span>3 h</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>Sin equipo</span><span class="o-bah"><span class="dx-of-k">Bahía</span><span class="dx-of-tag is-warn">La asigna el Planner</span></span><span class="o-cost dx-of-money">S/ 25.44</span></div>
+            </div>
+            <h3 style="margin-top:18px">Materiales</h3>
+            <div class="dx-of-empty">La hoja no tiene materiales en estos Trabajos. Podrás agregarlos en la OF.</div>
+          </div>
+        </div>
+      </div>
+      <div class="dx-of-foot">
+        <button class="dx-of-ghost" data-go="bandeja">Cancelar</button>
+        <button class="dx-of-primary" id="btn-crear" disabled data-go="ficha">Crear OF</button>
+      </div>
+    </div>
+    <aside class="dx-of-aside">
+      <div class="dx-of-card"><h4>Resumen de la OF</h4>
+        <dl class="dx-of-dl" id="res">
+          <dt>Cliente</dt><dd>Sin dato</dd><dt>Componente</dt><dd>Sin dato</dd><dt>Compromiso</dt><dd>Sin dato</dd><dt>Moneda</dt><dd>Sin dato</dd><dt>Operaciones</dt><dd>0 operaciones</dd><dt>Horas</dt><dd>Sin dato</dd>
+        </dl>
+        <div class="dx-of-total"><span>Costo estimado</span><b id="res-tot">S/ 0.00</b></div>
+      </div>
+      <div class="dx-of-card" style="font-size:13px;color:var(--gr)">La OF se crea en <b>Borrador</b> con el número siguiente (OF-26-NNNN). La ruta y los materiales se editan en la ficha.</div>
+    </aside>
+  </div>
+</div></section>
+
+<!-- ================= 3 · FICHA BÁSICA ================= -->
+<section class="view" id="v-ficha"><div class="dx-of-in">
+  <button class="dx-of-back" data-go="bandeja"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Órdenes de Fabricación</button>
+  <div class="dx-of-hdr">
+    <div><div class="dx-of-eyebrow">Orden de Fabricación</div><h1 class="dx-of-title" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">OF-26-0001 <span class="dx-of-pill st-borrador"><i></i>Borrador</span></h1><p class="dx-of-sub">Fabricación de cilindro CH-120 · Minera Andina Demo</p></div>
+    <button class="dx-of-ghost"><svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M10 6H5v13h13v-5"/></svg>Abrir OS OSC-2026-0598</button>
+  </div>
+  <div class="dx-of-tl">
+    <div class="is-now"><i></i>Borrador</div><div><i></i>Ingeniería</div><div><i></i>Aprobada</div><div><i></i>Producción</div><div><i></i>Calidad</div><div><i></i>Lista</div><div><i></i>Entregada</div><div><i></i>Cerrada</div>
+  </div>
+  <div class="dx-of-grid">
+    <div class="dx-of-card">
+      <div class="dx-of-fields">
+        <div class="dx-of-cell"><span>Cliente</span><span>Minera Andina Demo</span></div>
+        <div class="dx-of-cell"><span>OS</span><span>OSC-2026-0598</span></div>
+        <div class="dx-of-cell"><span>Hoja de costeo</span><span>HC-2026-3707-V2</span></div>
+        <div class="dx-of-cell"><span>Componente</span><span>Cilindro CH-120</span></div>
+        <div class="dx-of-cell"><span>Apertura</span><span>27 oct 2026</span></div>
+        <div class="dx-of-cell"><span>Compromiso</span><span>12 nov 2026</span></div>
+        <div class="dx-of-cell"><span>Responsable</span><span>Sin dato</span></div>
+        <div class="dx-of-cell"><span>Moneda</span><span>Soles (PEN)</span></div>
+        <div class="dx-of-cell"><span>Avance</span><span>0 %</span></div>
+      </div>
+      <div class="dx-of-tabs" role="tablist"><button class="is-on" role="tab">Ruta · 3</button><button role="tab">Materiales · 0</button></div>
+      <div style="padding:4px 20px 18px">
+        <div class="dx-of-trab">
+          <div class="dx-of-trab-h"><b>Armado, pruebas y entrega</b><span class="dx-of-muted" style="margin-left:auto">3 tareas · 10 h-hombre · 2 h-máquina</span></div>
+          <div class="dx-of-act">Actividad · Armado y prueba de cilindro</div>
+          <div class="dx-of-op is-head"><span>#</span><span>Tarea</span><span>Cargo</span><span>H-H</span><span>Equipo</span><span>Bahía</span><span class="r">Estado</span></div>
+          <div class="dx-of-op"><span class="o-seq seq">1</span><span class="o-tar dx-of-strong">Armado de cilindro</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>Ayudante Técnico</span><span class="o-hh"><span class="dx-of-k">H-H</span>5 h</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>Sin equipo</span><span class="o-bah"><span class="dx-of-k">Bahía</span><span class="dx-of-tag is-warn">La asigna el Planner</span></span><span class="o-cost r"><span class="dx-of-pill st-borrador"><i></i>Pendiente</span></span></div>
+          <div class="dx-of-op"><span class="o-seq seq">2</span><span class="o-tar dx-of-strong">Prueba hidráulica</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>Ayudante Técnico</span><span class="o-hh"><span class="dx-of-k">H-H</span>2 h · 2 h-máq.</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>Banco de pruebas hidráulicas</span><span class="o-bah"><span class="dx-of-k">Bahía</span><span class="dx-of-tag">Zona de mecanizado</span></span><span class="o-cost r"><span class="dx-of-pill st-borrador"><i></i>Pendiente</span></span></div>
+          <div class="dx-of-op"><span class="o-seq seq">3</span><span class="o-tar dx-of-strong">Pintura y embalaje</span><span class="o-car dx-of-muted"><span class="dx-of-k">Cargo</span>Ayudante Técnico</span><span class="o-hh"><span class="dx-of-k">H-H</span>3 h</span><span class="o-eq dx-of-muted"><span class="dx-of-k">Equipo</span>Sin equipo</span><span class="o-bah"><span class="dx-of-k">Bahía</span><span class="dx-of-tag is-warn">La asigna el Planner</span></span><span class="o-cost r"><span class="dx-of-pill st-borrador"><i></i>Pendiente</span></span></div>
+        </div>
+      </div>
+      <div class="dx-of-soon">La edición de la ruta, los materiales y el avance por partes llega en la siguiente fase (F3).</div>
+    </div>
+    <aside class="dx-of-aside">
+      <div class="dx-of-card"><h4>Costos</h4>
+        <dl class="dx-of-dl"><dt>Mano de obra + máquina</dt><dd>S/ 88.24</dd><dt>Materiales</dt><dd>S/ 0.00</dd><dt>Costo real</dt><dd>S/ 0.00</dd></dl>
+        <div class="dx-of-total"><span>Costo estimado</span><b>S/ 88.24</b></div>
+      </div>
+      <div class="dx-of-card"><h4>Origen</h4><dl class="dx-of-dl"><dt>OS</dt><dd>OSC-2026-0598</dd><dt>Tipo de OS</dt><dd>Fabricación</dd><dt>Hoja</dt><dd>HC-2026-3707-V2</dd></dl></div>
+    </aside>
+  </div>
+</div></section>
+</main>
+
+<script>
+const OFS=[
+ {n:'OF-26-0001',os:'OSC-2026-0598',cli:'Minera Andina Demo',comp:'Cilindro CH-120 · fabricación',st:'borrador',stl:'Borrador',av:0,ops:3,sinb:2,cost:'S/ 88.24',fecha:'12 nov 2026',nota:'en 16 días',cls:''},
+ {n:'OF-26-0002',os:'OSC-2026-0612',cli:'Constructora Demo',comp:'Vástago 80 mm · recuperación',st:'en_produccion',stl:'En producción',av:45,ops:6,sinb:0,cost:'S/ 1,240.50',fecha:'3 nov 2026',nota:'en 7 días',cls:'is-soon'},
+ {n:'OF-26-0003',os:'OSC-2026-0588',cli:'Industrial Norte Demo',comp:'Tapa de cilindro · fabricación',st:'en_calidad',stl:'En calidad',av:90,ops:4,sinb:0,cost:'S/ 640.00',fecha:'24 oct 2026',nota:'atrasada 3 días',cls:'is-late'},
+ {n:'OF-26-0004',os:'OSC-2026-0571',cli:'Minera Andina Demo',comp:'Bujes y casquillos · fabricación',st:'lista_entrega',stl:'Lista para entrega',av:100,ops:5,sinb:0,cost:'S/ 2,310.75',fecha:'30 oct 2026',nota:'en 3 días',cls:''},
+ {n:'OF-26-0005',os:'OSC-2026-0540',cli:'Constructora Demo',comp:'Pistón y émbolo · fabricación',st:'entregada',stl:'Entregada',av:100,ops:7,sinb:0,cost:'S/ 3,105.00',fecha:'20 oct 2026',nota:'entregada 19 oct',cls:''}
+];
+document.getElementById('rows').innerHTML=OFS.map(o=>`
+<div class="dx-of-row dx-of-cols" role="button" tabindex="0" data-go="ficha" aria-label="Abrir ${o.n}">
+  <div class="dx-of-of a-of"><span class="dx-of-ofi"><svg class="i" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg></span><div class="dx-of-cell"><span class="dx-of-num">${o.n}</span><span class="dx-of-muted">${o.os}</span></div></div>
+  <div class="dx-of-cell a-cli"><span class="dx-of-strong">${o.cli}</span><span class="dx-of-muted">${o.comp}</span></div>
+  <div class="a-st"><span class="dx-of-pill st-${o.st}"><i></i>${o.stl}</span></div>
+  <div class="dx-of-prog a-prog"><b>${o.av} %</b><div class="dx-of-bar2"><i style="width:${o.av}%"></i></div></div>
+  <div class="dx-of-cell a-ops"><span class="dx-of-strong">${o.ops} ${o.ops===1?'operación':'operaciones'}</span>${o.sinb?`<span class="dx-of-tag is-warn">${o.sinb} sin bahía</span>`:`<span class="dx-of-muted">Todas con bahía</span>`}</div>
+  <div class="dx-of-money a-cost">${o.cost}</div>
+  <div class="dx-of-cell dx-of-date a-date"><span class="dx-of-strong ${o.cls}">${o.fecha}</span><span class="dx-of-muted ${o.cls}">${o.nota}</span></div>
+  <svg class="i dx-of-arrow a-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+</div>`).join('');
+const show=v=>{document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));document.querySelectorAll('.mockbar [data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));scrollTo(0,0)};
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g&&!g.disabled)show(g.dataset.go);const v=e.target.closest('.mockbar [data-v]');if(v)show(v.dataset.v)});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.dx-of-row')){e.preventDefault();show('ficha')}});
+document.getElementById('tema').onclick=()=>{const d=document.documentElement;d.dataset.theme=d.dataset.theme==='dark'?'light':'dark'};
+const q=document.getElementById('os-q'),pop=document.getElementById('os-pop');
+q.addEventListener('focus',()=>pop.hidden=false);
+document.addEventListener('click',e=>{if(!e.target.closest('.dx-of-field'))pop.hidden=true});
+let hasOF=false;
+function pick(){document.getElementById('os-pick').hidden=true;document.getElementById('os-sel').hidden=false;pop.hidden=true;document.getElementById('btn-crear').disabled=false;render()}
+function render(){
+ document.getElementById('os-has').hidden=!hasOF;
+ document.getElementById('prev-body').hidden=hasOF;
+ document.getElementById('prev-help').textContent=hasOF?'No se copia nada: la OF adicional nace vacía.':'Vista previa de lo que tendrá la OF al crearla.';
+ document.getElementById('btn-crear').textContent=hasOF?'Crear OF adicional':'Crear OF';
+ document.getElementById('res').innerHTML=`<dt>Cliente</dt><dd>Minera Andina Demo</dd><dt>Componente</dt><dd>Cilindro CH-120</dd><dt>Compromiso</dt><dd>12 nov 2026</dd><dt>Moneda</dt><dd>Soles (PEN)</dd><dt>Operaciones</dt><dd>${hasOF?'0 operaciones':'3 operaciones'}</dd><dt>Horas</dt><dd>${hasOF?'Sin dato':'10 h-hombre · 2 h-máq.'}</dd>`;
+ document.getElementById('res-tot').textContent=hasOF?'S/ 0.00':'S/ 88.24';
+}
+pop.addEventListener('click',e=>{if(e.target.closest('[data-pick]'))pick()});
+document.getElementById('os-change').onclick=()=>{document.getElementById('os-pick').hidden=false;document.getElementById('os-sel').hidden=true;document.getElementById('btn-crear').disabled=true;q.focus()};
+document.getElementById('variante').onclick=e=>{hasOF=!hasOF;e.target.classList.toggle('on',hasOF);show('crear');pick()};
+</script>
+</body>
+</html>

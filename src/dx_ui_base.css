@@ -24,6 +24,10 @@
   --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
 }
 .dx-ui .dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui .dx-ui-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:10px; margin-bottom:16px; }
+.dx-ui .dx-ui-kpi { display:flex; align-items:center; gap:8px; min-height:56px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui .dx-ui-kpi strong { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui .dx-ui-kpi span { color:var(--dx-ui-gray); font-size:12px; }
 .dx-ui .dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
 .dx-ui .dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
 .dx-ui .dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
@@ -78,4 +82,17 @@
 @media (max-width:760px) {
   .dx-ui .dx-ui-head-page { align-items:flex-start; flex-direction:column; }
   .dx-ui .dx-ui-actions { width:100%; margin-left:0; }
-}
+}/* Estándar de formularios (SISTEMA_DISENO.md §10), igual que en Operaciones: campo 40 px, etiqueta 12 px, error bajo el control */
+.dx-ui .dx-ui-form-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:start; gap:16px 20px; }
+.dx-ui .dx-ui-form-grid.is-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.dx-ui .dx-ui-field { display:flex; min-width:0; flex-direction:column; gap:6px; color:var(--dx-ui-ink); font-size:12px; font-weight:600; }
+.dx-ui .dx-ui-field > label { min-height:18px; color:var(--dx-ui-gray); font-size:12px; font-weight:600; }
+.dx-ui .dx-ui-field input, .dx-ui .dx-ui-select { box-sizing:border-box; width:100%; min-width:0; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui .dx-ui-select { padding:0 34px 0 12px; appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--dx-ui-gray) 50%),linear-gradient(135deg,var(--dx-ui-gray) 50%,transparent 50%); background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px; background-size:5px 5px; background-repeat:no-repeat; }
+.dx-ui .dx-ui-field input:focus, .dx-ui .dx-ui-select:focus { outline:2px solid var(--dx-ui-cyan); outline-offset:1px; }
+.dx-ui .dx-ui-field [aria-invalid='true'] { border-color:var(--dx-ui-red-dot); }
+.dx-ui .dx-ui-required { color:var(--dx-ui-red-fg); }
+.dx-ui .dx-ui-field-error { color:var(--dx-ui-red-fg); font-size:12px; font-weight:400; }
+.dx-ui .dx-ui-field-hint { color:var(--dx-ui-gray); font-size:12px; font-weight:400; }
+@container (max-width:480px) { .dx-ui .dx-ui-form-grid, .dx-ui .dx-ui-form-grid.is-2 { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:600px) { .dx-ui .dx-ui-form-grid, .dx-ui .dx-ui-form-grid.is-2 { grid-template-columns:minmax(0,1fr); } }

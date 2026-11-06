@@ -46,6 +46,15 @@ describe('modelo del Planner v8', () => {
     expect(diferencias.bahiasNuevas.map(b => b.nombre)).toEqual(['B']);
     expect(diferencias.puestosQuitados.map(p => p.id)).toEqual(['p1']);
   });
+
+  it('detecta el cambio de equipo (activo) enlazado a una máquina', () => {
+    const maquina = { id: 'm1', nombre: 'Banco', tipo_clave: 'banco', bahia_id: 'b1', puesto_id: null, activo_id: null, estado: 'disponible' };
+    const datos = { bahias: [{ id: 'b1', nombre: 'A', categoria: 'hidr' }], puestos: [], maquinas: [maquina] };
+    const sinCambio = diferenciasTaller(datos, { bahias: datos.bahias, puestos: [], maquinas: [maquina] });
+    expect(sinCambio.maquinasEditadas).toEqual([]);
+    const conEquipo = diferenciasTaller(datos, { bahias: datos.bahias, puestos: [], maquinas: [{ ...maquina, activo_id: 'act-1' }] });
+    expect(conEquipo.maquinasEditadas.map(m => m.activo_id)).toEqual(['act-1']);
+  });
 });
 
 import { ausencia, planRefuerzo, planRetiro, recomendarTecnico, resumenTarea, sugerencias, construirInfos } from '../src/zahory-mock/pages/planner/plannerModelo.js';

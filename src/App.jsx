@@ -14,7 +14,7 @@ import { AsistenteErpPanel } from './components/AsistenteErpPanel.jsx';
 
 // Core CRM / BI
 const OrganigramaV2 = lazy(() => import('./pages_organigrama_v2.jsx'));
-const Dashboard       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Dashboard })));
+const Dashboard       = lazy(() => import('./pages_dashboard_general.jsx').then(m => ({ default: m.Dashboard })));
 const DashboardsPage   = lazy(() => import('./pages_dashboards.jsx'));
 const Leads           = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Leads })));
 const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Pipeline })));
@@ -459,9 +459,11 @@ function MainLayout({ onShowApplicationWelcome }) {
   );
 }
 
+const ADMINISTRATION_HOME = 'dashboard';
+
 function ApplicationEntry() {
   const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard'));
-  const { setMobileMode, setMobileProfile } = useApp();
+  const { navigate, setMobileMode, setMobileProfile } = useApp();
   const enterAttendance = () => {
     setMobileProfile('asistencia');
     setMobileMode(true);
@@ -471,7 +473,7 @@ function ApplicationEntry() {
   return selected
     ? <MainLayout onShowApplicationWelcome={() => setSelected(false)} />
     : <ApplicationWelcome
-        onEnterAdministration={() => setSelected(true)}
+        onEnterAdministration={() => { navigate(ADMINISTRATION_HOME); setSelected(true); }}
         onEnterAttendance={enterAttendance}
       />;
 }

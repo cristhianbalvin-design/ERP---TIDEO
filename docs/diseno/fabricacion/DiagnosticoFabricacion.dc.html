@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico de fabricación — mock</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* ---------- Solo del mock ---------- */
+body { margin:0; background:#D9DEE6; font:14px/1.4 'DM Sans',sans-serif; }
+.mock-bar { position:sticky; top:0; z-index:50; display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; background:#0F172A; color:#fff; font-size:13px; }
+.mock-bar strong { margin-right:8px; font-family:Sora,sans-serif; }
+.mock-bar button { min-height:32px; padding:0 12px; border:1px solid rgba(255,255,255,.25); border-radius:8px; background:transparent; color:#fff; font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.mock-bar button[aria-pressed=true] { border-color:#00ACC1; background:#00ACC1; }
+.mock-bar .sep { width:1px; height:22px; margin:0 4px; background:rgba(255,255,255,.2); }
+.mock-note { max-width:1280px; margin:12px auto 0; padding:0 16px; color:#374151; font-size:12px; }
+.frame { margin:16px auto 40px; overflow:hidden; border-radius:12px; box-shadow:0 8px 30px rgba(15,27,48,.18); }
+.frame-shell { display:flex; min-height:820px; }
+.frame-rail { flex:0 0 72px; background:#1A2B4A; }
+.frame.is-work .frame-rail { display:none; }
+.frame-main { flex:1; min-width:0; background:#F4F6F8; }
+[data-theme='dark'] .frame-main { background:#020617; }
+
+/* ---------- Base dx-ui (copiada de zahory.css) ---------- */
+.dx-ui {
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',sans-serif;
+}
+[data-theme='dark'] .dx-ui {
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+.dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 1px 2px rgba(15,27,48,.04); }
+.dx-ui-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ui-toolbar h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px/1.4 'Sora',sans-serif; }
+.dx-ui-count { color:var(--dx-ui-gray); font-size:12px; white-space:nowrap; }
+.dx-ui-search { display:flex; align-items:center; gap:8px; width:340px; max-width:100%; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+.dx-ui-search:focus-within { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-ui-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui-search input::placeholder { color:var(--dx-ui-gray); opacity:1; }
+.dx-ui-head,.dx-ui-row { display:grid; grid-template-columns:var(--dx-ui-cols,minmax(0,1fr)); column-gap:16px; align-items:center; padding-inline:20px; }
+.dx-ui-head { min-height:38px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ui-row { min-height:68px; border-bottom:1px solid var(--dx-ui-line-soft); cursor:pointer; transition:background .12s; }
+.dx-ui-row:last-child { border-bottom:0; }
+.dx-ui-row:hover { background:var(--dx-ui-hover); }
+.dx-ui-row:hover .dx-ui-arrow { color:var(--dx-ui-navy); transform:translateX(2px); }
+.dx-ui-row:focus-visible { position:relative; z-index:1; outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-ui-icon { display:flex; flex:none; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; }
+.dx-ui-icon.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-icon.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ui-pill i { width:6px; height:6px; flex:none; border-radius:50%; background:currentColor; }
+.dx-ui-pill.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-ui-pill.is-amber i { background:var(--dx-ui-amber-dot); }
+.dx-ui-pill.is-green { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-ui-pill.is-red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ui-pill.is-red i { background:var(--dx-ui-red-dot); }
+.dx-ui-pill.is-gray { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui-pill.is-gray i { background:var(--dx-ui-gray-dot); }
+.dx-ui-pill.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-pill.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-arrow { color:#9AA3B2; transition:.12s; }
+.dx-ui-empty { padding:48px 20px; color:var(--dx-ui-gray); text-align:center; }
+/* DX-UI: encabezados, botones y pestañas compartidos (solo dentro de .dx-ui). */
+.dx-ui .dx-ui-head-page { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui .dx-ui-eyebrow { color:var(--dx-ui-cyan); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.dx-ui .dx-btn.danger { border-color:var(--dx-ui-red-dot); background:var(--dx-ui-card); color:var(--dx-ui-red-fg); }
+.dx-ui .dx-btn.danger:disabled { border-color:var(--dx-ui-line); background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui .dx-ui-title { margin:2px 0 0; color:var(--dx-ui-navy); font:700 24px/1.2 'Sora',sans-serif; }
+.dx-ui .dx-ui-sub { margin:4px 0 0; color:var(--dx-ui-gray); }
+.dx-ui .dx-ui-actions { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+.dx-ui .dx-btn { display:inline-flex; align-items:center; justify-content:center; min-height:40px; height:40px; padding:0 16px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-navy); font:600 14px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-ui .dx-btn:not(.primary):not(.danger):not(:disabled):hover { background:var(--dx-ui-hover); }
+.dx-ui .dx-btn.primary { border-color:var(--dx-ui-navy); background:var(--dx-ui-navy); color:var(--dx-ui-bg); }
+.dx-ui .dx-btn.primary:not(:disabled):hover,.dx-ui .dx-btn.danger:not(:disabled):hover { opacity:.88; }
+.dx-ui .dx-btn:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-ui .dx-btn:disabled { border-color:var(--dx-ui-line); background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); opacity:.55; cursor:not-allowed; }
+.dx-ui .dx-ui-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui .dx-ui-tab { height:36px; padding:0 14px; border:1px solid var(--dx-ui-line); border-radius:999px; background:var(--dx-ui-card); color:var(--dx-ui-gray); font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-ui .dx-ui-tab.on { border-color:transparent; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui .dx-ui-tab:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+@media (max-width:760px) {
+  .dx-ui .dx-ui-head-page { align-items:flex-start; flex-direction:column; }
+  .dx-ui .dx-ui-actions { width:100%; margin-left:0; }
+}
+@container (max-width:760px) {
+  .dx-ui-head { display:none; }
+  .dx-ui-row { row-gap:8px; padding:14px 16px; }
+}
+
+
+/* ---------- Diagnóstico de fabricación (prefijo dx-fab-) ---------- */
+.dx-fab { container:fab / inline-size; display:flex; flex-direction:column; min-height:820px; margin:0; background:var(--dx-ui-bg); }
+.dx-fab *,.dx-fab *::before,.dx-fab *::after { box-sizing:border-box; }
+.dx-fab button { font-family:inherit; cursor:pointer; }
+.dx-fab :focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+/* identidad */
+.dx-fab-id { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:6px 14px; padding:16px 24px 10px; }
+.dx-fab-menu { display:none; width:44px; height:44px; border:0; border-radius:8px; background:transparent; color:var(--dx-ui-ink); font-size:21px; }
+.frame.is-work .dx-fab-menu { display:grid; place-items:center; }
+.dx-fab-back { display:inline-flex; gap:6px; padding:0; border:0; background:none; color:var(--dx-ui-cyan-fg); font:600 13px 'DM Sans',sans-serif; }
+.dx-fab-id h1 { margin:2px 0 0; overflow:hidden; color:var(--dx-ui-navy); font:700 22px/1.25 'Sora',sans-serif; white-space:nowrap; text-overflow:ellipsis; }
+.dx-fab-id p { margin:2px 0 0; overflow:hidden; color:var(--dx-ui-gray); font-size:13px; white-space:nowrap; text-overflow:ellipsis; }
+.dx-fab-id > div:not(.dx-fab-status) { grid-column:2; }
+.dx-fab-status { grid-column:3; justify-self:end; display:flex; align-items:center; gap:8px; }
+.dx-fab-status strong { color:var(--dx-ui-navy); font:600 13px 'Sora',sans-serif; }
+/* pasos */
+.dx-fab-steps { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; padding:0 24px 12px; }
+.dx-fab-step { display:flex; align-items:center; gap:8px; min-width:0; min-height:44px; padding:8px 4px 10px; border:0; border-bottom:3px solid var(--dx-ui-line); background:transparent; color:var(--dx-ui-gray); font:600 12px 'DM Sans',sans-serif; text-align:left; }
+.dx-fab-step i { display:grid; flex:none; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); font:700 12px 'DM Sans',sans-serif; font-style:normal; }
+.dx-fab-step span { min-width:0; line-height:1.2; overflow-wrap:anywhere; }
+.dx-fab-step.is-done { border-color:var(--dx-ui-cyan); color:var(--dx-ui-ink); }
+.dx-fab-step.is-done i { background:var(--dx-ui-cyan); color:#fff; }
+.dx-fab-step.is-current { border-color:var(--dx-ui-navy); color:var(--dx-ui-navy); }
+.dx-fab-step.is-current i { background:var(--dx-ui-navy); color:var(--dx-ui-bg); }
+.dx-fab-step:disabled { cursor:not-allowed; opacity:.6; }
+.dx-fab-mstep { display:none; padding:0 16px 10px; color:var(--dx-ui-navy); font:700 14px 'Sora',sans-serif; }
+/* cuerpo */
+.dx-fab-body { flex:1; display:flex; flex-direction:column; gap:14px; padding:4px 24px 24px; }
+.dx-fab-card { container-type:inline-size; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); }
+.dx-fab-card > header { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-fab-card > header h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px 'Sora',sans-serif; }
+.dx-fab-card > header small { color:var(--dx-ui-gray); font-size:12px; }
+.dx-fab-pad { padding:16px 18px; }
+.dx-fab-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.dx-fab-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.dx-fab-field label { color:var(--dx-ui-gray); font-size:12px; font-weight:700; }
+.dx-fab-input { width:100%; min-width:0; height:44px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-fab-hint { color:var(--dx-ui-gray); font-size:12px; }
+.dx-fab-seg { display:inline-flex; padding:3px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-head); }
+.dx-fab-seg button { min-height:38px; padding:0 16px; border:0; border-radius:8px; background:transparent; color:var(--dx-ui-gray); font-weight:700; }
+.dx-fab-seg button.on { background:var(--dx-ui-card); color:var(--dx-ui-navy); box-shadow:0 1px 3px rgba(15,27,48,.12); }
+.dx-fab-refs { display:flex; flex-direction:column; }
+.dx-fab-ref { display:grid; grid-template-columns:34px minmax(0,1fr) auto; align-items:center; gap:12px; width:100%; min-height:64px; padding:10px 18px; border:0; border-bottom:1px solid var(--dx-ui-line-soft); background:transparent; color:inherit; text-align:left; }
+.dx-fab-ref:hover { background:var(--dx-ui-hover); }
+.dx-fab-ref.is-on { background:var(--dx-ui-cyan-bg); box-shadow:inset 3px 0 0 var(--dx-ui-cyan); }
+.dx-fab-ref b { display:block; color:var(--dx-ui-navy); font-weight:600; }
+.dx-fab-ref small { display:block; overflow:hidden; color:var(--dx-ui-gray); font-size:13px; white-space:nowrap; text-overflow:ellipsis; }
+/* piezas */
+.dx-fab-pieces { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:16px 18px; }
+.dx-fab-piece { display:flex; flex-direction:column; gap:10px; min-width:0; padding:14px; border:1px solid var(--dx-ui-line); border-radius:12px; background:var(--dx-ui-card); }
+.dx-fab-piece.is-on { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-fab-piece-top { display:flex; align-items:center; gap:10px; }
+.dx-fab-piece-top b { display:block; overflow:hidden; color:var(--dx-ui-navy); font:600 14px 'Sora',sans-serif; white-space:nowrap; text-overflow:ellipsis; }
+.dx-fab-piece-top small { color:var(--dx-ui-gray); font-size:12px; }
+.dx-fab-piece dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 10px; margin:0; font-size:13px; }
+.dx-fab-piece dt { color:var(--dx-ui-gray); }
+.dx-fab-piece dd { margin:0; overflow:hidden; color:var(--dx-ui-ink); white-space:nowrap; text-overflow:ellipsis; }
+.dx-fab-piece dd.is-missing { color:var(--dx-ui-amber-fg); font-weight:600; }
+.dx-fab-piece-actions { display:flex; gap:8px; margin-top:auto; }
+.dx-fab-piece-actions .dx-btn { flex:1; }
+.dx-fab-add { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-height:180px; border:1px dashed var(--dx-ui-border); border-radius:12px; background:transparent; color:var(--dx-ui-cyan-fg); font-weight:700; }
+/* plano */
+.dx-fab-plan-layout { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:14px; }
+.dx-fab-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+.dx-fab-tab { min-height:36px; padding:0 14px; border:1px solid var(--dx-ui-line); border-radius:999px; background:var(--dx-ui-card); color:var(--dx-ui-gray); font:600 13px 'DM Sans',sans-serif; }
+.dx-fab-tab.on { border-color:transparent; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-fab-canvas { position:relative; margin:14px 18px; overflow:hidden; border:1px solid var(--dx-ui-line); border-radius:10px; background:#fff; aspect-ratio:760/330; }
+.dx-fab-canvas svg { display:block; width:100%; height:100%; }
+.dx-fab-canvas .part { fill:#E8EEF6; stroke:#1A2B4A; stroke-width:2; } .dx-fab-canvas .part.alt { fill:#D7E3F1; }
+.dx-fab-canvas .cl { stroke:#9AA6B8; stroke-dasharray:14 6 3 6; } .dx-fab-canvas .thin { stroke:#1A2B4A; }
+.dx-fab-canvas .lbl { fill:#4B5563; font:600 13px 'DM Sans',sans-serif; }
+.dx-fab-canvas .ink { fill:none; stroke:#1F2937; stroke-width:1.6; } .dx-fab-canvas .ink-thin { fill:none; stroke:#1F2937; stroke-width:.8; }
+.dx-fab-canvas .txt { fill:#1F2937; font:12px 'DM Sans',sans-serif; } .dx-fab-canvas .hatch { fill:url(#hatch); stroke:#1F2937; stroke-width:1.2; }
+.dx-fab-pin { position:absolute; display:grid; place-items:center; width:30px; height:30px; transform:translate(-50%,-50%); border:2px solid #fff; border-radius:50%; background:var(--dx-ui-navy); color:var(--dx-ui-bg); font:700 13px 'Sora',sans-serif; box-shadow:0 2px 6px rgba(15,27,48,.35); }
+.dx-fab-pin.is-crit { background:#DC2626; color:#fff; }
+.dx-fab-pin.is-sel { outline:3px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-fab-canvas-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:0 18px 14px; color:var(--dx-ui-gray); font-size:12px; }
+.dx-fab-canvas-bar .dx-btn { height:40px; }
+.dx-fab-src { display:flex; flex-wrap:wrap; gap:8px; padding:14px 18px 0; }
+.dx-fab-src button { display:flex; align-items:center; gap:8px; min-height:44px; padding:0 14px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font-weight:600; }
+.dx-fab-src button.on { border-color:var(--dx-ui-cyan); background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-fab-src .is-soon { border-style:dashed; color:var(--dx-ui-gray); cursor:not-allowed; }
+.dx-fab-chars { display:flex; flex-direction:column; }
+.dx-fab-char { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:10px; align-items:center; padding:12px 18px; border-bottom:1px solid var(--dx-ui-line-soft); }
+.dx-fab-char.is-sel { background:var(--dx-ui-hover); }
+.dx-fab-char-n { display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:var(--dx-ui-navy); color:var(--dx-ui-bg); font:700 13px 'Sora',sans-serif; }
+.dx-fab-char-n.is-crit { background:#DC2626; color:#fff; }
+.dx-fab-char b { display:block; overflow:hidden; color:var(--dx-ui-ink); font-weight:600; white-space:nowrap; text-overflow:ellipsis; }
+.dx-fab-char small { color:var(--dx-ui-gray); font-size:12px; }
+.dx-fab-char .dx-fab-val { color:var(--dx-ui-navy); font:600 13px 'Sora',sans-serif; text-align:right; white-space:nowrap; }
+.dx-fab-editor { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; padding:14px 18px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); }
+.dx-fab-editor .wide { grid-column:span 2; }
+.dx-fab-check { display:flex; align-items:center; gap:8px; min-height:44px; color:var(--dx-ui-ink); font-weight:600; }
+.dx-fab-check input { width:20px; height:20px; accent-color:#DC2626; }
+/* trabajos */
+.dx-fab-work { border-bottom:1px solid var(--dx-ui-line-soft); }
+.dx-fab-work > header { display:flex; align-items:center; gap:10px; padding:12px 18px; background:var(--dx-ui-head); color:var(--dx-ui-navy); font:700 14px 'Sora',sans-serif; }
+.dx-fab-work > header small { margin-left:auto; color:var(--dx-ui-gray); font:500 12px 'DM Sans',sans-serif; }
+.dx-fab-act { padding:8px 18px 4px; color:var(--dx-ui-gray); font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.dx-fab-task { display:grid; grid-template-columns:minmax(0,1fr) 170px 90px 140px; gap:12px; align-items:center; min-height:52px; padding:6px 18px; border-top:1px solid var(--dx-ui-line-soft); }
+.dx-fab-task b { color:var(--dx-ui-ink); font-weight:600; }
+.dx-fab-task span { color:var(--dx-ui-gray); font-size:13px; }
+.dx-fab-tag { display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:999px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-size:12px; font-weight:700; }
+/* revisión */
+.dx-fab-review { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); gap:14px; }
+.dx-fab-kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:16px 18px; }
+.dx-fab-kpi { padding:12px 14px; border:1px solid var(--dx-ui-line); border-radius:10px; }
+.dx-fab-kpi b { display:block; color:var(--dx-ui-navy); font:700 22px 'Sora',sans-serif; }
+.dx-fab-kpi span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-fab-checklist { margin:0; padding:0 18px 16px; list-style:none; }
+.dx-fab-checklist li { display:flex; gap:8px; padding:6px 0; color:var(--dx-ui-ink); font-size:13px; }
+.dx-fab-checklist li::before { content:'✓'; color:var(--dx-ui-green-fg); font-weight:700; }
+.dx-fab-checklist li.is-warn::before { content:'!'; color:var(--dx-ui-amber-fg); }
+.dx-fab-sheet { margin:16px 18px; padding:18px; border:1px solid var(--dx-ui-line); border-radius:8px; background:#fff; color:#1F2937; font-size:11px; }
+.dx-fab-sheet h3 { margin:0 0 2px; color:#1A2B4A; font:700 14px 'Sora',sans-serif; }
+.dx-fab-sheet table { width:100%; margin-top:8px; border-collapse:collapse; }
+.dx-fab-sheet th,.dx-fab-sheet td { padding:4px 6px; border-bottom:1px solid #E4E7EB; text-align:left; }
+.dx-fab-sheet th { background:#F8F9FA; color:#6B7280; font-size:10px; text-transform:uppercase; }
+.dx-fab-sheet .dx-fab-canvas { margin:8px 0; }
+.dx-fab-note { padding:10px 14px; border-radius:10px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-size:13px; }
+.dx-fab-note.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+/* pie */
+.dx-fab-foot { position:sticky; bottom:0; z-index:5; display:flex; align-items:center; gap:10px; padding:10px 24px; border-top:1px solid var(--dx-ui-line); background:var(--dx-ui-card); }
+.dx-fab-foot .msg { margin-right:auto; color:var(--dx-ui-gray); font-size:13px; }
+.dx-fab-foot .dx-btn { min-height:44px; height:44px; }
+/* responsive por contenedor */
+@container fab (max-width:1000px) {
+  .dx-fab-pieces { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dx-fab-plan-layout,.dx-fab-review { grid-template-columns:minmax(0,1fr); }
+}
+@container fab (max-width:760px) {
+  .dx-fab-id { grid-template-columns:auto minmax(0,1fr); padding:10px 12px 6px; }
+  .dx-fab-id h1 { font-size:17px; }
+  .dx-fab-id > div:not(.dx-fab-status) { grid-column:auto; }
+  .dx-fab-status { grid-column:1 / -1; justify-self:start; }
+  .dx-fab-steps { display:none; }
+  .dx-fab-mstep { display:block; }
+  .dx-fab-body { padding:4px 10px 16px; }
+  .dx-fab-grid { grid-template-columns:minmax(0,1fr); }
+  .dx-fab-pieces { grid-template-columns:minmax(0,1fr); padding:12px; }
+  .dx-fab-editor { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dx-fab-task { grid-template-columns:minmax(0,1fr) auto; }
+  .dx-fab-task > :nth-child(2) { grid-column:1 / -1; grid-row:2; }
+  .dx-fab-task > :nth-child(4) { display:none; }
+  .dx-fab-canvas { margin:12px; }
+  .dx-fab-foot { padding:8px 10px; }
+  .dx-fab-foot .msg { display:none; }
+  .dx-fab-foot .dx-btn { flex:1; padding:0 10px; }
+}
+@container fab (max-width:420px) { .dx-fab-editor { grid-template-columns:minmax(0,1fr); } .dx-fab-editor .wide { grid-column:auto; } }
+[data-theme='dark'] .dx-fab-canvas,[data-theme='dark'] .dx-fab-sheet { background:#F8FAFC; }
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <strong>Mock · Diagnóstico de fabricación</strong>
+  <button data-w="375">Celular 375</button><button data-w="834">Tablet 834</button><button data-w="1280" aria-pressed="true">Escritorio 1280</button>
+  <span class="sep"></span>
+  <span>Paso:</span><button data-s="1">1</button><button data-s="2">2</button><button data-s="3" aria-pressed="true">3</button><button data-s="4">4</button><button data-s="5">5</button>
+  <span class="sep"></span>
+  <button id="src">Plano: subido ⇄ catálogo</button>
+  <button id="dark">Modo oscuro</button>
+</div>
+<p class="mock-note"><b>Datos reales de PRUEBA:</b> oportunidad «PRUEBA Fabricación cilindro CH-120» (Minera Prueba), recepciones RAC-2026-00014 / 00010 / 00012, técnico Betty Cardenas, material «TUBO DELGADO» (G01030101, uno de los 3 materiales activos del catálogo), dibujo «Eje con muñones» del catálogo y trabajos del diagnóstico emitido de CH-120. <b>Ejemplo:</b> las piezas, el plano subido y las características (aún no existen en el sistema). Escritorio 1280 usa el riel lateral de 72 px como Mantenimiento; celular y tablet, modo trabajo (☰).</p>
+<div class="frame" id="frame"><div class="frame-shell"><div class="frame-rail"></div><div class="frame-main" id="app"></div></div></div>
+<script>
+const PLANO_SUBIDO = `<svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><path d="M0 0V8" stroke="#1F2937" stroke-width=".7"/></pattern></defs>
+<rect x="8" y="8" width="744" height="314" class="ink-thin"/><rect x="520" y="262" width="232" height="60" class="ink-thin"/><text x="530" y="282" class="txt">MINERA PRUEBA · CH-120</text><text x="530" y="300" class="txt">CAMISA CILINDRO · ESC 1:2</text><text x="530" y="316" class="txt">PLANO DEL CLIENTE · REV B</text>
+<path d="M60 150H690" stroke="#9AA6B8" stroke-dasharray="14 6 3 6"/>
+<rect x="90" y="95" width="520" height="22" class="hatch"/><rect x="90" y="183" width="520" height="22" class="hatch"/>
+<rect x="70" y="88" width="20" height="124" class="hatch"/><rect x="610" y="88" width="34" height="124" class="hatch"/>
+<path d="M90 117H610M90 183H610" class="ink"/>
+<path d="M120 60H580" class="ink-thin"/><path d="M120 54V66M580 54V66" class="ink-thin"/><text x="330" y="52" class="txt">L = 520</text>
+<path d="M660 95V205" class="ink-thin"/><text x="668" y="154" class="txt">Ø EXT 120</text>
+<path d="M200 117V183" class="ink-thin"/><text x="208" y="154" class="txt">Ø INT 100</text>
+<text x="615" y="232" class="txt">M110×2</text><text x="300" y="232" class="txt">Ra 0.4 (bruñido)</text></svg>`;
+const EJE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -15 760 330" role="img" aria-label="Eje con muñones"><path class="cl" d="M30 150H735"/><rect class="part" x="60" y="120" width="160" height="60" rx="2"/><path class="thin" d="M70 120v60M210 120v60" opacity=".5"/><rect class="part alt" x="220" y="105" width="320" height="90" rx="2"/><rect class="part" x="540" y="120" width="160" height="60" rx="2"/><path class="thin" d="M550 120v60M690 120v60" opacity=".5"/><rect class="part" x="70" y="96" width="88" height="24" rx="2"/><text class="lbl" x="140" y="212" text-anchor="middle">Muñón A</text><text class="lbl" x="380" y="222" text-anchor="middle">Cuerpo central</text><text class="lbl" x="620" y="212" text-anchor="middle">Muñón B</text><text class="lbl" x="138" y="90" text-anchor="middle">Chavetero</text></svg>`;
+const PIEZAS = [
+  { id:'p1', nombre:'Camisa del cilindro', cant:1, mat:'TUBO DELGADO', cod:'G01030101', unidad:'m', plano:'subido', chars:5 },
+  { id:'p2', nombre:'Eje / vástago', cant:1, mat:null, plano:'catalogo', chars:3 },
+  { id:'p3', nombre:'Buje guía', cant:2, mat:null, plano:null, chars:0 },
+];
+const CHARS = {
+  subido: [
+    { n:1, x:44, y:46, nom:'Diámetro interior', tipo:'Cota', val:'Ø 100.00', tol:'+0.05 / 0.00', u:'mm', crit:true },
+    { n:2, x:91, y:36, nom:'Diámetro exterior', tipo:'Cota', val:'Ø 120.00', tol:'±0.10', u:'mm', crit:false },
+    { n:3, x:58, y:14, nom:'Longitud total', tipo:'Cota', val:'520.0', tol:'±0.50', u:'mm', crit:false },
+    { n:4, x:79, y:70, nom:'Rosca de tapa', tipo:'Rosca', val:'M110×2', tol:'6H', u:'—', crit:true },
+    { n:5, x:36, y:70, nom:'Acabado interior', tipo:'Acabado', val:'Ra 0.4', tol:'máx.', u:'µm', crit:true },
+  ],
+  catalogo: [
+    { n:1, x:18, y:50, nom:'Ø muñón A', tipo:'Cota', val:'Ø 45.00', tol:'0.00 / −0.02', u:'mm', crit:true },
+    { n:2, x:50, y:50, nom:'Ø cuerpo central', tipo:'Cota', val:'Ø 60.00', tol:'±0.10', u:'mm', crit:false },
+    { n:3, x:18, y:30, nom:'Ancho de chavetero', tipo:'Cota', val:'14', tol:'N9', u:'mm', crit:false },
+  ],
+};
+const TRABAJOS = [{ t:'Armado, pruebas y entrega', a:'Armado y prueba de cilindro', tareas:[['Armado de cilindro','Ayudante Tecnico',5],['Prueba hidráulica','Ayudante Tecnico',2],['Pintura y embalaje','Ayudante Tecnico',3]] }];
+const PASOS = ['Origen','Piezas','Plano y características','Trabajos a realizar','Revisión e informe'];
+let paso = 3, width = 1280, dark = false, src = 'subido', piezaSel = 'p1', charSel = 1, origen = 'oportunidad';
+const pins = list => list.map(c => `<button class="dx-fab-pin${c.crit ? ' is-crit' : ''}${c.n === charSel ? ' is-sel' : ''}" style="left:${c.x}%;top:${c.y}%" aria-label="Característica ${c.n}: ${c.nom}" data-c="${c.n}">${c.n}</button>`).join('');
+const lienzo = (s, list) => `<div class="dx-fab-canvas">${s === 'subido' ? PLANO_SUBIDO : EJE}${pins(list)}</div>`;
+function paso1() {
+  const refs = origen === 'oportunidad'
+    ? [['PRUEBA Fabricación cilindro CH-120','Minera Prueba · Oportunidad en Calificación',true],['CRM','Andrea SAC · Oportunidad',false],['CRM','Constructora Gamma S.A. · Oportunidad',false]]
+    : [['RAC-2026-00014 · VALVULA HIDRAULICA','INVERSIONES EL PINO · ACT-00014 · sirve de muestra',true],['RAC-2026-00010 · MOTOR H','INVERSIONES EL PINO · ACT-00010',false],['RAC-2026-00012 · BARRA','INVERSIONES GENERALES · ACT-00012',false]];
+  return `<section class="dx-fab-card"><header><h2>¿De dónde nace el pedido?</h2><div class="dx-fab-seg" role="group" aria-label="Origen"><button class="${origen === 'oportunidad' ? 'on' : ''}" data-o="oportunidad">Oportunidad</button><button class="${origen === 'recepcion' ? 'on' : ''}" data-o="recepcion">Recepción</button></div></header>
+    <div class="dx-fab-pad"><label class="dx-ui-search" style="width:100%"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input aria-label="Buscar origen" placeholder="${origen === 'oportunidad' ? 'Buscar oportunidad o cliente…' : 'Buscar recepción, cliente o activo…'}"></label></div>
+    <div class="dx-fab-refs" role="radiogroup">${refs.map(([a,b,on]) => `<button class="dx-fab-ref${on ? ' is-on' : ''}" role="radio" aria-checked="${on}"><span class="dx-ui-icon is-cyan">◎</span><span><b>${a}</b><small>${b}</small></span>${on ? '<span class="dx-ui-pill is-cyan"><i></i>Elegida</span>' : ''}</button>`).join('')}</div></section>
+    ${origen === 'recepcion' ? '<div class="dx-fab-note">Desde una recepción, la primera pieza toma el nombre, la marca y la serie del activo recibido (muestra del cliente). Puedes cambiarlos en el paso 2.</div>' : ''}
+    <section class="dx-fab-card"><header><h2>Datos del diagnóstico</h2></header><div class="dx-fab-pad dx-fab-grid">
+      <div class="dx-fab-field"><label>Técnico responsable *</label><select class="dx-fab-input"><option>Betty Cardenas</option></select></div>
+      <div class="dx-fab-field"><label>Fecha de evaluación</label><input class="dx-fab-input" type="date" value="2026-10-27"></div>
+      <div class="dx-fab-field"><label>Referencia del cliente</label><input class="dx-fab-input" value="Pedido CH-120 rev. B"></div>
+      <div class="dx-fab-field" style="grid-column:1/-1"><label>Requerimiento del cliente</label><textarea class="dx-fab-input" style="height:72px;padding-top:10px">Fabricar camisa, vástago y bujes guía para cilindro CH-120 según plano del cliente.</textarea></div>
+    </div></section>`;
+}
+function paso2() {
+  return `<section class="dx-fab-card"><header><h2>Piezas a fabricar</h2><small>${PIEZAS.length} piezas · cada una con su plano y características</small></header>
+    <div class="dx-fab-pieces">${PIEZAS.map(p => `<article class="dx-fab-piece${p.id === piezaSel ? ' is-on' : ''}"><div class="dx-fab-piece-top"><span class="dx-ui-icon is-cyan">⚙</span><div style="min-width:0"><b>${p.nombre}</b><small>Cantidad: ${p.cant} und</small></div></div>
+      <dl><dt>Material</dt><dd class="${p.mat ? '' : 'is-missing'}">${p.mat ? `${p.mat} · ${p.cod}` : 'Elegir del catálogo'}</dd><dt>Plano</dt><dd class="${p.plano ? '' : 'is-missing'}">${p.plano === 'subido' ? 'Plano del cliente (PDF)' : p.plano === 'catalogo' ? 'Dibujo del catálogo: Eje con muñones' : 'Sin plano'}</dd><dt>Características</dt><dd>${p.chars ? `${p.chars} (${p.id === 'p1' ? 3 : 1} críticas)` : '—'}</dd></dl>
+      <div class="dx-fab-piece-actions"><button class="dx-btn">Editar</button><button class="dx-btn primary">${p.plano ? 'Ver plano' : 'Agregar plano'}</button></div></article>`).join('')}
+      <button class="dx-fab-add"><span style="font-size:24px">＋</span>Agregar pieza</button></div></section>
+    <section class="dx-fab-card"><header><h2>Editar pieza · Camisa del cilindro</h2></header><div class="dx-fab-pad dx-fab-grid">
+      <div class="dx-fab-field"><label>Nombre de la pieza *</label><input class="dx-fab-input" value="Camisa del cilindro"></div>
+      <div class="dx-fab-field"><label>Cantidad *</label><input class="dx-fab-input" type="number" value="1"></div>
+      <div class="dx-fab-field"><label>Material (catálogo de materiales) *</label><input class="dx-fab-input" value="TUBO DELGADO · G01030101 · m"><span class="dx-fab-hint">Búsqueda por código o descripción. Solo materiales activos de la empresa.</span></div>
+      <div class="dx-fab-field" style="grid-column:1/-1"><label>Observaciones</label><input class="dx-fab-input" placeholder="Tratamiento, norma, notas del cliente…"></div></div></section>`;
+}
+function paso3() {
+  const list = CHARS[src];
+  const c = list.find(x => x.n === charSel) || list[0];
+  const pieza = src === 'subido' ? 'Camisa del cilindro' : 'Eje / vástago';
+  return `<div class="dx-fab-tabs" role="tablist">${PIEZAS.map(p => `<button class="dx-fab-tab${(src === 'subido' ? 'p1' : 'p2') === p.id ? ' on' : ''}" role="tab">${p.nombre}${p.chars ? ` · ${p.chars}` : ''}</button>`).join('')}</div>
+    <div class="dx-fab-plan-layout">
+    <section class="dx-fab-card"><header><h2>Plano · ${pieza}</h2><small>Toca el plano para poner un pin</small></header>
+      <div class="dx-fab-src" role="group" aria-label="Origen del plano"><button class="${src === 'subido' ? 'on' : ''}" data-src="subido">⤒ Subir plano o foto</button><button class="${src === 'catalogo' ? 'on' : ''}" data-src="catalogo">▦ Dibujo del catálogo</button><button class="is-soon" disabled title="Fase 2">✎ Plano de Ingeniería · próximamente</button></div>
+      ${lienzo(src, list)}
+      <div class="dx-fab-canvas-bar">${src === 'subido' ? 'plano_CH-120_camisa_revB.pdf · página 1' : 'Catálogo: Eje con muñones'}<span style="margin-left:auto"></span><button class="dx-btn">Reemplazar</button><button class="dx-btn">Ampliar</button></div></section>
+    <section class="dx-fab-card"><header><h2>Características</h2><small>${list.length} · ${list.filter(x => x.crit).length} críticas</small></header>
+      <div class="dx-fab-editor"><div class="dx-fab-field wide"><label>Característica ${c.n}</label><input class="dx-fab-input" value="${c.nom}"></div><div class="dx-fab-field wide"><label>Tipo</label><select class="dx-fab-input"><option>${c.tipo}</option><option>Cota</option><option>Rosca</option><option>Acabado</option><option>Tratamiento térmico</option><option>Material</option><option>Otro</option></select></div>
+        <div class="dx-fab-field"><label>Nominal</label><input class="dx-fab-input" value="${c.val}"></div><div class="dx-fab-field"><label>Tolerancia − / +</label><input class="dx-fab-input" value="${c.tol}"></div><div class="dx-fab-field"><label>Unidad</label><input class="dx-fab-input" value="${c.u}"></div><label class="dx-fab-check"><input type="checkbox" ${c.crit ? 'checked' : ''}> Crítica</label></div>
+      <div class="dx-fab-chars">${list.map(x => `<div class="dx-fab-char${x.n === charSel ? ' is-sel' : ''}" role="button" tabindex="0" data-c="${x.n}"><span class="dx-fab-char-n${x.crit ? ' is-crit' : ''}">${x.n}</span><div style="min-width:0"><b>${x.nom}</b><small>${x.tipo}${x.crit ? ' · crítica' : ''}</small></div><span class="dx-fab-val">${x.val} <small>${x.tol} ${x.u === '—' ? '' : x.u}</small></span></div>`).join('')}</div></section></div>`;
+}
+function paso4() {
+  return `<div class="dx-ui-summary"><div class="dx-ui-chip"><b>1</b><span>trabajo</span></div><div class="dx-ui-chip"><b>3</b><span>tareas</span></div><div class="dx-ui-chip"><b>10.0 h</b><span>horas-hombre</span></div><div class="dx-ui-chip"><b>0.0 h</b><span>horas-máquina</span></div></div>
+    <section class="dx-fab-card"><header><h2>Trabajos a realizar</h2><small>Trabajo › Actividad › Tarea, igual que hoy</small><button class="dx-btn primary">Agregar trabajo</button></header>
+    ${TRABAJOS.map(w => `<div class="dx-fab-work"><header>${w.t}<small>${w.tareas.length} tareas</small></header><div class="dx-fab-act">${w.a}</div>${w.tareas.map(([t,c,h]) => `<div class="dx-fab-task"><b>${t}</b><span>${c}</span><span>${h.toFixed(1)} h</span><span><span class="dx-fab-tag">Todas las piezas</span></span></div>`).join('')}</div>`).join('')}</section>
+    <div class="dx-fab-note">Cada tarea puede ligarse a una pieza o a «Todas las piezas». Esa referencia pasa a la Hoja de Costeo junto con el material de cada pieza.</div>`;
+}
+function paso5() {
+  return `<div class="dx-fab-review"><section class="dx-fab-card"><header><h2>Revisión</h2></header>
+    <div class="dx-fab-kpis"><div class="dx-fab-kpi"><b>3</b><span>piezas (4 und)</span></div><div class="dx-fab-kpi"><b>8</b><span>características · 4 críticas</span></div><div class="dx-fab-kpi"><b>3</b><span>tareas</span></div><div class="dx-fab-kpi"><b>10.0 h</b><span>horas-hombre</span></div></div>
+    <ul class="dx-fab-checklist"><li>Origen: PRUEBA Fabricación cilindro CH-120 · Minera Prueba</li><li>Camisa del cilindro: material y plano con 5 características</li><li class="is-warn">Eje / vástago: falta elegir el material</li><li class="is-warn">Buje guía: falta el plano</li><li>Trabajos a realizar con horas</li></ul>
+    <div class="dx-fab-pad"><div class="dx-fab-field"><label>Conclusión para el cliente</label><textarea class="dx-fab-input" style="height:96px;padding-top:10px">Se evaluó el plano del cliente (rev. B). Las piezas son fabricables en taller; las cotas críticas requieren bruñido y control dimensional al 100 %.</textarea><span class="dx-fab-hint">Con el botón de IA se corrige la redacción, como en Mantenimiento.</span></div></div></section>
+    <section class="dx-fab-card"><header><h2>Ficha técnica para el cliente</h2><small>Vista previa del PDF</small><button class="dx-btn">Descargar PDF</button></header>
+      <div class="dx-fab-sheet"><h3>Ficha técnica de fabricación</h3><div>Minera Prueba · PRUEBA Fabricación cilindro CH-120 · Emisor: Betty Cardenas</div><b style="display:block;margin-top:10px">1 · Camisa del cilindro · 1 und · TUBO DELGADO</b>${lienzo('subido', CHARS.subido)}
+      <table><thead><tr><th>#</th><th>Característica</th><th>Nominal</th><th>Tol.</th><th>Crítica</th></tr></thead><tbody>${CHARS.subido.map(c => `<tr><td>${c.n}</td><td>${c.nom}</td><td>${c.val} ${c.u === '—' ? '' : c.u}</td><td>${c.tol}</td><td>${c.crit ? 'Sí' : ''}</td></tr>`).join('')}</tbody></table></div></section></div>
+    <div class="dx-fab-note is-amber">Para emitir, todas las piezas deben tener material y plano. Al emitir se congela la ficha y se habilita «Generar hoja de costeo».</div>`;
+}
+function render() {
+  const fr = document.getElementById('frame');
+  fr.style.width = width + 'px';
+  fr.className = 'frame' + (width <= 1180 ? ' is-work' : '');
+  if (dark) fr.setAttribute('data-theme', 'dark'); else fr.removeAttribute('data-theme');
+  const cuerpo = [paso1, paso2, paso3, paso4, paso5][paso - 1]();
+  const siguiente = paso === 5 ? 'Emitir diagnóstico' : 'Siguiente →';
+  document.getElementById('app').innerHTML = `<section class="dx-ui dx-fab">
+    <header class="dx-fab-id"><button class="dx-fab-menu" aria-label="Abrir menú">☰</button><div style="min-width:0"><button class="dx-fab-back">← Diagnósticos</button><h1>Fabricación · Cilindro CH-120</h1><p>Minera Prueba · Oportunidad «PRUEBA Fabricación cilindro CH-120»</p></div><div class="dx-fab-status"><strong>DT-FAB</strong><span class="dx-ui-pill is-amber"><i></i>Borrador</span></div></header>
+    <nav class="dx-fab-steps" aria-label="Pasos del diagnóstico">${PASOS.map((p, i) => `<button class="dx-fab-step${i + 1 === paso ? ' is-current' : i + 1 < paso ? ' is-done' : ''}" ${i + 1 > paso ? 'disabled' : ''} data-s="${i + 1}" aria-current="${i + 1 === paso ? 'step' : 'false'}"><i>${i + 1 < paso ? '✓' : i + 1}</i><span>${p}</span></button>`).join('')}</nav>
+    <div class="dx-fab-mstep">Paso ${paso} de 5 · ${PASOS[paso - 1]}</div>
+    <div class="dx-fab-body">${cuerpo}</div>
+    <footer class="dx-fab-foot"><span class="msg">Borrador guardado</span>${paso > 1 ? '<button class="dx-btn" data-nav="-1">← Anterior</button>' : '<button class="dx-btn">← Diagnósticos</button>'}<button class="dx-btn primary" data-nav="1">${siguiente}</button></footer></section>`;
+  bind();
+}
+function bind() {
+  document.querySelectorAll('#app [data-s]').forEach(b => b.onclick = () => { paso = +b.dataset.s; sync(); render(); });
+  document.querySelectorAll('#app [data-nav]').forEach(b => b.onclick = () => { paso = Math.min(5, Math.max(1, paso + +b.dataset.nav)); sync(); render(); });
+  document.querySelectorAll('#app [data-c]').forEach(b => b.onclick = () => { charSel = +b.dataset.c; render(); });
+  document.querySelectorAll('#app [data-src]').forEach(b => b.onclick = () => { src = b.dataset.src; charSel = 1; render(); });
+  document.querySelectorAll('#app [data-o]').forEach(b => b.onclick = () => { origen = b.dataset.o; render(); });
+}
+const sync = () => document.querySelectorAll('.mock-bar [data-s]').forEach(x => x.setAttribute('aria-pressed', +x.dataset.s === paso));
+document.querySelectorAll('.mock-bar [data-w]').forEach(b => b.onclick = () => { width = +b.dataset.w; document.querySelectorAll('.mock-bar [data-w]').forEach(x => x.setAttribute('aria-pressed', x === b)); render(); });
+document.querySelectorAll('.mock-bar [data-s]').forEach(b => b.onclick = () => { paso = +b.dataset.s; sync(); render(); });
+document.getElementById('src').onclick = () => { src = src === 'subido' ? 'catalogo' : 'subido'; charSel = 1; render(); };
+document.getElementById('dark').onclick = e => { dark = !dark; e.target.setAttribute('aria-pressed', dark); render(); };
+render();
+</script>
+</body>
+</html>

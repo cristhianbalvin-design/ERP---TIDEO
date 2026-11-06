@@ -6,6 +6,26 @@ export { buildCierreFondoRpcArgs } from './cajaChicaCierreLogic.js';
 
 const genId = prefix => `${prefix}_${Math.random().toString(36).slice(2, 14)}`;
 
+const MENSAJE_CATEGORIA_REQUERIDA = 'Selecciona una categoría del Estado de Resultados para registrar el egreso de caja chica.';
+
+export function validarCategoriaEgresoFondo(payload) {
+  if (!String(payload?.categoria || '').trim()) {
+    const error = new Error(MENSAJE_CATEGORIA_REQUERIDA);
+    error.code = 'CATEGORIA_REQUERIDA';
+    throw error;
+  }
+  return payload;
+}
+
+export function traducirErrorCategoriaEgreso(error) {
+  const detalle = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
+  if (!detalle.includes('CATEGORIA_REQUERIDA')) return error;
+  const traducido = new Error(MENSAJE_CATEGORIA_REQUERIDA);
+  traducido.code = 'CATEGORIA_REQUERIDA';
+  traducido.cause = error;
+  return traducido;
+}
+
 const stripUnknownColumn = (error, payload) => {
   const col = error?.message?.match(/column "([^"]+)" of relation/)?.[1]
     || error?.message?.match(/'([^']+)' column/)?.[1];
@@ -380,6 +400,7 @@ export const cajaChicaService = {
 
   async registrarEgresoFondo(payload) {
     if (!payload?.fondo_id) throw new Error('Seleccione un fondo de caja chica.');
+    validarCategoriaEgresoFondo(payload);
     const supabase = await getSupabaseClient();
     await obtenerFondoAbierto(supabase, payload.fondo_id);
     const { sociedadId } = await validarSociedadActivaParaEscritura(
@@ -391,7 +412,7 @@ export const cajaChicaService = {
     const { data, error } = await supabase.rpc('registrar_egreso_caja_chica_atomico', {
       p_payload: { ...payload, sociedad_id: sociedadId },
     });
-    if (error) throw error;
+    if (error) throw traducirErrorCategoriaEgreso(error);
     return data;
   },
 

@@ -50,7 +50,7 @@ export function diferenciasTaller(datos, borrador) {
     puestosQuitados: original.puestos.filter(item => !vivos(borrador.puestos, item.id)),
     maquinasNuevas: borrador.maquinas.filter(item => esNuevo(item.id)),
     maquinasEditadas: borrador.maquinas.filter(item => !esNuevo(item.id)
-      && cambio(original.maquinas, item, ['nombre', 'tipo_clave', 'bahia_id', 'puesto_id'])),
+      && cambio(original.maquinas, item, ['nombre', 'tipo_clave', 'bahia_id', 'puesto_id', 'activo_id'])),
     maquinasQuitadas: original.maquinas.filter(item => !vivos(borrador.maquinas, item.id)),
   };
 }
@@ -76,6 +76,7 @@ export function Configurator({ datos, busy, permiteEscritura, onGuardar, onCance
   const cambios = hayCambios(diferencias);
   const bloqueado = !permiteEscritura || busy;
   const tipos = datos.tipos || [];
+  const activosPropios = datos.activosPropios || [];
 
   const actualizar = (lista, id, campos) => setBorrador(actual => ({
     ...actual,
@@ -113,7 +114,7 @@ export function Configurator({ datos, busy, permiteEscritura, onGuardar, onCance
       ...actual,
       maquinas: [...actual.maquinas, {
         id: nuevoId('maquina'), nombre: tipo.nombre, tipo_clave: tipo.clave, bahia_id: bahiaId || null,
-        puesto_id: puestoId || null, horas_dia: 8, estado: 'disponible',
+        puesto_id: puestoId || null, activo_id: null, horas_dia: 8, estado: 'disponible',
       }],
     }));
     setCatalogo(false);
@@ -289,6 +290,26 @@ export function Configurator({ datos, busy, permiteEscritura, onGuardar, onCance
                       <optgroup label="Sirve a una bahía completa">
                         {borrador.bahias.map(bahia => <option key={bahia.id} value={`b:${bahia.id}`}>{bahia.nombre}</option>)}
                       </optgroup>
+                    </select>
+                  </label>
+                  <label className="dx-pl-fld eq">Equipo (activo)
+                    <select
+                      value={maquina.activo_id || ''}
+                      disabled={bloqueado}
+                      onChange={event => actualizar('maquinas', maquina.id, { activo_id: event.target.value || null })}
+                    >
+                      <option value="">Sin equipo enlazado</option>
+                      {maquina.activo_id && !activosPropios.some(activo => activo.id === maquina.activo_id) && (
+                        <option value={maquina.activo_id}>{maquina.activo_id}</option>
+                      )}
+                      {activosPropios.map(activo => {
+                        const usadoPor = borrador.maquinas.find(item => item.id !== maquina.id && item.activo_id === activo.id);
+                        return (
+                          <option key={activo.id} value={activo.id} disabled={Boolean(usadoPor)}>
+                            {activo.codigo ? `${activo.codigo} · ` : ''}{activo.nombre}{usadoPor ? ` (en ${usadoPor.nombre})` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </label>
                   <span className="s">

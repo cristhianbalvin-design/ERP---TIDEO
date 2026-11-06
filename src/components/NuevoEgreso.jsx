@@ -4,6 +4,7 @@ import { I } from '../icons.jsx';
 import { FileUpload } from './FileUpload.jsx';
 import { finanzasService } from '../services/finanzasService.js';
 import { cajaChicaService } from '../services/cajaChicaService.js';
+import { convertirEgresoCajaChica } from '../services/cajaChicaConversion.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
@@ -12,7 +13,18 @@ import { SearchSelect } from './SearchSelect.jsx';
 import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
 import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
 import { validarSociedadActivaParaEscritura } from '../services/sociedadEscrituraService.js';
+import { sugerirCategoriaEgreso } from '../services/sugerirCategoriaEgresoService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from '../lib/metodosPago.js';
+import {
+  categoriaAlSeleccionarTipo,
+  categoriaEgresoValida,
+  categoriaInicialEgreso,
+  derivarCategoriasEgresoDesdeTipos,
+  MENSAJE_CATEGORIA_EGRESO_REQUERIDA,
+  mensajeDestinoEgreso,
+  pasoInicialNuevoEgreso,
+  resolverCategoriaEgreso,
+} from '../utils/egresoCategoria.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -20,17 +32,24 @@ const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura 
     : opciones
 );
 
+const ETIQUETAS_SECCION_ER = {
+  costo_ventas: 'Costo de ventas',
+  costos_ventas: 'Costo de ventas',
+  gastos_operativos: 'Gastos operativos',
+  gastos_financieros: 'Gastos financieros',
+};
+
 const etiquetaOT = (ot) => ot?.numero || ot?.codigo || ot?.codigo_ot || 'OT sin código';
 
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
-  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package', aplica_caja_chica: true  },
-  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench',  aplica_caja_chica: true  },
-  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building', aplica_caja_chica: true  },
-  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck',   aplica_caja_chica: true  },
-  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt', aplica_caja_chica: true  },
-  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck',   aplica_caja_chica: true  },
-  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', aplica_caja_chica: true, es_capitalizacion: true },
+  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package', aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench',  aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building', aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck',   aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt', aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck',   aplica_caja_chica: true, es_no_gasto: false },
+  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', aplica_caja_chica: true, es_capitalizacion: true, es_no_gasto: false },
 ];
 
 const ACTIVO_TIPOS_WIZ = [
@@ -209,7 +228,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     empresa, authUser, centrosCosto, ots, proveedores, ordenesCompra = [], cuentasBancarias, cxp = [],
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     setComprasGastos, setCajaChica, setCxp, setCxpPagos, setMovimientosTesoreria,
-    addNotificacion, addToast,
+    addNotificacion, addToast, navigate,
   } = useApp();
   const modoVistaSociedadEgreso = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -317,20 +336,34 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     [preconfig, registroEditar?.id],
   );
 
-  const [paso, setPaso]           = useState(esEdicion ? 2 : (draft?.paso || preconfig?.paso || 1));
+  const [paso, setPaso]           = useState(() => pasoInicialNuevoEgreso({ registroEditar, draft, preconfig }));
   const [tipoSel, setTipoSel]     = useState(
     registroEditar
       ? {
           id: `edit_${registroEditar.id}`,
           nombre: registroEditar.categoria || 'Gasto existente',
-          categoria_er: registroEditar.categoria || 'Administrativos',
+          categoria_er: registroEditar.categoria || '',
           es_capitalizacion: Boolean(registroEditar.es_activo_fijo),
         }
       : (draft?.tipoSel || preconfig?.tipoSel || null),
   );
+  const [categoriaER, setCategoriaER] = useState(() => categoriaInicialEgreso({
+    registroEditar,
+    draft,
+    preconfig,
+    tipoSel: registroEditar ? null : (draft?.tipoSel || preconfig?.tipoSel),
+  }));
+  const [errorCategoriaER, setErrorCategoriaER] = useState(false);
+  const [categoriasER, setCategoriasER] = useState([]);
+  const [sugerenciaCategoriaIA, setSugerenciaCategoriaIA] = useState(null);
+  const [cargandoSugerenciaCategoriaIA, setCargandoSugerenciaCategoriaIA] = useState(false);
+  const [errorSugerenciaCategoriaIA, setErrorSugerenciaCategoriaIA] = useState('');
+  const [categoriasERCargadas, setCategoriasERCargadas] = useState(false);
+  const [catalogoERDisponible, setCatalogoERDisponible] = useState(false);
   const [tiposGasto, setTiposGasto] = useState([]);
   const [buscarTipo, setBuscarTipo] = useState('');
   const [tc, setTc]               = useState(null);
+  const [tcCajaChica, setTcCajaChica] = useState(null);
   const [archivoUrl, setArchivoUrl] = useState(registroEditar?.archivo_url || registroEditar?.archivo_factura_url || registroEditar?.comprobante_url || '');
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState('');
@@ -375,8 +408,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // Persistir borrador en sessionStorage mientras el usuario llena el formulario
   useEffect(() => {
     if (preconfig || registroEditar) return;
-    try { sessionStorage.setItem(NUEVO_EGRESO_DRAFT_KEY, JSON.stringify({ paso, tipoSel, form })); } catch { /* quota */ }
-  }, [paso, tipoSel, form, preconfig, registroEditar]);
+    try { sessionStorage.setItem(NUEVO_EGRESO_DRAFT_KEY, JSON.stringify({ paso, tipoSel, categoria: categoriaER, form })); } catch { /* quota */ }
+  }, [paso, tipoSel, categoriaER, form, preconfig, registroEditar]);
 
   const setF = (k, v) => {
     if (edicionPagoBloqueada && ['ya_pagado', 'metodo_pago'].includes(k)) return;
@@ -484,10 +517,51 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     mensajeSinOrigen: 'Selecciona una OT o CECO para resolver la sociedad destino del egreso.',
   });
 
-  const esCapitalizacion = !!tipoSel?.es_capitalizacion;
+  const categoriaERSeleccionada = categoriasER.find(categoria => categoria.nombre === categoriaER);
+  const tipoCategoriaFallback = !catalogoERDisponible
+    ? tiposGasto.find(tipo => tipo.categoria_er === categoriaER)
+    : null;
+  const esCapitalizacion = Boolean(
+    categoriaERSeleccionada?.es_capitalizacion
+      ?? tipoCategoriaFallback?.es_capitalizacion
+      ?? (esEdicion && registroEditar?.es_activo_fijo),
+  );
   const fondoCajaSeleccionado = fondosCaja.find(f => f.id === form.fondo_caja_chica_id) || fondoCajaChicaFijo;
   const fondoCajaChicaFijado = Boolean(fondoCajaChicaFijoId);
   const esPagoCajaChica = Boolean(form.ya_pagado && form.metodo_pago === 'Caja chica');
+  useEffect(() => {
+    let mounted = true;
+    setTcCajaChica(null);
+    const load = async () => {
+      try {
+        const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
+        const tipoCambio = await getTipoCambioPorFecha(form.fecha, sb);
+        if (mounted) setTcCajaChica(tipoCambio);
+      } catch { if (mounted) setTcCajaChica(null); }
+    };
+    if (form.fecha) load();
+    return () => { mounted = false; };
+  }, [form.fecha]);
+  const egresoCajaChica = esPagoCajaChica && fondoCajaSeleccionado
+    ? (() => {
+        const monedaPago = form.moneda;
+        const monedaFondo = fondoCajaSeleccionado.moneda || 'PEN';
+        const mismaMoneda = monedaPago === monedaFondo;
+        const tasaRelativaPEN = monedaPago === 'PEN'
+          ? (monedaFondo === 'USD' ? tcCajaChica?.usd : tcCajaChica?.eur)
+          : (monedaPago === 'USD' ? tcCajaChica?.usd : tcCajaChica?.eur);
+        // tipoCambioService guarda USD/EUR por PEN; la RPC espera PEN por USD/EUR.
+        const tasa = tasaRelativaPEN ? 1 / Number(tasaRelativaPEN) : null;
+        try {
+          return { ...convertirEgresoCajaChica({
+            monedaPago,
+            monto: form.monto,
+            monedaFondo,
+            tipoCambio: mismaMoneda ? null : tasa,
+          }), error: '' };
+        } catch (error) { return { error: error.message }; }
+      })()
+    : null;
   const esCompraConOc = Boolean(form.es_compra_con_oc && !esPagoCajaChica);
   const ocSeleccionadaEnFormulario = Boolean(esCompraConOc && form.orden_compra_id);
   const ordenCompraSeleccionada = esCompraConOc
@@ -556,24 +630,38 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             .eq('activo', true)
             .order('orden');
           if (origen === 'caja_chica') tiposQuery.eq('aplica_caja_chica', true);
-          const [{ data: tiposData, error: tiposError }, { data: catsData }] = await Promise.all([
+          const [{ data: tiposData, error: tiposError }, { data: catsData, error: categoriasError }] = await Promise.all([
             tiposQuery,
-            sb.from('er_categorias').select('nombre, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true),
+            sb.from('er_categorias').select('id, nombre, seccion, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true).order('orden'),
           ]);
           if (tiposError) throw tiposError;
-          const capMap = Object.fromEntries((catsData || []).map(c => [c.nombre, !!c.es_capitalizacion]));
-          const tipos = (tiposData?.length ? tiposData : TIPOS_GASTO_DEFECTO)
-            .filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false)
-            .map(t => ({
+          const catalogoDisponible = !categoriasError && Boolean(catsData?.length);
+          const tiposBase = (tiposData?.length ? tiposData : TIPOS_GASTO_DEFECTO)
+            .filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+          const capMap = Object.fromEntries((catalogoDisponible ? catsData : []).map(c => [c.nombre, !!c.es_capitalizacion]));
+          const tipos = tiposBase.map(t => ({
               ...t,
-              es_capitalizacion: capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'),
+              es_capitalizacion: catalogoDisponible
+                ? (capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'))
+                : Boolean(t.es_capitalizacion),
             }));
           setTiposGasto(tipos);
+          setCatalogoERDisponible(catalogoDisponible);
+          setCategoriasER(catalogoDisponible ? catsData : derivarCategoriasEgresoDesdeTipos(tipos));
+          setCategoriasERCargadas(true);
         } catch {
-          setTiposGasto(TIPOS_GASTO_DEFECTO);
+          const tiposFallback = TIPOS_GASTO_DEFECTO.filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+          setCategoriasER(derivarCategoriasEgresoDesdeTipos(tiposFallback));
+          setCatalogoERDisponible(false);
+          setCategoriasERCargadas(true);
+          setTiposGasto(tiposFallback);
         }
       } else {
-        setTiposGasto(TIPOS_GASTO_DEFECTO);
+        const tiposFallback = TIPOS_GASTO_DEFECTO.filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false);
+        setCategoriasER(derivarCategoriasEgresoDesdeTipos(tiposFallback));
+        setCatalogoERDisponible(false);
+        setCategoriasERCargadas(true);
+        setTiposGasto(tiposFallback);
       }
       try {
         const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
@@ -586,9 +674,18 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   useEffect(() => {
     if (!registroEditar?.id || !tiposGasto.length) return;
-    const tipoExistente = tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
+    const tipoExistente = tiposGasto.find(tipo => tipo.activo !== false && tipo.nombre === registroEditar.subcategoria)
+      || tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
     if (tipoExistente && tipoSel?.id !== tipoExistente.id) setTipoSel(tipoExistente);
-  }, [registroEditar?.id, registroEditar?.categoria, tiposGasto, tipoSel?.id]);
+  }, [registroEditar?.id, registroEditar?.categoria, registroEditar?.subcategoria, tiposGasto, tipoSel?.id]);
+
+  useEffect(() => {
+    if (!categoriasERCargadas || esEdicion) return;
+    const categoriaBorrador = resolverCategoriaEgreso(categoriaER, categoriasER);
+    const categoriaTipo = categoriaAlSeleccionarTipo(tipoSel, categoriasER);
+    const siguiente = categoriaBorrador || categoriaTipo;
+    if (siguiente !== categoriaER) setCategoriaER(siguiente);
+  }, [esEdicion, categoriasERCargadas, categoriasER, categoriaER, tipoSel]);
 
   useEffect(() => {
     let mounted = true;
@@ -627,6 +724,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   const seleccionarTipo = t => {
     setTipoSel(t);
+    // Si cambia el tipo, la categoría elegida manualmente vuelve a la sugerida por el tipo nuevo.
+    setCategoriaER(categoriaAlSeleccionarTipo(t, categoriasER, tiposGasto));
     // Prellena el concepto con el nombre del tipo (editable); no pisa un concepto que el usuario ya haya escrito.
     setForm(p => (p.concepto.trim() ? p : { ...p, concepto: t.nombre }));
     setPaso(2);
@@ -635,7 +734,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const renderPaso1 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
-        Selecciona el tipo de gasto. La categoría ER se asignará automáticamente.
+        Selecciona el tipo de gasto. Podrás revisar y cambiar su categoría ER en el siguiente paso.
       </div>
 
       <input
@@ -681,6 +780,28 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   );
 
   // ── Paso 2: detalle y pago ────────────────────────────────────────────────
+  const pedirSugerenciaCategoriaIA = async () => {
+    if (!form.concepto.trim() || cargandoSugerenciaCategoriaIA) return;
+    setCargandoSugerenciaCategoriaIA(true);
+    setErrorSugerenciaCategoriaIA('');
+    setSugerenciaCategoriaIA(null);
+    try {
+      const sugerencia = await sugerirCategoriaEgreso({
+        empresaId: empresa?.id,
+        descripcion: form.concepto,
+        tipoGasto: tipoSel?.nombre || '',
+        cajaChica: origen === 'caja_chica' || esPagoCajaChica,
+        tiposActivos: tiposGasto,
+        categoriasActivas: categoriasER.filter(c => c.activo !== false).map(c => c.nombre),
+      });
+      setSugerenciaCategoriaIA(sugerencia);
+    } catch {
+      setErrorSugerenciaCategoriaIA('No se pudo generar la sugerencia. Puedes continuar normalmente.');
+    } finally {
+      setCargandoSugerenciaCategoriaIA(false);
+    }
+  };
+
   const renderPaso2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -753,14 +874,99 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         </>
       )}
 
+      <div className="input-group">
+        <label>Categoría del Estado de Resultados <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <select
+          className={`select${errorCategoriaER ? ' input-error' : ''}`}
+          value={categoriaER}
+          onChange={e => { setCategoriaER(e.target.value); setErrorCategoriaER(false); setErrorGuardado(''); }}
+        >
+          <option value="">Selecciona una categoría</option>
+          {categoriasER.map(categoria => (
+            <option key={categoria.id || categoria.nombre} value={categoria.nombre}>
+              {categoria.nombre}{ETIQUETAS_SECCION_ER[categoria.seccion] ? ` · ${ETIQUETAS_SECCION_ER[categoria.seccion]}` : ''}
+            </option>
+          ))}
+          {esEdicion && categoriaER && !categoriasER.some(categoria => categoria.nombre === categoriaER) && (
+            <option value={categoriaER}>{categoriaER} · fuera del catálogo</option>
+          )}
+        </select>
+        {(errorCategoriaER || !categoriaEgresoValida(categoriaER)) && (
+          <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{MENSAJE_CATEGORIA_EGRESO_REQUERIDA}</div>
+        )}
+      </div>
+
       {/* Concepto */}
       <div className="input-group">
         <label>Concepto / descripción <span style={{ color: 'var(--danger)' }}>*</span></label>
-        <input
-          className="input" value={form.concepto}
-          onChange={e => setF('concepto', e.target.value)}
-          placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
-        />
+        <div style={{ position: 'relative' }}>
+          <input
+            className="input" value={form.concepto}
+            onChange={e => { setF('concepto', e.target.value); setSugerenciaCategoriaIA(null); setErrorSugerenciaCategoriaIA(''); }}
+            placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
+            style={{ paddingRight: 42 }}
+          />
+          <button
+            className="btn btn-ghost" type="button" title="Sugerir categoría con IA"
+            aria-label="Sugerir categoría con IA"
+            disabled={!form.concepto.trim() || cargandoSugerenciaCategoriaIA || categoriasER.length === 0}
+            onClick={pedirSugerenciaCategoriaIA}
+            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', padding: '4px 6px', lineHeight: 1 }}
+          >
+            {cargandoSugerenciaCategoriaIA ? '…' : '✨'}
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+          ✨ Sugerir categoría: úsalo solo si no estás seguro y quieres una revisión adicional.
+        </div>
+        {cargandoSugerenciaCategoriaIA && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">Buscando una categoría…</div>
+        )}
+        {errorSugerenciaCategoriaIA && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">{errorSugerenciaCategoriaIA}</div>
+        )}
+        {sugerenciaCategoriaIA && (
+          sugerenciaCategoriaIA.flujo_sugerido ? (
+          <div className="dx-ai-flow-notice" role="status" style={{ marginTop: 8, padding: '12px 14px', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--orange) 38%, var(--border))', background: 'color-mix(in srgb, var(--orange) 8%, var(--surface))' }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              {sugerenciaCategoriaIA.flujo_sugerido === 'prestamo' && 'Esto parece un préstamo. Se registra desde Financiamiento y Deuda, no como egreso.'}
+              {sugerenciaCategoriaIA.flujo_sugerido === 'cambio_moneda' && 'Esto parece un cambio de moneda. No hay un módulo para registrar esa operación; no la registres como egreso.'}
+              {sugerenciaCategoriaIA.flujo_sugerido === 'transferencia' && 'Esto parece una transferencia de fondos propios. Se registra en Tesorería entre cuentas o en Caja Chica entre fondos, no como egreso.'}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 5 }}>{sugerenciaCategoriaIA.razon}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 9 }}>
+              {sugerenciaCategoriaIA.flujo_sugerido === 'prestamo' && <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('financiamiento'); }}>Ir a Financiamiento y Deuda</button>}
+              {sugerenciaCategoriaIA.flujo_sugerido === 'transferencia' && <>
+                <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('tesoreria'); }}>Ir a Tesorería</button>
+                <button className="btn btn-secondary" type="button" onClick={() => { onClose?.(); navigate?.('caja'); }}>Ir a Caja Chica</button>
+              </>}
+              <button className="btn btn-ghost" type="button" onClick={() => setSugerenciaCategoriaIA(null)}>Descartar</button>
+            </div>
+          </div>
+          ) : sugerenciaCategoriaIA.tipo_gasto_id ? (
+          <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-alt)' }}>
+            <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Sugerencia de IA</div>
+            <div style={{ fontSize: 13, marginTop: 3 }}>Tipo: <strong>{sugerenciaCategoriaIA.tipo_gasto}</strong> · Categoría: <strong>{sugerenciaCategoriaIA.categoria}</strong> · {sugerenciaCategoriaIA.razon}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn btn-ghost" type="button" onClick={() => setSugerenciaCategoriaIA(null)}>Descartar</button>
+              {tiposGasto.some(tipo => tipo.id === sugerenciaCategoriaIA.tipo_gasto_id) && (
+                <button className="btn btn-secondary" type="button" onClick={() => {
+                  const tipoSugerido = tiposGasto.find(tipo => tipo.id === sugerenciaCategoriaIA.tipo_gasto_id);
+                  if (!tipoSugerido) return;
+                  setTipoSel(tipoSugerido);
+                  setCategoriaER(categoriaAlSeleccionarTipo(tipoSugerido, categoriasER, tiposGasto));
+                  setErrorCategoriaER(false);
+                  setSugerenciaCategoriaIA(null);
+                }}>Aplicar</button>
+              )}
+            </div>
+          </div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 5 }} role="status">
+              La IA no encontró un tipo de gasto claro. Puedes elegirlo tú.
+            </div>
+          )
+        )}
       </div>
       {/* Fecha del gasto */}
       <div className="input-group">
@@ -1172,23 +1378,27 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         />
       </div>
 
+      {errorGuardado && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>{errorGuardado}</div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4 }}>
         <button className="btn btn-secondary" type="button" disabled={esEdicion} onClick={() => setPaso(1)}>← Atrás</button>
         <button
           className="btn btn-primary"
           type="button"
           onClick={() => {
+            setErrorGuardado('');
             let ok = true;
             if (!form.centro_costo_id) { setErrCeco(true); ok = false; }
             if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); ok = false; }
             if (!esEdicion && !form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); ok = false; }
             if (!form.fecha || form.fecha > today) { setErrFecha(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
+            if (form.ya_pagado && form.metodo_pago === 'Caja chica' && egresoCajaChica?.error) { setErrorGuardado(egresoCajaChica.error); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
             if (!esEdicion && form.ya_pagado && form.metodo_pago === METODO_TRANSFERENCIA && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
             if (esCompraConOc && !form.orden_compra_id) { setErrOrdenCompra('Selecciona la Orden de Compra de origen.'); ok = false; }
             if (esCompraConOc && form.orden_compra_id && !ordenCompraSeleccionada) { setErrOrdenCompra('La Orden de Compra seleccionada ya no está disponible para vincular esta CxP.'); ok = false; }
             if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
+            if (!categoriaEgresoValida(categoriaER)) { setErrorCategoriaER(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
             if (ok) setPaso(3);
           }}
@@ -1202,7 +1412,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Paso 3: confirmar ─────────────────────────────────────────────────────
   const renderPaso3 = () => {
     const monto    = parseFloat(form.monto) || 0;
-    const categoria = tipoSel?.categoria_er || 'Administrativos';
+    const categoria = categoriaER;
     const cecoNombre = cecos.find(c => c.id === form.centro_costo_id)?.nombre || '—';
     const fondoCajaSel = fondoCajaSeleccionado;
     const cuentaPagoSel = cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id);
@@ -1214,13 +1424,16 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       ['Tipo de gasto',  tipoSel?.nombre || '—'],
       ['Categoría ER',   esCapitalizacion
         ? <><strong>{categoria}</strong> <span className="badge badge-orange" style={{fontSize:10}}>Capitalización</span></>
-        : <><strong>{categoria}</strong> <span className="badge badge-cyan" style={{fontSize:10}}>automático</span></>],
+        : <strong>{categoria || '—'}</strong>],
       esCapitalizacion ? ['Tipo de activo', ACTIVO_TIPOS_WIZ.find(t => t.value === activoTipo)?.label || activoTipo] : null,
       esCapitalizacion && activoSerie ? ['N° serie / placa', activoSerie] : null,
       esCapitalizacion ? ['Vida útil', `${activoVidaUtil} años`] : null,
       ['Concepto',       form.concepto],
       ['Fecha',          form.fecha],
       ['Monto',          `${form.moneda} ${monto.toFixed(2)}${form.moneda !== 'PEN' ? ` (S/ ${montoPEN.toFixed(2)})` : ''}`],
+      esPagoCajaChica && egresoCajaChica && !egresoCajaChica.error && egresoCajaChica.moneda_original
+        ? ['Descuento del fondo', `Se descontará del fondo: ${egresoCajaChica.moneda} ${egresoCajaChica.monto.toFixed(2)} (${egresoCajaChica.moneda_original} ${egresoCajaChica.monto_original.toFixed(2)} ${egresoCajaChica.moneda_original === 'PEN' ? '÷' : '×'} TC ${egresoCajaChica.tipo_cambio})`]
+        : null,
       ['CECO',           cecoNombre],
       form.ot_vinc_id ? ['OT vinculada', etiquetaOT(otsActivas.find(o => o.id === form.ot_vinc_id))] : null,
       ['Estado pago',    form.ya_pagado ? 'Pagado' : 'Pendiente'],
@@ -1236,11 +1449,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       archivoUrl ? ['Archivo', '✓ Adjunto cargado'] : null,
     ].filter(Boolean);
 
-    const destinoFinal = form.ya_pagado
-      ? (form.metodo_pago === 'Caja chica'
-          ? 'Gasto en compras_gastos + registro en caja_chica'
-          : 'Gasto registrado + CxP pagada + movimiento de tesoreria')
-      : 'Gasto registrado en compras_gastos + CxP pendiente creada';
+    const destinoFinal = mensajeDestinoEgreso({
+      edicion: esEdicion,
+      yaPagado: form.ya_pagado,
+      metodoPago: form.metodo_pago,
+    });
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1285,7 +1498,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <button
             className="btn btn-primary"
             type="button"
-            disabled={guardando}
+            disabled={guardando || (!esEdicion && !categoriaEgresoValida(categoriaER))}
             onClick={handleGuardar}
           >
             {guardando ? 'Guardando...' : <>{I.save} {esEdicion ? 'Guardar cambios' : 'Guardar egreso'}</>}
@@ -1298,6 +1511,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Lógica de persistencia ────────────────────────────────────────────────
   const handleGuardar = async () => {
     setErrorGuardado('');
+    if (!categoriaEgresoValida(categoriaER)) {
+      setErrorCategoriaER(true);
+      setErrorGuardado(MENSAJE_CATEGORIA_EGRESO_REQUERIDA);
+      setPaso(2);
+      return;
+    }
     if (esCompraConOc && !form.orden_compra_id) {
       setErrOrdenCompra('Selecciona la Orden de Compra de origen.');
       setPaso(2);
@@ -1314,6 +1533,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (!esEdicion && !form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
     if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) {
       setErrFondo(true);
+      setPaso(2);
+      return;
+    }
+    if (form.ya_pagado && form.metodo_pago === 'Caja chica' && egresoCajaChica?.error) {
+      setErrorGuardado(egresoCajaChica.error);
       setPaso(2);
       return;
     }
@@ -1350,7 +1574,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
       if (esEdicion) {
         const montoEdicion = parseFloat(form.monto) || 0;
-        const categoriaEdicion = tipoSel?.categoria_er || registroEditar.categoria || 'Administrativos';
+        const categoriaEdicion = categoriaER;
         const proveedorEdicion = form.proveedor_id
           ? provsActivos.find(p => p.id === form.proveedor_id)
           : null;
@@ -1360,6 +1584,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const camposEdicion = {
           descripcion: form.concepto.trim(),
           categoria: categoriaEdicion,
+          subcategoria: tipoSel?.nombre || null,
           monto: montoEdicion,
           moneda: form.moneda,
           fecha: form.fecha,
@@ -1387,7 +1612,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       }
 
       const monto     = parseFloat(form.monto) || 0;
-      const categoria = tipoSel?.categoria_er || 'Administrativos';
+      const categoria = categoriaER;
       const tcVal     = form.moneda !== 'PEN' && tc
         ? (form.moneda === 'USD' ? tc.usd : tc.eur)
         : null;
@@ -1406,6 +1631,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         tipo:               'gasto',
         descripcion:        form.concepto.trim(),
         categoria,
+        subcategoria:        tipoSel?.nombre || null,
         categoria_er:       categoria,
         monto,
         moneda:             form.moneda,
@@ -1420,6 +1646,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         archivo_factura_url: archivoUrl || null,
         origen_registro:    'backoffice',
         estado:             'registrado',
+        ...(tipoSel?.es_no_gasto ? { excluir_de_er: true } : {}),
         estado_pago:        form.ya_pagado ? 'pagado' : 'pendiente',
         metodo_pago:        form.ya_pagado ? form.metodo_pago : null,
         referencia_pago:    form.ya_pagado ? (form.referencia_pago || null) : null,
@@ -1446,11 +1673,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           tipo:             'gasto',
           descripcion:      form.concepto.trim(),
           categoria,
+          subcategoria:     tipoSel?.nombre || null,
           monto,
           moneda:           form.moneda,
           fecha:            form.fecha,
           origen_registro:  'backoffice',
           estado:           'registrado',
+          ...(tipoSel?.es_no_gasto ? { excluir_de_er: true } : {}),
           estado_pago:      form.ya_pagado ? 'pagado' : 'pendiente',
           metodo_pago:      form.ya_pagado ? form.metodo_pago : null,
           referencia_pago:  form.ya_pagado ? (form.referencia_pago || null) : null,
@@ -1485,8 +1714,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           sociedad_id:       sociedadOperacionId,
           fecha:             form.fecha,
           concepto:          form.concepto.trim(),
-          monto,
-          moneda:            form.moneda,
+          monto:             egresoCajaChica.monto,
+          moneda:            egresoCajaChica.moneda,
+          ...(egresoCajaChica.moneda_original ? {
+            moneda_original: egresoCajaChica.moneda_original,
+            monto_original: egresoCajaChica.monto_original,
+            tipo_cambio: egresoCajaChica.tipo_cambio,
+          } : {}),
           responsable_id:    authUser?.id   || null,
           responsable_nombre: authUser?.email || null,
           fondo_id:          fondoCajaChicaFijoId || form.fondo_caja_chica_id || null,
@@ -1542,6 +1776,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
+          tipo_gasto:        tipoSel?.nombre?.trim() || null,
           centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
@@ -1626,11 +1861,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
+          tipo_gasto:        tipoSel?.nombre?.trim() || null,
           centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
           orden_compra_id:   esCompraConOc ? form.orden_compra_id : null,
           origen:            'gasto',
+          ...(tipoSel?.es_no_gasto ? { no_devengar_er: true } : {}),
           estado:            'por_pagar',
           monto_pagado:      0,
           saldo:             monto,
@@ -1752,7 +1989,7 @@ export function TiposGastoAdmin() {
   const [loading, setLoading] = useState(true);
   const [panel, setPanel]     = useState(false);
   const [editando, setEditando] = useState(null);
-  const [form, setForm]       = useState({ nombre: '', categoria_er: '', icono: 'receipt', activo: true, orden: 0 });
+  const [form, setForm]       = useState({ nombre: '', categoria_er: '', icono: 'receipt', activo: true, orden: 0, es_no_gasto: false });
   const [guardando, setGuardando] = useState(false);
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -1782,13 +2019,13 @@ export function TiposGastoAdmin() {
 
   const abrirNuevo = () => {
     setEditando(null);
-    setForm({ nombre: '', categoria_er: catOpts[0] || '', icono: 'receipt', activo: true, orden: tipos.length });
+    setForm({ nombre: '', categoria_er: catOpts[0] || '', icono: 'receipt', activo: true, orden: tipos.length, es_no_gasto: false });
     setPanel(true);
   };
 
   const abrirEditar = (t) => {
     setEditando(t);
-    setForm({ nombre: t.nombre, categoria_er: t.categoria_er, icono: t.icono, activo: t.activo, orden: t.orden });
+    setForm({ nombre: t.nombre, categoria_er: t.categoria_er, icono: t.icono, activo: t.activo, orden: t.orden, es_no_gasto: Boolean(t.es_no_gasto) });
     setPanel(true);
   };
 
@@ -1911,6 +2148,10 @@ export function TiposGastoAdmin() {
                   </div>
                 )}
               </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+                <input type="checkbox" checked={Boolean(form.es_no_gasto)} onChange={e => setF('es_no_gasto', e.target.checked)} />
+                <span>No es gasto: no afecta el Estado de Resultados</span>
+              </label>
               <div className="input-group">
                 <label>Ícono</label>
                 <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 2 }}>

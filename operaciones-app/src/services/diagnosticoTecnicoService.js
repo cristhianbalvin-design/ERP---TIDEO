@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { catalogoComponentesService } from '../../../src/services/catalogoComponentesService.js';
 
-const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,resumen_diagnostico,resumen_origen,elaborado_por,emitido_por,emitido_en,created_at,updated_at';
+const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,resumen_diagnostico,resumen_origen,elaborado_por,emitido_por,emitido_en,created_at,updated_at,referencia_cliente';
 const LINEA_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,actividad_id,tarea_id,hallazgo,cargo_id,horas_mano_obra,activo_id,horas_maquina,orden,created_at,updated_at';
 const MATERIAL_COLUMNS = 'id,empresa_id,linea_id,material_id,descripcion,cantidad,unidad,orden,created_at';
 const FAMILIA_COLUMNS = 'id,empresa_id,nombre,activo';
@@ -226,13 +226,15 @@ export async function guardarResumenDiagnostico(empresaId, diagnosticoId, resume
 export async function actualizarDatosInicialesDiagnostico(empresaId, diagnosticoId, datos) {
   requireEmpresa(empresaId);
   requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
-  if (!String(datos?.motivo || '').trim()) throw new Error('El motivo es obligatorio.');
+  // Fabricación (653): solo el técnico es obligatorio; el requerimiento y la fecha son opcionales.
+  const esFabricacion = datos?.tipo === 'fabricacion';
+  if (!esFabricacion && !String(datos?.motivo || '').trim()) throw new Error('El motivo es obligatorio.');
   if (!datos?.tecnico_id) throw new Error('Selecciona un técnico responsable.');
-  if (!datos?.fecha_inspeccion) throw new Error('La fecha de inspección es obligatoria.');
+  if (!esFabricacion && !datos?.fecha_inspeccion) throw new Error('La fecha de inspección es obligatoria.');
   const { data, error } = await getSupabaseClient().from('diagnosticos_tecnicos').update({
-    motivo: String(datos.motivo).trim(),
+    motivo: String(datos.motivo || '').trim() || null,
     tecnico_id: datos.tecnico_id,
-    fecha_inspeccion: datos.fecha_inspeccion,
+    fecha_inspeccion: datos.fecha_inspeccion || null,
   }).eq('empresa_id', empresaId).eq('id', diagnosticoId).eq('estado', 'borrador')
     .select('id,motivo,tecnico_id,fecha_inspeccion').single();
   if (error) throw getError(error);
@@ -518,8 +520,12 @@ export async function crearDiagnosticoTecnico(empresaId, usuarioId, datos) {
   requireEmpresa(empresaId);
   requireTipo(datos?.tipo);
   requireId(usuarioId, 'No se pudo identificar al usuario autenticado.');
-  if (datos.tipo === 'fabricacion' && !datos.oportunidad_id) {
-    throw new Error('Selecciona una oportunidad para el diagnóstico de fabricación.');
+  // Fabricación (653): nace de una oportunidad o de una recepción (exactamente una).
+  if (datos.tipo === 'fabricacion' && Boolean(datos.oportunidad_id) === Boolean(datos.recepcion_id)) {
+    throw new Error('Selecciona una oportunidad o una recepción para el diagnóstico de fabricación.');
+  }
+  if (datos.tipo === 'fabricacion' && !datos.tecnico_id) {
+    throw new Error('Elige el técnico responsable.');
   }
   if (datos.tipo === 'mantenimiento' && !datos.recepcion_id) {
     throw new Error('Selecciona una recepción para el diagnóstico de mantenimiento.');
@@ -529,18 +535,18 @@ export async function crearDiagnosticoTecnico(empresaId, usuarioId, datos) {
   const { data, error } = await supabase.rpc('crear_diagnostico_tecnico_inicial', {
     p_empresa_id: empresaId,
     p_tipo: datos.tipo,
-    p_recepcion_id: datos.tipo === 'mantenimiento' ? datos.recepcion_id : null,
-    p_oportunidad_id: datos.tipo === 'fabricacion' ? datos.oportunidad_id : null,
-    p_motivo: datos.tipo === 'mantenimiento' ? datos.motivo || null : null,
-    p_tecnico_id: datos.tipo === 'mantenimiento' ? datos.tecnico_id || null : null,
-    p_fecha_inspeccion: datos.tipo === 'mantenimiento' ? datos.fecha_inspeccion || null : null,
+    p_recepcion_id: datos.recepcion_id || null,
+    p_oportunidad_id: datos.tipo === 'fabricacion' ? datos.oportunidad_id || null : null,
+    p_motivo: datos.motivo || null,
+    p_tecnico_id: datos.tecnico_id || null,
+    p_fecha_inspeccion: datos.fecha_inspeccion || null,
   });
   if (error && isMissingMigrationRpc(error)) {
     const legacy = await supabase.from('diagnosticos_tecnicos').insert({
       empresa_id: empresaId,
       tipo: datos.tipo,
-      oportunidad_id: datos.tipo === 'fabricacion' ? datos.oportunidad_id : null,
-      recepcion_id: datos.tipo === 'mantenimiento' ? datos.recepcion_id : null,
+      oportunidad_id: datos.tipo === 'fabricacion' ? datos.oportunidad_id || null : null,
+      recepcion_id: datos.recepcion_id || null,
       elaborado_por: usuarioId,
       estado: 'borrador',
     }).select(DIAGNOSTICO_COLUMNS).single();
@@ -560,10 +566,28 @@ export async function listarReferenciasDiagnostico(empresaId, tipo, busqueda = '
     p_busqueda: String(busqueda || '').trim() || null,
   });
   if (error) throw error;
+  if (tipo === 'fabricacion') return completarOportunidades(empresaId, data || []);
   if (tipo !== 'mantenimiento' || !data?.length) return data || [];
   const detalle = await resolverReferenciasDiagnostico(empresaId, tipo, data.map(reference => reference.id));
   const byId = new Map(detalle.map(reference => [reference.id, reference]));
   return data.map(reference => ({ ...byId.get(reference.id), ...reference, ...byId.get(reference.id) }));
+}
+
+// Etapa y monto estimado de la oportunidad para mostrarlos al elegirla o en el paso Oportunidad.
+// Si la consulta falla, la referencia se muestra igual sin esos datos.
+async function completarOportunidades(empresaId, references) {
+  if (!references.length) return references;
+  const { data, error } = await getSupabaseClient()
+    .from('oportunidades')
+    .select('id,etapa,monto_estimado,moneda')
+    .eq('empresa_id', empresaId)
+    .in('id', references.map(reference => reference.id));
+  if (error) return references;
+  const byId = new Map((data || []).map(row => [row.id, row]));
+  return references.map(reference => {
+    const extra = byId.get(reference.id);
+    return extra ? { ...reference, etapa: extra.etapa || null, monto_estimado: extra.monto_estimado ?? null, moneda: extra.moneda || null } : reference;
+  });
 }
 
 export async function resolverReferenciasDiagnostico(empresaId, tipo, ids) {
@@ -576,6 +600,7 @@ export async function resolverReferenciasDiagnostico(empresaId, tipo, ids) {
   });
   if (error) throw error;
   const references = data || [];
+  if (tipo === 'fabricacion') return completarOportunidades(empresaId, references);
   if (tipo !== 'mantenimiento' || !references.length) return references;
   const { data: receipts, error: receiptError } = await getSupabaseClient()
     .from('recepciones_activos_cliente')

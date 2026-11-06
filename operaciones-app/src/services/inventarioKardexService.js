@@ -37,7 +37,7 @@ export async function cargarInventarioKardex({ empresaId, sociedadId, vistaConso
   const supabase = getSupabaseClient();
   const [almacenesResultado, ubicacionesResultado] = await Promise.all([
     supabase.from('almacenes').select('id,empresa_id,codigo,nombre,estado').eq('empresa_id', empresaId).eq('estado', 'activo').order('nombre'),
-    supabase.from('ubicaciones').select('id,empresa_id,almacen_id,codigo,nombre,uso').eq('empresa_id', empresaId),
+    supabase.from('ubicaciones').select('id,empresa_id,almacen_id,codigo,nombre,uso,propietario_cuenta_id').eq('empresa_id', empresaId),
   ]);
   if (almacenesResultado.error) throw almacenesResultado.error;
   if (ubicacionesResultado.error) throw ubicacionesResultado.error;
