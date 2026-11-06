@@ -768,7 +768,7 @@ export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDis
     : (sociedadActiva?.nombre || 'Sin sociedades registradas');
 
   return (
-    <div style={{position:'relative'}}>
+    <div className="dx-sociedad-selector" style={{position:'relative'}}>
       <button
         type="button"
         className="user-zone"
@@ -918,7 +918,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
       }));
 
   return (
-    <header className={'header' + (isCompactHeader ? ' header-compact' : '')} style={{padding: isCompactHeader ? '0 12px' : '0 20px', gap: isCompactHeader ? 10 : 20}}>
+    <header className={'header' + (active === 'inicio' ? ' header-inicio' : '') + (isCompactHeader ? ' header-compact' : '')} style={{padding: isCompactHeader ? '0 12px' : '0 20px', gap: isCompactHeader ? 10 : 20}}>
       <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isCompactHeader ? 140 : 'none'}}>{title}</div>
 
       {active === 'inicio' && !isCompactHeader && <span className="dx-header-fecha">{fechaInicio.charAt(0).toUpperCase() + fechaInicio.slice(1)}</span>}
@@ -1037,7 +1037,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         >
           {/* Texto empresa/email — oculto en móvil */}
           {!isCompactHeader && (
-            <div style={{textAlign:'right'}}>
+            <div className="dx-header-user-text" style={{textAlign:'right'}}>
               <div style={{fontSize:11, fontWeight:800, color:'#fff', textTransform:'uppercase', letterSpacing:'0.02em', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                 {empresa.nombre}
               </div>

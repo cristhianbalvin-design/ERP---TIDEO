@@ -151,3 +151,7 @@ svg.dxi-i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;
 @keyframes dx-inicio-rv{to{opacity:1;transform:none}}
 
 .dxi-al button{font:inherit;font-size:12.5px;color:var(--dx-ui-cyan-fg);font-weight:600;cursor:pointer;background:none;border:0;padding:0;text-align:left}
+
+.dx-ui-kpi{gap:6px;min-width:0;padding-inline:10px}
+.dx-ui-kpi strong{font-size:clamp(14px,1.2vw,20px)}
+.dx-ui-kpi .dx-ui-kpi-extra{white-space:nowrap;font-size:clamp(10px,.8vw,12px)}

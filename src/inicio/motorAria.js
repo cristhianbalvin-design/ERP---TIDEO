@@ -150,28 +150,32 @@ export class Avatar {
 export function crearMotor(root, getSteps, abrirAsistente) {
   const $ = (s, r = root) => r.querySelector(s),
     $$ = (s, r = root) => [...r.querySelectorAll(s)];
-  const hero = new Avatar($('#heroAv'), 'd'),
-    fly = new Avatar($('#flAv'), 'b'),
-    fabA = new Avatar($('#fabAv'), 'b');
+  const nodes = Object.fromEntries(['heroAv', 'flAv', 'fabAv', 'stage', 'mor', 'fab', 'fl',
+    'morH', 'morR', 'morW', 'spot', 'bub', 'bubN', 'bubNx', 'bubSk', 'bubSay']
+    .map(id => [id, $('#' + id)]));
+  const bst = $('.dxi-bst', nodes.mor), scn = $('.dxi-scn', nodes.mor);
+  const hero = new Avatar(nodes.heroAv, 'd'),
+    fly = new Avatar(nodes.flAv, 'b'),
+    fabA = new Avatar(nodes.fabAv, 'b');
   const all = () => [hero, fly, fabA];
   let place = 'hero',
     KIND = 'd',
     pendingResolve = null,
-    alive = true;
+    destruido = false;
   const timers = new Set(),
     animations = new Set();
   const later = (fn, ms) => {
     const id = setTimeout(() => {
       timers.delete(id);
-      if (alive) fn();
+      if (!destruido) fn();
     }, ms);
     timers.add(id);
     return id;
   };
   const blink = setInterval(() => {
-    if (Math.random() < .55) all().forEach(a => a.blink());
+    if (!destruido && Math.random() < .55) all().forEach(a => a.blink());
   }, 1900);
-  const move = e => all().forEach(av => {
+  const move = e => !destruido && all().forEach(av => {
     const r = av.h.getBoundingClientRect();
     if (!r.width) return;
     const n = v => v / Math.sqrt(1 + v * v);
@@ -193,7 +197,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     pickVoice();
     window.speechSynthesis.addEventListener('voiceschanged', pickVoice);
   }
-  function stopSpeech() {
+  function stopSpeech(skipDom = false) {
     if (pendingResolve) {
       pendingResolve();
       pendingResolve = null;
@@ -201,7 +205,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     token++;
     window.speechSynthesis?.cancel();
     cancelAnimationFrame(timer);
-    all().forEach(a => {
+    if (!skipDom) all().forEach(a => {
       a.vis(null);
       if (a.h.dataset.s === 'habla') a.state('reposo');
     });
@@ -220,6 +224,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     return n;
   }
   function speak(av, text, say, el) {
+    if (destruido) return Promise.resolve();
     stopSpeech();
     const my = ++token;
     const s = say || text;
@@ -236,7 +241,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       const hasV = window.speechSynthesis && voice;
       const tgt = () => av === hero && place === 'fab' ? fabA : av;
       const end = () => {
-        if (done || my !== token) return;
+        if (destruido || done || my !== token) return;
         done = true;
         pendingResolve = null;
         ws.forEach(w => w.classList.add('dxi-v'));
@@ -246,7 +251,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
         res();
       };
       const loop = t => {
-        if (my !== token || done) return;
+        if (destruido || my !== token || done) return;
         idx = useB ? Math.min(s.length - 1, idx + cps / 60) : Math.min(s.length, (t - start) / 1000 * cps);
         const v = visemeOf(s[Math.floor(idx)], last);
         if (v[0]) last = v;
@@ -286,7 +291,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     const fs = FS(),
       W = innerWidth,
       H = innerHeight;
-    const fl = $('#fl');
+    const fl = nodes.fl;
     fl.style.width = fl.style.height = fs + 'px';
     let x, y, bx, by;
     const bw = Math.min(340, W - 24);
@@ -312,12 +317,13 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       }
     }
     fl.style.transform = `translate(${x}px,${y}px)`;
-    const b = $('#bub');
+    const b = nodes.bub;
     b.style.width = bw + 'px';
     b.style.left = bx + 'px';
     b.style.top = by + 'px';
   }
   async function go(i) {
+    if (destruido) return;
     st = i;
     if (i >= STEPS.length) return endTour();
     const s = STEPS[i],
@@ -328,9 +334,9 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       behavior: 'smooth'
     });
     await wait(450);
-    if (!alive || st !== i) return;
+    if (destruido || st !== i) return;
     const r = el.getBoundingClientRect();
-    const sp = $('#spot');
+    const sp = nodes.spot;
     sp.style.display = 'block';
     Object.assign(sp.style, {
       left: r.left - 6 + 'px',
@@ -339,19 +345,21 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       height: r.height + 12 + 'px'
     });
     posFly(r);
-    $('#bubN').textContent = `${i + 1} de ${STEPS.length}`;
-    $('#bubNx').textContent = i === STEPS.length - 1 ? 'Terminar' : 'Siguiente';
-    await speak(fly, s.t, s.s, $('#bubSay'));
+    nodes.bubN.textContent = `${i + 1} de ${STEPS.length}`;
+    nodes.bubNx.textContent = i === STEPS.length - 1 ? 'Terminar' : 'Siguiente';
+    await speak(fly, s.t, s.s, nodes.bubSay);
   }
   const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
   let busy = false,
     tour = false,
     inView = true;
-  const stage = $('#stage'),
-    mor = $('#mor'),
-    fab = $('#fab'),
-    fl = $('#fl');
-  const wait = ms => new Promise(r => later(r, ms));
+  const { stage, mor, fab, fl } = nodes;
+  const waiting = new Set();
+  const wait = ms => new Promise(resolve => {
+    if (destruido) return resolve();
+    waiting.add(resolve);
+    later(() => { waiting.delete(resolve); resolve(); }, ms);
+  });
   const T = (x, y, s, rot = 0) => `translate(${x}px,${y}px) scale(${s}) rotate(${rot}deg)`;
   const box = r => ({
     x: r.left,
@@ -359,11 +367,10 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     s: r.width / 300
   });
   async function morph(from, to, toRobot) {
+    if (destruido) return () => {};
     const D = reduce ? 1 : 1050,
-      hum = $('#morH'),
-      rob = $('#morR'),
-      bst = $('.dxi-bst', mor),
-      scn = $('.dxi-scn', mor);
+      hum = nodes.morH,
+      rob = nodes.morR;
     hum.src = A[KIND + '_base'];
     rob.src = A.b_base;
     mor.style.display = 'block';
@@ -402,7 +409,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       duration: D,
       fill: 'forwards'
     });
-    const fb = $('#morW').animate(off.map((o, i) => ({
+    const fb = nodes.morW.animate(off.map((o, i) => ({
       offset: o,
       clipPath: `circle(${c1[i]} at 50% 42%)`
     })), {
@@ -468,6 +475,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       return () => {};
     }
     return () => {
+      if (destruido) return;
       mor.style.display = 'none';
       [main, fa, fb, fc, fd].forEach(x => {
         animations.delete(x);
@@ -476,6 +484,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     };
   }
   async function toFab() {
+    if (destruido) return;
     busy = true;
     place = 'moving';
     const r = stage.getBoundingClientRect();
@@ -484,7 +493,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     fab.style.display = 'block';
     const to = fab.getBoundingClientRect();
     const done = await morph(r, to, true);
-    if (!alive) return;
+    if (destruido) return;
     fab.style.visibility = '';
     done();
     place = 'fab';
@@ -507,6 +516,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     sync();
   }
   async function toHero() {
+    if (destruido) return;
     busy = true;
     place = 'moving';
     const from = fab.getBoundingClientRect();
@@ -514,7 +524,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     fabA.state('reposo');
     const r = stage.getBoundingClientRect();
     const done = await morph(from, r, false);
-    if (!alive) return;
+    if (destruido) return;
     stage.style.visibility = '';
     done();
     place = 'hero';
@@ -522,10 +532,11 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     sync();
   }
   function sync() {
-    if (busy || tour) return;
+    if (destruido || busy || tour) return;
     if (!inView && place === 'hero') toFab();else if (inView && place === 'fab') toHero();
   }
   const observer = window.IntersectionObserver ? new IntersectionObserver(es => {
+    if (destruido || !es.length) return;
     inView = es[0].intersectionRatio >= .4;
     sync();
   }, {
@@ -533,7 +544,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
   }) : null;
   observer?.observe(stage);
   fab.onclick = () => {
-    if (!tour) abrirAsistente();
+    if (!destruido && !tour) abrirAsistente();
   };
   function setFl(x, y, fs, anim) {
     fl.style.transition = anim ? '' : 'none';
@@ -541,7 +552,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     fl.style.transform = `translate(${x}px,${y}px)`;
   }
   async function startTour() {
-    if (busy || tour) return;
+    if (destruido || busy || tour) return;
     tour = true;
     busy = true;
     stopSpeech();
@@ -562,39 +573,39 @@ export function crearMotor(root, getSteps, abrirAsistente) {
         width: fs,
         height: fs
       }, true);
-      if (!alive) return;
+      if (destruido) return;
       setFl(x, y, fs);
       fl.style.display = 'block';
       done();
     }
     place = 'tour';
     busy = false;
-    $('#bub').style.display = 'block';
+    nodes.bub.style.display = 'block';
     await wait(30);
-    if (!alive) return;
+    if (destruido) return;
     fl.style.transition = '';
     go(0);
   }
   async function endTour() {
-    if (!tour || busy) return;
+    if (destruido || !tour || busy) return;
     busy = true;
     st = -1;
     stopSpeech();
-    $('#spot').style.display = 'none';
-    $('#bub').style.display = 'none';
+    nodes.spot.style.display = 'none';
+    nodes.bub.style.display = 'none';
     stage.scrollIntoView({
       behavior: reduce ? 'auto' : 'smooth',
       block: 'center'
     });
     await wait(reduce ? 0 : 520);
-    if (!alive) return;
+    if (destruido) return;
     const r = stage.getBoundingClientRect(),
       fs = FS(),
       x = r.left + r.width / 2 - fs / 2,
       y = Math.max(70, r.top + 40);
     setFl(x, y, fs, true);
     await wait(reduce ? 0 : 720);
-    if (!alive) return;
+    if (destruido) return;
     fl.style.display = 'none';
     const done = await morph({
       left: x,
@@ -602,7 +613,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
       width: fs,
       height: fs
     }, r, false);
-    if (!alive) return;
+    if (destruido) return;
     stage.style.visibility = '';
     done();
     place = 'hero';
@@ -611,6 +622,7 @@ export function crearMotor(root, getSteps, abrirAsistente) {
     sync();
   }
   const begin = () => {
+    if (destruido) return;
     STEPS = getSteps();
     if (STEPS.length) startTour();
   };
@@ -618,27 +630,34 @@ export function crearMotor(root, getSteps, abrirAsistente) {
   const key = e => {
     if (e.key === 'Escape' && st >= 0) endTour();
   };
-  $('#bubNx').addEventListener('click', next);
-  $('#bubSk').addEventListener('click', endTour);
+  nodes.bubNx.addEventListener('click', next);
+  nodes.bubSk.addEventListener('click', endTour);
   window.addEventListener('keydown', key);
   return {
     speak: (text, el, say) => speak(hero, text, say, el),
     stopSpeech,
     startTour: begin,
     destroy() {
-      alive = false;
-      stopSpeech();
-      clearInterval(blink);
-      timers.forEach(clearTimeout);
-      animations.forEach(a => a.cancel());
-      observer?.disconnect();
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('keydown', key);
-      $('#bubNx').removeEventListener('click', next);
-      $('#bubSk').removeEventListener('click', endTour);
-      fab.onclick = null;
-      window.speechSynthesis?.removeEventListener('voiceschanged', pickVoice);
-      all().forEach(a => a.destroy());
+      if (destruido) return;
+      destruido = true;
+      // Cada recurso se libera por separado para que una API defectuosa no impida el resto.
+      const safely = fn => { try { fn(); } catch { /* limpieza best-effort */ } };
+      safely(() => observer?.disconnect());
+      animations.forEach(a => safely(() => a.cancel()));
+      animations.clear();
+      safely(() => stopSpeech(true));
+      safely(() => clearInterval(blink));
+      timers.forEach(id => safely(() => clearTimeout(id)));
+      timers.clear();
+      waiting.forEach(resolve => resolve());
+      waiting.clear();
+      safely(() => window.removeEventListener('pointermove', move));
+      safely(() => window.removeEventListener('keydown', key));
+      safely(() => nodes.bubNx?.removeEventListener('click', next));
+      safely(() => nodes.bubSk?.removeEventListener('click', endTour));
+      safely(() => { if (fab) fab.onclick = null; });
+      safely(() => window.speechSynthesis?.removeEventListener('voiceschanged', pickVoice));
+      all().forEach(a => safely(() => a.destroy()));
     }
   };
 }

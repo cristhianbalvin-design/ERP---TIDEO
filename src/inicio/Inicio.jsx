@@ -65,7 +65,7 @@ function Kpi({ grupo, titulo: etiqueta, cero = false }) {
   return <div className="dx-ui-kpi">
     <strong>{valores[0] ? importe(valores[0].total, valores[0].moneda) : cero ? importe(0, 'PEN') : '—'}</strong>
     <span>{etiqueta}{valores.slice(1).map(x => <React.Fragment key={x.moneda}>
-      <br />+ {importe(x.total, x.moneda)}
+      <br /><span className="dx-ui-kpi-extra">+ {importe(x.total, x.moneda)}</span>
     </React.Fragment>)}</span>
   </div>;
 }
@@ -250,10 +250,11 @@ export default function Inicio() {
     data && { el: '#ask', t: 'Y si necesitas algo más, pregúntame aquí.' }
   ].filter(Boolean).map(paso => ({ ...paso, s: textoHablado(paso.t) }));
   useEffect(() => {
+    const rootEl = root.current, overlayEl = overlay.current;
+    if (!rootEl || !overlayEl) return;
     const scopeEl = {
-      querySelector: s => root.current?.querySelector(s) || overlay.current?.querySelector(s),
-      querySelectorAll: s => [...(root.current?.querySelectorAll(s) || []),
-        ...(overlay.current?.querySelectorAll(s) || [])]
+      querySelector: s => rootEl.querySelector(s) || overlayEl.querySelector(s),
+      querySelectorAll: s => [...rootEl.querySelectorAll(s), ...overlayEl.querySelectorAll(s)]
     };
     const m = crearMotor(scopeEl, () => steps.current, () => solicitarApertura());
     motor.current = m;
@@ -272,8 +273,9 @@ export default function Inicio() {
   async function escuchar() {
     if (hablando) { motor.current.stopSpeech(); setHablando(false); return; }
     setHablando(true);
-    await motor.current.speak(resumen, root.current.querySelector('#heroSay'), textoHablado(resumen));
-    setHablando(false);
+    const m = motor.current;
+    await m?.speak(resumen, root.current?.querySelector('#heroSay'), textoHablado(resumen));
+    if (motor.current === m) setHablando(false);
   }
   function recorrer() {
     setArea('Todas');
