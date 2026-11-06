@@ -1,19 +1,28 @@
-import React, { useEffect, useRef } from 'react';
-import L from 'leaflet';
+import React, { useEffect, useRef, useState } from 'react';
 import leafletCss from 'leaflet/dist/leaflet.css?inline';
+
+// Leaflet usa window al cargarse: se importa solo cuando se abre el mapa.
+let leafletPromise = null;
+const cargarLeaflet = () => (leafletPromise ||= import('leaflet').then(mod => mod.default || mod));
 
 const DEFAULT_CENTER = [-12.6, -75.5];
 
 export function TransporteMapa({ className = '', puntos = [], puntoNuevo = null,
   lugaresReferencia = [], soloLectura = false, alMarcar, alMover, leyenda = '',
   classNameMapa = '' }) {
+  const [L, setL] = useState(null);
   const node = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
   const latest = useRef({ alMarcar, alMover, soloLectura });
   latest.current = { alMarcar, alMover, soloLectura, puntos, puntoNuevo, lugaresReferencia };
   useEffect(() => {
-    if (!node.current) return undefined;
+    let vigente = true;
+    cargarLeaflet().then(lib => { if (vigente) setL(() => lib); }).catch(() => {});
+    return () => { vigente = false; };
+  }, []);
+  useEffect(() => {
+    if (!L || !node.current) return undefined;
     const instance = L.map(node.current, { scrollWheelZoom: true }).setView(DEFAULT_CENTER, 6);
     map.current = instance;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -29,7 +38,7 @@ export function TransporteMapa({ className = '', puntos = [], puntoNuevo = null,
     observer.observe(node.current);
     requestAnimationFrame(() => instance.invalidateSize());
     return () => { observer.disconnect(); instance.remove(); map.current = null; };
-  }, []);
+  }, [L]);
   function frame() {
     const instance = map.current;
     const view = latest.current;
@@ -43,7 +52,7 @@ export function TransporteMapa({ className = '', puntos = [], puntoNuevo = null,
   }
   useEffect(() => {
     const instance = map.current;
-    if (!instance) return;
+    if (!L || !instance) return;
     layers.current?.remove();
     const group = L.layerGroup().addTo(instance);
     layers.current = group;
@@ -66,7 +75,7 @@ export function TransporteMapa({ className = '', puntos = [], puntoNuevo = null,
       if (!soloLectura) marker.on('dragend', event => latest.current.alMover?.(event.target.getLatLng()));
     }
     frame();
-  }, [puntos, puntoNuevo?.[0], puntoNuevo?.[1], lugaresReferencia, soloLectura]);
+  }, [L, puntos, puntoNuevo?.[0], puntoNuevo?.[1], lugaresReferencia, soloLectura]);
   return <div className={`dx-transporte-map ${className}`}>
     <style>{leafletCss}</style><div ref={node} className={classNameMapa} />
     {leyenda && <div className="dx-transporte-map-legend">{leyenda}</div>}
