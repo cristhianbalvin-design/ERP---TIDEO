@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard Gerencial · Mock</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A2B4A;--cyan:#00ACC1;--cyan-t:#0B4F5A;--cyan-bg:#E0F7FA;--vio:#5B3A8C;--vio-bg:#F0EAFB;--amb:#8A4B00;--amb-bg:#FFF3E0;--grn:#14633A;--grn-bg:#E3F6EA;--red:#B42318;--red-bg:#FDECEA;
+--txt:#1A2B4A;--muted:#6B7280;--line:#E4E7EB;--line2:#EEF0F3;--page:#F4F6F8;--card:#fff;--head:#F8F9FA;--bar-c:#1A2B4A;--bar-i:#00ACC1}
+html.dark{--txt:#E7ECF3;--muted:#9AA4B2;--line:#2A3547;--line2:#222C3B;--page:#0F1726;--card:#162133;--head:#1B2738;--bar-c:#8EA3C2;--bar-i:#26C6DA;--cyan-bg:#0E3A40;--cyan-t:#7FE3EE;--vio-bg:#2B2140;--amb-bg:#3A2A10;--amb:#F5C27A;--grn-bg:#123323;--grn:#7AD9A0;--red-bg:#3B1714;--red:#F4A39B;--navy:#E7ECF3}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--txt);font:14px/1.45 'DM Sans',system-ui,sans-serif}
+.dx-opsd{max-width:1180px;margin:0 auto;padding:24px 20px 48px;container-type:inline-size}
+.dx-opsd-head{display:flex;gap:16px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px}
+.dx-opsd-eyebrow{font:600 11px/1 'DM Sans';letter-spacing:.12em;color:var(--cyan);text-transform:uppercase}
+h1{font:700 26px/1.2 Sora;margin:6px 0 4px}.dx-opsd-sub{color:var(--muted)}
+.dx-opsd-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{border:0;background:transparent;color:var(--muted);font:600 13px 'DM Sans';height:32px;padding:0 12px;border-radius:8px;cursor:pointer}
+.seg button.on{background:var(--navy);color:var(--card)}html.dark .seg button.on{color:#0F1726}
+.btn{height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt);font:600 13px 'DM Sans';cursor:pointer}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 14px;font:600 14px 'DM Sans';color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tabs button.on{color:var(--txt);border-color:var(--cyan)}
+.dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui-kpi{display:flex;flex-direction:column;justify-content:center;min-height:56px;padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.dx-ui-kpi b{font:700 20px/1.2 Sora}.dx-ui-kpi span{color:var(--muted);font-size:12px}.dx-ui-kpi em{font-style:normal;font-size:12px;font-weight:600}
+.up{color:var(--grn)}.down{color:var(--red)}.warn{color:var(--amb)}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+.card h3{font:600 15px Sora;margin:0 0 2px}.card .cap{color:var(--muted);font-size:12px;margin-bottom:12px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line2)}.alert:first-of-type{border-top:0}
+.pill{flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;font:600 11px 'DM Sans';padding:3px 9px;border-radius:999px}
+.pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-red{background:var(--red-bg);color:var(--red)}.p-amb{background:var(--amb-bg);color:var(--amb)}.p-grn{background:var(--grn-bg);color:var(--grn)}.p-cyan{background:var(--cyan-bg);color:var(--cyan-t)}.p-vio{background:var(--vio-bg);color:var(--vio)}
+.alert b{display:block;font-weight:600}.alert small{color:var(--muted)}.alert a{color:var(--cyan);font-weight:600;font-size:12px;text-decoration:none}
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;background:var(--head);padding:8px 10px}
+td{padding:9px 10px;border-top:1px solid var(--line2)}td.n{text-align:right;font-variant-numeric:tabular-nums}th.n{text-align:right}
+.bar{height:8px;border-radius:6px;background:var(--line2);overflow:hidden}.bar>i{display:block;height:100%;border-radius:6px}
+.hide{display:none}.note{font-size:12px;color:var(--muted);margin-top:8px}
+@container (max-width:880px){.grid,.grid3{grid-template-columns:1fr}}
+@container (max-width:600px){h1{font-size:22px}.dx-opsd-head{align-items:flex-start}.card{padding:14px}}
+.mockbar{background:#FFF3E0;color:#8A4B00;font-size:12px;padding:8px 20px;text-align:center}
+</style></head><body>
+<div class="mockbar">MOCK para aprobación · datos reales del tenant demo (Andes Industrial Services) al 08/11/2026 · <button class="btn" style="height:26px" onclick="document.documentElement.classList.toggle('dark')">Modo oscuro</button></div>
+<div class="dx-opsd">
+ <div class="dx-opsd-head">
+  <div><div class="dx-opsd-eyebrow">Operaciones · Gerencia</div><h1>Dashboard gerencial</h1><div class="dx-opsd-sub" id="sub">Andes Industrial Services · Últimos 3 meses (08/08/2026 – 08/11/2026)</div></div>
+  <div class="dx-opsd-actions">
+   <div class="seg" id="per"><button data-p="mes">Este mes</button><button data-p="ant">Mes anterior</button><button data-p="tri" class="on">Últimos 3 meses</button></div>
+   <div class="seg" id="mon"><button data-m="PEN" class="on">PEN</button><button data-m="USD">USD</button></div>
+   <button class="btn">Exportar PDF</button>
+  </div>
+ </div>
+ <div class="tabs" id="tabs"><button class="on" data-t="res">Resumen</button><button data-t="cos">Costos y rentabilidad</button><button data-t="flo">Flota y confiabilidad</button></div>
+
+ <section data-s="res">
+  <div class="dx-ui-kpi-row" id="kres"></div>
+  <div class="grid">
+   <div class="card"><h3>Ingreso atribuible vs. costo operativo</h3><div class="cap">Por mes · ingreso de la OS repartido entre sus OT según su costo · solo OT de clientes</div><svg id="chIC" viewBox="0 0 640 230" width="100%"></svg>
+    <div class="legend"><span><i style="background:var(--bar-i)"></i>Ingreso atribuible</span><span><i style="background:var(--bar-c)"></i>Costo operativo</span></div></div>
+   <div class="card"><h3>Centro de alertas</h3><div class="cap">Calculadas con datos del período</div>
+    <div class="alert"><span class="pill p-red">Crítica</span><div><b>EX-01 bajo la meta de disponibilidad</b><small>DMR de octubre 84.8 % · meta 90 % · CA-2026-011 Minera Huaytapallana</small><br><a href="#">Ver contrato →</a></div></div>
+    <div class="alert"><span class="pill p-amb">Atención</span><div><b>Preventivo en 27 % del total de OT</b><small>11 de 41 OT · meta recomendada ≥ 60 %</small></div></div>
+    <div class="alert"><span class="pill p-amb">Atención</span><div><b>7 OT superaron su costo estimado en más de 5 %</b><small>Desviación total +3.1 % (S/ 16,050.00)</small><br><a href="#">Ver OT →</a></div></div>
+    <div class="alert"><span class="pill p-cyan">Pendiente</span><div><b>12 partes diarios por aprobar</b><small>En revisión del supervisor</small></div></div>
+    <div class="alert"><span class="pill p-cyan">Pendiente</span><div><b>1 repuesto bajo el punto de reorden</b><small>Manguera hidráulica 3/4" 4 espirales</small></div></div>
+   </div>
+  </div>
+  <div class="grid3">
+   <div class="card"><h3>OT por estado</h3><div class="cap">Al 08/11/2026</div><div id="otEst"></div></div>
+   <div class="card"><h3>OT por tipo de trabajo</h3><div class="cap">Período seleccionado</div><div id="otTipo"></div></div>
+   <div class="card"><h3>Backlog abierto</h3><div class="cap">Por prioridad y antigüedad</div>
+    <table><tr><th>Prioridad</th><th class="n">Ítems</th><th class="n">Más antiguo</th></tr><tr><td><span class="pill p-amb">Media</span></td><td class="n">3</td><td class="n">75 días</td></tr></table>
+    <div class="note">Sin ítems de prioridad alta ni emergencia.</div></div>
+  </div>
+ </section>
+
+ <section data-s="cos" class="hide">
+  <div class="dx-ui-kpi-row" id="kcos"></div>
+  <div class="grid">
+   <div class="card"><h3>OT con menor margen</h3><div class="cap">OT cerradas de clientes · ordenadas de menor a mayor margen</div>
+    <table><thead><tr><th>OT</th><th>Servicio · cliente</th><th class="n">Ingreso</th><th class="n">Costo</th><th class="n">Margen</th></tr></thead><tbody id="tMarg"></tbody></table></div>
+   <div class="card"><h3>Composición del costo</h3><div class="cap">Período seleccionado</div><svg id="chDon" viewBox="0 0 220 220" width="70%" style="display:block;margin:0 auto"></svg><div id="donLeg" class="note"></div></div>
+  </div>
+ </section>
+
+ <section data-s="flo" class="hide">
+  <div class="dx-ui-kpi-row" id="kflo"></div>
+  <div class="grid">
+   <div class="card"><h3>Disponibilidad mecánica (DMR) vs. meta</h3><div class="cap">Flota en contrato · (horas programadas − paradas imputables al proveedor) / horas programadas</div><svg id="chDmr" viewBox="0 0 640 220" width="100%"></svg></div>
+   <div class="card"><h3>DMR por equipo · octubre</h3><div class="cap">Contra la meta de su contrato</div>
+    <table><thead><tr><th>Equipo</th><th class="n">DMR</th><th class="n">Meta</th></tr></thead><tbody>
+     <tr><td>EX-01 · CA-2026-011</td><td class="n down">84.8 %</td><td class="n">90 %</td></tr>
+     <tr><td>TR-01 · CA-2026-012</td><td class="n">94.8 %</td><td class="n">88 %</td></tr>
+     <tr><td>CF-03 · CA-2026-013</td><td class="n">96.7 %</td><td class="n">85 %</td></tr>
+     <tr><td>EX-02 · CA-2026-011</td><td class="n">97.0 %</td><td class="n">90 %</td></tr>
+     <tr><td>RE-01 · CA-2026-012</td><td class="n">97.4 %</td><td class="n">88 %</td></tr>
+     <tr><td>RE-02 · CA-2026-012</td><td class="n">98.5 %</td><td class="n">88 %</td></tr>
+     <tr><td>CF-02 · CA-2026-011</td><td class="n">98.7 %</td><td class="n">90 %</td></tr></tbody></table></div>
+  </div>
+  <div class="note">MTBF y MTTR por equipo quedan para cuando existan los módulos de fallas y paradas por equipo (pendiente anotado).</div>
+ </section>
+</div>
+<script>
+const TC=3.44, M={'2026-08':{o:4,c:19040,i:0,mo:6664,mat:10472,ter:952,log:952},'2026-09':{o:15,c:248997,i:347100,mo:102438.14,mat:99817.46,ter:27739.04,log:19002.36},'2026-10':{o:20,c:320040.5,i:517000,mo:131714.31,mat:128179.09,ter:35702.16,log:24444.94},'2026-11':{o:2,c:4285,i:0,mo:1499.75,mat:2356.75,ter:214.25,log:214.25}};
+const DMR={'2026-08':97.8,'2026-09':97.7,'2026-10':94.9,'2026-11':97.7};
+const PER={mes:['2026-11'],ant:['2026-10'],tri:['2026-08','2026-09','2026-10','2026-11']};
+const PERTXT={mes:'Noviembre 2026 (al 08/11)',ant:'Octubre 2026',tri:'Últimos 3 meses (08/08/2026 – 08/11/2026)'};
+const MARG=[['OT-26-0712','Fabricación de plataforma de mantenimiento · Minera Cordillera Azul',60400,42884],['OT-26-0709','Transporte de equipo pesado en cama baja · Agroindustrial Valle Norte',11100,7881],['OT-26-0705','Venta de kit de filtros · Cementos Altiplano',6500,4485],['OT-26-0718','Reparación de sistema hidráulico 966H · Inca Ingenieros',24700,17043],['OT-26-0717','Alquiler mensual de cargador 966H · Pesquera Mar de Grau',32700,22236]];
+let per='tri',mon='PEN';
+const f=v=>{v=mon==='USD'?v/TC:v;return (mon==='USD'?'US$ ':'S/ ')+v.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})};
+const fk=v=>{v=mon==='USD'?v/TC:v;return (mon==='USD'?'US$ ':'S/ ')+(v>=1000?(v/1000).toLocaleString('es-PE',{maximumFractionDigits:1})+' mil':v.toFixed(0))};
+const sum=k=>PER[per].reduce((a,m)=>a+M[m][k],0);
+function kpi(id,arr){document.getElementById(id).innerHTML=arr.map(([l,v,s,c])=>`<div class="dx-ui-kpi"><span>${l}</span><b>${v}</b>${s?`<em class="${c||''}">${s}</em>`:''}</div>`).join('')}
+function render(){
+ document.getElementById('sub').textContent='Andes Industrial Services · '+PERTXT[per];
+ const c=sum('c'),i=sum('i'),mg=i?100*(i-c)/i:0, dm=PER[per].map(m=>DMR[m]);
+ kpi('kres',[['OT activas','8','7 en ejecución · 1 programada'],['Capital detenido','S/ 0'.replace('S/ 0',f(61686.5)),'7 OT esperando repuestos','warn'],['Utilización de flota','43.8 %','7 de 16 equipos propios'],['Disponibilidad (DMR)',(dm.reduce((a,b)=>a+b,0)/dm.length).toFixed(1)+' %','Meta ponderada 89 %','up'],['Margen bruto',i?mg.toFixed(1)+' %':'Sin dato',i?fk(i-c)+' de utilidad':'Sin OT de clientes cerradas', i?'up':'']]);
+ kpi('kcos',[['Ingreso atribuible',f(i)],['Costo operativo',f(c)],['Margen bruto',i?mg.toFixed(1)+' %':'Sin dato'],['Desviación vs. estimado','+3.1 %','7 OT sobre el 5 %','warn'],['Retrabajo','0.0 %','Sin OT de reclamo','up']]);
+ kpi('kflo',[['Equipos propios','16','2 en mantenimiento'],['En contrato vigente','7','3 contratos'],['DMR del período',(dm.reduce((a,b)=>a+b,0)/dm.length).toFixed(1)+' %'],['Equipos bajo meta','1','EX-01 en octubre','down']]);
+ // barras
+ const ms=['2026-08','2026-09','2026-10','2026-11'],lab=['Ago','Set','Oct','Nov'],mx=Math.max(...ms.map(m=>Math.max(M[m].c,M[m].i)))*1.15;
+ let s='';[0,.25,.5,.75,1].forEach(t=>{const y=200-t*180;s+=`<line x1="70" x2="630" y1="${y}" y2="${y}" stroke="var(--line2)"/><text x="64" y="${y+4}" text-anchor="end" font-size="10" fill="var(--muted)">${fk(mx*t).replace(' mil','k')}</text>`});
+ ms.forEach((m,k)=>{const x=100+k*135,op=PER[per].includes(m)?1:.25,hi=180*M[m].i/mx,hc=180*M[m].c/mx;
+  s+=`<rect x="${x}" y="${200-hi}" width="34" height="${hi}" rx="5" fill="var(--bar-i)" opacity="${op}"><title>Ingreso ${f(M[m].i)}</title></rect><rect x="${x+40}" y="${200-hc}" width="34" height="${hc}" rx="5" fill="var(--bar-c)" opacity="${op}"><title>Costo ${f(M[m].c)}</title></rect><text x="${x+37}" y="218" text-anchor="middle" font-size="11" fill="var(--muted)">${lab[k]}</text>`});
+ document.getElementById('chIC').innerHTML=s;
+ // OT estado / tipo
+ const rows=(d,col)=>{const t=d.reduce((a,b)=>a+b[1],0);return d.map(([n,v,c])=>`<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${n}</span><b>${v}</b></div><div class="bar"><i style="width:${100*v/t}%;background:${c}"></i></div></div>`).join('')};
+ document.getElementById('otEst').innerHTML=rows([['Cerradas',33,'var(--grn)'],['En ejecución',7,'var(--cyan)'],['Programadas',1,'var(--vio)']]);
+ document.getElementById('otTipo').innerHTML=rows([['Correctivo',26,'var(--red)'],['Preventivo',11,'var(--grn)'],['Acondicionamiento',3,'var(--cyan)'],['Overhaul',1,'var(--vio)']]);
+ // margen
+ document.getElementById('tMarg').innerHTML=MARG.map(([o,sv,ig,co])=>`<tr><td>${o}</td><td>${sv}</td><td class="n">${f(ig)}</td><td class="n">${f(co)}</td><td class="n">${(100*(ig-co)/ig).toFixed(1)} %</td></tr>`).join('');
+ // donut
+ const parts=[['Mano de obra',sum('mo'),'var(--bar-c)'],['Repuestos y materiales',sum('mat'),'var(--cyan)'],['Servicios de terceros',sum('ter'),'var(--vio)'],['Logística',sum('log'),'#F59E0B']],tot=parts.reduce((a,b)=>a+b[1],0);
+ let a0=-Math.PI/2,d='';parts.forEach(([n,v,c])=>{const a1=a0+2*Math.PI*v/tot,l=a1-a0>Math.PI?1:0;d+=`<path d="M${110+90*Math.cos(a0)} ${110+90*Math.sin(a0)} A90 90 0 ${l} 1 ${110+90*Math.cos(a1)} ${110+90*Math.sin(a1)}" stroke="${c}" stroke-width="28" fill="none"/>`;a0=a1});
+ document.getElementById('chDon').innerHTML=d+`<text x="110" y="106" text-anchor="middle" font:600 font-size="12" fill="var(--muted)">Total</text><text x="110" y="126" text-anchor="middle" font-size="15" font-weight="700" fill="var(--txt)" font-family="Sora">${fk(tot)}</text>`;
+ document.getElementById('donLeg').innerHTML=parts.map(([n,v,c])=>`<div style="display:flex;justify-content:space-between;margin:4px 0"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c};margin-right:6px"></i>${n}</span><b>${(100*v/tot).toFixed(1)} %</b></div>`).join('');
+ // DMR
+ let g='';[80,85,90,95,100].forEach(v=>{const y=200-(v-80)*9;g+=`<line x1="70" x2="630" y1="${y}" y2="${y}" stroke="var(--line2)"/><text x="64" y="${y+4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}%</text>`});
+ g+=`<line x1="70" x2="630" y1="${200-9*9}" y2="${200-9*9}" stroke="var(--red)" stroke-dasharray="5 4"/><text x="626" y="${200-9*9-6}" text-anchor="end" font-size="10" fill="var(--red)">Meta 89 %</text>`;
+ const pts=ms.map((m,k)=>[100+k*170,200-(DMR[m]-80)*9]);g+=`<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="var(--cyan)" stroke-width="3"/>`+pts.map((p,k)=>`<circle cx="${p[0]}" cy="${p[1]}" r="5" fill="var(--card)" stroke="var(--cyan)" stroke-width="3"/><text x="${p[0]}" y="${p[1]-12}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--txt)">${String(DMR[ms[k]])}%</text><text x="${p[0]}" y="216" text-anchor="middle" font-size="11" fill="var(--muted)">${lab[k]}</text>`).join('');
+ document.getElementById('chDmr').innerHTML=g;
+}
+document.getElementById('per').onclick=e=>{if(!e.target.dataset.p)return;per=e.target.dataset.p;[...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));render()};
+document.getElementById('mon').onclick=e=>{if(!e.target.dataset.m)return;mon=e.target.dataset.m;[...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));render()};
+document.getElementById('tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;[...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));document.querySelectorAll('section').forEach(s=>s.classList.toggle('hide',s.dataset.s!==t))};
+render();
+</script></body></html>

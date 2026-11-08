@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { isSupabaseMode } from '../../../src/lib/dataMode.js';
-import { DashboardPage } from './pages/pages1.jsx';
+import DashboardPage from './pages/dashboardGerencial.jsx';
 import MisOTsPage from './pages/MisOTsPage.jsx';
 import { MapaCampo } from './pages/TransportePages.jsx';
 import { MockBackendBanner } from './components/MockBackendBanner.jsx';
