@@ -49,6 +49,18 @@ const emptyResult = (periodo = '') => ({
 });
 
 const amount = value => Number(value || 0);
+
+export const costoPlanillaFila = fila => {
+  const costoReal = amount(fila.costo_real_empresa);
+  return costoReal > 0
+    ? costoReal
+    : amount(fila.remuneracion_bruta) + amount(fila.essalud) + amount(fila.cts) + amount(fila.gratificacion) + amount(fila.vacaciones);
+};
+
+export const partesPlanillaFila = fila => {
+  const cargas = amount(fila.essalud) + amount(fila.cts) + amount(fila.gratificacion) + amount(fila.vacaciones);
+  return { remuneraciones: Math.max(0, costoPlanillaFila(fila) - cargas), cargas };
+};
 // Corrección 2: no colapsar monedas desconocidas a PEN — preservar el código ISO real.
 const currencyOf = value => normalizeCurrency(value || 'PEN');
 
@@ -621,7 +633,7 @@ async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds, socied
 
   let detalleQ = supabase
     .from('detalle_nomina')
-    .select('id, periodo_nomina_id, centro_costo_id, trabajador_tipo, neto, essalud, cts, gratificacion, vacaciones, moneda')
+    .select('id, periodo_nomina_id, centro_costo_id, trabajador_tipo, costo_real_empresa, remuneracion_bruta, essalud, cts, gratificacion, vacaciones, moneda')
     .eq('empresa_id', empresaId)
     .in('periodo_nomina_id', periodoIds);
   if (effectiveCecoIds) detalleQ = detalleQ.in('centro_costo_id', effectiveCecoIds);
@@ -892,7 +904,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     if (norm(n.trabajador_tipo) === 'operativo') {
       const clave = n.sociedad_id || null;
       const grupo = nominaOperativa.get(clave) || { sociedadId: n.sociedad_id, filas: [] };
-      const importe = amount(n.neto) + amount(n.essalud) + amount(n.cts) + amount(n.gratificacion) + amount(n.vacaciones);
+      const importe = costoPlanillaFila(n);
       grupo.filas.push({ ...n, importe });
       nominaOperativa.set(clave, grupo);
       return;
@@ -900,19 +912,19 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     const block = blockForSection(resolverSeccionGasto({
       naturaleza: naturalezaCeco.get(n.centro_costo_id),
     }));
-    addToBlock(block, labelByTipo('planilla', 'Planilla neta', false), n.neto, n.moneda, {
+    const { remuneraciones, cargas } = partesPlanillaFila(n);
+    addToBlock(block, labelByTipo('planilla', 'Remuneraciones', false), remuneraciones, n.moneda, {
       fuente: 'Planilla',
       id: n.id,
-      concepto: 'Neto de planilla',
+      concepto: 'Remuneraciones',
       cecoId: n.centro_costo_id,
     });
-    addToBlock(
-      block,
-      labelByTipo('cargas_sociales', 'Cargas sociales', false),
-      amount(n.essalud) + amount(n.cts) + amount(n.gratificacion) + amount(n.vacaciones),
-      n.moneda,
-      { fuente: 'Planilla', id: n.id, concepto: 'Cargas sociales', cecoId: n.centro_costo_id }
-    );
+    addToBlock(block, labelByTipo('cargas_sociales', 'Cargas sociales', false), cargas, n.moneda, {
+      fuente: 'Planilla',
+      id: n.id,
+      concepto: 'Cargas sociales',
+      cecoId: n.centro_costo_id,
+    });
   });
 
 
