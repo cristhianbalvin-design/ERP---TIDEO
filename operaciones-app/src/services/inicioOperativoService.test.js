@@ -1,4 +1,10 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import * as servicio from './inicioOperativoService.js';
+import { useSesionOperativa } from '../lib/sesionOperativa.js';
+
+vi.mock('../lib/sesionOperativa.js', () => ({ useSesionOperativa: vi.fn() }));
 import { agruparBacklog, calcularKpis, certificacionesPorVencer, otsSinParte, saludoHora } from './inicioOperativoService.js';
 
 describe('Inicio operativo', () => {
@@ -23,5 +29,37 @@ describe('Inicio operativo', () => {
   it('agrupa descripciones iguales y acepta vacíos', () => {
     expect(agruparBacklog([{ descripcion: 'Cambio de filtro' }, { descripcion: ' cambio de filtro ' }])).toEqual([{ descripcion: 'Cambio de filtro', cantidad: 2 }]);
     expect(agruparBacklog([])).toEqual([]);
+  });
+});
+
+
+describe('Inicio operativo: carga de sesión', () => {
+  it('no vuelve a cargar al recibir un objeto nuevo con los mismos valores', async () => {
+    const { default: InicioOperativo } = await import('../zahory-mock/pages/inicioOperativo.jsx');
+    const sesion = {
+      estado: 'listo', empresaId: 'empresa', usuario: { id: 'usuario' },
+      sociedadId: 'sociedad', vistaConsolidada: false, sociedadesIdsAlcance: ['sociedad'],
+      empresa: { multisociedad_habilitado: true }, esAdminEmpresa: false,
+      permisos: [{ pantalla: 'ot', puede_ver: true }], cargando: false,
+    };
+    useSesionOperativa.mockImplementation(() => ({
+      ...sesion, usuario: { ...sesion.usuario }, empresa: { ...sesion.empresa },
+      sociedadesIdsAlcance: [...sesion.sociedadesIdsAlcance], permisos: [...sesion.permisos],
+    }));
+    const cargar = vi.spyOn(servicio, 'cargarInicioOperativo').mockImplementation(() => new Promise(() => {}));
+    let vista;
+    try {
+      await act(async () => { vista = create(React.createElement(InicioOperativo, { onNavigate: () => {} })); });
+      expect(cargar).toHaveBeenCalledTimes(1);
+      await act(async () => { vista.update(React.createElement(InicioOperativo, { onNavigate: () => {} })); });
+      expect(cargar).toHaveBeenCalledTimes(1);
+      sesion.sociedadId = 'otra';
+      await act(async () => { vista.update(React.createElement(InicioOperativo, { onNavigate: () => {} })); });
+      expect(cargar).toHaveBeenCalledTimes(2);
+    } finally {
+      if (vista) act(() => vista.unmount());
+      cargar.mockRestore();
+      useSesionOperativa.mockReset();
+    }
   });
 });
