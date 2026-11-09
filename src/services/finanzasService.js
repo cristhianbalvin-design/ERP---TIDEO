@@ -600,7 +600,13 @@ export const finanzasService = {
       omitir_aviso_condicion_pago: _omitirAvisoCondicionPago,
       ...payloadDb
     } = payload || {};
-    const insert = async (p) => supabase.from('cxc').insert(p).select().single();
+    const insert = async (p) => {
+      const result = await supabase.from('cxc').insert(p).select().single();
+      if (result.error?.code === '23505' && [result.error.message, result.error.details, result.error.constraint].some(value => value?.includes('cxc_factura_id_unico'))) {
+        throw new Error('Esta factura ya tiene una cuenta por cobrar registrada.');
+      }
+      return result;
+    };
     let p = { ...payloadDb };
 
     if (!fechaVencimientoManual && !fechaVencimientoResuelta && p.empresa_id && p.cuenta_id) {
