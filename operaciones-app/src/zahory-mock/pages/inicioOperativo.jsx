@@ -77,7 +77,14 @@ function MiDia({ datos, onNavigate }) {
   );
 }
 
-function Alertas({ datos, onNavigate }) {
+function vencimientoCertificacion(fecha, hoy) {
+  const [, mes, dia] = fecha.split('-');
+  const dias = (Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86400000;
+  const plazo = dias === 0 ? 'hoy' : `en ${dias} ${dias === 1 ? 'día' : 'días'}`;
+  return `${dia}/${mes} (${plazo})`;
+}
+
+function Alertas({ datos, onNavigate, hoy }) {
   const alertas = [
     ...datos.sinParte.map(ot => ({
       key: `ot-${ot.id}`,
@@ -88,7 +95,7 @@ function Alertas({ datos, onNavigate }) {
     })),
     ...datos.certificaciones.map(cert => ({
       key: `cert-${cert.id}`,
-      titulo: `${cert.activo?.codigo || 'Equipo'} · ${cert.tipo?.nombre || 'Certificación'} vence el ${cert.fecha_vencimiento}`,
+      titulo: `${cert.activo?.codigo || 'Equipo'} · ${cert.tipo?.nombre || 'Certificación'} vence el ${vencimientoCertificacion(cert.fecha_vencimiento, hoy)}`,
       detalle: `${cert.activo?.nombre || ''} · toda la empresa`,
       ruta: 'certificaciones-activo',
       color: 'amb',
@@ -210,7 +217,7 @@ export default function InicioOperativo({ onNavigate }) {
           <div className="dx-opsi-grid">
             <MiDia datos={datos} onNavigate={onNavigate} />
             <div className="dx-opsi-stack">
-              <Alertas datos={datos} onNavigate={onNavigate} />
+              <Alertas datos={datos} onNavigate={onNavigate} hoy={hoy} />
               <Accesos onNavigate={onNavigate} />
             </div>
           </div>
