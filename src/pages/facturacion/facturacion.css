@@ -2,6 +2,17 @@
   --dx-ui-cols:minmax(150px,1.05fr) minmax(190px,1.6fr) minmax(120px,.85fr) minmax(150px,1.6fr)
   minmax(150px,.6fr) 20px
 }
+.dx-fac .dx-ui-row > * {
+  min-width:0
+}
+.dx-fac .dx-ui-row .badge.badge-purple[data-sociedad-badge] {
+  display:inline-block;
+  box-sizing:border-box;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap
+}
 .dx-fac .dx-fac-kpis {
   container-type:inline-size
 }
