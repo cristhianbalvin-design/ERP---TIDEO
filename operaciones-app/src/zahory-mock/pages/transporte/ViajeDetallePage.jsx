@@ -221,7 +221,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
         {viaje.distancia_km != null && <span>↔ <b>{formatearNumeroTransporte(viaje.distancia_km)} km</b></span>}
         {viaje.duracion_estimada_horas != null && <span>⏱ <b>{formatearNumeroTransporte(viaje.duracion_estimada_horas)} h</b> estimadas</span>}
         <span>◎ <b>{paradas.length}</b> paradas</span>
-        {viaje.tipo_unidad && <span>⛟ <b>{viaje.tipo_unidad}</b></span>}
+        {viaje.tipo_unidad && <span>⛟ <b>{etiquetaTipoVehiculo(viaje.tipo_unidad)}</b></span>}
         <span>Ingreso <b>{formatearImporte(viaje.ingreso_estimado, viaje.moneda)}</b></span></div>
       {viaje.estado !== 'cancelado' && <ol className="dx-tmsvd-stages" aria-label="Etapas del viaje">{etapas.map((etapa, index) =>
         <li key={etapa.clave} className={`is-${etapa.paso}`} aria-current={etapa.paso === 'actual' ? 'step' : undefined}>
@@ -237,7 +237,8 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
       <section className="dx-tmsvd-blk dx-tmsvd-o1"><header><h3>Recorrido</h3><small>{etiquetaContador(paradas.length, 'parada')}</small>
         {avance && <span className="dx-tms-mini is-ok dx-tmsvd-sp">● {Math.round(avance.avance * 100)} % estimado</span>}</header>
         <div className="dx-tmsvd-rec"><TransporteMapaRutas rutas={rutasMapa} className="dx-tmsvd-map"
-          aviso={sinUbicacion ? `Solo ${paradas.length - sinUbicacion} de ${paradas.length} paradas con ubicación` : avance ? 'Posición estimada por tiempo' : ''} />
+          aviso={!paradas.length ? 'Sin paradas registradas' : sinUbicacion ? `Solo ${paradas.length - sinUbicacion} de ${paradas.length} paradas con ubicación` : avance ? 'Posición estimada por tiempo' : ''} />
+          {!paradas.length && <div className="dx-tmsvd-stops-empty">Este viaje no tiene paradas registradas. Edítalo para agregar origen, destino y paradas.</div>}
           <ol className="dx-tmsvd-stops">{paradas.map((parada, index) => {
             const hecha = parada.estado === 'completada';
             const tono = index === 0 ? 'is-a' : index === paradas.length - 1 ? 'is-b' : '';
@@ -262,6 +263,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
       </div></section>
 
       <section className="dx-tmsvd-blk dx-tmsvd-o5"><header><h3>Bitácora</h3><small>{etiquetaContador((viaje.eventos || []).length, 'evento')}</small></header>
+        {!(viaje.eventos || []).length && <div className="dx-tmsvd-stops-empty">Aún no hay eventos registrados.</div>}
         <ol className="dx-tmsvd-log">{[...(viaje.eventos || [])].reverse().map(evento => {
           const clave = evento.estado_anterior === evento.estado_nuevo ? 'nota' : evento.estado_nuevo;
           const texto = (evento.nota || '').replace(/^Asignación:\s*/, '');
@@ -276,7 +278,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
       <div className="dx-tmsvd-side">
       <section className="dx-tmsvd-blk dx-tmsvd-o0"><header><h3>Unidad y conductor</h3></header><div className="dx-tmsvd-in">
         {!viaje.vehiculo ? <div className="dx-tmsvd-empty"><span className="dx-tmsvd-empty-i" aria-hidden="true">⛟</span><b>Sin unidad ni conductor</b>
-          <span>Requiere {(viaje.tipo_unidad || 'una unidad').toLocaleLowerCase('es-PE')}{viaje.peso_toneladas != null ? ` para ${formatearNumeroTransporte(viaje.peso_toneladas)} t` : ''}
+          <span>Requiere {(viaje.tipo_unidad ? etiquetaTipoVehiculo(viaje.tipo_unidad) : 'una unidad').toLocaleLowerCase('es-PE')}{viaje.peso_toneladas != null ? ` para ${formatearNumeroTransporte(viaje.peso_toneladas)} t` : ''}
             {(viaje.requisitos || []).length ? ` · ${viaje.requisitos.map(item => REQUISITOS[item] || item).join(', ')}` : ''}.</span>
           {viaje.estado === 'programado' && access.editar ? <button type="button" className="dx-btn primary" onClick={() => setDespacho(true)} disabled={busy}>Asignar y despachar</button>
             : <small>Se asigna al despachar.</small>}</div>

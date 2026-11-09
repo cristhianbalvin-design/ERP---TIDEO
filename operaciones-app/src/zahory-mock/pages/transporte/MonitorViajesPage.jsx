@@ -7,7 +7,7 @@ import { DxBuscador } from '../../components/dx/DxBuscador.jsx';
 import { filtrarBusquedaInteligente } from '../../components/dx/busquedaInteligente.js';
 import { TransporteMapaRutas } from './TransporteMapaRutas.jsx';
 import {
-  avanceEstimadoViaje, colorEstadoViaje, columnaTableroViaje, etiquetaContador, etiquetaEstadoViaje,
+  avanceEstimadoViaje, colorEstadoViaje, columnaTableroViaje, etiquetaContador, etiquetaEstadoViaje, etiquetaTipoVehiculo,
   fechaActualLocal, fechaLocalDeViaje, filtrarPeriodoViajes, formatearFechaTransporte, formatearImporte,
   formatearNumeroTransporte, ingresoEstimadoMesViajes, resumenMonitorViajes,
 } from './transporteUtils.js';
@@ -110,7 +110,7 @@ export function MonitorViajesPage({ onNav }) {
       <div className="dx-tms-tc-cli">{cliente(row)}{row.os?.numero && <small> · {row.os.numero}</small>}</div>
       <div className="dx-tms-route"><b>{row.origen_nombre}</b><i>→</i><b>{row.destino_nombre}</b></div>
       <div className="dx-tms-tc-meta">{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`,
-        etiquetaContador(row.paradas.length, 'parada'), row.tipo_unidad].filter(Boolean).join(' · ')}</div>
+        row.paradas.length > 0 && etiquetaContador(row.paradas.length, 'parada'), row.tipo_unidad && etiquetaTipoVehiculo(row.tipo_unidad)].filter(Boolean).join(' · ')}</div>
       {vivo?.avance && <div className="dx-tms-prog" aria-label={`Avance estimado ${Math.round(vivo.avance.avance * 100)} %`}>
         <b style={{ width: `${vivo.avance.avance * 100}%` }} /></div>}
       <div className="dx-tms-tc-foot"><span className={`dx-tms-when ${salida.tono}`}>{salida.texto}</span><Recurso row={row} />
@@ -207,7 +207,7 @@ export function MonitorViajesPage({ onNav }) {
                         <span className={`dx-ui-pill ${colorEstadoViaje(row.estado)}`}><i />{etiquetaEstadoViaje(row.estado)}</span></span>
                       <span className="dx-tmsmon-c2"><b>{cliente(row)}</b><small>{row.os?.numero || 'Viaje directo'}</small></span>
                       <span className="dx-tmsmon-c3"><span className="dx-tms-route"><b>{row.origen_nombre}</b><i>→</i><b>{row.destino_nombre}</b></span>
-                        <small>{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`, etiquetaContador(row.paradas.length, 'parada')].filter(Boolean).join(' · ')}</small></span>
+                        <small>{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`, row.paradas.length > 0 && etiquetaContador(row.paradas.length, 'parada')].filter(Boolean).join(' · ')}</small></span>
                       <span className="dx-tmsmon-c4"><span className={`dx-tms-when ${salida.tono}`}>{salida.texto}</span></span>
                       <span className="dx-tmsmon-c5"><Recurso row={row} /></span>
                       <span className="dx-tmsmon-c6 dx-tms-amt">{formatearImporte(row.ingreso_estimado, row.moneda)}</span>

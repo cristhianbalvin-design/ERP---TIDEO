@@ -104,7 +104,7 @@ export function DespachoPanel({ open, viaje, empresaId, onClose, onDone }) {
   if (!open || !viaje) return null;
   const dirty = Boolean(flota) && (JSON.stringify(sel) !== inicial || Boolean(motivo.trim()) || sctr);
   return <TransportePanel open={open} title="Asignar y despachar" dirty={dirty} busy={busy} onClose={onClose}
-    subtitle={`${viaje.codigo} · ${viaje.origen_nombre} → ${viaje.destino_nombre} · requiere ${(viaje.tipo_unidad || 'unidad').toLocaleLowerCase('es-PE')}${viaje.peso_toneladas != null ? ` para ${formatearNumeroTransporte(viaje.peso_toneladas)} t` : ''}`}
+    subtitle={`${viaje.codigo} · ${viaje.origen_nombre} → ${viaje.destino_nombre} · requiere ${(viaje.tipo_unidad ? etiquetaTipoVehiculo(viaje.tipo_unidad) : 'unidad').toLocaleLowerCase('es-PE')}${viaje.peso_toneladas != null ? ` para ${formatearNumeroTransporte(viaje.peso_toneladas)} t` : ''}`}
     footer={close => <>
       <button type="button" className="dx-btn" onClick={close} disabled={busy}>Cancelar</button>
       <span className="dx-tmsdesp-sp" />

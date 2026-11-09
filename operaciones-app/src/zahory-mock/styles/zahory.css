@@ -9987,3 +9987,8 @@ width:20px;height:20px}
   .dx-tmsflota-tabs button { flex:1; justify-content:center; padding:0 8px; font-size:13px; }
   .dx-tmsflota-tabs button span { display:none; }
 }
+/* TMS · ajustes tras la revisión en el preview */
+.dx-tms-tc .dx-tms-route,.dx-tmsmon-c3 .dx-tms-route { flex-wrap:wrap; row-gap:0; }
+.dx-tms-tc .dx-tms-route b,.dx-tmsmon-c3 .dx-tms-route b { overflow:visible; white-space:normal; overflow-wrap:anywhere; }
+.dx-ui .dx-tmsvd-head .dx-btn:not(.primary):not(:disabled):hover,.dx-tmsvd-head .dx-btn[aria-expanded='true'] { background:rgba(255,255,255,.2); color:var(--dx-ui-on-hero); }
+.dx-tmsvd-stops-empty { padding:16px 18px; color:var(--dx-ui-gray); font-size:13px; }
