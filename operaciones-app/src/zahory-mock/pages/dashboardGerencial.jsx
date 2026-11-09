@@ -35,6 +35,24 @@ const nombre = (s) =>
   String(s || 'Sin dato')
     .replaceAll('_', ' ')
     .replace(/^./, (c) => c.toUpperCase());
+const ETIQUETAS = {
+  estado: {
+    ejecucion: 'En ejecución',
+    programada: 'Programada',
+    cerrada: 'Cerrada',
+    borrador: 'Borrador',
+    pausada: 'Pausada',
+    cancelada: 'Cancelada',
+    por_programar: 'Por programar',
+  },
+  tipo: {
+    Preventivo_PM: 'Preventivo',
+    Correctivo: 'Correctivo',
+    Overhaul: 'Overhaul',
+    Acondicionamiento: 'Acondicionamiento',
+    Reclamo_Rework: 'Retrabajo',
+  },
+};
 const mes = (s) => {
   const [a, m] = s.split('-');
   return new Date(Number(a), Number(m) - 1, 1).toLocaleDateString('es-PE', {
@@ -73,7 +91,7 @@ function BarrasConteo({ rows, field }) {
   return rows.map((r, i) => (
     <div className="dx-opsd-bar-row" key={`${r[field]}-${i}`}>
       <div>
-        <span>{nombre(r[field])}</span>
+        <span>{ETIQUETAS[field]?.[r[field]] || nombre(r[field])}</span>
         <b>{numero(r.n)}</b>
       </div>
       <div className="dx-opsd-bar">
@@ -92,7 +110,7 @@ function BarrasConteo({ rows, field }) {
     </div>
   ));
 }
-function GraficoIngresoCosto({ rows, dinero }) {
+function GraficoIngresoCosto({ rows, dinero, dineroCompacto }) {
   const max = Math.max(1, ...rows.flatMap((r) => [Number(r.ingreso), Number(r.costo)]));
   if (!rows.length) return <Empty />;
   const width = 560 / rows.length;
@@ -113,7 +131,7 @@ function GraficoIngresoCosto({ rows, dinero }) {
               stroke="var(--opsd-line2)"
             />
             <text x="64" y={204 - 180 * t} textAnchor="end" fontSize="10" fill="var(--opsd-muted)">
-              {dinero(max * t)}
+              {dineroCompacto(max * t)}
             </text>
           </g>
         ))}
@@ -237,14 +255,17 @@ function GraficoDmr({ rows, meta }) {
   const valid = rows.filter((r) => r.dmr != null);
   if (!valid.length) return <Empty />;
   const x = (i) => (valid.length === 1 ? 350 : 90 + (i * 500) / (valid.length - 1));
-  const y = (v) => 200 - Math.max(0, Math.min(100, Number(v))) * 1.8;
+  const valores = valid.map((r) => Number(r.dmr));
+  if (meta != null) valores.push(Number(meta));
+  const minimo = Math.max(0, Math.min(95, Math.floor(Math.min(...valores) / 5) * 5 - 5));
+  const y = (v) => 200 - ((Math.max(minimo, Math.min(100, Number(v))) - minimo) * 180) / (100 - minimo);
   return (
     <svg viewBox="0 0 640 230" role="img" aria-label="Disponibilidad mecánica por mes">
-      {[0, 25, 50, 75, 100].map((v) => (
+      {Array.from({ length: 6 }, (_, i) => minimo + ((100 - minimo) * i) / 5).map((v) => (
         <g key={v}>
           <line x1="70" x2="630" y1={y(v)} y2={y(v)} stroke="var(--opsd-line2)" />
           <text x="64" y={y(v) + 4} textAnchor="end" fontSize="10" fill="var(--opsd-muted)">
-            {v}%
+            {Number(v.toFixed(2))}%
           </text>
         </g>
       ))}
@@ -258,7 +279,7 @@ function GraficoDmr({ rows, meta }) {
             stroke="var(--opsd-red)"
             strokeDasharray="5 4"
           />
-          <text x="626" y={y(meta) - 5} textAnchor="end" fontSize="10" fill="var(--opsd-red)">
+          <text x="75" y={y(meta) + 13} fontSize="10" fill="var(--opsd-red)">
             Meta {porcentaje(meta)}
           </text>
         </g>
@@ -440,7 +461,7 @@ function TablaMenorMargen({ datos, dinero }) {
     >
       {datos.menor_margen?.length ? (
         <div className="dx-opsd-table-wrap">
-          <table>
+          <table className="dx-opsd-margen-table">
             <thead>
               <tr>
                 <th>OT</th>
@@ -455,7 +476,8 @@ function TablaMenorMargen({ datos, dinero }) {
                 <tr key={r.id}>
                   <td>{r.numero}</td>
                   <td>
-                    {r.servicio || 'Sin servicio'} · {r.cliente || 'Sin cliente'}
+                    <span className="dx-opsd-servicio">{r.servicio || 'Sin servicio'}</span>
+                    <small className="dx-opsd-cliente">{r.cliente || 'Sin cliente'}</small>
                   </td>
                   <td>{dinero(r.ingreso)}</td>
                   <td>{dinero(r.costo)}</td>
@@ -555,9 +577,19 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!tieneTC) setMoneda('PEN');
   }, [tieneTC]);
+  const convertir = (valor) => (Number(valor) || 0) * (moneda === 'USD' && tieneTC ? tc : 1);
+  const simbolo = moneda === 'USD' && tieneTC ? 'US$' : 'S/';
+  const dineroCompacto = (valor) => {
+    const monto = convertir(valor);
+    const abs = Math.abs(monto);
+    const divisor = abs >= 1e6 ? 1e6 : abs >= 1e3 ? 1e3 : 1;
+    const sufijo = divisor === 1e6 ? ' M' : divisor === 1e3 ? ' mil' : '';
+    const cifra = (monto / divisor).toLocaleString('es-PE', { maximumFractionDigits: divisor === 1 ? 0 : 1 });
+    return `${simbolo} ${cifra}${sufijo}`;
+  };
   const dinero = (valor) =>
-    `${moneda === 'USD' && tieneTC ? 'US$' : 'S/'} ${
-      ((Number(valor) || 0) / (moneda === 'USD' && tieneTC ? tc : 1)).toLocaleString('es-PE', {
+    `${simbolo} ${
+      convertir(valor).toLocaleString('es-PE', {
         minimumFractionDigits: 2, maximumFractionDigits: 2,
       })
     }`;
@@ -678,7 +710,7 @@ export default function DashboardPage() {
                   title="Ingreso atribuible vs. costo operativo"
                   caption="Por mes · ingreso de la OS repartido entre sus OT según su costo · costo operativo total"
                 >
-                  <GraficoIngresoCosto rows={datos.por_mes || []} dinero={dinero} />
+                  <GraficoIngresoCosto rows={datos.por_mes || []} dinero={dinero} dineroCompacto={dineroCompacto} />
                 </Card>
                 <CentroAlertas alertas={alertas} />
               </div>
@@ -697,15 +729,19 @@ export default function DashboardPage() {
             <>
               <KpiResumen
                 items={[
-                  ['Ingreso atribuible', dinero(k.ingreso)],
-                  ['Costo operativo', dinero(k.costo)],
-                  ['Margen bruto', porcentaje(margen)],
+                  ['Ingreso atribuible', dinero(k.ingreso), `${numero(k.ots_periodo)} OT del período`],
+                  ['Costo operativo', dinero(k.costo), `${dinero(k.costo_clientes)} en OT de clientes`],
+                  [
+                    'Margen bruto', porcentaje(margen),
+                    ingreso ? `${dinero(ingreso - Number(k.costo_clientes || 0))} de utilidad`
+                      : 'Sin ingreso atribuible',
+                  ],
                   [
                     'Desviación vs. estimado',
                     porcentaje(desviacion),
                     `${numero(k.ots_sobre_estimado)} OT sobre el 5 %`,
                   ],
-                  ['Retrabajo', porcentaje(retrabajo)],
+                  ['Retrabajo', porcentaje(retrabajo), `${dinero(k.retrabajo_costo)} en OT de retrabajo`],
                 ]}
               />
               <div className="dx-opsd-grid">
@@ -732,8 +768,12 @@ export default function DashboardPage() {
         plural(k.contratos_vigentes, 'contrato vigente', 'contratos vigentes')
       }`,
                   ],
-                  ['DMR del período', porcentaje(k.dmr)],
-                  ['Equipos bajo meta', numero(k.equipos_bajo_meta)],
+                  ['DMR del período', porcentaje(k.dmr), `Meta ponderada ${porcentaje(k.dmr_meta)}`],
+                  [
+                    'Equipos bajo meta', numero(k.equipos_bajo_meta),
+                    `de ${numero(datos.dmr_equipo?.length)} ${
+                      plural(datos.dmr_equipo?.length, 'equipo', 'equipos')} en contrato`,
+                  ],
                 ]}
               />
               <div className="dx-opsd-grid">
