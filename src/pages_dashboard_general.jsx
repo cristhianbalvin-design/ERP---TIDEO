@@ -8,7 +8,7 @@ import { getEstadoResultados, getEstadoResultadosPorScope } from './services/est
 import { isSupabaseMode } from './lib/dataMode.js';
 import { maestrosService } from './services/maestrosService.js';
 import { cargarFuentesDashboard } from './services/dashboardGeneralService.js';
-import { claveEquivalenciaMovimientoCuenta, monedasDifierenMovimientoCuenta } from './services/tesoreriaService.js';
+import { calcularSaldosCuentasBancarias, claveEquivalenciaMovimientoCuenta, monedasDifierenMovimientoCuenta } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { alcanceSociedades, filtrarSociedades, calcularDashboard, contarDashboard, temasAtencion, nombreCliente, cantidadTexto } from './dashboardGeneralMetrics.js';
@@ -83,6 +83,7 @@ export function Dashboard({ role }) {
   const [fuentes, setFuentes] = useState(fuentesVacias);
   const [cargando, setCargando] = useState(false);
   const [equivalencias, setEquivalencias] = useState({ solicitud: null, valores: {}, error: '' });
+  const [tipoCambio, setTipoCambio] = useState({ loading: true, usd: null });
   const [er, setEr] = useState({ loading: false, data: null, error: '' });
   const [cebe, setCebe] = useState(false);
   const [mas, setMas] = useState(false);
@@ -136,6 +137,15 @@ export function Dashboard({ role }) {
     const filtrados = Object.fromEntries(claves.map(clave => [clave, scope(app[clave])]));
     return { ...filtrados, cxc, cxp: scope(app.cxp), cuentasBancarias: scope(app.cuentasBancarias), movimientosTesoreria: scope(movimientos), oportunidades: app.oportunidades || [], solpes: app.solpes || [], cuentas: app.cuentas || [], cobros: fuentes.cobros.data.filter(fila => ids.has(fila.cxc_id)), tickets: fuentes.tickets.data, recepciones: scope(fuentes.recepciones.data) };
   }, [app.cxc, app.cxp, app.cuentasBancarias, app.movimientosTesoreria, app.facturas, app.ots, app.oportunidades, app.cotizaciones, app.osClientes, app.valorizaciones, app.ordenesCompra, app.solpes, app.partes, app.solicitudesRRHH, app.cuentas, fuentes, alcance]);
+  useEffect(() => {
+    let activo = true;
+    setTipoCambio({ loading: true, usd: null });
+    if (!canFin || !isSupabaseConfigured()) { setTipoCambio({ loading: false, usd: null }); return undefined; }
+    getSupabaseClient().then(cliente => getTipoCambioPorFecha(hoy, cliente)).then(tc => {
+      if (activo) setTipoCambio({ loading: false, usd: Number(tc?.usd) > 0 ? Number(tc.usd) : null });
+    }).catch(() => { if (activo) setTipoCambio({ loading: false, usd: null }); });
+    return () => { activo = false; };
+  }, [canFin, hoy, empresa?.id]);
   const solicitudEquivalencias = useMemo(() => {
     const cuentas = datos.cuentasBancarias.filter(c => c.estado === 'activo');
     return datos.movimientosTesoreria.map(mov => {
@@ -167,7 +177,28 @@ export function Dashboard({ role }) {
   }, [canFin, solicitudEquivalencias]);
   const cajaCargando = canFin && (app.supabaseStatus?.loading || (solicitudEquivalencias.length > 0 && equivalencias.solicitud !== solicitudEquivalencias));
   const cajaError = !cajaCargando && solicitudEquivalencias.length > 0 && equivalencias.solicitud === solicitudEquivalencias && equivalencias.error;
-  const metricas = useMemo(() => canFin ? calcularDashboard({ ...datos, equivalenciasCuenta: equivalencias.solicitud === solicitudEquivalencias ? equivalencias.valores : {} }, moneda, hoy) : contarDashboard(datos, moneda, hoy), [datos, moneda, hoy, canFin, equivalencias, solicitudEquivalencias]);
+  const datosConvertidos = useMemo(() => {
+    if (!canFin) return datos;
+    const convertir = (valor, origen) => {
+      if (valor == null || valor === '') return valor;
+      const desde = normalizarMonedaBI(origen);
+      if (desde === moneda) return Number(valor) || 0;
+      if (!tipoCambio.usd || !['PEN', 'USD'].includes(desde)) return 0;
+      return (Number(valor) || 0) * (moneda === 'USD' ? tipoCambio.usd : 1 / tipoCambio.usd);
+    };
+    const filas = (items, campos) => (items || []).map(fila => ({ ...fila, ...Object.fromEntries(campos.map(campo => [campo, convertir(fila[campo], fila.moneda)])), moneda }));
+    const cuentas = calcularSaldosCuentasBancarias(datos.cuentasBancarias, datos.movimientosTesoreria, equivalencias.solicitud === solicitudEquivalencias ? equivalencias.valores : {});
+    const monedasCxc = new Map(datos.cxc.map(fila => [fila.id, fila.moneda]));
+    return { ...datos,
+      cxc: filas(datos.cxc, ['saldo']), cxp: filas(datos.cxp, ['saldo']),
+      facturas: filas(datos.facturas, ['total']), cotizaciones: filas(datos.cotizaciones, ['subtotal', 'subtotal_impl', 'total_impl', 'total']),
+      oportunidades: filas(datos.oportunidades, ['monto_estimado']), osClientes: filas(datos.osClientes, ['saldo_por_ejecutar', 'saldo_por_valorizar', 'saldo_por_facturar']),
+      valorizaciones: filas(datos.valorizaciones, ['subtotal']),
+      cobros: datos.cobros.map(fila => ({ ...fila, monto_capital: convertir(fila.monto_capital, monedasCxc.get(fila.cxc_id)) })),
+      cuentasBancarias: cuentas.map(cuenta => ({ ...cuenta, saldo_inicial: convertir(cuenta.saldo, cuenta.moneda), moneda })), movimientosTesoreria: [],
+    };
+  }, [datos, moneda, canFin, tipoCambio.usd, equivalencias, solicitudEquivalencias]);
+  const metricas = useMemo(() => canFin ? calcularDashboard(datosConvertidos, moneda, hoy) : contarDashboard(datos, moneda, hoy), [datosConvertidos, datos, moneda, hoy, canFin]);
   if (!isSupabaseMode())
     return <section className="dx-ui dx-dash">
   <div className="dx-dash-wrap">
@@ -176,7 +207,7 @@ export function Dashboard({ role }) {
   </div>
  </section>;
   const puedeVer = modulo => puedeVerPantalla(role, modulo, modulo === 'panel_produccion' ? ['os_cliente'] : []);
-  let temas = temasAtencion(datos, metricas, hoy, canFin, moneda).filter(tema => puedeVer(tema.modulo));
+  let temas = temasAtencion(datosConvertidos, metricas, hoy, canFin, moneda).filter(tema => puedeVer(tema.modulo));
   if (puedeVer('partes') && puedeVer('solicitudes_rrhh')) {
     const partes = temas.find(tema => tema.modulo === 'partes');
     const solicitudes = temas.find(tema => tema.modulo === 'solicitudes_rrhh');
@@ -184,20 +215,36 @@ export function Dashboard({ role }) {
       temas = temas.filter(tema => tema !== solicitudes).map(tema => tema === partes ? { ...tema, titulo: 'Por aprobar', detalle: `${partes.detalle} y ${solicitudes.detalle} de RRHH`, cantidad: partes.cantidad + solicitudes.cantidad } : tema);
     }
   }
-  const fmt = valor => dinero(valor, moneda);
+  const monedaOtra = moneda === 'USD' ? 'PEN' : 'USD';
+  const hayImporteEnOtraMoneda = (filas, campos) => filas.some(fila => (
+    normalizarMonedaBI(fila.moneda) === monedaOtra && campos.some(campo => Number(fila[campo]) !== 0 && Number.isFinite(Number(fila[campo])))
+  ));
+  const cuentasConSaldo = calcularSaldosCuentasBancarias(datos.cuentasBancarias, datos.movimientosTesoreria, equivalencias.solicitud === solicitudEquivalencias ? equivalencias.valores : {});
+  const monedasCxc = new Map(datos.cxc.map(fila => [fila.id, fila.moneda]));
+  const requiereConversion = [
+    [datos.cxc, ['saldo']], [datos.cxp, ['saldo']], [datos.facturas, ['total']],
+    [datos.cotizaciones, ['subtotal', 'subtotal_impl', 'total_impl', 'total']],
+    [datos.oportunidades, ['monto_estimado']], [datos.osClientes, ['saldo_por_ejecutar', 'saldo_por_valorizar', 'saldo_por_facturar']],
+    [datos.valorizaciones, ['subtotal']], [cuentasConSaldo, ['saldo']],
+    [datos.cobros.map(fila => ({ ...fila, moneda: monedasCxc.get(fila.cxc_id) })), ['monto_capital']],
+  ].some(([filas, campos]) => hayImporteEnOtraMoneda(filas, campos))
+    || Object.values(er.data?.er || {}).some(bloque => Number(bloque?.total?.[monedaOtra]) !== 0 && Number.isFinite(Number(bloque?.total?.[monedaOtra])));
+  const estadoConversion = requiereConversion && (tipoCambio.loading ? 'Cargando' : !tipoCambio.usd ? 'Sin tipo de cambio para convertir' : null);
+  const fmt = valor => estadoConversion || dinero(valor, moneda);
   const estadoCaja = cajaCargando ? 'Cargando' : cajaError ? 'Error al cargar' : null;
   const actual = canFin ? metricas.meses[5] : null;
   const cobroEstado = cargando ? 'Cargando' : fuentes.cobros.error ? 'Error al cargar' : fmt(actual?.cobrado);
-  const resultadoValor = er.data?.resultadoNeto?.[moneda];
-  const ingresos = er.data?.er?.ingresos?.total?.[moneda];
+  const totalConvertido = totales => totales == null ? null : (Number(totales[moneda]) || 0) + (Number(totales[moneda === 'USD' ? 'PEN' : 'USD']) || 0) * (moneda === 'USD' ? (tipoCambio.usd || 0) : (tipoCambio.usd ? 1 / tipoCambio.usd : 0));
+  const resultadoValor = totalConvertido(er.data?.resultadoNeto);
+  const ingresos = totalConvertido(er.data?.er?.ingresos?.total);
   const resultado = er.loading ? 'Cargando' : er.error ? 'Error al cargar' : fmt(resultadoValor);
-  const margen = er.loading ? 'Cargando' : er.error ? 'Error al cargar' : ingresos ? `${(resultadoValor / ingresos * 100).toFixed(1)}%` : 'Sin dato';
+  const margen = er.loading ? 'Cargando' : er.error ? 'Error al cargar' : estadoConversion || (ingresos ? `${(resultadoValor / ingresos * 100).toFixed(1)}%` : 'Sin dato');
   const vencidoCobrar = canFin ? sumar(metricas.vencidos) : 0;
   const vencidoPagar = canFin ? sumar(metricas.pagosVencidos) : 0;
   const kpis = canFin ? [
     { titulo: 'Caja operativa', valor: estadoCaja || fmt(metricas.caja), subtitulo: estadoCaja ? `Detracciones: ${estadoCaja}` : metricas.detracciones == null ? 'Sin cuenta de detracciones' : `Detracciones: ${fmt(metricas.detracciones)}`, negativo: !estadoCaja && metricas.caja < 0, items: estadoCaja ? [] : metricas.cuentasOperativas.map(cuenta => ({ label: cuenta.nombre, value: fmt(cuenta.saldo) })) },
-    { titulo: 'Por cobrar', valor: fmt(metricas.totalCobrar), subtitulo: porcentaje(vencidoCobrar, metricas.totalCobrar), items: [{ label: 'Vencido', value: fmt(vencidoCobrar) }, { label: 'Por vencer', value: fmt(metricas.totalCobrar - vencidoCobrar) }] },
-    { titulo: 'Por pagar', valor: fmt(metricas.totalPagar), subtitulo: porcentaje(vencidoPagar, metricas.totalPagar), items: [{ label: 'Vencido', value: fmt(vencidoPagar) }, { label: 'Por vencer', value: fmt(metricas.totalPagar - vencidoPagar) }] },
+    { titulo: 'Por cobrar', valor: fmt(metricas.totalCobrar), subtitulo: estadoConversion || porcentaje(vencidoCobrar, metricas.totalCobrar), items: [{ label: 'Vencido', value: fmt(vencidoCobrar) }, { label: 'Por vencer', value: fmt(metricas.totalCobrar - vencidoCobrar) }] },
+    { titulo: 'Por pagar', valor: fmt(metricas.totalPagar), subtitulo: estadoConversion || porcentaje(vencidoPagar, metricas.totalPagar), items: [{ label: 'Vencido', value: fmt(vencidoPagar) }, { label: 'Por vencer', value: fmt(metricas.totalPagar - vencidoPagar) }] },
     { titulo: 'Por facturar', valor: fmt(metricas.cadena[4].valor), subtitulo: cantidadTexto(metricas.cadena[4].cantidad, 'OS abierta', 'OS abiertas'), items: [] },
   ] : [];
   const exportar = () => {
@@ -222,6 +269,7 @@ export function Dashboard({ role }) {
      <div className="dx-ui-actions">{canFin && <div className="dx-dash-seg" role="group" aria-label="Moneda">{[['PEN', 'Soles'], ['USD', 'Dólares']].map(([valor, etiqueta]) => <button type="button" key={valor} className={moneda === valor ? 'is-on' : ''} aria-pressed={moneda === valor} onClick={() => setMoneda(valor)}>{etiqueta}</button>)}</div>}<button type="button" className="dx-btn" onClick={exportar}>Exportar</button>
      </div>
     </header>
+    {canFin && requiereConversion && !tipoCambio.loading && !tipoCambio.usd && <div className="dx-dash-warning">Sin tipo de cambio para convertir</div>}
     {cebe && <div className="dx-dash-warning">No hay un centro de beneficio activo. <button type="button" onClick={() => navigate('maestros')}>Ir a Maestros Base</button>
     </div>}
     {app.supabaseStatus?.loading && <p className="dx-dash-note">Cargando datos de la empresa…</p>}
@@ -314,7 +362,7 @@ export function Dashboard({ role }) {
       {puedeVer('cxp') && metricas.proveedores.length ? metricas.proveedores.map(item => <Fila key={item.nombre} titulo={item.nombre} detalle={`${cantidadTexto(item.dias, 'día', 'días')} vencida, ${cantidadTexto(item.cantidad, 'documento', 'documentos')}`} valor={fmt(item.saldo)} onClick={() => navigate('cxp')}/>) : <p className="dx-dash-note">Sin pagos vencidos.</p>}
       <div className="dx-dash-sub">Vencen en 7 días</div>
       <div className="dx-dash-liq">
-       <p className="dx-dash-note">{metricas.proximos.length ? `${cantidadTexto(metricas.proximos.length, 'documento', 'documentos')} por ${fmt(sumar(metricas.proximos))}` : `Sin pagos por vencer en ${moneda === 'USD' ? 'dólares' : 'soles'}`}</p>
+       <p className="dx-dash-note">{metricas.proximos.length ? `${cantidadTexto(metricas.proximos.length, 'documento', 'documentos')} por ${fmt(sumar(metricas.proximos))}` : 'Sin pagos por vencer'}</p>
       </div>
      </Tarjeta>}</div>
    </div>

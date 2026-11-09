@@ -292,6 +292,7 @@ export async function cargarSesionOperativa({
 // shell y cualquier pantalla consumen un único bootstrap de sesión.
 let resultadoSesionCompartida = null;
 let promesaSesionCompartida = null;
+let versionSesionCompartida = 0;
 const listenersSesionCompartida = new Set();
 
 const suscribirSesionCompartida = listener => {
@@ -312,8 +313,10 @@ const cargarSesionOperativaCompartida = ({ forzar = false } = {}) => {
   if (promesaSesionCompartida) return promesaSesionCompartida;
   if (!forzar && resultadoSesionCompartida) return Promise.resolve(resultadoSesionCompartida);
 
+  const version = versionSesionCompartida;
   const promesa = cargarSesionOperativa()
     .then(resultado => {
+      if (version !== versionSesionCompartida) return null;
       resultadoSesionCompartida = resultado;
       notificarSesionCompartida(resultado);
       return resultado;
@@ -377,14 +380,16 @@ export function useSesionOperativa() {
     if (!resultadoSesionCompartida) cargar();
 
     const cliente = getSupabaseClient();
-    let esPrimerEventoAuth = true;
     const { data: listener } = cliente.auth.onAuthStateChange((event, sesionAuth) => {
-      // El primer evento corresponde al estado ya leído por cargar() o por la
-      // cache. No debe iniciar otro bootstrap al remontar una pantalla.
-      if (esPrimerEventoAuth) {
-        esPrimerEventoAuth = false;
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_OUT') && !sesionAuth) {
+        versionSesionCompartida += 1;
+        promesaSesionCompartida = null;
+        const resultado = estadoBase({ estado: 'sin_sesion' });
+        resultadoSesionCompartida = resultado;
+        notificarSesionCompartida(resultado);
         return;
       }
+      if (event === 'INITIAL_SESSION') return;
 
       // Un refresh del token no cambia empresa, alcance ni sociedad activa.
       // Los cambios reales de autenticación sí invalidan el resultado actual.
@@ -395,7 +400,7 @@ export function useSesionOperativa() {
       if (esRevalidacionMismoUsuario) return;
 
       if (['SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(event)) {
-        cargar({ forzar: true });
+        setTimeout(() => { if (montadoRef.current) cargar({ forzar: true }); }, 0);
       }
     });
     return () => {
