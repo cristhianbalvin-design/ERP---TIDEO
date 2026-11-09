@@ -9992,3 +9992,41 @@ width:20px;height:20px}
 .dx-tms-tc .dx-tms-route b,.dx-tmsmon-c3 .dx-tms-route b { overflow:visible; white-space:normal; overflow-wrap:anywhere; }
 .dx-ui .dx-tmsvd-head .dx-btn:not(.primary):not(:disabled):hover,.dx-tmsvd-head .dx-btn[aria-expanded='true'] { background:rgba(255,255,255,.2); color:var(--dx-ui-on-hero); }
 .dx-tmsvd-stops-empty { padding:16px 18px; color:var(--dx-ui-gray); font-size:13px; }
+/* Inicio operativo */
+.dx-opsi { container-type: inline-size; display: grid; gap: 18px; padding: 24px; min-width: 0; background: var(--bg); color: var(--text); font: 14px 'DM Sans', sans-serif; }
+.dx-opsi-head { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 16px; }
+.dx-opsi-head h1 { margin: 4px 0 2px; font: 700 26px 'Sora', sans-serif; }
+.dx-opsi-eyebrow { color: var(--badge-cyan-fg); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.dx-opsi-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dx-opsi-btn { min-height: 40px; padding: 0 14px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--white); color: var(--text); font: 600 14px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.dx-opsi-btn.dx-opsi-primary { background: var(--navy); color: white; border-color: transparent; }
+.dx-opsi button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.dx-opsi-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.dx-opsi-kpi, .dx-opsi-card { background: var(--white); border: 1px solid var(--card-border); min-width: 0; }
+.dx-opsi-kpi { display: flex; flex-direction: column; justify-content: center; min-height: 72px; padding: 8px 16px; border-radius: 10px; }
+.dx-opsi-kpi span, .dx-opsi-kpi small, .dx-opsi-muted, .dx-opsi-card-head span { color: var(--text-muted); font-size: 12px; }
+.dx-opsi-kpi b { font: 700 20px 'Sora', sans-serif; font-variant-numeric: tabular-nums; }
+.dx-opsi-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.dx-opsi-stack { display: grid; gap: 14px; min-width: 0; }
+.dx-opsi-card { border-radius: 14px; overflow: hidden; }
+.dx-opsi-card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--card-border); }
+.dx-opsi-card-head h2 { margin: 0; font: 700 15px 'Sora', sans-serif; }
+.dx-opsi-body { padding: 14px 16px; margin: 0; }
+.dx-opsi-table-wrap { overflow-x: auto; }
+.dx-opsi table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.dx-opsi th { text-align: left; color: var(--text-muted); font-size: 12px; white-space: nowrap; background: var(--bg); }
+.dx-opsi th, .dx-opsi td { padding: 10px 12px; border-bottom: 1px solid var(--card-border); vertical-align: top; }
+.dx-opsi-alerts { display: grid; gap: 8px; }
+.dx-opsi-alert { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--card-border); border-radius: 10px; overflow-wrap: anywhere; }
+.dx-opsi-dot { width: 10px; height: 10px; border-radius: 50%; }
+.dx-opsi-amb { background: #b66b00; }
+.dx-opsi-cyan { background: var(--cyan); }
+.dx-opsi-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dx-opsi-quick button { min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 10px 14px; border: 1px solid var(--card-border); border-radius: 12px; background: var(--white); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.dx-opsi-quick small { color: var(--text-muted); }
+.dx-opsi-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+[data-theme="dark"] .dx-opsi-btn.dx-opsi-primary { background: #e6ebf2; color: #0f1724; }
+@container (max-width: 1100px) { .dx-opsi-grid { grid-template-columns: 1fr; } }
+@container (max-width: 880px) { .dx-opsi-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 600px) { .dx-opsi-head { align-items: flex-start; } .dx-opsi-head h1 { font-size: 22px; } }
+@container (max-width: 420px) { .dx-opsi-kpis, .dx-opsi-quick { grid-template-columns: 1fr; } .dx-opsi-alert { grid-template-columns: auto minmax(0, 1fr); } .dx-opsi-alert .dx-opsi-btn { grid-column: 2; justify-self: start; } }
