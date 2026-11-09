@@ -7,6 +7,8 @@ import { AccesoTransporte } from './AccesoTransporte.jsx';
 import { usePermisosTransporte } from './usePermisosTransporte.js';
 import { TransporteMapaRutas } from './TransporteMapaRutas.jsx';
 import { DespachoPanel } from './DespachoPanel.jsx';
+import { BotonConstancia, EvidenciaParada, OperacionComercial } from './ViajeOperacion.jsx';
+import { autorizarSalida, obtenerOperacionViaje } from '../../../services/transporteLogisticaService.js';
 import {
   accionesPermitidasViaje, avanceEstimadoViaje, colorEstadoViaje, estadoDocumento, etapasViaje, etiquetaEstadoViaje,
   etiquetaModalidad, etiquetaTipoParada, etiquetaTipoVehiculo, etiquetaContador, fechaActualLocal, fechaLocalDeViaje,
@@ -89,7 +91,9 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
   const [despacho, setDespacho] = useState(false);
   const [nota, setNota] = useState('');
   const [aviso, setAviso] = useState('');
+  const [operacion, setOperacion] = useState(null);
   const hoy = fechaActualLocal();
+  const empresaNombre = sesion.empresa?.razon_social || sesion.empresa?.nombre_comercial || sesion.empresa?.nombre || '';
 
   const cargar = useCallback(async () => {
     if (!empresaId || !access.ver || !viajeId) { setLoading(false); return; }
@@ -98,6 +102,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
       const data = await obtenerViaje(empresaId, viajeId);
       if (!data) setError('No se encontró el viaje.');
       setViaje(data);
+      setOperacion(data?.tipo_viaje === 'comercial' ? await obtenerOperacionViaje(viajeId).catch(() => null) : null);
     } catch (e) { setError(e.message || 'No se pudo cargar el viaje.'); }
     finally { setLoading(false); }
   }, [empresaId, access.ver, viajeId]);
@@ -109,7 +114,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
     return () => window.removeEventListener('click', cerrar);
   }, [menu]);
 
-  const etapas = useMemo(() => viaje ? etapasViaje(viaje.estado, viaje.eventos) : [], [viaje]);
+  const etapas = useMemo(() => viaje ? etapasViaje(viaje.estado, viaje.eventos, viaje.tipo_viaje) : [], [viaje]);
   const avance = useMemo(() => viaje ? avanceEstimadoViaje(viaje, viaje.eventos) : null, [viaje]);
   const paradas = viaje?.paradas || [];
   const coords = paradas.map(parada => parada.latitud != null && parada.longitud != null ? [Number(parada.latitud), Number(parada.longitud)] : null);
@@ -146,13 +151,15 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
   }
 
   if (access.motivo) return <AccesoTransporte acceso={access} />;
-  const volver = <nav className="dx-tmsvd-crumbs" aria-label="Ruta de navegación"><button type="button" className="dx-btn link" onClick={() => onNav('transporte-viajes')}>Monitor de Viajes</button>
+  const volver = <nav className="dx-tmsvd-crumbs" aria-label="Ruta de navegación"><button type="button" className="dx-btn link"
+    onClick={() => onNav(viaje?.tipo_viaje === 'logistica' ? 'transporte-ruta' : 'transporte-viajes')}>{viaje?.tipo_viaje === 'logistica' ? 'Hoja de Ruta' : 'Monitor de Viajes'}</button>
     <span aria-hidden="true">›</span><span>{viaje?.codigo || 'Viaje'}</span></nav>;
   if (loading) return <section className="dx-ui dx-tms dx-tmsvd">{volver}<div className="dx-tms-skeletons">{[1, 2, 3].map(key => <div key={key} className="dx-tms-sk is-tall" />)}</div></section>;
   if (error || !viaje) return <section className="dx-ui dx-tms dx-tmsvd">{volver}<div className="dx-ui-card"><div className="dx-tms-state">
     <span className="dx-tms-state-i is-red">!</span><b>{error || 'No se encontró el viaje.'}</b>
     <button type="button" className="dx-btn primary" onClick={cargar}>Reintentar</button></div></div></section>;
 
+  const esLogistica = viaje.tipo_viaje === 'logistica';
   const permitidas = accionesPermitidasViaje(viaje.estado);
   const fecha = fechaLocalDeViaje(viaje.fecha_programada);
   const atrasado = viaje.estado === 'programado' && fecha && fecha < hoy;
@@ -172,13 +179,16 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
     etiquetaDetalle: 'Qué pasó', placeholder: 'Ej.: control policial en Cañete, demora estimada 25 min.', accion: 'Reportar incidente' });
   const acciones = [];
   const primaria = !access.editar ? null
+    : esLogistica ? (viaje.estado === 'programado' ? ['Marcar en ruta', () => transicion('en_ruta', 'Ruta iniciada por el despachador', 'Ruta en curso.')]
+      : viaje.estado === 'en_ruta' ? ['Registrar fin de ruta', () => transicion('entregado', 'Ruta terminada por el despachador', 'Ruta terminada.')]
+        : viaje.estado === 'con_incidente' ? ['Cerrar incidente', () => transicion('en_ruta', 'Incidente cerrado', 'Incidente cerrado.')] : null)
     : viaje.estado === 'borrador' ? ['Programar viaje', () => transicion('programado', null, 'Viaje programado.')]
       : viaje.estado === 'programado' ? ['Asignar y despachar', () => setDespacho(true)]
         : viaje.estado === 'despachado' ? ['Marcar en ruta', () => transicion('en_ruta', null, 'Viaje en ruta.')]
           : viaje.estado === 'en_ruta' ? ['Registrar entrega', () => transicion('entregado', null, 'Entrega registrada.')]
             : viaje.estado === 'con_incidente' ? ['Cerrar incidente', () => transicion('en_ruta', 'Incidente cerrado', 'Incidente cerrado.')]
               : viaje.estado === 'entregado' ? ['Enviar a liquidación', () => transicion('en_liquidacion', null, 'Viaje enviado a liquidación.')] : null;
-  if (access.editar && ['borrador', 'programado'].includes(viaje.estado)) acciones.push(['Editar', () => onNav('transporte-crear-ov', { id: viaje.id })]);
+  if (access.editar && ['borrador', 'programado'].includes(viaje.estado)) acciones.push(['Editar', () => onNav(esLogistica ? 'transporte-ruta' : 'transporte-crear-ov', { id: viaje.id })]);
   if (access.editar && viaje.estado === 'en_ruta') acciones.push(['Reportar incidente', abrirIncidente]);
   if (access.editar && viaje.estado === 'con_incidente') acciones.push(['Registrar entrega', () => transicion('entregado', null, 'Entrega registrada.')]);
   const menuItems = !access.editar ? [] : [
@@ -189,11 +199,11 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
   const callout = atrasado ? <div className="dx-tmsvd-callout is-red" role="alert"><span className="dx-tmsvd-callout-i" aria-hidden="true">!</span>
     <div><b>Atrasado: debió salir el {formatearFechaTransporte(fecha)} (hace {etiquetaContador(diasAtraso, 'día')})</b>
       Asigna unidad y conductor para despachar, o edita la fecha para reprogramarlo.</div>
-    {access.editar && <button type="button" className="dx-btn" onClick={() => onNav('transporte-crear-ov', { id: viaje.id })} disabled={busy}>Reprogramar</button>}</div>
+    {access.editar && <button type="button" className="dx-btn" onClick={() => onNav(esLogistica ? 'transporte-ruta' : 'transporte-crear-ov', { id: viaje.id })} disabled={busy}>Reprogramar</button>}</div>
     : viaje.estado === 'con_incidente' ? <div className="dx-tmsvd-callout is-amber" role="status"><span className="dx-tmsvd-callout-i" aria-hidden="true">⚑</span>
       <div><b>Incidente abierto{ultimoIncidente?.nota ? ` · ${ultimoIncidente.nota}` : ''}</b>Reportado el {fechaCorta(ultimoIncidente?.created_at)}.</div></div>
       : viaje.estado === 'entregado' ? <div className="dx-tmsvd-callout is-green" role="status"><span className="dx-tmsvd-callout-i" aria-hidden="true">✓</span>
-        <div><b>Entregado el {fechaCorta(entrega?.created_at)}</b>Listo para enviar a liquidación.</div></div>
+        <div><b>{esLogistica ? 'Ruta terminada' : 'Entregado'} el {fechaCorta(entrega?.created_at)}</b>{esLogistica ? 'Revisa la constancia de cada parada.' : 'Listo para enviar a liquidación.'}</div></div>
         : viaje.estado === 'borrador' ? <div className="dx-tmsvd-callout is-amber" role="status"><span className="dx-tmsvd-callout-i" aria-hidden="true">✎</span>
           <div><b>Borrador: aún no está en el plan</b>Revisa los datos y prográmalo para que aparezca en el tablero de despacho.</div></div>
           : viaje.estado === 'cancelado' ? <div className="dx-tmsvd-callout is-red" role="status"><span className="dx-tmsvd-callout-i" aria-hidden="true">⊘</span>
@@ -206,9 +216,9 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
     {volver}
     <header className="dx-tmsvd-head">
       <div className="dx-tmsvd-top"><div className="dx-tmsvd-tit">
-        <div className="dx-tmsvd-k">Orden de viaje <span className={`dx-ui-pill ${colorEstadoViaje(viaje.estado)}`}><i />{etiquetaEstadoViaje(viaje.estado)}</span></div>
+        <div className="dx-tmsvd-k">{esLogistica ? 'Ruta de logística propia' : 'Orden de viaje'} <span className={`dx-ui-pill ${colorEstadoViaje(viaje.estado)}`}><i />{etiquetaEstadoViaje(viaje.estado)}</span></div>
         <h1>{viaje.origen_nombre} <i aria-hidden="true">→</i> {viaje.destino_nombre}</h1>
-        <div className="dx-tmsvd-cl"><b>{viaje.codigo}</b> · {nombreCliente(viaje)} · {viaje.os?.numero || 'Viaje directo'}</div></div>
+        <div className="dx-tmsvd-cl"><b>{viaje.codigo}</b> · {esLogistica ? 'Recojos, entregas y compras de la empresa' : `${nombreCliente(viaje)} · ${viaje.os?.numero || 'Viaje directo'}`}</div></div>
         <div className="dx-tmsvd-acts">
           {acciones.map(([texto, accion]) => <button key={texto} type="button" className="dx-btn" onClick={accion} disabled={busy}>{texto}</button>)}
           {menuItems.length > 0 && <div className="dx-tmsvd-menu"><button type="button" className="dx-btn" aria-label="Más acciones" aria-haspopup="menu"
@@ -222,7 +232,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
         {viaje.duracion_estimada_horas != null && <span>⏱ <b>{formatearNumeroTransporte(viaje.duracion_estimada_horas)} h</b> estimadas</span>}
         <span>◎ <b>{paradas.length}</b> paradas</span>
         {viaje.tipo_unidad && <span>⛟ <b>{etiquetaTipoVehiculo(viaje.tipo_unidad)}</b></span>}
-        <span>Ingreso <b>{formatearImporte(viaje.ingreso_estimado, viaje.moneda)}</b></span></div>
+        {!esLogistica && <span>Ingreso <b>{formatearImporte(viaje.ingreso_estimado, viaje.moneda)}</b></span>}</div>
       {viaje.estado !== 'cancelado' && <ol className="dx-tmsvd-stages" aria-label="Etapas del viaje">{etapas.map((etapa, index) =>
         <li key={etapa.clave} className={`is-${etapa.paso}`} aria-current={etapa.paso === 'actual' ? 'step' : undefined}>
           <span className="dx-tmsvd-dot">{etapa.paso === 'hecho' ? '✓' : index + 1}</span><b>{etapa.etiqueta}</b>
@@ -235,7 +245,8 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
     <div className="dx-tmsvd-grid">
       <div className="dx-tmsvd-main">
       <section className="dx-tmsvd-blk dx-tmsvd-o1"><header><h3>Recorrido</h3><small>{etiquetaContador(paradas.length, 'parada')}</small>
-        {avance && <span className="dx-tms-mini is-ok dx-tmsvd-sp">● {Math.round(avance.avance * 100)} % estimado</span>}</header>
+        {avance && <span className="dx-tms-mini is-ok dx-tmsvd-sp">● {Math.round(avance.avance * 100)} % estimado</span>}
+        <BotonConstancia viaje={viaje} empresa={empresaNombre} /></header>
         <div className="dx-tmsvd-rec"><TransporteMapaRutas rutas={rutasMapa} className="dx-tmsvd-map"
           aviso={!paradas.length ? 'Sin paradas registradas' : sinUbicacion ? `Solo ${paradas.length - sinUbicacion} de ${paradas.length} paradas con ubicación` : avance ? 'Posición estimada por tiempo' : ''} />
           {!paradas.length && <div className="dx-tmsvd-stops-empty">Este viaje no tiene paradas registradas. Edítalo para agregar origen, destino y paradas.</div>}
@@ -245,13 +256,19 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
             return <li key={parada.id || index} className={hecha ? 'is-ok' : ''}><span className={`dx-tmsvd-p ${tono}`}>{hecha ? '✓' : index === 0 ? 'A' : index === paradas.length - 1 ? 'B' : index}</span>
               <div><span className="dx-tmsvd-tp">{etiquetaTipoParada(parada.tipo)}</span><b>{parada.nombre}</b><small>{parada.direccion || 'Sin dirección registrada'}</small>
                 <span className="dx-tmsvd-row">{(parada.ventana_inicio || parada.ventana_fin) && <span className="dx-tms-mini is-info">◷ {[parada.ventana_inicio, parada.ventana_fin].filter(Boolean).map(item => String(item).slice(0, 5)).join(' – ')}</span>}
-                  {!coords[index] && <span className="dx-tms-mini is-warn">⌖ Sin ubicación en mapa</span>}</span></div></li>;
+                  {!coords[index] && <span className="dx-tms-mini is-warn">⌖ Sin ubicación en mapa</span>}</span>
+                <EvidenciaParada parada={parada} /></div></li>;
           })}</ol></div>
         {sinUbicacion > 0 && <div className="dx-transporte-composer-alert is-amber dx-tmsvd-gpsnote" role="status"><span>{sinUbicacion} de {paradas.length} paradas no tienen ubicación.
           Complétalas en <b>Lugares</b> para ver el recorrido completo.</span></div>}
       </section>
 
-      <section className="dx-tmsvd-blk dx-tmsvd-o2"><header><h3>Carga</h3></header><div className="dx-tmsvd-in dx-tmsvd-kv">
+      {!esLogistica && operacion && <OperacionComercial operacion={operacion} puedeAutorizar={access.editar}
+        onAutorizar={async motivo => { await autorizarSalida(viaje.id, motivo); setAviso('Salida autorizada.'); await cargar(); }} />}
+
+      {esLogistica ? viaje.observaciones && <section className="dx-tmsvd-blk dx-tmsvd-o2"><header><h3>Indicaciones</h3></header>
+        <div className="dx-tmsvd-in"><b>{viaje.observaciones}</b></div></section>
+      : <section className="dx-tmsvd-blk dx-tmsvd-o2"><header><h3>Carga</h3></header><div className="dx-tmsvd-in dx-tmsvd-kv">
         <div className="is-wide"><small>Descripción</small><b>{viaje.carga_descripcion || '—'}</b></div>
         <div><small>Tipo de carga</small><b>{TIPOS_CARGA[viaje.tipo_carga] || viaje.tipo_carga || '—'}</b></div>
         <div><small>Peso</small><b className="is-big">{viaje.peso_toneladas != null ? `${formatearNumeroTransporte(viaje.peso_toneladas)} t` : '—'}</b></div>
@@ -260,7 +277,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
         <div className="is-wide"><small>Requisitos</small><div className="dx-tms-chips">{(viaje.requisitos || []).length
           ? viaje.requisitos.map(item => <span key={item} className="dx-tmsvd-req">✓ {REQUISITOS[item] || item}</span>) : <b className="is-muted">Sin requisitos especiales</b>}</div></div>
         {viaje.observaciones && <div className="is-wide"><small>Observaciones</small><b>{viaje.observaciones}</b></div>}
-      </div></section>
+      </div></section>}
 
       <section className="dx-tmsvd-blk dx-tmsvd-o5"><header><h3>Bitácora</h3><small>{etiquetaContador((viaje.eventos || []).length, 'evento')}</small></header>
         {!(viaje.eventos || []).length && <div className="dx-tmsvd-stops-empty">Aún no hay eventos registrados.</div>}
@@ -280,7 +297,8 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
         {!viaje.vehiculo ? <div className="dx-tmsvd-empty"><span className="dx-tmsvd-empty-i" aria-hidden="true">⛟</span><b>Sin unidad ni conductor</b>
           <span>Requiere {(viaje.tipo_unidad ? etiquetaTipoVehiculo(viaje.tipo_unidad) : 'una unidad').toLocaleLowerCase('es-PE')}{viaje.peso_toneladas != null ? ` para ${formatearNumeroTransporte(viaje.peso_toneladas)} t` : ''}
             {(viaje.requisitos || []).length ? ` · ${viaje.requisitos.map(item => REQUISITOS[item] || item).join(', ')}` : ''}.</span>
-          {viaje.estado === 'programado' && access.editar ? <button type="button" className="dx-btn primary" onClick={() => setDespacho(true)} disabled={busy}>Asignar y despachar</button>
+          {viaje.estado === 'programado' && access.editar ? <button type="button" className="dx-btn primary" onClick={() => (esLogistica ? onNav('transporte-ruta', { id: viaje.id }) : setDespacho(true))}
+            disabled={busy}>{esLogistica ? 'Asignar en la Hoja de Ruta' : 'Asignar y despachar'}</button>
             : <small>Se asigna al despachar.</small>}</div>
           : <div className="dx-tmsvd-res">
             <div className="dx-tmsvd-rcard"><span className="dx-tmsvd-ri" aria-hidden="true">⛟</span><div><b>{viaje.vehiculo.placa}</b>
@@ -291,22 +309,24 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
             {viaje.transportista && <small className="dx-tms-muted">{viaje.transportista.nombre_comercial || viaje.transportista.razon_social} · {viaje.transportista.tipo_operador === 'propio' ? 'propio' : 'tercero'}</small>}
             <div className="dx-tmsvd-docs"><div><i className={`dx-tms-dot is-${docUnidad.clave}`} />Certificado MTC {viaje.vehiculo.nro_certificado_habilitacion || ''}<span>{docUnidad.etiqueta}</span></div>
               {docConductor && <div><i className={`dx-tms-dot is-${docConductor.clave}`} />Brevete<span>{docConductor.etiqueta}</span></div>}</div>
-            {viaje.estado === 'programado' && access.editar && <button type="button" className="dx-btn" onClick={() => setDespacho(true)} disabled={busy}>Cambiar asignación</button>}
+            {viaje.estado === 'programado' && access.editar && <button type="button" className="dx-btn"
+              onClick={() => (esLogistica ? onNav('transporte-ruta', { id: viaje.id }) : setDespacho(true))} disabled={busy}>Cambiar asignación</button>}
           </div>}
       </div></section>
 
-      <section className="dx-tmsvd-blk dx-tmsvd-o3"><header><h3>Ingreso</h3>{['entregado', 'en_liquidacion', 'cerrado'].includes(viaje.estado) && <span className="dx-tms-mini is-info dx-tmsvd-sp">Guardado</span>}</header>
+      {!esLogistica && <section className="dx-tmsvd-blk dx-tmsvd-o3"><header><h3>Ingreso</h3>{['entregado', 'en_liquidacion', 'cerrado'].includes(viaje.estado) && <span className="dx-tms-mini is-info dx-tmsvd-sp">Guardado</span>}</header>
         <div className="dx-tmsvd-in"><small className="dx-tmsvd-lbl">Ingreso estimado</small><div className="dx-tmsvd-tot">{formatearImporte(viaje.ingreso_estimado, viaje.moneda)}</div>
           <dl className="dx-tmsvd-lines"><dt>Modalidad</dt><dd>{etiquetaModalidad(viaje.modalidad)}</dd>
             <dt>Tarifa unitaria</dt><dd>{formatearImporte(viaje.tarifa_unitaria, viaje.moneda, viaje.modalidad)}</dd>
             <dt>Cantidad</dt><dd>{formatearNumeroTransporte(viaje.cantidad_facturable, 3)}</dd>
-            <dt>Mínimo facturable</dt><dd>{viaje.minimo_facturable == null ? '—' : formatearImporte(viaje.minimo_facturable, viaje.moneda)}</dd></dl></div></section>
+            <dt>Mínimo facturable</dt><dd>{viaje.minimo_facturable == null ? '—' : formatearImporte(viaje.minimo_facturable, viaje.moneda)}</dd></dl></div></section>}
 
       <section className="dx-tmsvd-blk dx-tmsvd-o4"><header><h3>Datos</h3></header><div className="dx-tmsvd-in dx-tmsvd-kv is-one">
+        {esLogistica ? <div><small>Tipo</small><b>Logística propia · el costo va al centro de costos</b></div> : <>
         <div><small>Cliente</small><b>{nombreCliente(viaje)}</b></div>
-        <div><small>OS del cliente</small><b className={viaje.os ? '' : 'is-muted'}>{viaje.os?.numero || 'Viaje directo (sin OS)'}</b></div>
+        <div><small>OS del cliente</small><b className={viaje.os ? '' : 'is-muted'}>{viaje.os?.numero || 'Viaje directo (sin OS)'}</b></div></>}
         {viaje.referencia_cliente && <div><small>Referencia del cliente</small><b>{viaje.referencia_cliente}</b></div>}
-        <div><small>Ruta maestra</small><b className={viaje.ruta ? '' : 'is-muted'}>{viaje.ruta ? [viaje.ruta.codigo, viaje.ruta.nombre].filter(Boolean).join(' · ') : 'Sin ruta maestra'}</b></div>
+        {!esLogistica && <div><small>Ruta maestra</small><b className={viaje.ruta ? '' : 'is-muted'}>{viaje.ruta ? [viaje.ruta.codigo, viaje.ruta.nombre].filter(Boolean).join(' · ') : 'Sin ruta maestra'}</b></div>}
         <div><small>Creado</small><b>{formatearFechaHoraTransporte(viaje.created_at)}</b></div>
       </div></section>
 

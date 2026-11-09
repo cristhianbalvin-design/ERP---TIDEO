@@ -16,8 +16,10 @@ const COLUMNAS = [['programado', 'Programado', 'is-amber'], ['despachado', 'Desp
   ['en_ruta', 'En ruta', 'is-violet'], ['entregado', 'Entregado', 'is-green']];
 const PERIODOS = [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['todos', 'Todos']];
 const MONEDAS = [['', 'Todas las monedas'], ['PEN', 'S/'], ['USD', 'US$']];
+const TIPOS = [['', 'Todos los tipos'], ['comercial', 'Comerciales'], ['logistica', 'Logística propia']];
 const POR_COLUMNA = 4;
-const cliente = row => row.cuenta?.nombre_comercial || row.cuenta?.razon_social || 'Sin cliente';
+const cliente = row => (row.tipo_viaje === 'logistica' ? 'Logística propia'
+  : row.cuenta?.nombre_comercial || row.cuenta?.razon_social || 'Sin cliente');
 const iniciales = nombre => String(nombre || '').trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('')
   .toLocaleUpperCase('es-PE');
 const hora = fecha => new Date(fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -54,6 +56,7 @@ export function MonitorViajesPage({ onNav }) {
   const [vista, setVista] = useState('tablero');
   const [periodo, setPeriodo] = useState('semana');
   const [moneda, setMoneda] = useState('');
+  const [tipo, setTipo] = useState('');
   const [abiertas, setAbiertas] = useState({});
   const hoy = fechaActualLocal();
 
@@ -80,8 +83,9 @@ export function MonitorViajesPage({ onNav }) {
     puntos: [{ coords: item.origen }, { coords: item.destino }] })), [enRuta]);
   const filtrados = useMemo(() => filtrarBusquedaInteligente(filtrarPeriodoViajes(rows, periodo, hoy)
     .filter(row => !moneda || row.moneda === moneda)
+    .filter(row => !tipo || (row.tipo_viaje || 'comercial') === tipo)
     .map(row => ({ ...row, busqueda: [row.codigo, cliente(row), row.origen_nombre, row.destino_nombre, row.os?.numero,
-      row.vehiculo?.placa, row.conductor?.nombre] })), query), [rows, periodo, hoy, moneda, query]);
+      row.vehiculo?.placa, row.conductor?.nombre] })), query), [rows, periodo, hoy, moneda, tipo, query]);
   const abrir = row => onNav('transporte-viaje', { id: row.id });
   const teclado = (event, row) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrir(row); } };
 
@@ -106,7 +110,8 @@ export function MonitorViajesPage({ onNav }) {
     return <article key={row.id} className="dx-tms-tc" role="button" tabIndex={0} aria-label={`Abrir ${row.codigo}`}
       onClick={() => abrir(row)} onKeyDown={event => teclado(event, row)}>
       <div className="dx-tms-tc-head"><span className="dx-tms-code">{row.codigo}</span>
-        <span className="dx-tms-amt">{formatearImporte(row.ingreso_estimado, row.moneda)}</span></div>
+        {row.tipo_viaje === 'logistica' ? <span className="dx-tmshr-mini is-violet">Logística</span>
+          : <span className="dx-tms-amt">{formatearImporte(row.ingreso_estimado, row.moneda)}</span>}</div>
       <div className="dx-tms-tc-cli">{cliente(row)}{row.os?.numero && <small> · {row.os.numero}</small>}</div>
       <div className="dx-tms-route"><b>{row.origen_nombre}</b><i>→</i><b>{row.destino_nombre}</b></div>
       <div className="dx-tms-tc-meta">{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`,
@@ -178,6 +183,9 @@ export function MonitorViajesPage({ onNav }) {
         <span className="dx-tms-sep" aria-hidden="true" />
         {MONEDAS.map(([clave, texto]) => <button key={clave || 'todas'} type="button" className={`dx-tms-fchip${moneda === clave ? ' is-on' : ''}`}
           aria-pressed={moneda === clave} onClick={() => setMoneda(clave)}>{texto}</button>)}
+        <span className="dx-tms-sep" aria-hidden="true" />
+        {TIPOS.map(([clave, texto]) => <button key={clave || 'tipos'} type="button" className={`dx-tms-fchip${tipo === clave ? ' is-on' : ''}`}
+          aria-pressed={tipo === clave} onClick={() => setTipo(clave)}>{texto}</button>)}
       </div>
       {loading ? <div className="dx-tms-skeletons" aria-label="Cargando viajes">{[1, 2, 3, 4].map(key => <div key={key} className="dx-tms-sk" />)}</div>
         : error ? <div className="dx-tms-state"><span className="dx-tms-state-i is-red">!</span><b>No pudimos cargar los viajes</b><span>{error}</span>
@@ -187,7 +195,7 @@ export function MonitorViajesPage({ onNav }) {
             {access.crear && <button type="button" className="dx-btn primary" onClick={() => onNav('transporte-crear-ov')}>＋ Nueva orden de viaje</button>}</div>
             : !filtrados.length ? <div className="dx-tms-state"><span className="dx-tms-state-i">⌕</span><b>Sin resultados</b>
               <span>Prueba con otra búsqueda, periodo o moneda.</span>
-              <button type="button" className="dx-btn" onClick={() => { setQuery(''); setPeriodo('todos'); setMoneda(''); }}>Limpiar filtros</button></div>
+              <button type="button" className="dx-btn" onClick={() => { setQuery(''); setPeriodo('todos'); setMoneda(''); setTipo(''); }}>Limpiar filtros</button></div>
               : vista === 'tablero' ? <div className="dx-tms-board">{COLUMNAS.map(([clave, texto, tono]) => {
                 const items = filtrados.filter(row => columnaTableroViaje(row.estado) === clave)
                   .sort((a, b) => String(a.fecha_programada).localeCompare(String(b.fecha_programada)));
@@ -210,7 +218,7 @@ export function MonitorViajesPage({ onNav }) {
                         <small>{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`, row.paradas.length > 0 && etiquetaContador(row.paradas.length, 'parada')].filter(Boolean).join(' · ')}</small></span>
                       <span className="dx-tmsmon-c4"><span className={`dx-tms-when ${salida.tono}`}>{salida.texto}</span></span>
                       <span className="dx-tmsmon-c5"><Recurso row={row} /></span>
-                      <span className="dx-tmsmon-c6 dx-tms-amt">{formatearImporte(row.ingreso_estimado, row.moneda)}</span>
+                      <span className="dx-tmsmon-c6 dx-tms-amt">{row.tipo_viaje === 'logistica' ? '—' : formatearImporte(row.ingreso_estimado, row.moneda)}</span>
                       <span className="dx-ui-arrow" aria-hidden="true">›</span></div>;
                   })}</div>}
     </div>

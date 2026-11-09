@@ -464,6 +464,10 @@ test('etapas, avance estimado, tablero y periodo del monitor', () => {
   const etapas = utils.etapasViaje('con_incidente', eventos);
   assert.deepEqual(etapas.map(item => item.paso), ['hecho', 'hecho', 'hecho', 'actual', 'futuro', 'futuro', 'futuro']);
   assert.equal(etapas[3].fecha, '2026-11-09T13:00:00Z');
+  const logistica = utils.etapasViaje('en_ruta', [], 'logistica');
+  assert.deepEqual(logistica.map(item => item.clave), ['borrador', 'programado', 'en_ruta', 'entregado']);
+  assert.deepEqual(logistica.map(item => item.paso), ['hecho', 'hecho', 'actual', 'futuro']);
+  assert.equal(logistica[3].etiqueta, 'Terminada');
   const avance = utils.avanceEstimadoViaje({ estado: 'con_incidente', duracion_estimada_horas: 4 }, eventos, new Date('2026-11-09T15:00:00Z'));
   assert.equal(avance.avance, 0.5);
   assert.equal(utils.avanceEstimadoViaje({ estado: 'programado', duracion_estimada_horas: 4 }, eventos), null);

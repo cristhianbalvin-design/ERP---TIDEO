@@ -599,17 +599,20 @@ export const requiereExcepcionDespacho = controles => controles.some(control => 
 
 export const ETAPAS_VIAJE = Object.freeze([['borrador', 'Borrador'], ['programado', 'Programado'], ['despachado', 'Despachado'],
   ['en_ruta', 'En ruta'], ['entregado', 'Entregado'], ['en_liquidacion', 'En liquidación'], ['cerrado', 'Cerrado']]);
+// Logística propia: sale sin despacho formal y termina al cerrar la ruta (no va a liquidación).
+export const ETAPAS_LOGISTICA = Object.freeze([['borrador', 'Borrador'], ['programado', 'Programado'], ['en_ruta', 'En ruta'], ['entregado', 'Terminada']]);
 
 // Etapas con su fecha del último paso registrado. «Con incidente» cuenta como «En ruta».
-export function etapasViaje(estado, eventos = []) {
-  const actual = estado === 'con_incidente' ? 'en_ruta' : estado;
-  const indice = ETAPAS_VIAJE.findIndex(([clave]) => clave === actual);
+export function etapasViaje(estado, eventos = [], tipoViaje = 'comercial') {
+  const etapas = tipoViaje === 'logistica' ? ETAPAS_LOGISTICA : ETAPAS_VIAJE;
+  const actual = estado === 'con_incidente' || (tipoViaje === 'logistica' && estado === 'despachado') ? 'en_ruta' : estado;
+  const indice = etapas.findIndex(([clave]) => clave === actual);
   const fechas = {};
   eventos.forEach(evento => {
     const clave = evento.estado_nuevo === 'con_incidente' ? 'en_ruta' : evento.estado_nuevo;
     if (evento.estado_anterior !== evento.estado_nuevo || !evento.estado_anterior) fechas[clave] = fechas[clave] || evento.created_at;
   });
-  return ETAPAS_VIAJE.map(([clave, etiqueta], index) => ({
+  return etapas.map(([clave, etiqueta], index) => ({
     clave, etiqueta, fecha: fechas[clave] || null,
     paso: indice < 0 ? 'futuro' : index < indice ? 'hecho' : index === indice ? 'actual' : 'futuro',
   }));
