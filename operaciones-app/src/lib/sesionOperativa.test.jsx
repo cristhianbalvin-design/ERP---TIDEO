@@ -106,6 +106,19 @@ describe('useSesionOperativa - sincronización entre instancias', () => {
     getSesionCompartidaListenerCount = modulo.__getSesionCompartidaListenerCount;
   });
 
+  it('termina sin sesión aunque el bootstrap de autenticación siga pendiente', async () => {
+    mocks.client.auth.getSession.mockImplementation(() => new Promise(() => {}));
+    let estado;
+    function Consumidor() { estado = useSesionOperativa(); return null; }
+    let renderer;
+    await act(async () => { renderer = create(<Consumidor />); });
+    expect(estado.cargando).toBe(true);
+    await act(async () => { mocks.client.authEvents[0]('INITIAL_SESSION', null); });
+    expect(estado.estado).toBe('sin_sesion');
+    expect(estado.cargando).toBe(false);
+    await act(async () => { renderer.unmount(); });
+  });
+
   it('propaga sociedad concreta y el regreso a Todas sin remontar la segunda instancia', async () => {
     let paginaMontajes = 0;
     let renderer;
