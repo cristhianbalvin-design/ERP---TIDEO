@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularBIOperativo, cargarBIOperativo, diasSinParte } from './biOperativoService.js';
+import { calcularBIOperativo, cargarBIOperativo, diasSinParte, fechaLima } from './biOperativoService.js';
 const datos = {
   ots: [
     {id:'a', estado:'cerrada', fecha_programada:'2026-09-15', fecha_fin:'2026-10-10', os_cliente_id:'os1', costo_estimado:100},
@@ -35,10 +35,10 @@ test('el inicio con hora se interpreta en Lima', () => {
 });
 
 
-test('carga acotada por mes y lotes de 200, con ultimo parte anterior', async () => {
+test('carga la ventana y los ultimos partes actuales en lotes de 200', async () => {
   const consultas = [];
   const ots = Array.from({ length: 201 }, (_, i) => ({
-    id: `ot${i}`, estado: i === 0 ? 'ejecucion' : 'cerrada', sociedad_id: 's1',
+    id: `ot${i}`, estado: i === 0 ? 'ejecucion' : 'programada', sociedad_id: 's1',
     cuenta_id: 'cuenta1', fecha_programada: '2026-10-01',
   }));
   const db = {
@@ -59,8 +59,15 @@ test('carga acotada por mes y lotes de 200, con ultimo parte anterior', async ()
         then(resolve) {
           let data = [];
           if (tabla === 'ordenes_trabajo') data = ots;
-          if (tabla === 'partes_diarios' && llamada.filtros.some(f => f[0] === 'limit')) {
-            data = [{ id: 'anterior', orden_trabajo_id: 'ot0', fecha: '2026-01-01', estado: 'aprobado' }];
+          if (tabla === 'partes_diarios' && llamada.filtros.some(f => f[0] === 'in' && f[2].includes('ot0'))) {
+            data = [
+              { id: 'rechazado', orden_trabajo_id: 'ot0', fecha: '2026-11-08', estado: 'rechazado' },
+              { id: 'actual', orden_trabajo_id: 'ot0', fecha: '2026-11-07', estado: 'aprobado' },
+              { id: 'anterior', orden_trabajo_id: 'ot0', fecha: '2026-01-01', estado: 'aprobado' },
+            ];
+          }
+          if (tabla === 'partes_diarios' && llamada.filtros.some(f => f[0] === 'gte' && f[1] === 'fecha')) {
+            data = [{ id: 'mes', orden_trabajo_id: 'ot0', fecha: '2026-10-07', estado: 'aprobado', horas_normales: 8 }];
           }
           resolve({ data, error: null });
         },
@@ -70,7 +77,18 @@ test('carga acotada por mes y lotes de 200, con ultimo parte anterior', async ()
   };
   const resultado = await cargarBIOperativo('empresa', { sinFiltro: false, sociedadesIds: ['s1'] }, '2026-10', db);
   assert.equal(resultado.ots.length, 201);
-  assert.equal(resultado.partes[0].id, 'anterior');
+  assert.deepEqual(resultado.partes.map(p => p.id), ['mes']);
+  assert.deepEqual(resultado.partesActuales.map(p => p.id), ['actual']);
+  const indicadores = calcularBIOperativo(resultado, '2026-10', '2026-11-09');
+  assert.equal(indicadores.sinParte.length, 0);
+  assert.deepEqual(diasSinParte(ots[0], resultado.partesActuales, '2026-11-09'), { ultimo: '2026-11-07', dias: 2 });
+  assert.equal(indicadores.normales, 8);
+  const actuales = consultas.filter(c => c.tabla === 'partes_diarios' && c.filtros.some(f => f[0] === 'in'));
+  assert.deepEqual(actuales.map(c => c.filtros.find(f => f[0] === 'in')[2].length), [200, 1]);
+  for (const consulta of actuales) {
+    assert.ok(consulta.filtros.some(f => f[0] === 'lte' && f[1] === 'fecha' && f[2] === fechaLima()));
+    assert.ok(consulta.filtros.some(f => f[0] === 'order' && f[1] === 'fecha' && f[2].ascending === false));
+  }
   assert.ok(consultas.every(c => c.columnas !== '*'));
   const consultaOT = consultas.find(c => c.tabla === 'ordenes_trabajo');
   assert.match(consultaOT.filtros.find(f => f[0] === 'or')[1], /2026-05-01.*2026-10-31/);

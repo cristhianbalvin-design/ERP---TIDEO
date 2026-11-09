@@ -28,7 +28,7 @@ export function diasSinParte(ot, partes, hoy) {
   return { ultimo: ultimo || null, dias };
 }
 
-export function calcularBIOperativo({ ots = [], partes = [], costos = [], tareas = [], os = [] }, periodo, hoy = fechaLima()) {
+export function calcularBIOperativo({ ots = [], partes = [], partesActuales = partes, costos = [], tareas = [], os = [] }, periodo, hoy = fechaLima()) {
   const { inicio, fin } = limitesMes(periodo);
   const vigentes = ots.filter(o => o.estado !== 'anulada' && o.estado !== 'anulado');
   const actividad = vigentes.filter(o => {
@@ -46,8 +46,8 @@ export function calcularBIOperativo({ ots = [], partes = [], costos = [], tareas
   const estimado = cerradas.reduce((s, o) => s + num(o.costo_estimado), 0);
   const normales = partesMes.reduce((s, p) => s + num(p.horas_normales), 0);
   const extra = partesMes.reduce((s, p) => s + num(p.horas_extra), 0);
-  const sinParte = abiertas.filter(o => o.estado === 'ejecucion')
-    .map(o => ({ ...o, ...diasSinParte(o, partes, hoy) }))
+  const sinParte = vigentes.filter(o => o.estado === 'ejecucion')
+    .map(o => ({ ...o, ...diasSinParte(o, partesActuales, hoy) }))
     .filter(o => o.dias !== null && o.dias >= 3);
   return {
     actividad, cerradas, abiertas, partesMes, sinParte,
@@ -103,24 +103,19 @@ export async function cargarBIOperativo(empresaId, scope, periodo, client) {
   const idsSet = new Set(ids);
   const abiertas = otsScope.filter(o => ['ejecucion', 'programada'].includes(o.estado));
   async function ultimosPartes() {
-    const resultados = [];
-    for (let i = 0; i < abiertas.length; i += 20) {
-      const lote = abiertas.slice(i, i + 20);
-      const partes = await Promise.all(lote.map(async ot => {
-        const { data, error } = await db.from('partes_diarios')
-          .select('id,orden_trabajo_id,fecha,estado,horas_normales,horas_extra,tecnico_id')
-          .eq('empresa_id', empresaId).eq('orden_trabajo_id', ot.id)
-          .lt('fecha', inicio).lte('fecha', hoy)
-          .or('estado.is.null,estado.not.in.(anulado,rechazado)')
-          .order('fecha', { ascending: false }).limit(1);
-        if (error) throw new Error(`partes_diarios: ${error.message}`);
-        return data || [];
-      }));
-      resultados.push(...partes.flat());
+    const ultimos = new Map();
+    for (let i = 0; i < abiertas.length; i += 200) {
+      const idsAbiertas = abiertas.slice(i, i + 200).map(o => o.id);
+      const partes = await leer('partes_diarios', 'id,orden_trabajo_id,fecha,estado',
+        q => q.in('orden_trabajo_id', idsAbiertas).lte('fecha', hoy)
+          .order('fecha', { ascending: false }).order('id', { ascending: false }));
+      for (const parte of partes) {
+        if (validaParte(parte) && !ultimos.has(parte.orden_trabajo_id)) ultimos.set(parte.orden_trabajo_id, parte);
+      }
     }
-    return resultados;
+    return [...ultimos.values()];
   }
-  const [costos, tareas, os, cuentas, activos, tipos, partesAnteriores] = await Promise.all([
+  const [costos, tareas, os, cuentas, activos, tipos, partesActuales] = await Promise.all([
     porIds('costos_ot', 'orden_trabajo_id,total,mano_obra', 'orden_trabajo_id', ids),
     porIds('ot_tareas', 'ot_id,horas_estimadas,horas_reales', 'ot_id', ids),
     porIds('os_clientes', 'id,sociedad_id,fecha_fin', 'id', [...otsScope.map(o => o.os_cliente_id), ...backlog.map(b => b.os_cliente_id)]),
@@ -136,7 +131,8 @@ export async function cargarBIOperativo(empresaId, scope, periodo, client) {
   const osScope = new Set(os.filter(permitido).map(o => o.id));
   return {
     ots: otsScope,
-    partes: [...partesVentana.filter(p => idsSet.has(p.orden_trabajo_id)), ...partesAnteriores],
+    partes: partesVentana.filter(p => idsSet.has(p.orden_trabajo_id)),
+    partesActuales,
     costos,
     tareas,
     os,

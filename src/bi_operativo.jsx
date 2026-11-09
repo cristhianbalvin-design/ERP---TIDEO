@@ -107,7 +107,7 @@ function PestanaOT({ d, filtrado, periodo, hoy, cliente, pendiente, navigate }) 
   });
   const tipos = [...tipoMap.entries()].sort((a, b) => b[1] - a[1]);
   const rows = d.abiertas.map(o => {
-    const info = diasSinParte(o, filtrado.partes, hoy);
+    const info = diasSinParte(o, filtrado.partesActuales, hoy);
     const alert = o.estado === 'ejecucion' && info.dias != null && info.dias >= 3;
     const abrir = () => navigate('ot', { detail: o.id });
     return (
@@ -272,7 +272,7 @@ export default function BIOperativoReal({ renderMO }) {
     if (!data) return null;
     const ots = data.ots.filter(o => !linea || o.linea_negocio === linea);
     const ids = new Set(ots.map(o => o.id));
-    return { ...data, ots, partes: data.partes.filter(p => ids.has(p.orden_trabajo_id)), costos: data.costos.filter(c => ids.has(c.orden_trabajo_id)), tareas: data.tareas.filter(t => ids.has(t.ot_id)) };
+    return { ...data, ots, partes: data.partes.filter(p => ids.has(p.orden_trabajo_id)), partesActuales: data.partesActuales.filter(p => ids.has(p.orden_trabajo_id)), costos: data.costos.filter(c => ids.has(c.orden_trabajo_id)), tareas: data.tareas.filter(t => ids.has(t.ot_id)) };
   }, [data, linea]);
   const d = useMemo(() => filtrado && calcularBIOperativo(filtrado, periodo, hoy), [filtrado, periodo, hoy]);
   const cliente = o => o.cuenta_id ? (data.cuentas.find(c => c.id === o.cuenta_id)?.razon_social || 'Sin dato') : 'Flota propia';
