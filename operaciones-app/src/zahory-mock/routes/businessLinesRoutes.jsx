@@ -38,6 +38,8 @@ import { TarifasTransportePage } from '../pages/transporte/TarifasTransportePage
 import { MonitorViajesPage } from '../pages/transporte/MonitorViajesPage.jsx';
 import { OrdenViajePage } from '../pages/transporte/OrdenViajePage.jsx';
 import { LugaresPage } from '../pages/transporte/LugaresPage.jsx';
+import { ViajeDetallePage } from '../pages/transporte/ViajeDetallePage.jsx';
+import { FlotaPage } from '../pages/transporte/FlotaPage.jsx';
 import {
   DashboardRepuestos,
   PedidosVenta,
@@ -56,7 +58,7 @@ import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPa
 export const businessLinesRouteIds = new Set([
   'dashboard-rental', 'flota', 'contratos-rental', 'checkout', 'liquidacion',
   'pasaporte-equipos', 'gestion-garantias', 'certificaciones-activo', 'monitoreo-equipos',
-  'dashboard-transporte', 'transporte-viajes', 'transporte-crear-ov', 'transporte-ruta', 'transporte-lugares',
+  'dashboard-transporte', 'transporte-viajes', 'transporte-viaje', 'transporte-flota', 'transporte-crear-ov', 'transporte-ruta', 'transporte-lugares',
   'transporte-tarifas', 'transporte-liquidacion', 'transporte-tarifas-config',
   'dashboard-produccion', 'produccion-of', 'produccion-crear-of', 'produccion-detalle-of',
   'produccion-planificacion', 'produccion-control', 'produccion-mtm', 'produccion-oee',
@@ -90,6 +92,8 @@ export function renderBusinessLinesRoute(route, context) {
 
     case 'dashboard-transporte': return <DashboardTransporte onNav={onNavigate} />;
     case 'transporte-viajes': return <MonitorViajesPage onNav={onNavigate} />;
+    case 'transporte-viaje': return <ViajeDetallePage onNav={onNavigate} routeParams={routeParams} />;
+    case 'transporte-flota': return <FlotaPage />;
     case 'transporte-crear-ov': return <OrdenViajePage onNav={onNavigate} />;
     case 'transporte-lugares': return <LugaresPage />;
     case 'transporte-ruta': return <HojaDeRuta onNav={onNavigate} ovId={currentOV} />;

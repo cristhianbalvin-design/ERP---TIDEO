@@ -20,6 +20,7 @@ const ERROR_MESSAGES = [
   [/Transición de estado no permitida/i, 'Ese cambio de estado no está permitido.'],
   [/Se requiere motivo para cancelar/i, 'Ingresa el motivo de cancelación.'],
   [/Solo se pueden editar viajes en borrador o programados/i, 'Solo se pueden editar viajes en borrador o programados.'],
+  [/Se requiere motivo de excepción para despachar: ([^.]*)/i, 'Escribe el motivo de la excepción para despachar.'],
   [/23505/, 'Ya existe un registro que entra en conflicto con este viaje.'],
 ];
 const traducir = error => {
@@ -33,15 +34,17 @@ const check = error => { if (error) traducir(error); };
 
 export async function listarViajes(empresaId) {
   const { data, error } = await getSupabaseClient().from('transporte_viajes')
-    .select(`${VIAJE_COLUMNS},cuenta:cuentas(id,nombre_comercial,razon_social),os:os_clientes(id,numero),ruta:transporte_rutas(id,codigo,nombre),vehiculo:vehiculos_transporte(placa),conductor:conductores_transporte(nombre),paradas:transporte_viaje_paradas(count)`)
+    .select(`${VIAJE_COLUMNS},cuenta:cuentas(id,nombre_comercial,razon_social),os:os_clientes(id,numero),ruta:transporte_rutas(id,codigo,nombre),vehiculo:vehiculos_transporte(placa),conductor:conductores_transporte(nombre),paradas:transporte_viaje_paradas(secuencia,tipo,nombre,latitud,longitud),eventos:transporte_viaje_eventos(estado_anterior,estado_nuevo,nota,created_at)`)
     .eq('empresa_id', empresaId).order('fecha_programada', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
   check(error);
-  return data || [];
+  return (data || []).map(row => ({ ...row,
+    paradas: (row.paradas || []).sort((a, b) => a.secuencia - b.secuencia),
+    eventos: (row.eventos || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) }));
 }
 
 export async function obtenerViaje(empresaId, viajeId) {
   const { data, error } = await getSupabaseClient().from('transporte_viajes')
-    .select(`${VIAJE_COLUMNS},cuenta:cuentas(id,nombre_comercial,razon_social),os:os_clientes(id,numero),ruta:transporte_rutas(id,codigo,nombre),vehiculo:vehiculos_transporte(placa),conductor:conductores_transporte(nombre),paradas:transporte_viaje_paradas(*),eventos:transporte_viaje_eventos(*)`)
+    .select(`${VIAJE_COLUMNS},cuenta:cuentas(id,nombre_comercial,razon_social),os:os_clientes(id,numero),ruta:transporte_rutas(id,codigo,nombre),vehiculo:vehiculos_transporte(id,placa,tipo,marca,modelo,capacidad_toneladas,capacidad_m3,nro_certificado_habilitacion,vigencia_certificado_habilitacion),conductor:conductores_transporte(id,nombre,dni,brevete,categoria_brevete,vigencia_brevete),transportista:transportistas(id,razon_social,nombre_comercial,tipo_operador),paradas:transporte_viaje_paradas(*),eventos:transporte_viaje_eventos(*)`)
     .eq('empresa_id', empresaId).eq('id', viajeId).maybeSingle();
   check(error);
   if (!data) return null;
@@ -89,6 +92,20 @@ export async function cambiarEstadoViaje(viajeId, estadoNuevo, nota = null) {
   const { data, error } = await getSupabaseClient().rpc('transporte_viaje_cambiar_estado', { p_viaje_id: viajeId, p_estado_nuevo: estadoNuevo, p_nota: nota });
   check(error);
   return data;
+}
+
+export async function asignarViaje(viajeId, { transportistaId, vehiculoId, conductorId, despachar = false, nota = null }) {
+  const { data, error } = await getSupabaseClient().rpc('transporte_viaje_asignar', {
+    p_viaje_id: viajeId, p_transportista_id: transportistaId, p_vehiculo_id: vehiculoId,
+    p_conductor_id: conductorId, p_despachar: despachar, p_nota: nota,
+  });
+  check(error);
+  return data;
+}
+
+export async function agregarNotaViaje(viajeId, nota) {
+  const { error } = await getSupabaseClient().rpc('transporte_viaje_agregar_nota', { p_viaje_id: viajeId, p_nota: nota });
+  check(error);
 }
 
 export async function eliminarViajeBorrador(empresaId, viajeId) {
