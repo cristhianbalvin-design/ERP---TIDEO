@@ -99,7 +99,7 @@ export function EnviarARuta({ empresaId, transito, orden, proveedor, guia, addTo
               {errores.ventana_fin && <small className="dx-enviaruta-err">{errores.ventana_fin}</small>}</label>
           </div>
           <label className="dx-enviaruta-campo" htmlFor="enviaruta-ind"><span>Indicaciones</span>
-            <textarea id="enviaruta-ind" className="input" rows={3} value={form.indicaciones} placeholder="Ej.: preguntar por Carlos; llevar copia de la OC."
+            <textarea id="enviaruta-ind" className="input" rows={3} value={form.indicaciones} placeholder={guia ? 'Ej.: preguntar por Carlos; entregar con la guía firmada.' : 'Ej.: preguntar por Carlos; llevar copia de la OC.'}
               onChange={event => set('indicaciones', event.target.value)} /></label>
           {error && <div className="dx-enviaruta-error" role="alert">{error}</div>}
         </div>

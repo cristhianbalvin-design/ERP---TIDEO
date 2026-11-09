@@ -23,4 +23,5 @@
 .dx-enviaruta-seg button b { color:var(--dx-er-navy); font-size:14px; }
 .dx-enviaruta-seg button.is-on { border-color:var(--dx-er-cyan); background:var(--dx-er-cyan-bg); }
 .dx-enviaruta-error { padding:8px 12px; border-radius:8px; background:var(--dx-er-red-bg); color:var(--dx-er-red); font-size:13px; }
-@media (max-width: 520px) { .dx-enviaruta-grid, .dx-enviaruta-seg { grid-template-columns:1fr; } }
+@media (max-width: 520px) { .dx-enviaruta-grid, .dx-enviaruta-seg { grid-template-columns:1fr; }
+  .dx-enviaruta-modal .modal-foot { flex-wrap:wrap; } .dx-enviaruta-modal .modal-foot .btn { flex:1 1 140px; } }

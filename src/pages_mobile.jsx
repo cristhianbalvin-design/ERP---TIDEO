@@ -76,10 +76,11 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   const modulosAsignados = (role?.permisos?.campo_modulos?.length ? role.permisos.campo_modulos : null)
     ?? getUsuarioCampoModulos(authUser, usuarios);
   const esSupervisionSinFicha = !fichaColaborador && esAdminODireccionMovil(authUser, role);
-  const modulosSinFichaPermitidos = modulosAsignados.filter(m => m === 'vendedor');
+  // Vendedores y conductores (p. ej. de terceros) pueden no tener ficha de RRHH.
+  const modulosSinFichaPermitidos = modulosAsignados.filter(m => ['vendedor', 'logistica'].includes(m));
   const requiereConfiguracion = !fichaColaborador && !esSupervisionSinFicha && !modulosSinFichaPermitidos.length;
   const modulosUsuario = esSupervisionSinFicha
-    ? modulosAsignados.filter(m => ['supervisor', 'gerencia'].includes(m))
+    ? modulosAsignados.filter(m => ['supervisor', 'gerencia', 'logistica'].includes(m))
     : fichaColaborador
       ? modulosAsignados
       : modulosSinFichaPermitidos;
