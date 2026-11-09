@@ -1,0 +1,261 @@
+<title>BI Operativo e Inicio operativo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: mock de dos pantallas del ERP con el sistema dx-* (encabezado, KPIs, tarjetas con barra de herramientas) */
+:root{
+  --bg:#F4F6F8; --card:#FFFFFF; --head:#F8F9FA; --line:#E4E7EB; --line2:#EEF0F3; --field:#C9CFD8;
+  --fg:#1A2B4A; --muted:#6B7280; --cyan:#00ACC1; --cyan-fg:#0B4F5A; --cyan-bg:#E0F7FA;
+  --vio:#5B3A8C; --vio-bg:#F0EAFB; --amb:#8A4B00; --amb-bg:#FFF3E0; --ok:#14633A; --ok-bg:#E3F6EA; --red:#9B1C1C; --red-bg:#FDECEC;
+  --navy:#1A2B4A; --on-navy:#FFFFFF; --bar:#00ACC1; --bar2:#C9CFD8;
+  --f-disp:"Sora",system-ui,sans-serif; --f-body:"DM Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1724; --card:#16202F; --head:#1B2638; --line:#2A3649; --line2:#232F42; --field:#3A475C;
+  --fg:#E6EBF2; --muted:#9AA6B8; --cyan:#26C6DA; --cyan-fg:#9EEAF3; --cyan-bg:#0E3940;
+  --vio:#C7B2EE; --vio-bg:#2C2142; --amb:#FFC97A; --amb-bg:#3A2A10; --ok:#8FE0B0; --ok-bg:#12331F; --red:#FFA8A8; --red-bg:#3D1717;
+  --navy:#E6EBF2; --on-navy:#0F1724; --bar:#26C6DA; --bar2:#3A475C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1724; --card:#16202F; --head:#1B2638; --line:#2A3649; --line2:#232F42; --field:#3A475C;
+  --fg:#E6EBF2; --muted:#9AA6B8; --cyan:#26C6DA; --cyan-fg:#9EEAF3; --cyan-bg:#0E3940;
+  --vio:#C7B2EE; --vio-bg:#2C2142; --amb:#FFC97A; --amb-bg:#3A2A10; --ok:#8FE0B0; --ok-bg:#12331F; --red:#FFA8A8; --red-bg:#3D1717;
+  --navy:#E6EBF2; --on-navy:#0F1724; --bar:#26C6DA; --bar2:#3A475C; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:18px}
+.switch{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.switch a{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none;font-weight:600}
+.switch a[aria-current="page"]{background:var(--cyan-bg);color:var(--cyan-fg);border-color:transparent}
+.switch small{color:var(--muted);margin-left:auto}
+.hdr{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan-fg);font-weight:700}
+h1{font-family:var(--f-disp);font-size:26px;margin:4px 0 2px;text-wrap:balance}
+h2{font-family:var(--f-disp);font-size:15px;margin:0}
+.sub{color:var(--muted)}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn{height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--field);background:var(--card);color:var(--fg);font:600 14px var(--f-body);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.btn.pri{background:var(--navy);color:var(--on-navy);border-color:transparent}
+.sel{height:40px;border:1px solid var(--field);border-radius:10px;background:var(--card);color:var(--fg);padding:0 12px;font:500 14px var(--f-body)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}
+.kpi{display:flex;flex-direction:column;justify-content:center;min-height:56px;padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi b{font-family:var(--f-disp);font-size:20px;font-variant-numeric:tabular-nums}
+.kpi i{font-style:normal;font-size:12px;color:var(--muted)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 14px;font:600 14px var(--f-body);color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--cyan-fg);border-color:var(--cyan)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;min-width:0}
+.card-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line2)}
+.card-h .cnt{color:var(--muted);font-size:12px}
+.card-b{padding:14px 16px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{background:var(--head);text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:9px 12px;white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--line2);vertical-align:top}
+td.n,th.n{text-align:right}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-cyan{background:var(--cyan-bg);color:var(--cyan-fg)} .p-amb{background:var(--amb-bg);color:var(--amb)} .p-ok{background:var(--ok-bg);color:var(--ok)} .p-red{background:var(--red-bg);color:var(--red)} .p-vio{background:var(--vio-bg);color:var(--vio)}
+.meter{height:6px;border-radius:99px;background:var(--line2);overflow:hidden;min-width:80px}
+.meter i{display:block;height:100%;background:var(--bar);border-radius:99px}
+.muted{color:var(--muted);font-size:12px}
+.bars{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;height:170px;padding-top:8px}
+.bar{display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.bar .stack{width:100%;max-width:44px;display:flex;flex-direction:column-reverse;border-radius:6px 6px 0 0;overflow:hidden;background:var(--line2)}
+.bar .c{background:var(--bar)} .bar .a{background:var(--bar2)}
+.bar small{color:var(--muted)} .bar b{font-size:12px;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:10px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--bar)}
+.legend span.a::before{background:var(--bar2)}
+.hlist{display:grid;gap:10px}
+.hrow{display:grid;grid-template-columns:minmax(0,1fr) 120px 48px;gap:10px;align-items:center}
+.hrow .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{font-size:12px;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px;margin-top:12px}
+.alerts{display:grid;gap:8px}
+.alert{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line2);border-radius:10px}
+.alert .ic{width:10px;height:10px;border-radius:50%}
+.ic.red{background:var(--red)} .ic.amb{background:var(--amb)} .ic.cyan{background:var(--cyan)}
+.row-btn{cursor:pointer} .row-btn:hover td{background:var(--head)}
+.quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.quick button{height:64px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:600 14px var(--f-body);display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:0 14px;gap:2px;cursor:pointer}
+.quick button small{color:var(--muted);font-weight:500}
+.ticker{font-family:var(--f-disp);font-weight:600}
+.badge{font-size:11px;color:var(--muted)}
+[data-view]{display:grid;gap:18px}
+.pane{display:grid;gap:14px}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+@media (max-width:520px){ .hrow{grid-template-columns:minmax(0,1fr) 70px 44px} h1{font-size:22px}}
+</style>
+
+<div class="wrap">
+  <nav class="switch" aria-label="Pantalla del mock">
+    <a href="#bi-operativo" id="lnk-bi">BI Operativo (admin)</a>
+    <a href="#inicio" id="lnk-ini">Inicio operativo (Operaciones)</a>
+    <small>Mock con datos reales del tenant PRUEBA · 9 nov 2026</small>
+  </nav>
+
+  <!-- ================= BI OPERATIVO ================= -->
+  <section data-view="bi-operativo" id="v-bi">
+    <header class="hdr">
+      <div>
+        <div class="eyebrow">Dashboards · BI Operativo</div>
+        <h1>BI Operativo</h1>
+        <div class="sub">Rendimiento de OT, técnicos y plazos · Octubre de 2026</div>
+      </div>
+      <div class="acts">
+        <select class="sel" id="periodo" aria-label="Mes"><option>Octubre 2026</option><option>Noviembre 2026</option></select>
+        <select class="sel" id="linea" aria-label="Línea de negocio"><option>Todas las líneas</option><option>Flota y alquileres</option><option>Maestranza y fabricación</option></select>
+        <button class="btn" type="button">Exportar CSV</button>
+      </div>
+    </header>
+
+    <div class="kpis">
+      <div class="kpi"><span>OT del mes</span><b>20</b><i>con actividad en octubre</i></div>
+      <div class="kpi"><span>OT cerradas</span><b>14</b><i>70 % de las del mes</i></div>
+      <div class="kpi"><span>Avance de OT abiertas</span><b>59 %</b><i>promedio de 8 OT</i></div>
+      <div class="kpi"><span>Entregadas a tiempo</span><b>100 %</b><i>19 de 19 con fecha de OS</i></div>
+      <div class="kpi"><span>Horas de campo</span><b>339.5 h</b><i>320 normales + 19.5 extra</i></div>
+      <div class="kpi"><span>Costo real vs estimado</span><b>105.2 %</b><i>S/ 259,579.00 de S/ 246,744.00</i></div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="ots">OT y ejecución</button>
+      <button role="tab" aria-selected="false" data-tab="rec">Técnicos</button>
+      <button role="tab" aria-selected="false" data-tab="bk">Backlog y alertas</button>
+      <button role="tab" aria-selected="false" data-tab="mo">Horas y costo de MO</button>
+    </div>
+
+    <div class="pane" data-pane="ots">
+      <div class="grid2">
+        <div class="card"><div class="card-h"><h2>OT por mes · últimos 6 meses</h2></div><div class="card-b">
+          <div class="bars" aria-label="OT del mes y cerradas">
+            <div class="bar"><b>0</b><div class="stack" style="height:2%"></div><small>Jun</small></div>
+            <div class="bar"><b>0</b><div class="stack" style="height:2%"></div><small>Jul</small></div>
+            <div class="bar"><b>4</b><div class="stack" style="height:20%"><i class="c" style="height:100%"></i></div><small>Ago</small></div>
+            <div class="bar"><b>15</b><div class="stack" style="height:75%"><i class="c" style="height:100%"></i></div><small>Set</small></div>
+            <div class="bar"><b>20</b><div class="stack" style="height:100%"><i class="c" style="height:70%"></i><i class="a" style="height:30%"></i></div><small>Oct</small></div>
+            <div class="bar"><b>2</b><div class="stack" style="height:10%"><i class="a" style="height:100%"></i></div><small>Nov</small></div>
+          </div>
+          <div class="legend"><span>Cerradas</span><span class="a">Abiertas al cierre del mes</span></div>
+        </div></div>
+        <div class="card"><div class="card-h"><h2>OT por tipo de trabajo</h2><span class="cnt">20 OT</span></div><div class="card-b hlist">
+          <div class="hrow"><span class="t">Correctivo</span><div class="meter"><i style="width:100%"></i></div><b class="n">14</b></div>
+          <div class="hrow"><span class="t">Preventivo</span><div class="meter"><i style="width:29%"></i></div><b class="n">4</b></div>
+          <div class="hrow"><span class="t">Overhaul</span><div class="meter"><i style="width:7%"></i></div><b class="n">1</b></div>
+          <div class="hrow"><span class="t">Acondicionamiento</span><div class="meter"><i style="width:7%"></i></div><b class="n">1</b></div>
+          <div class="note">Hoy el BI suma 4 OT inventadas (OT-25-0008…0011) y la tendencia está fija. En la versión real todo sale de las OT del tenant.</div>
+        </div></div>
+      </div>
+      <div class="card"><div class="card-h"><h2>OT abiertas</h2><span class="cnt">8 OT</span></div><div class="tbl-wrap"><table>
+        <thead><tr><th>OT</th><th>Cliente</th><th>Servicio</th><th>Avance</th><th>Último parte</th><th class="n">Horas pendientes</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0720</td><td>Agroindustrial Valle Norte</td><td>Reconstrucción de tren de rodamiento tractor D8T</td><td>75 %</td><td>07/11</td><td class="n">16 h</td><td><span class="pill p-cyan">En ejecución</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0721</td><td>Energía Hidroandina del Centro</td><td>Inspección estructural y ensayos no destructivos de tolva</td><td>88 %</td><td>07/11</td><td class="n">16 h</td><td><span class="pill p-cyan">En ejecución</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0722</td><td>Transportes Interoceánica Cargo</td><td>Venta de kit de filtros y repuestos de servicio</td><td>46 %</td><td>04/11</td><td class="n">79 h</td><td><span class="pill p-amb">Sin parte 5 días</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0723</td><td>Minera Santa Lucía de Áncash</td><td>Mantenimiento correctivo de transmisión camión 777F</td><td>59 %</td><td>07/11</td><td class="n">51 h</td><td><span class="pill p-cyan">En ejecución</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0724</td><td>Cementos Altiplano</td><td>Reparación de sistema hidráulico cargador frontal 966H</td><td>72 %</td><td>07/11</td><td class="n">51 h</td><td><span class="pill p-cyan">En ejecución</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0725</td><td>Obras Civiles Inca Ingenieros</td><td>Mantenimiento preventivo 500 h excavadora CAT 336</td><td>85 %</td><td>07/11</td><td class="n">16 h</td><td><span class="pill p-cyan">En ejecución</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0740</td><td>Flota propia</td><td>Mantenimiento preventivo 250 h – CF-02 Cargador frontal CAT 966H</td><td>50 %</td><td>07/11</td><td class="n">20 h</td><td><span class="pill p-cyan">En ejecución</span></td></tr>
+          <tr class="row-btn" tabindex="0"><td>OT-26-0741</td><td>Flota propia</td><td>Correctivo sistema hidráulico – CF-03 Cargador frontal Volvo L120H</td><td>0 %</td><td>Sin dato</td><td class="n">20 h</td><td><span class="pill p-vio">Programada</span></td></tr>
+        </tbody></table></div></div>
+    </div>
+
+    <div class="pane" data-pane="rec" hidden>
+      <div class="card"><div class="card-h"><h2>Horas por técnico · octubre</h2><span class="cnt">9 técnicos con partes</span></div><div class="tbl-wrap"><table>
+        <thead><tr><th>Técnico</th><th class="n">OT atendidas</th><th class="n">Horas normales</th><th class="n">Horas extra</th><th>Carga</th></tr></thead>
+        <tbody>
+          <tr><td>Rubén Navarro Castillo</td><td class="n">2</td><td class="n">56.0</td><td class="n">4.5</td><td><div class="meter"><i style="width:100%"></i></div></td></tr>
+          <tr><td>Wilmer Cárdenas Palomino</td><td class="n">2</td><td class="n">48.0</td><td class="n">1.5</td><td><div class="meter"><i style="width:86%"></i></div></td></tr>
+          <tr><td>Jorge Huamán Cárdenas</td><td class="n">2</td><td class="n">48.0</td><td class="n">3.0</td><td><div class="meter"><i style="width:86%"></i></div></td></tr>
+          <tr><td>Raúl Paredes Navarro</td><td class="n">2</td><td class="n">48.0</td><td class="n">3.0</td><td><div class="meter"><i style="width:86%"></i></div></td></tr>
+          <tr><td>Óscar Montes Huanca</td><td class="n">1</td><td class="n">32.0</td><td class="n">1.5</td><td><div class="meter"><i style="width:57%"></i></div></td></tr>
+          <tr><td>Yuri Espinoza Alvarado</td><td class="n">1</td><td class="n">32.0</td><td class="n">3.0</td><td><div class="meter"><i style="width:57%"></i></div></td></tr>
+          <tr><td>Fredy Apaza Rojas</td><td class="n">1</td><td class="n">24.0</td><td class="n">1.5</td><td><div class="meter"><i style="width:43%"></i></div></td></tr>
+          <tr><td>Marco Flores Inga</td><td class="n">1</td><td class="n">24.0</td><td class="n">1.5</td><td><div class="meter"><i style="width:43%"></i></div></td></tr>
+          <tr><td>Pedro Ramos Apaza</td><td class="n">1</td><td class="n">8.0</td><td class="n">0.0</td><td><div class="meter"><i style="width:14%"></i></div></td></tr>
+        </tbody></table></div></div>
+    </div>
+
+    <div class="pane" data-pane="bk" hidden>
+      <div class="card"><div class="card-h"><h2>Alertas operativas</h2><span class="cnt">3 alertas</span></div><div class="card-b alerts">
+        <div class="alert"><span class="ic amb"></span><div><b>OT-26-0722 sin parte desde el 04/11</b><div class="muted">Transportes Interoceánica Cargo · 46 % de avance · 79 h pendientes</div></div><button class="btn" type="button">Ver OT</button></div>
+        <div class="alert"><span class="ic amb"></span><div><b>CF-02 · Revisión técnica vence el 20/11</b><div class="muted">Cargador frontal CAT 966H · en contrato CA-2026-011</div></div><button class="btn" type="button">Ver equipo</button></div>
+        <div class="alert"><span class="ic cyan"></span><div><b>3 pedidos de backlog sin fecha requerida</b><div class="muted">Prioridad media · cambio de cuchillas de cucharón en próxima parada</div></div><button class="btn" type="button">Ver backlog</button></div>
+      </div></div>
+    </div>
+
+    <div class="pane" data-pane="mo" hidden>
+      <div class="kpis">
+        <div class="kpi"><span>Mano de obra en OT cerradas</span><b>S/ 106,320.00</b><i>41 % del costo real</i></div>
+        <div class="kpi"><span>Horas registradas en partes</span><b>339.5 h</b><i>12 partes en revisión</i></div>
+        <div class="kpi"><span>Horas estimadas vs reales</span><b>1,100 / 945 h</b><i>tareas de todas las OT</i></div>
+      </div>
+      <div class="card"><div class="card-b muted">Se mantiene la pestaña actual de horas de MO (tareos por colaborador y OT), con los mismos cálculos; solo cambia el estilo al estándar dx.</div></div>
+    </div>
+  </section>
+
+  <!-- ================= INICIO OPERATIVO ================= -->
+  <section data-view="inicio" id="v-ini" hidden>
+    <header class="hdr">
+      <div>
+        <div class="eyebrow">Operaciones · Lunes 9 de noviembre</div>
+        <h1>Buenos días, Cristhian</h1>
+        <div class="sub">8 OT con trabajo programado hoy · 12 partes esperan tu revisión</div>
+      </div>
+      <div class="acts"><button class="btn" type="button">Abrir Planner</button><button class="btn pri" type="button">Nueva OT</button></div>
+    </header>
+
+    <div class="kpis">
+      <div class="kpi"><span>OT en ejecución</span><b>7</b><i>avance promedio 68 %</i></div>
+      <div class="kpi"><span>Programadas para hoy</span><b>1</b><i>OT-26-0741 · CF-03</i></div>
+      <div class="kpi"><span>Partes por aprobar</span><b>12</b><i>en revisión</i></div>
+      <div class="kpi"><span>Equipos en mantenimiento</span><b>2</b><i>de 16 propios</i></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card"><div class="card-h"><h2>Mi día</h2><span class="cnt">8 asignaciones del Planner · 60 h</span></div><div class="tbl-wrap"><table>
+        <thead><tr><th>OT</th><th>Técnico</th><th>Puesto</th><th class="n">Horas</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><span class="ticker">OT-26-0720</span><div class="muted">Tren de rodamiento tractor D8T</div></td><td>Raúl Paredes Navarro</td><td>Banco 1</td><td class="n">8</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0721</span><div class="muted">Inspección estructural de tolva</div></td><td>Rubén Navarro Castillo</td><td>Banco 2</td><td class="n">8</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0722</span><div class="muted">Kit de filtros y repuestos</div></td><td>Marco Flores Inga</td><td>Puesto 1</td><td class="n">8</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0723</span><div class="muted">Transmisión camión 777F</div></td><td>Abel Salazar Gutiérrez</td><td>Puesto 1</td><td class="n">8</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0724</span><div class="muted">Hidráulico cargador 966H</div></td><td>Kevin Alvarado Quispe</td><td>Puesto 1</td><td class="n">8</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0725</span><div class="muted">Preventivo 500 h excavadora CAT 336</div></td><td>Pedro Ramos Apaza</td><td>Puesto 2</td><td class="n">8</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0740</span><div class="muted">Preventivo 250 h CF-02</div></td><td>Fredy Apaza Rojas</td><td>Puesto 2</td><td class="n">6</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+          <tr><td><span class="ticker">OT-26-0741</span><div class="muted">Correctivo hidráulico CF-03</div></td><td>Óscar Montes Huanca</td><td>Tanque 1</td><td class="n">6</td><td><button class="btn" type="button">Registrar parte</button></td></tr>
+        </tbody></table></div>
+        <div class="card-b muted">Un técnico ve solo sus asignaciones; un jefe o supervisor ve las de su equipo.</div>
+      </div>
+
+      <div style="display:grid;gap:14px;align-content:start;min-width:0">
+        <div class="card"><div class="card-h"><h2>Alertas</h2><span class="cnt">3</span></div><div class="card-b alerts">
+          <div class="alert"><span class="ic amb"></span><div><b>OT-26-0722 sin parte desde el 04/11</b><div class="muted">79 h pendientes</div></div><button class="btn" type="button">Ver</button></div>
+          <div class="alert"><span class="ic amb"></span><div><b>CF-02 · revisión técnica vence el 20/11</b><div class="muted">en 11 días</div></div><button class="btn" type="button">Ver</button></div>
+          <div class="alert"><span class="ic cyan"></span><div><b>3 pedidos de backlog sin fecha</b><div class="muted">prioridad media</div></div><button class="btn" type="button">Ver</button></div>
+        </div></div>
+        <div class="card"><div class="card-h"><h2>Accesos rápidos</h2></div><div class="card-b quick">
+          <button type="button">Nueva OT<small>Bandeja de OTs</small></button>
+          <button type="button">Registrar parte<small>Partes de taller</small></button>
+          <button type="button">Crear acta<small>Despacho o retorno</small></button>
+          <button type="button">Abrir Planner<small>Semana del 9/11</small></button>
+        </div></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-b muted">En el menú, <b>Órdenes</b> abrirá la Bandeja de OTs y <b>Actividad</b> abrirá Partes de taller. Las alertas solo muestran lo que hay; si no hay nada, se ve “Sin alertas por ahora”.</div></div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const views={'bi-operativo':document.getElementById('v-bi'),'inicio':document.getElementById('v-ini')};
+  const links={'bi-operativo':document.getElementById('lnk-bi'),'inicio':document.getElementById('lnk-ini')};
+  function show(){const k=(location.hash||'#bi-operativo').slice(1);const key=views[k]?k:'bi-operativo';
+    Object.entries(views).forEach(([n,el])=>{el.hidden=n!==key;links[n].setAttribute('aria-current',n===key?'page':'false')});}
+  window.addEventListener('hashchange',show);show();
+  document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',String(x===b)));
+    document.querySelectorAll('[data-pane]').forEach(p=>p.hidden=p.dataset.pane!==b.dataset.tab);
+  }));
+})();
+</script>

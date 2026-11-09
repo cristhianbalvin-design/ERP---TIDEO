@@ -54,7 +54,7 @@ function getTitleForRoute(route, baseRoutes, navigation) {
 function readLocation() {
   const hash = window.location.hash.replace(/^#\/?/, '');
   const [routeCandidate = 'inicio', queryString = ''] = hash.split('?');
-  const route = routeCandidate || 'inicio';
+  const route = ({ ordenes: 'ots', actividad: 'partes-taller' })[routeCandidate] || routeCandidate || 'inicio';
 
   return {
     route: routes[route] || availableZahoryRoutes.has(route) ? route : 'inicio',
@@ -114,7 +114,7 @@ function scoreModuleSearch(query, module) {
 function NavEntry({ item, route, navigate }) {
   return (
     <button
-      className={`ops-nav-entry${itemMatchesRoute(item, route) ? ' active' : ''}`}
+      className={`ops-nav-entry${(itemMatchesRoute(item, route) || item.activeRoutes?.includes(route)) ? ' active' : ''}`}
       title={item.label}
       aria-label={item.label}
       onClick={() => navigate(item.id)}
@@ -126,12 +126,14 @@ function NavEntry({ item, route, navigate }) {
   );
 }
 
+
 export function OperationalApp() {
   const sesionOperativa = useSesionOperativa();
   const modulosWms = useModulosWms();
   const navegacionVisible = useMemo(() => filtrarNavegacionPorModulos(zahoryNavigation, modulosWms), [modulosWms]);
   const [location, setLocation] = useState(readLocation);
   const route = location.route;
+  const page = availableZahoryRoutes.has(route) ? undefined : routes[route];
   const routeParams = location.params;
   const [openGroupIds, setOpenGroupIds] = useState(() => {
     const activeGroup = findGroupForRoute(readLocation().route, zahoryNavigation);
@@ -240,12 +242,12 @@ export function OperationalApp() {
     setNavOpen(false);
     setFlyoutGroupId(null);
     setFlyoutPosition(null);
+    const destino = ({ ordenes: 'ots', actividad: 'partes-taller' })[key] || key;
     const queryString = new URLSearchParams(
       Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ''),
     ).toString();
-    window.location.hash = `/${key}${queryString ? `?${queryString}` : ''}`;
+    window.location.hash = `/${destino}${queryString ? `?${queryString}` : ''}`;
   };
-  const page = routes[route];
   const title = getTitleForRoute(route, routes, zahoryNavigation);
   const adminAppUrl = import.meta.env.VITE_ADMIN_APP_URL || '/';
 
@@ -352,7 +354,7 @@ export function OperationalApp() {
           ) : (
             <>
               {Object.entries(routes).map(([key, item]) => (
-                <NavEntry key={key} item={{ ...item, id: key }} route={route} navigate={navigate} />
+                <NavEntry key={key} item={{ ...item, id: key, activeRoutes: key === 'ordenes' ? ['ots'] : key === 'actividad' ? ['partes-taller'] : [] }} route={route} navigate={navigate} />
               ))}
               <div className="ops-imported-nav">
                 {navegacionVisible.map(zone => (
