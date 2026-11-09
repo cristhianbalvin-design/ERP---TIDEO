@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agruparPorUnidad, atrasado, fechaLima, horaLima, duracionTexto, esperasViaje, pedidoDesdeGuia, pedidoDesdeTransito,
+  agruparPorUnidad, atrasado, fechaLima, horaLima, hoyLima, duracionTexto, esperasViaje, pedidoDesdeGuia, pedidoDesdeTransito,
   resumenInspeccion, resumenParadas, siguienteHito, sumarDias, totalGastos, validarConstancia,
   validarPedido, ventanaTexto, viajesDelDia,
 } from './transporteLogistica.js';
@@ -52,6 +52,8 @@ test('pedidos sugeridos desde el tránsito de la OC y desde la guía', () => {
   assert.equal(p.accion, 'recoger');
   assert.equal(p.titulo, 'Recoger OC-2026-004125 en Repuestos Mineros');
   assert.equal(p.direccion, 'Av. Argentina 2450');
+  assert.equal(p.fecha_requerida, hoyLima());
+  assert.equal(pedidoDesdeTransito({ transito: { fecha_estimada_llegada: '2099-01-05' }, orden: {}, proveedor: {} }).fecha_requerida, '2099-01-05');
   const g = pedidoDesdeGuia({ id: 'g1', numero_completo: 'T001-00000001', destinatario_razon_social: 'Minera Huaytapallana', llegada_direccion: 'Campamento km 4' });
   assert.equal(g.accion, 'entregar');
   assert.equal(g.lugar_nombre, 'Minera Huaytapallana');

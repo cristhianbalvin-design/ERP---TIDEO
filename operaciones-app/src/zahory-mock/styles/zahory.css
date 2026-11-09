@@ -9597,7 +9597,7 @@ width:20px;height:20px}
 /* Variables nuevas de la base dx-ui: degradado de banners y punto verde. */
 .dx-ui { --dx-ui-hero-a:#1A2B4A; --dx-ui-hero-b:#0E5C6B; --dx-ui-green-dot:#16A34A; --dx-ui-on-hero:#FFFFFF; --dx-ui-on-hero-soft:#C9D8E6; }
 [data-theme='dark'] .dx-ui { --dx-ui-hero-a:#0F1B33; --dx-ui-hero-b:#0B4450; --dx-ui-green-dot:#4ADE80; --dx-ui-on-hero:#F8FAFC; --dx-ui-on-hero-soft:#B6C6D6; }
-.dx-tms { container:dx-tms / inline-size; }
+.dx-tms { container:dx-tms / inline-size; box-sizing:border-box; padding:clamp(16px, 2.5vw, 24px); }
 .dx-tms .dx-ui-sub { margin:4px 0 0; color:var(--dx-ui-gray); }
 .dx-tms .dx-ui-actions { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; }
 .dx-tms .dx-btn.link { min-height:0; padding:0; border:0; background:transparent; color:var(--dx-ui-cyan-fg); font-weight:700; cursor:pointer; }

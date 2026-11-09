@@ -114,7 +114,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
     return () => window.removeEventListener('click', cerrar);
   }, [menu]);
 
-  const etapas = useMemo(() => viaje ? etapasViaje(viaje.estado, viaje.eventos) : [], [viaje]);
+  const etapas = useMemo(() => viaje ? etapasViaje(viaje.estado, viaje.eventos, viaje.tipo_viaje) : [], [viaje]);
   const avance = useMemo(() => viaje ? avanceEstimadoViaje(viaje, viaje.eventos) : null, [viaje]);
   const paradas = viaje?.paradas || [];
   const coords = paradas.map(parada => parada.latitud != null && parada.longitud != null ? [Number(parada.latitud), Number(parada.longitud)] : null);

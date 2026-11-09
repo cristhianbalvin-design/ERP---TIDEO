@@ -7574,7 +7574,8 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
         </div>
       )}
 
-      {tab === 'transito' && transitoActual?.tipo === 'recojo_propio' && ['registrado', 'en_transito'].includes(transitoActual.estado) && (
+      {tab === 'transito' && transitoActual?.tipo === 'recojo_propio' && ['registrado', 'en_transito'].includes(transitoActual.estado)
+        && !['recibida_total', 'cerrada', 'anulada'].includes(ordenActual?.estado) && (
         <div className="card" style={{padding:16, marginBottom:12}}>
           <EnviarARuta empresaId={empresa?.id} transito={transitoActual} orden={ordenActual} proveedor={proveedor} addToast={addToast} />
         </div>

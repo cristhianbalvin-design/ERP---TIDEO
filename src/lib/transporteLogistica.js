@@ -151,6 +151,9 @@ export function resumenInspeccion(items = []) {
 export const totalGastos = (gastos = []) => Math.round((gastos || [])
   .reduce((suma, gasto) => suma + Number(gasto.monto || 0), 0) * 100) / 100;
 
+// Una fecha pasada no sirve para programar: se propone hoy.
+const noAntesDeHoy = fecha => { const hoy = hoyLima(); const dia = String(fecha || '').slice(0, 10); return dia && dia > hoy ? dia : hoy; };
+
 // Datos sugeridos para enviar un documento a ruta.
 export function pedidoDesdeTransito({ transito, orden, proveedor }) {
   const nombre = proveedor?.razon_social || proveedor?.nombre_comercial || 'Proveedor';
@@ -161,7 +164,7 @@ export function pedidoDesdeTransito({ transito, orden, proveedor }) {
     titulo: `Recoger ${orden?.codigo || 'OC'} en ${nombre}`,
     lugar_nombre: nombre,
     direccion: proveedor?.direccion || '',
-    fecha_requerida: transito.fecha_estimada_llegada || hoyLima(),
+    fecha_requerida: noAntesDeHoy(transito.fecha_estimada_llegada),
     origen: 'compras',
   };
 }
@@ -175,7 +178,7 @@ export function pedidoDesdeGuia(guia) {
     titulo: `Entregar ${guia.numero_completo || 'guía'} a ${destino}`,
     lugar_nombre: destino,
     direccion: guia.llegada_direccion || '',
-    fecha_requerida: guia.fecha_inicio_traslado || hoyLima(),
+    fecha_requerida: noAntesDeHoy(guia.fecha_inicio_traslado),
     origen: 'almacen',
   };
 }
