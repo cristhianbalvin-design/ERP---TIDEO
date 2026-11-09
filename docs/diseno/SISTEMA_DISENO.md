@@ -143,3 +143,9 @@ Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/
 | `dx-otb-kpi` | Por migrar |
 | `dx-acta-kpi` | Por migrar |
 | `dx-inf-summary-card` | Por migrar |
+
+### Diálogos del admin y KPI con montos
+
+El admin dispone de `dx-ui-overlay`, `dx-ui-dialog`, `dx-ui-dialog-wide`, `dx-ui-dialog-head` y `dx-ui-dialog-foot`; el diálogo usa las variables del sistema y cuenta con variante `.dark`. Debe identificar su título con `aria-labelledby` y usar `aria-modal`.
+
+La variante de KPI con montos coloca el valor Sora de 20 px en una línea encima de la etiqueta, que ocupa una línea con elipsis, dentro de una tarjeta de 56 px. La fila mantiene cuatro columnas; bajo 900 px del contenedor usa dos y bajo 440 px usa una.
