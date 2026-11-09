@@ -10,7 +10,7 @@ const VIAJE_COLUMNS = [
   'ingreso_estimado', 'fecha_programada', 'transportista_id', 'vehiculo_id', 'conductor_id',
   'estado', 'motivo_cancelacion', 'observaciones', 'referencia_cliente', 'contacto_id',
   'tipo_carga', 'carga_bultos', 'carga_unidad_bultos', 'requisitos', 'created_by', 'created_at',
-  'updated_at',
+  'updated_at', 'tipo_viaje',
 ].join(',');
 const ERROR_MESSAGES = [
   [/No tienes permiso/i, 'No tienes permiso para realizar esta acción en Transporte Comercial.'],
@@ -55,7 +55,7 @@ export async function obtenerViaje(empresaId, viajeId) {
 
 const payloadViaje = (empresaId, payload) => {
   const normalized = normalizarPayloadViaje(payload);
-  const fields = VIAJE_COLUMNS.split(',').filter(key => !['id','empresa_id','codigo','estado','created_by','created_at','updated_at','motivo_cancelacion'].includes(key));
+  const fields = VIAJE_COLUMNS.split(',').filter(key => !['id','empresa_id','codigo','estado','created_by','created_at','updated_at','motivo_cancelacion','tipo_viaje'].includes(key));
   return Object.fromEntries(fields.map(key => [key, normalized[key] ?? null]).concat([['empresa_id', empresaId]]));
 };
 const payloadParadas = (empresaId, viajeId, stops = []) => stops.map((stop, index) => ({

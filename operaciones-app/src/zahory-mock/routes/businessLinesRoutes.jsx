@@ -30,7 +30,6 @@ import { CrearOFPage } from '../pages/of/CrearOFPage.jsx';
 import { DetalleOFPage } from '../pages/of/DetalleOFPage.jsx';
 import {
   DashboardTransporte,
-  HojaDeRuta,
   LiquidacionTransporte,
 } from '../pages/TransportePages.jsx';
 import { MaestroRutasPage } from '../pages/transporte/MaestroRutasPage.jsx';
@@ -40,6 +39,7 @@ import { OrdenViajePage } from '../pages/transporte/OrdenViajePage.jsx';
 import { LugaresPage } from '../pages/transporte/LugaresPage.jsx';
 import { ViajeDetallePage } from '../pages/transporte/ViajeDetallePage.jsx';
 import { FlotaPage } from '../pages/transporte/FlotaPage.jsx';
+import { HojaDeRutaPage } from '../pages/transporte/HojaDeRutaPage.jsx';
 import {
   DashboardRepuestos,
   PedidosVenta,
@@ -77,7 +77,7 @@ export const businessLinesRouteIds = new Set([
 ]);
 
 export function renderBusinessLinesRoute(route, context) {
-  const { onNavigate, routeParams = {}, currentOT, setCurrentOT, setCurrentOF, currentOV, setCurrentOV, currentPV, setCurrentPV } = context;
+  const { onNavigate, routeParams = {}, currentOT, setCurrentOT, setCurrentOF, setCurrentOV, currentPV, setCurrentPV } = context;
 
   switch (route) {
     case 'dashboard-rental': return <DashboardRentalPage onNav={onNavigate} />;
@@ -96,7 +96,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'transporte-flota': return <FlotaPage />;
     case 'transporte-crear-ov': return <OrdenViajePage onNav={onNavigate} />;
     case 'transporte-lugares': return <LugaresPage />;
-    case 'transporte-ruta': return <HojaDeRuta onNav={onNavigate} ovId={currentOV} />;
+    case 'transporte-ruta': return <HojaDeRutaPage onNav={onNavigate} routeParams={routeParams} />;
     case 'transporte-tarifas': return <MaestroRutasPage />;
     case 'transporte-liquidacion': return <LiquidacionTransporte onNav={onNavigate} />;
     case 'transporte-tarifas-config': return <TarifasTransportePage />;

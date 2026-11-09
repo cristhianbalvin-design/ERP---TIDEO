@@ -10,6 +10,7 @@ import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './compo
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { DevolucionesNCPendientes } from './components/DevolucionesNCPendientes.jsx';
+import { EnviarARuta } from './components/EnviarARuta.jsx';
 import { CatalogoAltaRapida } from './components/CatalogoAltaRapida.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
@@ -86,7 +87,6 @@ import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
 import { descargarPlantillaCuentas, ImportarCuentasModal } from './components/ImportarCuentasModal.jsx';
 import { NuevaCuentaModal } from './components/NuevaCuentaModal.jsx';
-import { RutasPanel } from './components/RutasPanel.jsx';
 import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.jsx';
 import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
 import './compras_gastos.css';
@@ -7574,6 +7574,12 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
         </div>
       )}
 
+      {tab === 'transito' && transitoActual?.tipo === 'recojo_propio' && ['registrado', 'en_transito'].includes(transitoActual.estado) && (
+        <div className="card" style={{padding:16, marginBottom:12}}>
+          <EnviarARuta empresaId={empresa?.id} transito={transitoActual} orden={ordenActual} proveedor={proveedor} addToast={addToast} />
+        </div>
+      )}
+
       {tab === 'transito' && (
         <TransitoOCPanel
           orden={ordenActual}
@@ -10821,7 +10827,18 @@ function Remision() {
         </div>
       )}
 
-      {tab === 'rutas' && <RutasPanel />}
+      {tab === 'rutas' && (
+        <div className="card mt-6" style={{padding:20}}>
+          <h3 style={{margin:'0 0 6px'}}>Las rutas ahora se arman en la Hoja de Ruta de Operaciones</h3>
+          <p className="text-muted" style={{margin:'0 0 14px',fontSize:13}}>
+            Las rutas de recojo y entrega comparten un solo modelo con los viajes de transporte comercial. Las rutas registradas aquí ya se copiaron allí con sus paradas, lecturas e incidentes.
+            Para enviar una OC o una guía a ruta usa «Enviar a ruta» en el tránsito de la OC o en el detalle de la guía.
+          </p>
+          <button type="button" className="btn btn-primary" onClick={() => abrirEnOperaciones('transporte-ruta')}>
+            Abrir la Hoja de Ruta
+          </button>
+        </div>
+      )}
 
       {tab === 'mantenimiento' && <MantenimientoFlotaPanel />}
 
@@ -11109,6 +11126,10 @@ function Remision() {
                 </div>
               )}
               {modalGuia.anulado && <div style={{background:'#fff3f3',borderRadius:6,padding:10,fontSize:12,color:'var(--danger)'}}>ANULADA — {modalGuia.anulado_motivo}</div>}
+
+              {!modalGuia.anulado && ['borrador', 'emitida', 'en_transito'].includes(modalGuia.estado) && (
+                <div style={{marginTop:16}}><EnviarARuta empresaId={empresa?.id} guia={modalGuia} addToast={addToast} /></div>
+              )}
 
               {!modalGuia.anulado && (
                 <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:16,borderTop:'1px solid var(--border)',paddingTop:16}}>

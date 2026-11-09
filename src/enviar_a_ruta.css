@@ -1,0 +1,26 @@
+/* «Enviar a ruta» desde Compras (OC en tránsito) y Almacén (guía de remisión). */
+.dx-enviaruta { --dx-er-navy:#1A2B4A; --dx-er-cyan:#00ACC1; --dx-er-cyan-bg:#E0F7FA; --dx-er-cyan-fg:#0B4F5A; --dx-er-violet:#5B3A8C; --dx-er-violet-bg:#F0EAFB;
+  --dx-er-green-bg:#E3F6EA; --dx-er-green-fg:#14633A; --dx-er-gray:#6B7280; --dx-er-line:#E4E7EB; --dx-er-card:#FFFFFF; --dx-er-red:#9B2C2C; --dx-er-red-bg:#FDE8E7;
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.dark .dx-enviaruta { --dx-er-navy:#F8FAFC; --dx-er-cyan:#22D3EE; --dx-er-cyan-bg:#0A3038; --dx-er-cyan-fg:#67E8F9; --dx-er-violet:#D8B4FE; --dx-er-violet-bg:#321B3B;
+  --dx-er-green-bg:#12351F; --dx-er-green-fg:#86EFAC; --dx-er-gray:#94A3B8; --dx-er-line:rgba(255,255,255,.1); --dx-er-card:#1E293B; --dx-er-red:#FCA5A5; --dx-er-red-bg:#3B1D20; }
+.dx-enviaruta-estado { display:flex; flex:1 1 320px; flex-wrap:wrap; align-items:center; gap:8px 10px; padding:10px 12px; border-radius:10px;
+  background:var(--dx-er-violet-bg); color:var(--dx-er-violet); font-size:13px; }
+.dx-enviaruta-estado.is-asignado { background:var(--dx-er-cyan-bg); color:var(--dx-er-cyan-fg); }
+.dx-enviaruta-estado.is-completado { background:var(--dx-er-green-bg); color:var(--dx-er-green-fg); }
+.dx-enviaruta-texto { flex:1 1 220px; min-width:0; }
+.dx-enviaruta-modal { width:min(560px, 96vw); }
+.dx-enviaruta-body { display:grid; gap:12px; }
+.dx-enviaruta-sub { margin:0; color:var(--dx-er-gray); font-size:13px; }
+.dx-enviaruta-campo { display:grid; gap:6px; min-width:0; font-size:12px; font-weight:600; color:var(--dx-er-gray); }
+.dx-enviaruta-campo .input { width:100%; box-sizing:border-box; }
+.dx-enviaruta-req, .dx-enviaruta-err { color:var(--dx-er-red); }
+.dx-enviaruta-err { font-weight:400; }
+.dx-enviaruta-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+.dx-enviaruta-seg { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.dx-enviaruta-seg button { display:grid; gap:2px; padding:10px 12px; border:1.5px solid var(--dx-er-line); border-radius:12px; background:var(--dx-er-card);
+  color:var(--dx-er-gray); font:13px 'DM Sans', sans-serif; text-align:left; cursor:pointer; }
+.dx-enviaruta-seg button b { color:var(--dx-er-navy); font-size:14px; }
+.dx-enviaruta-seg button.is-on { border-color:var(--dx-er-cyan); background:var(--dx-er-cyan-bg); }
+.dx-enviaruta-error { padding:8px 12px; border-radius:8px; background:var(--dx-er-red-bg); color:var(--dx-er-red); font-size:13px; }
+@media (max-width: 520px) { .dx-enviaruta-grid, .dx-enviaruta-seg { grid-template-columns:1fr; } }

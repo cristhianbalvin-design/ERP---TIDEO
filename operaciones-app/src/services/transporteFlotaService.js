@@ -4,7 +4,7 @@ import { getSupabaseClient } from '../lib/supabaseClient.js';
 // Las tablas son las mismas que usan las guías de remisión del panel administrativo.
 const TRANSPORTISTA_COLUMNS = 'id,empresa_id,ruc,razon_social,nombre_comercial,nro_mtc,direccion,telefono,email,tipo_operador,activo,created_at,updated_at';
 const VEHICULO_COLUMNS = 'id,empresa_id,transportista_id,placa,marca,modelo,anio,tipo,capacidad_toneladas,capacidad_m3,nro_certificado_habilitacion,vigencia_certificado_habilitacion,activo,created_at,updated_at';
-const CONDUCTOR_COLUMNS = 'id,empresa_id,transportista_id,nombre,dni,brevete,categoria_brevete,vigencia_brevete,activo,created_at,updated_at';
+const CONDUCTOR_COLUMNS = 'id,empresa_id,transportista_id,nombre,dni,brevete,categoria_brevete,vigencia_brevete,usuario_id,activo,created_at,updated_at';
 
 const nuevoId = prefijo => {
   const raw = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;

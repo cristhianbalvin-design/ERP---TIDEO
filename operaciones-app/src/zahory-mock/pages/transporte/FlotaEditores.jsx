@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { TransportePanel } from './TransportePanel.jsx';
 import { guardarConductor, guardarTransportista, guardarVehiculo } from '../../../services/transporteFlotaService.js';
+import { listarUsuariosEmpresa } from '../../../services/transporteLogisticaService.js';
 import {
   UNIT_DEFAULTS, estadoDocumento, etiquetaTipoVehiculo, formatearNumeroTransporte, normalizarPlaca, rucValido,
   unificarTiposUnidad, validarConductorFlota, validarTransportistaFlota, validarUnidadFlota,
@@ -137,10 +138,18 @@ export function ConductorEditor({ open, conductor, empresaId, transportistas, co
   const inicial = { nombre: conductor?.nombre || '', dni: conductor?.dni || '',
     transportista_id: conductor?.transportista_id || transportistas.find(item => item.tipo_operador === 'propio')?.id || transportistas[0]?.id || '',
     brevete: conductor?.brevete || '', categoria_brevete: conductor?.categoria_brevete || 'A-IIIb', vigencia_brevete: conductor?.vigencia_brevete || '',
-    activo: conductor?.activo !== false };
+    usuario_id: conductor?.usuario_id || '', activo: conductor?.activo !== false };
   const editor = useEditor(inicial, open);
   const { form, set, errors } = editor;
   const doc = estadoDocumento(form.vigencia_brevete);
+  const [usuarios, setUsuarios] = useState([]);
+  useEffect(() => {
+    if (!open || !empresaId) return undefined;
+    let vigente = true;
+    listarUsuariosEmpresa(empresaId).then(lista => { if (vigente) setUsuarios(lista); }).catch(() => { if (vigente) setUsuarios([]); });
+    return () => { vigente = false; };
+  }, [open, empresaId]);
+  const ocupados = new Set(conductores.filter(item => item.id !== conductor?.id && item.usuario_id).map(item => item.usuario_id));
   const guardar = event => {
     event.preventDefault();
     enviar(editor, values => validarConductorFlota(values, conductores, conductor?.id), () => guardarConductor(empresaId, conductor?.id, form),
@@ -171,6 +180,12 @@ export function ConductorEditor({ open, conductor, empresaId, transportistas, co
               value={form.vigencia_brevete} aria-invalid={Boolean(errors.vigencia_brevete)} onChange={event => set('vigencia_brevete', event.target.value)} /></Campo>
           </div>
           <small className="dx-transporte-composer-hint">Para tracto con semirremolque se requiere A-IIIc; para camión de 2 o 3 ejes, A-IIIb o superior.</small></section>
+        <section className="dx-transporte-composer-section"><h3><i>3</i> App del conductor</h3>
+          <Campo id="flota-c-usuario_id" label="Usuario con el que entra a la app" hint="Con un usuario vinculado, el conductor ve solo sus viajes y puede registrarlos.">
+            <select id="flota-c-usuario_id" className="dx-ui-select" value={form.usuario_id} onChange={event => set('usuario_id', event.target.value)}>
+              <option value="">Sin usuario vinculado</option>
+              {usuarios.filter(item => !ocupados.has(item.user_id) || item.user_id === form.usuario_id).map(item =>
+                <option key={item.user_id} value={item.user_id}>{item.nombre}{item.perfil ? ` · ${item.perfil}` : ''}</option>)}</select></Campo></section>
         {!nuevo && <label className="dx-transporte-composer-switch"><input type="checkbox" checked={form.activo} onChange={event => set('activo', event.target.checked)} />
           <span>Conductor activo (se puede asignar a viajes)</span></label>}
         {editor.serverError && <div className="dx-transporte-composer-alert is-red" role="alert">{editor.serverError}</div>}
