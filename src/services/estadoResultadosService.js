@@ -2,6 +2,7 @@ import { normalizeCurrency } from '../lib/currency.js';
 import { isSupabaseMode } from '../lib/dataMode.js';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { crearEntradasDevengoCxp } from './cxpDistribucionCeco.js';
+import { getTipoCambioPorFecha } from './tipoCambioService.js';
 
 export const ER_CURRENCIES = ['PEN', 'USD'];
 
@@ -102,10 +103,49 @@ const finalizeResult = (result, sourceCounts = {}) => {
       ER_CURRENCIES.some(moneda => amount(er[block].total[moneda]) !== 0)
     );
   // Corrección 2: detectar monedas fuera de ER_CURRENCIES que no pudieron sumarse.
-  result.otherCurrenciesWarning = ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].some(blockKey =>
+  result.otherCurrenciesWarning = result.otherCurrenciesWarning || ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].some(blockKey =>
     Object.keys(er[blockKey].total).some(k => !ER_CURRENCIES.includes(k) && er[blockKey].total[k] > 0)
   );
   return result;
+};
+
+export const calcularManoObraNoAsignada = ({ filasPlanilla, costosOt, monedaCalculo, usd }) => {
+  const base = currencyOf(monedaCalculo);
+  const tasa = Number(usd);
+  const monedas = new Set([
+    ...filasPlanilla.filter(fila => amount(fila.importe)).map(fila => currencyOf(fila.moneda)),
+    ...costosOt.filter(costo => amount(costo.mano_obra)).map(costo => currencyOf(costo.moneda)),
+  ]);
+  const convertirDisponible = ER_CURRENCIES.includes(base) && tasa > 0;
+  const otherCurrenciesWarning = [...monedas].some(moneda => !ER_CURRENCIES.includes(moneda))
+    || (monedas.size > 1 && !convertirDisponible);
+  const grupoMoneda = moneda => convertirDisponible && ER_CURRENCIES.includes(moneda) ? base : moneda;
+  const convertir = (valor, moneda) => {
+    if (moneda === base || grupoMoneda(moneda) !== base) return amount(valor);
+    return amount(valor) * (base === 'USD' ? tasa : 1 / tasa);
+  };
+  const grupos = new Map();
+  filasPlanilla.forEach(fila => {
+    const moneda = currencyOf(fila.moneda);
+    const clave = grupoMoneda(moneda);
+    const grupo = grupos.get(clave) || { filas: [], total: 0, asignado: 0 };
+    grupo.filas.push(fila);
+    grupo.total += convertir(fila.importe, moneda);
+    grupos.set(clave, grupo);
+  });
+  costosOt.forEach(costo => {
+    const moneda = currencyOf(costo.moneda);
+    const grupo = grupos.get(grupoMoneda(moneda));
+    if (grupo) grupo.asignado += convertir(costo.mano_obra, moneda);
+  });
+  const filas = [];
+  grupos.forEach(grupo => {
+    const diferencia = Math.max(0, grupo.total - grupo.asignado);
+    if (diferencia && grupo.total > 0) grupo.filas.forEach(fila => {
+      filas.push({ ...fila, importe: amount(fila.importe) * diferencia / grupo.total });
+    });
+  });
+  return { filas, otherCurrenciesWarning };
 };
 
 const matchesIds = (id, ids) => ids == null || ids.includes(id);
@@ -491,7 +531,7 @@ async function loadCostosOt(supabase, empresaId, sociedadIds = null) {
     cecoIds.length
       ? supabase.from('centros_costo').select('id, sociedad_id, naturaleza_economica').eq('empresa_id', empresaId).in('id', cecoIds)
       : Promise.resolve({ data: [], error: null }),
-    sociedadIds && cebeIds.length
+    cebeIds.length
       ? supabase.from('centros_beneficio').select('id, sociedad_id').eq('empresa_id', empresaId).in('id', cebeIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -503,6 +543,7 @@ async function loadCostosOt(supabase, empresaId, sociedadIds = null) {
   rows = rows.map(c => ({
     ...c,
     naturaleza_economica: naturalezaCeco.get(c.ordenes_trabajo?.centro_costo_id) || null,
+    sociedad_id: sociedadCeco.get(c.ordenes_trabajo?.centro_costo_id) || sociedadCebe.get(c.ordenes_trabajo?.centro_beneficio_id) || null,
   }));
   if (sociedadIds) {
     rows = rows.filter(c => sociedadIds.includes(
@@ -580,13 +621,14 @@ async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds, socied
 
   let detalleQ = supabase
     .from('detalle_nomina')
-    .select('id, periodo_nomina_id, centro_costo_id, neto, essalud, cts, gratificacion, vacaciones, moneda')
+    .select('id, periodo_nomina_id, centro_costo_id, trabajador_tipo, neto, essalud, cts, gratificacion, vacaciones, moneda')
     .eq('empresa_id', empresaId)
     .in('periodo_nomina_id', periodoIds);
   if (effectiveCecoIds) detalleQ = detalleQ.in('centro_costo_id', effectiveCecoIds);
   const detalleR = await detalleQ;
   if (detalleR.error) throw detalleR.error;
-  return detalleR.data || [];
+  const sociedadPorPeriodo = new Map((periodosR.data || []).map(p => [p.id, p.sociedad_id]));
+  return (detalleR.data || []).map(n => ({ ...n, sociedad_id: sociedadPorPeriodo.get(n.periodo_nomina_id) || null }));
 }
 
 async function loadPagosFinancieros(supabase, empresaId, periodo, sociedadIds = null) {
@@ -741,12 +783,12 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     });
   });
 
-  costosOt
+  const costosOtPeriodo = costosOt
     .filter(c => c.ordenes_trabajo?.estado !== 'anulada')
     .filter(c => isInPeriod(c.fecha_er, periodo))
     .filter(c => !effectiveCecoIds || matchesIds(c.ordenes_trabajo?.centro_costo_id, effectiveCecoIds))
-    .filter(c => !cebeIds?.length || intersectsIds(c.ordenes_trabajo?.centro_beneficio_id, cebeIds))
-    .forEach(c => {
+    .filter(c => !cebeIds?.length || intersectsIds(c.ordenes_trabajo?.centro_beneficio_id, cebeIds));
+  costosOtPeriodo.forEach(c => {
       const block = blockForSection(resolverSeccionGasto({
         naturaleza: c.naturaleza_economica,
         fallback: 'costo_ventas',
@@ -845,7 +887,16 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     });
   });
 
+  const nominaOperativa = new Map();
   detalleNomina.forEach(n => {
+    if (norm(n.trabajador_tipo) === 'operativo') {
+      const clave = n.sociedad_id || null;
+      const grupo = nominaOperativa.get(clave) || { sociedadId: n.sociedad_id, filas: [] };
+      const importe = amount(n.neto) + amount(n.essalud) + amount(n.cts) + amount(n.gratificacion) + amount(n.vacaciones);
+      grupo.filas.push({ ...n, importe });
+      nominaOperativa.set(clave, grupo);
+      return;
+    }
     const block = blockForSection(resolverSeccionGasto({
       naturaleza: naturalezaCeco.get(n.centro_costo_id),
     }));
@@ -863,6 +914,29 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
       { fuente: 'Planilla', id: n.id, concepto: 'Cargas sociales', cecoId: n.centro_costo_id }
     );
   });
+
+
+  for (const grupo of nominaOperativa.values()) {
+    const costos = costosOtPeriodo.filter(c => c.sociedad_id === grupo.sociedadId);
+    const monedaCalculo = currencyOf(grupo.filas[0].moneda);
+    const monedas = new Set([...grupo.filas.filter(n => amount(n.importe)).map(n => currencyOf(n.moneda)), ...costos.filter(c => amount(c.mano_obra)).map(c => currencyOf(c.moneda))]);
+    let usd = null;
+    if (monedas.has('PEN') && monedas.has('USD')) {
+      try {
+        const tc = await getTipoCambioPorFecha(`${periodo}-01`, supabase);
+        usd = Number(tc?.usd);
+      } catch {
+        usd = null;
+      }
+    }
+    const calculo = calcularManoObraNoAsignada({ filasPlanilla: grupo.filas, costosOt: costos, monedaCalculo, usd });
+    result.otherCurrenciesWarning ||= calculo.otherCurrenciesWarning;
+    calculo.filas.forEach(n => {
+      addToBlock(result.er.costoVentas, 'Mano de obra no asignada a OT', n.importe, n.moneda, {
+        fuente: 'Planilla', id: n.id, concepto: 'Mano de obra no asignada a OT', cecoId: n.centro_costo_id,
+      });
+    });
+  }
 
   // Egresos de caja chica sin gasto_id: su CECO participa de la misma regla.
   cajaChica.forEach(r => {
@@ -912,6 +986,7 @@ export function consolidarEstadosResultados(resultados = [], eliminaciones = [],
   const sourceCounts = {};
 
   resultados.filter(Boolean).forEach(data => {
+    result.otherCurrenciesWarning ||= Boolean(data.otherCurrenciesWarning);
     Object.entries(data.sourceCounts || {}).forEach(([key, value]) => {
       sourceCounts[key] = (sourceCounts[key] || 0) + Number(value || 0);
     });

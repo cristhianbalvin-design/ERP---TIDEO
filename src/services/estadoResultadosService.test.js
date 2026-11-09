@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calcularManoObraNoAsignada,
   cxpCanDevengarEr,
   esCategoriaInversionCajaChica,
   filtrarCajaChicaSinGastoVinculado,
@@ -36,4 +37,22 @@ test('identifica categorías de inversión por tipo_sistema aunque tengan otro n
 
 test('conserva categorías que no resuelven como inversiones en ER', () => {
   assert.equal(esCategoriaInversionCajaChica('Categoría sin configuración', []), false);
+});
+
+
+test('mano de obra no asignada conserva la diferencia positiva', () => {
+  const calculo = calcularManoObraNoAsignada({ filasPlanilla: [{ importe: 100, moneda: 'PEN' }], costosOt: [{ mano_obra: 40, moneda: 'PEN' }], monedaCalculo: 'PEN' });
+  assert.equal(calculo.filas[0].importe, 60);
+  assert.equal(calculo.otherCurrenciesWarning, false);
+});
+
+test('mano de obra absorbida totalmente no agrega filas', () => {
+  const calculo = calcularManoObraNoAsignada({ filasPlanilla: [{ importe: 100, moneda: 'PEN' }], costosOt: [{ mano_obra: 120, moneda: 'PEN' }], monedaCalculo: 'PEN' });
+  assert.deepEqual(calculo.filas, []);
+});
+
+test('mano de obra en monedas mezcladas sin tasa se compara por moneda', () => {
+  const calculo = calcularManoObraNoAsignada({ filasPlanilla: [{ importe: 100, moneda: 'PEN' }, { importe: 50, moneda: 'USD' }], costosOt: [{ mano_obra: 40, moneda: 'PEN' }, { mano_obra: 20, moneda: 'USD' }], monedaCalculo: 'PEN' });
+  assert.deepEqual(calculo.filas.map(fila => fila.importe), [60, 30]);
+  assert.equal(calculo.otherCurrenciesWarning, true);
 });

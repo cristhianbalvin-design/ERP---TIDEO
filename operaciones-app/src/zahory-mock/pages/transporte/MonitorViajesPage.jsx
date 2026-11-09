@@ -1,63 +1,218 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
-import { listarViajes, obtenerViaje, cambiarEstadoViaje, eliminarViajeBorrador } from '../../../services/transporteViajesService.js';
+import { listarViajes } from '../../../services/transporteViajesService.js';
 import { AccesoTransporte } from './AccesoTransporte.jsx';
 import { usePermisosTransporte } from './usePermisosTransporte.js';
-import { ModalShell } from '../../components/ModalShell.jsx';
 import { DxBuscador } from '../../components/dx/DxBuscador.jsx';
-import { DxFechaExacta } from '../../components/dx/DxFechaExacta.jsx';
-import { DxFiltroMoneda } from '../../components/dx/DxFiltroMoneda.jsx';
 import { filtrarBusquedaInteligente } from '../../components/dx/busquedaInteligente.js';
-import { accionesPermitidasViaje, colorEstadoViaje, etiquetaEstadoViaje, etiquetaModalidad, etiquetaTipoParada, etiquetaEstadoParada, formatearImporte, formatearFechaTransporte, formatearFechaHoraTransporte, formatearNumeroTransporte, grupoEstadoViaje, etiquetaContador, ingresoEstimadoMesViajes, esFechaViajeMesLocal } from './transporteUtils.js';
+import { TransporteMapaRutas } from './TransporteMapaRutas.jsx';
+import {
+  avanceEstimadoViaje, colorEstadoViaje, columnaTableroViaje, etiquetaContador, etiquetaEstadoViaje, etiquetaTipoVehiculo,
+  fechaActualLocal, fechaLocalDeViaje, filtrarPeriodoViajes, formatearFechaTransporte, formatearImporte,
+  formatearNumeroTransporte, ingresoEstimadoMesViajes, resumenMonitorViajes,
+} from './transporteUtils.js';
 
-const GROUPS = [['todos','Todos'],['borrador','Borrador'],['programados','Programados'],['en_curso','En curso'],['entregados','Entregados'],['cerrados','Cerrados / Cancelados']];
-const clientName = row => row.cuenta?.nombre_comercial || row.cuenta?.razon_social || 'Sin dato';
-const money = (row, digits = 2) => row.ingreso_estimado == null ? 'Sin dato' : `${row.moneda === 'USD' ? 'US$' : 'S/'} ${Number(row.ingreso_estimado).toLocaleString('es-PE',{ minimumFractionDigits:digits, maximumFractionDigits:digits })}`;
-const moneyTotal = (amount, currency) => `${currency === 'USD' ? 'US$' : currency === 'PEN' ? 'S/' : `${currency} `} ${Number(amount).toLocaleString('es-PE',{ minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+const COLUMNAS = [['programado', 'Programado', 'is-amber'], ['despachado', 'Despachado', 'is-cyan'],
+  ['en_ruta', 'En ruta', 'is-violet'], ['entregado', 'Entregado', 'is-green']];
+const PERIODOS = [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['todos', 'Todos']];
+const MONEDAS = [['', 'Todas las monedas'], ['PEN', 'S/'], ['USD', 'US$']];
+const POR_COLUMNA = 4;
+const cliente = row => row.cuenta?.nombre_comercial || row.cuenta?.razon_social || 'Sin cliente';
+const iniciales = nombre => String(nombre || '').trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('')
+  .toLocaleUpperCase('es-PE');
+const hora = fecha => new Date(fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+const coordsParada = parada => parada && parada.latitud != null && parada.longitud != null
+  ? [Number(parada.latitud), Number(parada.longitud)] : null;
+
+function etiquetaSalida(row, hoy) {
+  const fecha = fechaLocalDeViaje(row.fecha_programada);
+  const dia = formatearFechaTransporte(fecha).slice(0, 5);
+  const horaSalida = row.fecha_programada ? hora(row.fecha_programada) : '';
+  if (row.estado === 'programado' && fecha && fecha < hoy) return { texto: `⚠ Atrasado · ${dia} ${horaSalida}`, tono: 'is-late' };
+  if (row.estado === 'programado' && fecha === hoy) return { texto: `◷ Hoy ${horaSalida}`, tono: 'is-hot' };
+  if (row.estado === 'entregado') return { texto: `Entregado ${dia}`, tono: '' };
+  return { texto: fecha ? `◷ ${dia} ${horaSalida}` : 'Sin fecha', tono: '' };
+}
+
+function Recurso({ row }) {
+  if (row.vehiculo?.placa) {
+    return <span className="dx-tms-who"><span className="dx-tms-av" aria-hidden="true">{iniciales(row.conductor?.nombre)}</span>
+      <span className="dx-tms-who-text"><b>{row.vehiculo.placa}</b><small>{row.conductor?.nombre || 'Sin conductor'}</small></span></span>;
+  }
+  if (['borrador', 'programado'].includes(row.estado)) return <span className="dx-tms-flag is-amber">● Sin unidad asignada</span>;
+  return <span className="dx-tms-muted">—</span>;
+}
 
 export function MonitorViajesPage({ onNav }) {
-  const sesion = useSesionOperativa(); const empresaId = sesion.empresaId; const access = usePermisosTransporte(sesion);
-  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [query,setQuery]=useState(''); const [group,setGroup]=useState('todos'); const [date,setDate]=useState(''); const [currency,setCurrency]=useState(''); const [detail,setDetail]=useState(null); const [busy,setBusy]=useState(false); const [serverError,setServerError]=useState(''); const [cancelNote,setCancelNote]=useState('');
-  const reload=useCallback(async()=>{if(!empresaId||!access.ver)return;setLoading(true);setError('');try{setRows(await listarViajes(empresaId));}catch(e){setError(e.message||'No se pudieron cargar los viajes.');}finally{setLoading(false);}},[empresaId,access.ver]);
-  useEffect(()=>{reload();},[reload]);
-  const filtered=useMemo(()=>filtrarBusquedaInteligente(rows.map(row=>({...row,busqueda:[row.codigo,clientName(row),row.origen_nombre,row.destino_nombre,row.os?.numero,row.os_cliente_id]})),query)
-    .filter(row=>group==='todos'||grupoEstadoViaje(row.estado)===group)
-    .filter(row=>!date||String(row.fecha_programada||'').slice(0,10)===date)
-    .filter(row=>!currency||row.moneda===currency),[rows,query,group,date,currency]);
-  const incomeByCurrency=ingresoEstimadoMesViajes(rows);
-  const income=Object.entries(incomeByCurrency).map(([currency,amount])=>moneyTotal(amount,currency)).join(' · ')||'Sin dato';
-  const kpis=[['Programados',rows.filter(r=>r.estado==='programado').length],['En curso',rows.filter(r=>['despachado','en_ruta','con_incidente'].includes(r.estado)).length],['Entregados del mes',rows.filter(r=>esFechaViajeMesLocal(r.fecha_programada)&&['entregado','en_liquidacion','cerrado'].includes(r.estado)).length],['Ingreso estimado del mes',income]];
-  const detailGroups=detail?[
-    ['General',[['Cliente',clientName(detail)],['OS cliente',detail.os?.numero||'Sin dato'],['Fecha programada',formatearFechaHoraTransporte(detail.fecha_programada)]]],
-    ['Ruta',[['Ruta',`${detail.origen_nombre} → ${detail.destino_nombre}`],['Distancia',detail.distancia_km==null?'Sin dato':`${formatearNumeroTransporte(detail.distancia_km)} km`]]],
-    ['Carga',[['Unidad',detail.tipo_unidad||'Sin dato'],['Descripción',detail.carga_descripcion||'Sin dato'],['Peso / volumen',`${formatearNumeroTransporte(detail.peso_toneladas)} t / ${formatearNumeroTransporte(detail.volumen_m3)} m³`]]],
-    ['Tarifa',[['Modalidad',etiquetaModalidad(detail.modalidad)],['Tarifa unitaria',detail.tarifa_unitaria==null?'Sin dato':formatearImporte(detail.tarifa_unitaria,detail.moneda,detail.modalidad)],['Mínimo facturable',detail.minimo_facturable==null?'Sin dato':formatearImporte(detail.minimo_facturable,detail.moneda)],['Cantidad facturable',formatearNumeroTransporte(detail.cantidad_facturable)],['Ingreso estimado',money(detail)],['Observaciones',detail.observaciones||'Sin dato']]],
-  ]:[];
-  async function open(row){setServerError('');try{setDetail(await obtenerViaje(empresaId,row.id));}catch(e){setServerError(e.message);}}
-  async function transition(next,note=null){if(!detail)return;setBusy(true);setServerError('');try{await cambiarEstadoViaje(detail.id,next,note);await reload();await open(detail);}catch(e){setServerError(e.message);}finally{setBusy(false);}}
-  async function remove(){if(!detail||!globalThis.confirm(`¿Eliminar el viaje ${detail.codigo}? Esta acción no se puede deshacer.`))return;setBusy(true);try{await eliminarViajeBorrador(empresaId,detail.id);setDetail(null);await reload();}catch(e){setServerError(e.message);}finally{setBusy(false);}}
-  if(access.motivo)return <AccesoTransporte acceso={access}/>;
-  return <section className="dx-ui dx-transporte dx-transporte-viajes">
-    <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Transporte Comercial</div><h1 className="dx-ui-title">Monitor de Viajes</h1><p className="dx-ui-sub">Órdenes de viaje y seguimiento de operaciones.</p></div><div className="dx-ui-actions">{access.crear&&<button className="dx-btn primary" onClick={()=>onNav('transporte-crear-ov')}>Nueva orden de viaje</button>}</div></header>
-    <div className="dx-ui-kpi-row">{kpis.map(([label,value])=><div className="dx-ui-kpi" key={label}><strong className={value==='Sin dato'?'dx-transporte-no-data':''}>{value}</strong><span>{label}</span></div>)}</div>
-    <div className="dx-ui-card dx-transporte-list"><div className="dx-ui-toolbar"><h2>Viajes</h2><span className="dx-ui-count">{etiquetaContador(filtered.length,'viaje')}</span><div className="dx-ui-segment" role="tablist" aria-label="Grupo de estado">{GROUPS.map(([key,label])=><button key={key} className={group===key?'on':''} aria-pressed={group===key} onClick={()=>setGroup(key)}>{label}</button>)}</div><DxBuscador value={query} onChange={setQuery} placeholder="Código, cliente, origen, destino u OS…"/><DxFechaExacta value={date} onChange={setDate} label="Fecha programada"/><DxFiltroMoneda value={currency} onChange={setCurrency}/></div>
-      <div className="dx-ui-head dx-transporte-trip-cols"><span>Código</span><span>Cliente / OS</span><span>Ruta</span><span>Fecha programada</span><span>Unidad / Conductor</span><span>Ingreso estimado</span><span>Estado</span></div>
-      {loading?<div className="dx-ui-empty">Cargando viajes…</div>:error?<div className="dx-ui-empty">{error}<button onClick={reload}>Reintentar</button></div>:!filtered.length?<div className="dx-ui-empty">No hay viajes que coincidan con los filtros.</div>:filtered.map(row=><div className="dx-ui-row dx-transporte-trip-cols" key={row.id} role="button" tabIndex="0" onClick={()=>open(row)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(row);}}}>
-        <strong className="dx-transporte-code">{row.codigo}</strong><span><small className="dx-transporte-card-label">Cliente / OS</small><b>{clientName(row)}</b><small>{row.os?.numero||'Sin OS cliente'}</small></span><strong>{row.origen_nombre} → {row.destino_nombre}</strong><span><small className="dx-transporte-card-label">Fecha programada</small>{formatearFechaTransporte(String(row.fecha_programada||'').slice(0,10))}</span><span className="dx-transporte-unit"><small className="dx-transporte-card-label">Unidad / Conductor</small><b>{row.tipo_unidad||'Sin dato'}</b><small>{[row.vehiculo?.placa,row.conductor?.nombre].filter(Boolean).join(' · ')||'Sin asignar'}</small></span><strong><small className="dx-transporte-card-label">Ingreso estimado</small>{money(row)}</strong><span><small className="dx-transporte-card-label">Estado</small><span className={`dx-ui-pill ${colorEstadoViaje(row.estado)}`}><i/>{etiquetaEstadoViaje(row.estado)}</span></span>
-      </div>)}
+  const sesion = useSesionOperativa();
+  const empresaId = sesion.empresaId;
+  const access = usePermisosTransporte(sesion);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [vista, setVista] = useState('tablero');
+  const [periodo, setPeriodo] = useState('semana');
+  const [moneda, setMoneda] = useState('');
+  const [abiertas, setAbiertas] = useState({});
+  const hoy = fechaActualLocal();
+
+  const reload = useCallback(async () => {
+    if (!empresaId || !access.ver) return;
+    setLoading(true); setError('');
+    try { setRows(await listarViajes(empresaId)); } catch (e) { setError(e.message || 'No se pudieron cargar los viajes.'); }
+    finally { setLoading(false); }
+  }, [empresaId, access.ver]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const resumen = useMemo(() => resumenMonitorViajes(rows, hoy), [rows, hoy]);
+  const ingresos = ingresoEstimadoMesViajes(rows);
+  const enRuta = useMemo(() => rows.filter(row => ['en_ruta', 'con_incidente'].includes(row.estado)).map(row => {
+    const avance = avanceEstimadoViaje(row, row.eventos);
+    const origen = coordsParada(row.paradas[0]);
+    const destino = coordsParada(row.paradas.at(-1));
+    const posicion = avance && origen && destino ? [origen[0] + (destino[0] - origen[0]) * avance.avance,
+      origen[1] + (destino[1] - origen[1]) * avance.avance] : null;
+    return { row, avance, origen, destino, posicion };
+  }), [rows]);
+  const rutasMapa = useMemo(() => enRuta.map(item => ({ id: item.row.id, enVivo: true, posicion: item.posicion,
+    marca: item.row.vehiculo?.placa || item.row.codigo, alerta: item.row.estado === 'con_incidente',
+    puntos: [{ coords: item.origen }, { coords: item.destino }] })), [enRuta]);
+  const filtrados = useMemo(() => filtrarBusquedaInteligente(filtrarPeriodoViajes(rows, periodo, hoy)
+    .filter(row => !moneda || row.moneda === moneda)
+    .map(row => ({ ...row, busqueda: [row.codigo, cliente(row), row.origen_nombre, row.destino_nombre, row.os?.numero,
+      row.vehiculo?.placa, row.conductor?.nombre] })), query), [rows, periodo, hoy, moneda, query]);
+  const abrir = row => onNav('transporte-viaje', { id: row.id });
+  const teclado = (event, row) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrir(row); } };
+
+  function exportar() {
+    const encabezado = ['Código', 'Cliente', 'OS', 'Origen', 'Destino', 'Salida', 'Unidad', 'Conductor', 'Moneda', 'Ingreso', 'Estado'];
+    const filas = filtrados.map(row => [row.codigo, cliente(row), row.os?.numero || '', row.origen_nombre, row.destino_nombre,
+      row.fecha_programada ? `${fechaLocalDeViaje(row.fecha_programada)} ${hora(row.fecha_programada)}` : '',
+      row.vehiculo?.placa || '', row.conductor?.nombre || '', row.moneda || '', row.ingreso_estimado ?? '', etiquetaEstadoViaje(row.estado)]);
+    const csv = [encabezado, ...filas].map(fila => fila.map(valor => `"${String(valor ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }));
+    enlace.download = `viajes-${hoy}.csv`;
+    enlace.click();
+    URL.revokeObjectURL(enlace.href);
+  }
+
+  if (access.motivo) return <AccesoTransporte acceso={access} />;
+  const avisoAccion = resumen.atrasados.length || resumen.hoySinUnidad.length;
+  const tarjeta = row => {
+    const salida = etiquetaSalida(row, hoy);
+    const vivo = enRuta.find(item => item.row.id === row.id);
+    return <article key={row.id} className="dx-tms-tc" role="button" tabIndex={0} aria-label={`Abrir ${row.codigo}`}
+      onClick={() => abrir(row)} onKeyDown={event => teclado(event, row)}>
+      <div className="dx-tms-tc-head"><span className="dx-tms-code">{row.codigo}</span>
+        <span className="dx-tms-amt">{formatearImporte(row.ingreso_estimado, row.moneda)}</span></div>
+      <div className="dx-tms-tc-cli">{cliente(row)}{row.os?.numero && <small> · {row.os.numero}</small>}</div>
+      <div className="dx-tms-route"><b>{row.origen_nombre}</b><i>→</i><b>{row.destino_nombre}</b></div>
+      <div className="dx-tms-tc-meta">{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`,
+        row.paradas.length > 0 && etiquetaContador(row.paradas.length, 'parada'), row.tipo_unidad && etiquetaTipoVehiculo(row.tipo_unidad)].filter(Boolean).join(' · ')}</div>
+      {vivo?.avance && <div className="dx-tms-prog" aria-label={`Avance estimado ${Math.round(vivo.avance.avance * 100)} %`}>
+        <b style={{ width: `${vivo.avance.avance * 100}%` }} /></div>}
+      <div className="dx-tms-tc-foot"><span className={`dx-tms-when ${salida.tono}`}>{salida.texto}</span><Recurso row={row} />
+        {row.estado === 'con_incidente' && <span className="dx-tms-flag is-red">⚑ Incidente</span>}
+        {row.estado === 'en_liquidacion' && <span className="dx-ui-pill is-violet"><i />En liquidación</span>}</div>
+    </article>;
+  };
+
+  return <section className="dx-ui dx-tms dx-tmsmon">
+    <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Transporte comercial · Operación</div>
+      <h1 className="dx-ui-title">Monitor de Viajes</h1><p className="dx-ui-sub">Planifica, despacha y sigue cada viaje de punta a punta.</p></div>
+      <div className="dx-ui-actions"><button type="button" className="dx-btn" onClick={exportar} disabled={!filtrados.length}>Exportar</button>
+        {access.crear && <button type="button" className="dx-btn primary" onClick={() => onNav('transporte-crear-ov')}>＋ Nueva orden de viaje</button>}</div>
+    </header>
+
+    <div className="dx-tms-kpis">
+      <div className="dx-tms-kpi is-warn"><div className="dx-tms-kpi-k"><i>◷</i>Por despachar hoy</div>
+        <div className="dx-tms-kpi-v">{resumen.porDespachar}<small>{resumen.porDespachar - resumen.porDespacharConUnidad} sin unidad</small></div>
+        <div className="dx-tms-kpi-bar"><b style={{ width: `${resumen.porDespachar ? resumen.porDespacharConUnidad / resumen.porDespachar * 100 : 0}%` }} /></div>
+        <div className="dx-tms-kpi-s">{resumen.porDespacharConUnidad} de {resumen.porDespachar} con unidad asignada</div></div>
+      <div className="dx-tms-kpi"><div className="dx-tms-kpi-k"><i>⛟</i>En curso</div>
+        <div className="dx-tms-kpi-v">{resumen.enRuta + resumen.despachados}</div>
+        <div className="dx-tms-kpi-s">{resumen.enRuta} en ruta · {resumen.despachados} despachados</div></div>
+      <div className="dx-tms-kpi is-alert"><div className="dx-tms-kpi-k"><i>⚑</i>Con incidente</div>
+        <div className="dx-tms-kpi-v">{resumen.conIncidente.length}</div>
+        <div className="dx-tms-kpi-s">{resumen.conIncidente.length ? resumen.conIncidente.map(row => row.codigo).join(' · ') : 'Sin incidentes abiertos'}</div>
+        {resumen.conIncidente.length > 0 && <span className="dx-tms-pulse" aria-hidden="true" />}</div>
+      <div className="dx-tms-kpi"><div className="dx-tms-kpi-k"><i>S/</i>Ingreso estimado del mes</div>
+        {Object.keys(ingresos).length ? Object.entries(ingresos).map(([mon, total], index) =>
+          <div key={mon} className={index ? 'dx-tms-kpi-v2' : 'dx-tms-kpi-v'}>{formatearImporte(total, mon)}</div>)
+          : <div className="dx-tms-kpi-v is-empty">Sin dato</div>}
+        <div className="dx-tms-kpi-s">Cada moneda por separado</div></div>
     </div>
-    <ModalShell open={Boolean(detail)} title={detail?.codigo||'Detalle del viaje'} subtitle={detail?`${clientName(detail)} · ${etiquetaEstadoViaje(detail.estado)}`:''} variant="dx-modal dx-transporte-modal" width={980} onClose={()=>setDetail(null)} footer={detail&&<div className="dx-ui-actions dx-transporte-detail-actions">
-      {access.editar&&['borrador','programado'].includes(detail.estado)&&<button className="dx-btn" onClick={()=>onNav('transporte-crear-ov',{id:detail.id})}>Editar</button>}
-      {access.editar&&accionesPermitidasViaje(detail.estado).includes('programado')&&<button className="dx-btn primary" onClick={()=>transition('programado')}>Programar</button>}
-      {access.editar&&accionesPermitidasViaje(detail.estado).includes('borrador')&&<button className="dx-btn" onClick={()=>transition('borrador')}>Volver a borrador</button>}
-      {access.editar&&accionesPermitidasViaje(detail.estado).includes('cancelado')&&<><input aria-label="Motivo de cancelación" placeholder="Motivo obligatorio" value={cancelNote} onChange={e=>setCancelNote(e.target.value)}/><button className="dx-btn" disabled={!cancelNote.trim()||busy} onClick={()=>transition('cancelado',cancelNote)}>Cancelar viaje</button></>}
-      {access.editar&&detail.estado==='borrador'&&<button className="dx-btn" disabled={busy} onClick={remove}>Eliminar borrador</button>}
-    </div>}>
-      {detail&&<div className="card-body dx-transporte-detail">{detailGroups.map(([title,items])=><section className="dx-transporte-detail-block" key={title}><h3>{title}</h3><dl className="dx-transporte-detail-grid">{items.map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl></section>)}
-        <h3>Paradas</h3><ol className="dx-transporte-stops">{(detail.paradas||[]).map(stop=><li key={stop.id}><b>{stop.nombre}</b><span>{etiquetaTipoParada(stop.tipo)} · {etiquetaEstadoParada(stop.estado)}</span><small>{stop.direccion||'Sin dato'}</small></li>)}</ol>
-        <h3>Historial</h3><ol className="dx-transporte-events">{(detail.eventos||[]).map(event=><li key={event.id}><b>{event.estado_anterior ? `${etiquetaEstadoViaje(event.estado_anterior)} → ${etiquetaEstadoViaje(event.estado_nuevo)}` : `Creado como ${etiquetaEstadoViaje(event.estado_nuevo)}`}</b><time>{new Date(event.created_at).toLocaleString('es-PE')}</time><span>{[event.nota||'Sin nota', event.created_by_name && !/^[0-9a-f-]{36}$/i.test(event.created_by_name) ? event.created_by_name : null].filter(Boolean).join(' · ')}</span></li>)}</ol>
-        <div className="dx-transporte-next"><b>Siguientes etapas</b><p>Despacho y asignación, seguimiento en ruta, entrega y liquidación se habilitarán en las siguientes etapas.</p></div>{serverError&&<div className="dx-transporte-error" role="alert">{serverError}</div>}
-      </div>}
-    </ModalShell>
+
+    {!loading && avisoAccion > 0 && <div className="dx-tms-hero" role="status"><span className="dx-tms-hero-i" aria-hidden="true">⚡</span>
+      <div className="dx-tms-hero-t"><b>{[resumen.atrasados.length && etiquetaContador(resumen.atrasados.length, 'viaje atrasado', 'viajes atrasados'),
+        resumen.hoySinUnidad.length && `${etiquetaContador(resumen.hoySinUnidad.length, 'viaje')} de hoy sin unidad`].filter(Boolean).join(' y ')}</b>
+        <span>{[...resumen.atrasados.map(row => `${row.codigo} debió salir ${formatearFechaTransporte(fechaLocalDeViaje(row.fecha_programada))}`),
+          ...resumen.hoySinUnidad.map(row => `${row.codigo} sale ${hora(row.fecha_programada)}`)].slice(0, 4).join(' · ')}</span></div>
+      <button type="button" className="dx-btn" onClick={() => abrir(resumen.atrasados[0] || resumen.hoySinUnidad[0])}>Asignar y despachar →</button></div>}
+
+    {enRuta.length > 0 && <section className="dx-tms-live" aria-label="Viajes en ruta ahora">
+      <TransporteMapaRutas rutas={rutasMapa} className="dx-tms-live-map" zoomMaximo={9}
+        aviso={rutasMapa.some(ruta => ruta.posicion) ? 'Posición estimada por tiempo' : ''} />
+      <div className="dx-tms-live-list"><h3><span className="dx-tms-livedot" aria-hidden="true" />En ruta ahora</h3>
+        {enRuta.map(({ row, avance }) => <div key={row.id} className="dx-tms-trk" role="button" tabIndex={0}
+          onClick={() => abrir(row)} onKeyDown={event => teclado(event, row)}>
+          <div className="dx-tms-trk-r1"><b>{row.codigo}</b><span>{row.origen_nombre} → {row.destino_nombre}</span><em>{row.vehiculo?.placa}</em></div>
+          <div className="dx-tms-prog"><b style={{ width: `${(avance?.avance || 0) * 100}%` }} /></div>
+          <div className="dx-tms-trk-r2"><span>{avance ? `${Math.round(avance.avance * 100)} % estimado` : 'Sin hora de salida'} · {row.conductor?.nombre || 'Sin conductor'}</span>
+            {avance && <em>ETA {hora(avance.llegada)}</em>}</div>
+          {row.estado === 'con_incidente' && <div className="dx-tms-trk-inc">⚑ {[...row.eventos].reverse().find(evento => evento.estado_nuevo === 'con_incidente')?.nota || 'Incidente reportado'}</div>}
+        </div>)}</div>
+    </section>}
+
+    <div className="dx-ui-card dx-tms-card">
+      <div className="dx-ui-toolbar"><h2>Viajes</h2><span className="dx-ui-count">{etiquetaContador(filtrados.length, 'viaje')}</span>
+        <DxBuscador value={query} onChange={setQuery} placeholder="Código, cliente, ruta, placa u OS…" label="Buscar viajes" />
+        <div className="dx-tms-toggle" role="tablist" aria-label="Vista">{[['tablero', '▦ Tablero'], ['lista', '☰ Lista']].map(([clave, texto]) =>
+          <button key={clave} type="button" role="tab" aria-selected={vista === clave} className={vista === clave ? 'is-on' : ''}
+            onClick={() => setVista(clave)}>{texto}</button>)}</div></div>
+      <div className="dx-tms-filters">
+        {PERIODOS.map(([clave, texto]) => <button key={clave} type="button" className={`dx-tms-fchip${periodo === clave ? ' is-on' : ''}`}
+          aria-pressed={periodo === clave} onClick={() => setPeriodo(clave)}>{texto}</button>)}
+        <span className="dx-tms-sep" aria-hidden="true" />
+        {MONEDAS.map(([clave, texto]) => <button key={clave || 'todas'} type="button" className={`dx-tms-fchip${moneda === clave ? ' is-on' : ''}`}
+          aria-pressed={moneda === clave} onClick={() => setMoneda(clave)}>{texto}</button>)}
+      </div>
+      {loading ? <div className="dx-tms-skeletons" aria-label="Cargando viajes">{[1, 2, 3, 4].map(key => <div key={key} className="dx-tms-sk" />)}</div>
+        : error ? <div className="dx-tms-state"><span className="dx-tms-state-i is-red">!</span><b>No pudimos cargar los viajes</b><span>{error}</span>
+          <button type="button" className="dx-btn primary" onClick={reload}>Reintentar</button></div>
+          : !rows.length ? <div className="dx-tms-state"><span className="dx-tms-state-i">⛟</span><b>Aún no hay viajes</b>
+            <span>Crea la primera orden de viaje desde una OS del cliente o como viaje directo.</span>
+            {access.crear && <button type="button" className="dx-btn primary" onClick={() => onNav('transporte-crear-ov')}>＋ Nueva orden de viaje</button>}</div>
+            : !filtrados.length ? <div className="dx-tms-state"><span className="dx-tms-state-i">⌕</span><b>Sin resultados</b>
+              <span>Prueba con otra búsqueda, periodo o moneda.</span>
+              <button type="button" className="dx-btn" onClick={() => { setQuery(''); setPeriodo('todos'); setMoneda(''); }}>Limpiar filtros</button></div>
+              : vista === 'tablero' ? <div className="dx-tms-board">{COLUMNAS.map(([clave, texto, tono]) => {
+                const items = filtrados.filter(row => columnaTableroViaje(row.estado) === clave)
+                  .sort((a, b) => String(a.fecha_programada).localeCompare(String(b.fecha_programada)));
+                const visibles = abiertas[clave] ? items : items.slice(0, POR_COLUMNA);
+                return <div key={clave} className="dx-tms-col"><div className={`dx-tms-colh ${tono}`}>{texto}<span>{items.length}</span></div>
+                  {visibles.length ? visibles.map(tarjeta) : <div className="dx-tms-colempty">Sin viajes</div>}
+                  {items.length > POR_COLUMNA && <button type="button" className="dx-tms-more" onClick={() => setAbiertas(old => ({ ...old, [clave]: !old[clave] }))}>
+                    {abiertas[clave] ? 'Ver menos' : `Ver ${items.length - POR_COLUMNA} más`}</button>}</div>;
+              })}</div>
+                : <div role="table" aria-label="Viajes"><div className="dx-ui-head dx-tmsmon-cols" role="row" aria-hidden="true"><span>Código · estado</span><span>Cliente / OS</span>
+                  <span>Ruta</span><span>Salida</span><span>Unidad · conductor</span><span className="is-right">Ingreso</span><span /></div>
+                  {[...filtrados].sort((a, b) => String(a.fecha_programada).localeCompare(String(b.fecha_programada))).map(row => {
+                    const salida = etiquetaSalida(row, hoy);
+                    return <div key={row.id} className="dx-ui-row dx-tmsmon-cols" role="button" tabIndex={0}
+                      onClick={() => abrir(row)} onKeyDown={event => teclado(event, row)}>
+                      <span className="dx-tmsmon-c1"><b className="dx-tms-code">{row.codigo}</b>
+                        <span className={`dx-ui-pill ${colorEstadoViaje(row.estado)}`}><i />{etiquetaEstadoViaje(row.estado)}</span></span>
+                      <span className="dx-tmsmon-c2"><b>{cliente(row)}</b><small>{row.os?.numero || 'Viaje directo'}</small></span>
+                      <span className="dx-tmsmon-c3"><span className="dx-tms-route"><b>{row.origen_nombre}</b><i>→</i><b>{row.destino_nombre}</b></span>
+                        <small>{[row.distancia_km != null && `${formatearNumeroTransporte(row.distancia_km)} km`, row.paradas.length > 0 && etiquetaContador(row.paradas.length, 'parada')].filter(Boolean).join(' · ')}</small></span>
+                      <span className="dx-tmsmon-c4"><span className={`dx-tms-when ${salida.tono}`}>{salida.texto}</span></span>
+                      <span className="dx-tmsmon-c5"><Recurso row={row} /></span>
+                      <span className="dx-tmsmon-c6 dx-tms-amt">{formatearImporte(row.ingreso_estimado, row.moneda)}</span>
+                      <span className="dx-ui-arrow" aria-hidden="true">›</span></div>;
+                  })}</div>}
+    </div>
   </section>;
 }

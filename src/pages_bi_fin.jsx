@@ -641,6 +641,7 @@ export function BIFinanciero() {
     presupuestos = EMPTY_ARRAY,
     presupuestoPartidas = EMPTY_ARRAY,
     perfilSociedad,
+    role,
     sociedadActiva,
     sociedadesDisponibles = EMPTY_ARRAY,
   } = useApp();
@@ -657,7 +658,11 @@ export function BIFinanciero() {
 
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
-  const [scopeMode, setScopeMode] = useState(ER_SCOPE_MODE.SOCIEDAD);
+  const [scopeMode, setScopeMode] = useState(() => (
+    empresa?.multisociedad_habilitado && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD
+      && sociedadesDisponibles.length > 1
+      ? ER_SCOPE_MODE.CONSOLIDADO : ER_SCOPE_MODE.SOCIEDAD
+  ));
   const [scopeSociedadId, setScopeSociedadId] = useState(
     sociedadActiva?.id || sociedadesDisponibles[0]?.id || '',
   );
@@ -671,6 +676,10 @@ export function BIFinanciero() {
       && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
   );
   const puedeComparar = multisociedadActiva && sociedadesDisponibles.length > 1;
+  const scopeCambiado = useRef(false);
+  useEffect(() => {
+    if (puedeComparar && !scopeCambiado.current) setScopeMode(ER_SCOPE_MODE.CONSOLIDADO);
+  }, [puedeComparar]);
   const sociedadEfectivaId = resolverSociedadScope({
     sociedadId: scopeSociedadId,
     sociedadActivaId: sociedadActiva?.id,
@@ -1014,7 +1023,7 @@ export function BIFinanciero() {
             onChange={event => setPeriodo(event.target.value)} />
           {multisociedadActiva && (
             <select className="select bif-scope-mode" aria-label="Alcance de sociedad" value={scopeMode}
-              onChange={event => setScopeMode(event.target.value)}>
+              onChange={event => { scopeCambiado.current = true; setScopeMode(event.target.value); }}>
               <option value={ER_SCOPE_MODE.SOCIEDAD}>Sociedad {'única'}</option>
               {puedeComparar && <option value={ER_SCOPE_MODE.COMPARATIVO}>Comparativo</option>}
               {puedeComparar && <option value={ER_SCOPE_MODE.CONSOLIDADO}>Consolidado</option>}
