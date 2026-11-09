@@ -96,3 +96,14 @@
 .dx-ui .dx-ui-field-hint { color:var(--dx-ui-gray); font-size:12px; font-weight:400; }
 @container (max-width:480px) { .dx-ui .dx-ui-form-grid, .dx-ui .dx-ui-form-grid.is-2 { grid-template-columns:minmax(0,1fr); } }
 @media (max-width:600px) { .dx-ui .dx-ui-form-grid, .dx-ui .dx-ui-form-grid.is-2 { grid-template-columns:minmax(0,1fr); } }
+
+/* Diálogos compartidos del admin */
+.dx-ui .dx-ui-overlay{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;overflow:auto;padding:20px;background:var(--dx-ui-overlay)}
+.dx-ui .dx-ui-dialog{display:flex;flex-direction:column;width:min(620px,100%);max-height:calc(100dvh - 40px);overflow:auto;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);color:var(--dx-ui-ink);box-shadow:var(--dx-ui-shadow)}
+.dx-ui .dx-ui-dialog-wide{width:min(940px,100%)}
+.dx-ui .dx-ui-dialog-head,.dx-ui .dx-ui-dialog-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-dialog-head h2{margin:0;color:var(--dx-ui-navy);font:700 18px Sora,sans-serif}
+.dx-ui .dx-ui-dialog-head p{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-dialog-foot{justify-content:flex-end;margin-top:auto;border-top:1px solid var(--dx-ui-line);border-bottom:0;flex-wrap:wrap}
+.dark .dx-ui .dx-ui-overlay{background:rgba(0,0,0,.7)}
+.dark .dx-ui .dx-ui-dialog{background:var(--dx-ui-card);color:var(--dx-ui-ink);border-color:var(--dx-ui-line)}

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Facturación · mock PR1</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Mock PR1 Facturación — clases dx-ui-* del estándar (src/dx_ui_base.css) + prefijo dx-fac- para lo propio de la pantalla.
+   Datos: tenant PRUEBA (emp_2000000000), consultados el 2026-11-09. */
+:root{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3;
+  --dx-ui-border:#C9CFD8; --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937; --dx-ui-hover:#F6FBFC;
+  --dx-ui-cyan-bg:#E0F7FA; --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A; --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08);
+  --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-hover:#172033;
+  --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08);
+  --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-hover:#172033;
+  --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--dx-ui-bg);color:var(--dx-ui-ink);font:14px/1.4 'DM Sans',sans-serif;padding:20px 16px 48px;overflow-x:hidden}
+.mock-bar{max-width:1180px;margin:0 auto 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--dx-ui-gray);font-size:12px}
+.mock-bar b{color:var(--dx-ui-navy)}
+.mock-bar button{height:32px;padding:0 12px;border:1px solid var(--dx-ui-line);border-radius:999px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:600 12px 'DM Sans',sans-serif;cursor:pointer}
+.mock-bar .sp{margin-left:auto}
+
+/* ===== Estándar dx-ui (copia literal de src/dx_ui_base.css, lo necesario para el mock) ===== */
+.dx-ui{max-width:1180px;margin:0 auto;color:var(--dx-ui-ink)}
+.dx-ui .dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui .dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui .dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui .dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.dx-ui .dx-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.dx-ui .dx-btn:hover{background:var(--dx-ui-hover)}
+.dx-ui .dx-btn.primary{border-color:var(--dx-ui-navy);background:var(--dx-ui-navy);color:var(--dx-ui-bg)}
+.dx-ui .dx-btn.primary:hover{opacity:.88}
+.dx-ui .dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ui .dx-btn:disabled{border-color:var(--dx-ui-line);background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);opacity:.55;cursor:not-allowed}
+.dx-ui .dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui .dx-ui-kpi{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card)}
+.dx-ui .dx-ui-kpi strong{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif;white-space:nowrap}
+.dx-ui .dx-ui-kpi span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui .dx-ui-card{container-type:inline-size;overflow:hidden;width:100%;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 1px 2px rgba(15,27,48,.04)}
+.dx-ui .dx-ui-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-toolbar h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 16px/1.4 'Sora',sans-serif}
+.dx-ui .dx-ui-count{color:var(--dx-ui-gray);font-size:12px;white-space:nowrap}
+.dx-ui .dx-ui-search{display:flex;align-items:center;gap:8px;width:340px;max-width:100%;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-search:focus-within{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ui .dx-ui-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui .dx-ui-head,.dx-ui .dx-ui-row{display:grid;grid-template-columns:var(--dx-ui-cols,minmax(0,1fr));column-gap:16px;align-items:center;padding-inline:20px}
+.dx-ui .dx-ui-head{min-height:38px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ui .dx-ui-row{min-height:68px;border-bottom:1px solid var(--dx-ui-line-soft);cursor:pointer;transition:background .12s}
+.dx-ui .dx-ui-row:last-child{border-bottom:0}
+.dx-ui .dx-ui-row:hover{background:var(--dx-ui-hover)}
+.dx-ui .dx-ui-row:hover .dx-ui-arrow{color:var(--dx-ui-navy);transform:translateX(2px)}
+.dx-ui .dx-ui-row:focus-visible{position:relative;z-index:1;outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-ui .dx-ui-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ui .dx-ui-pill i{width:6px;height:6px;flex:none;border-radius:50%;background:currentColor}
+.dx-ui .dx-ui-pill.is-amber{background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)} .dx-ui .dx-ui-pill.is-amber i{background:var(--dx-ui-amber-dot)}
+.dx-ui .dx-ui-pill.is-green{background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg)}
+.dx-ui .dx-ui-pill.is-red{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)} .dx-ui .dx-ui-pill.is-red i{background:var(--dx-ui-red-dot)}
+.dx-ui .dx-ui-pill.is-gray{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)} .dx-ui .dx-ui-pill.is-gray i{background:var(--dx-ui-gray-dot)}
+.dx-ui .dx-ui-pill.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui .dx-ui-arrow{color:#9AA3B2;transition:.12s}
+.dx-ui .dx-ui-empty{padding:48px 20px;color:var(--dx-ui-gray);text-align:center}
+.dx-ui .dx-ui-field{display:flex;min-width:0;flex-direction:column;gap:6px;font-size:12px;font-weight:600}
+.dx-ui .dx-ui-field > label{min-height:18px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-ui .dx-ui-field input,.dx-ui .dx-ui-select{box-sizing:border-box;width:100%;min-width:0;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui .dx-ui-select{padding:0 34px 0 12px;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dx-ui-gray) 50%),linear-gradient(135deg,var(--dx-ui-gray) 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.dx-ui .dx-ui-field input:focus,.dx-ui .dx-ui-select:focus{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-ui .dx-ui-field-hint{color:var(--dx-ui-gray);font-size:12px;font-weight:400}
+/* Modal: se trae de zahory.css al admin (pregunta 4 aprobada) */
+.dx-ui .dx-ui-overlay{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;overflow:auto;padding:20px;background:color-mix(in srgb,#0B1220 55%,transparent)}
+.dx-ui .dx-ui-dialog{display:flex;flex-direction:column;width:min(620px,100%);max-height:calc(100dvh - 40px);overflow:auto;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 18px 48px rgba(0,0,0,.24)}
+.dx-ui .dx-ui-dialog-wide{width:min(940px,100%)}
+.dx-ui .dx-ui-dialog-head,.dx-ui .dx-ui-dialog-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-dialog-head h2{margin:0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif}
+.dx-ui .dx-ui-dialog-head p{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-dialog-foot{justify-content:flex-end;margin-top:auto;border-top:1px solid var(--dx-ui-line);border-bottom:0;flex-wrap:wrap}
+
+/* ===== Propio de la pantalla: dx-fac- ===== */
+.dx-fac .dx-fac-cols{--dx-ui-cols:minmax(150px,1.05fr) minmax(190px,1.6fr) minmax(120px,.85fr) minmax(150px,1fr) minmax(150px,1fr) 20px}
+/* KPIs con montos: valor arriba y etiqueta debajo en una línea (variante del §10 ya usada en Transporte), 56 px */
+.dx-fac .dx-fac-kpis{container-type:inline-size}
+.dx-fac .dx-fac-kpis .dx-ui-kpi-row{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dx-fac .dx-fac-kpis .dx-ui-kpi{flex-direction:column;align-items:flex-start;justify-content:center;gap:0;min-width:0}
+.dx-fac .dx-fac-kpis .dx-ui-kpi strong{line-height:22px}
+.dx-fac .dx-fac-kpis .dx-ui-kpi span{max-width:100%;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-fac .dx-fac-kpi-alert strong{color:var(--dx-ui-red-fg)}
+@container (max-width:899px){ .dx-fac .dx-fac-kpis .dx-ui-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@container (max-width:439px){ .dx-fac .dx-fac-kpis .dx-ui-kpi-row{grid-template-columns:minmax(0,1fr)} }
+.dx-fac .dx-fac-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px 14px;align-items:end;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head)}
+.dx-fac .dx-fac-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;grid-column:1 / -1}
+.dx-fac .dx-fac-range{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dx-fac .dx-fac-num{font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy);white-space:nowrap}
+.dx-fac .dx-fac-small{display:block;color:var(--dx-ui-gray);font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-fac .dx-fac-client{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-fac .dx-fac-money{font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dx-fac .dx-fac-stack{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.dx-fac .dx-fac-due-late{color:var(--dx-ui-red-fg);font-weight:600}
+.dx-fac .dx-fac-label{display:none}
+.dx-fac .dx-fac-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--dx-ui-line);color:var(--dx-ui-gray);font-size:12px}
+/* Carga masiva */
+.dx-fac .dx-fac-note{display:flex;gap:10px;margin:16px 20px 0;padding:12px 14px;border:1px solid color-mix(in srgb,var(--dx-ui-amber-dot) 35%,transparent);border-radius:10px;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)}
+.dx-fac .dx-fac-steps{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 20px 20px}
+.dx-fac .dx-fac-step{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--dx-ui-line);border-radius:12px}
+.dx-fac .dx-fac-step h3{margin:0;color:var(--dx-ui-navy);font:700 15px 'Sora',sans-serif;display:flex;gap:8px;align-items:center}
+.dx-fac .dx-fac-step h3 b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:12px}
+.dx-fac .dx-fac-step p{margin:0;color:var(--dx-ui-gray)}
+.dx-fac .dx-fac-drop{display:grid;place-items:center;gap:6px;min-height:118px;padding:16px;border:1.5px dashed var(--dx-ui-border);border-radius:10px;color:var(--dx-ui-gray);text-align:center;cursor:pointer}
+.dx-fac .dx-fac-drop:hover{border-color:var(--dx-ui-cyan);background:var(--dx-ui-hover)}
+.dx-fac .dx-fac-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:16px 20px 0}
+.dx-fac .dx-fac-prev{margin:14px 20px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;overflow:hidden;container-type:inline-size}
+.dx-fac .dx-fac-pcols{--dx-ui-cols:28px minmax(110px,.9fr) minmax(150px,1.4fr) minmax(110px,.8fr) minmax(170px,1.6fr)}
+.dx-fac .dx-fac-prev .dx-ui-row{min-height:52px;cursor:default}
+.dx-fac .dx-fac-pcols .dx-ui-pill{justify-self:start}
+.dx-fac .dx-fac-msg{font-size:12px;color:var(--dx-ui-gray)}
+.dx-fac .dx-fac-msg.is-err{color:var(--dx-ui-red-fg)} .dx-fac .dx-fac-msg.is-warn{color:var(--dx-ui-amber-fg)}
+.dx-fac .dx-fac-x{width:36px;height:36px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font-size:20px;cursor:pointer}
+.dx-fac .dx-fac-x:hover{background:var(--dx-ui-hover)}
+.dx-fac .dx-fac-x:focus-visible{outline:2px solid var(--dx-ui-cyan)}
+[hidden]{display:none!important}
+
+@container (max-width:1100px){ .dx-fac .dx-fac-cols{--dx-ui-cols:minmax(130px,1fr) minmax(160px,1.5fr) minmax(105px,.8fr) minmax(135px,1fr) minmax(140px,1fr) 20px} }
+@container (max-width:880px){ .dx-fac .dx-fac-filters{grid-template-columns:repeat(2,minmax(0,1fr))} .dx-fac .dx-fac-filters > .dx-btn{grid-column:1 / -1;justify-self:start} }
+@container (max-width:880px){
+  .dx-fac .dx-ui-head.dx-fac-cols{display:none}
+  .dx-fac .dx-ui-row.dx-fac-cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:10px;padding-block:14px}
+  .dx-fac .dx-ui-row.dx-fac-cols > .dx-fac-c-client{grid-column:1 / -1;order:-1}
+  .dx-fac .dx-ui-row.dx-fac-cols > .dx-ui-arrow{display:none}
+  .dx-fac .dx-fac-label{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px}
+  .dx-fac .dx-fac-dates{grid-template-columns:minmax(0,1fr)}
+}
+@container (max-width:760px){
+  .dx-fac .dx-fac-pcols{--dx-ui-cols:24px minmax(0,1fr) minmax(0,1fr)}
+  .dx-fac .dx-fac-prev .dx-ui-head{display:none}
+  .dx-fac .dx-fac-pcols > :nth-child(4){display:none}
+  .dx-fac .dx-fac-pcols > :nth-child(5){grid-column:2 / -1}
+}
+@container (max-width:600px){ .dx-fac .dx-fac-steps{grid-template-columns:minmax(0,1fr)} }
+@container (max-width:420px){ .dx-fac .dx-fac-filters{grid-template-columns:minmax(0,1fr)} .dx-fac .dx-ui-row.dx-fac-cols{grid-template-columns:minmax(0,1fr)} .dx-fac .dx-fac-range{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:760px){ .dx-ui .dx-ui-head-page{flex-direction:column;align-items:flex-start} .dx-ui .dx-ui-actions{width:100%;margin-left:0} }
+@media (max-width:420px){ .dx-ui .dx-ui-actions .dx-btn{flex:1 1 100%} .dx-ui .dx-ui-search{width:100%} }
+.dx-fac .dx-ui-dialog{container-type:inline-size}
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <b>Mock PR1 · Facturación</b> · datos reales del tenant PRUEBA al 09/11/2026
+  <span class="sp"></span>
+  <button type="button" data-open="carga">Ver modal: carga masiva</button>
+  <button type="button" data-open="preview">Ver modal: vista previa</button>
+  <button type="button" data-open="result">Ver modal: resultado</button>
+  <button type="button" id="theme">Tema: auto</button>
+</div>
+
+<main class="dx-ui dx-fac">
+  <header class="dx-ui-head-page">
+    <div>
+      <div class="dx-ui-eyebrow">Finanzas · Ventas</div>
+      <h1 class="dx-ui-title">Facturación</h1>
+      <p class="dx-ui-sub">33 comprobantes · 1 valorización lista para facturar</p>
+    </div>
+    <div class="dx-ui-actions">
+      <button class="dx-btn" type="button" data-open="carga">⇪ Carga masiva</button>
+      <button class="dx-btn" type="button">＋ Factura directa</button>
+      <button class="dx-btn primary" type="button">＋ Desde valorización</button>
+    </div>
+  </header>
+
+  <div class="dx-fac-kpis">
+  <section class="dx-ui-kpi-row" aria-label="Resumen">
+    <div class="dx-ui-kpi" title="Facturado en noviembre, neto de notas · 2 comprobantes emitidos · US$ 0.00"><strong>S/ 75,284.00</strong><span>Facturado nov. · 2 emitidas · US$ 0.00</span></div>
+    <div class="dx-ui-kpi" title="Saldo pendiente de 19 facturas · US$ 0.00"><strong>S/ 1,187,784.11</strong><span>Por cobrar · 19 facturas · US$ 0.00</span></div>
+    <div class="dx-ui-kpi dx-fac-kpi-alert" title="3 facturas con saldo y vencimiento pasado · US$ 0.00"><strong>S/ 36,875.00</strong><span>Vencido · 3 facturas · US$ 0.00</span></div>
+    <div class="dx-ui-kpi" title="Valorizaciones aprobadas sin factura"><strong>1</strong><span>Valorización por facturar</span></div>
+  </section>
+  </div>
+
+  <section class="dx-ui-card" aria-labelledby="t-list">
+    <div class="dx-ui-toolbar">
+      <h2 id="t-list">Comprobantes</h2>
+      <span class="dx-ui-count" id="count">33 comprobantes</span>
+      <label class="dx-ui-search"><span aria-hidden="true">⌕</span><input id="q" type="search" placeholder="Buscar por número o cliente…" aria-label="Buscar comprobantes"></label>
+    </div>
+    <div class="dx-fac-filters">
+      <div class="dx-ui-field"><label for="f-cli">Cliente</label><select id="f-cli" class="dx-ui-select"><option value="">Todos los clientes</option></select></div>
+      <div class="dx-ui-field"><label for="f-tipo">Tipo</label><select id="f-tipo" class="dx-ui-select"><option value="">Todos</option><option value="factura">Factura</option><option value="boleta">Boleta</option><option value="nota_credito">Nota de crédito</option><option value="nota_debito">Nota de débito</option></select></div>
+      <div class="dx-ui-field"><label for="f-cob">Estado de cobro</label><select id="f-cob" class="dx-ui-select"><option value="">Todos</option><option value="pend">Por cobrar</option><option value="parcial">Cobro parcial</option><option value="venc">Vencida</option><option value="cobrada">Cobrada</option><option value="anulada">Anulada</option></select></div>
+      <div class="dx-ui-field"><label for="f-mon">Moneda</label><select id="f-mon" class="dx-ui-select"><option value="">Todas</option><option>PEN</option><option>USD</option></select></div>
+      <button class="dx-btn" type="button" id="clear">Limpiar</button>
+      <div class="dx-fac-dates">
+        <div class="dx-ui-field"><label>Emisión</label><div class="dx-fac-range"><input type="date" aria-label="Emisión desde"><input type="date" aria-label="Emisión hasta"></div></div>
+        <div class="dx-ui-field"><label>Vencimiento</label><div class="dx-fac-range"><input type="date" aria-label="Vencimiento desde"><input type="date" aria-label="Vencimiento hasta"></div></div>
+      </div>
+    </div>
+    <div class="dx-ui-head dx-fac-cols" role="row">
+      <span>Comprobante</span><span>Cliente</span><span>Emisión · vence</span><span>Total</span><span>Estado</span><span></span>
+    </div>
+    <div id="rows"></div>
+    <div class="dx-ui-empty" id="empty" hidden>No hay comprobantes que coincidan con la búsqueda o los filtros.</div>
+    <div class="dx-fac-foot"><span>Ordenado por fecha de emisión, más reciente primero</span><span>Archivos PDF/XML: se ven en la ficha de cada comprobante</span></div>
+  </section>
+
+  <!-- Modal: carga masiva (paso inicial) -->
+  <div class="dx-ui-overlay" id="m-carga" hidden>
+    <div class="dx-ui-dialog dx-ui-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="mc-t">
+      <div class="dx-ui-dialog-head"><div><h2 id="mc-t">Carga masiva de facturas</h2><p>Cada fila del Excel crea la factura y su cuenta por cobrar.</p></div><button class="dx-fac-x" type="button" aria-label="Cerrar" data-close>×</button></div>
+      <div class="dx-fac-note" role="note"><span aria-hidden="true">⚠</span><div><b>Solo facturas con saldo pendiente.</b> Se aceptan facturas y boletas por cobrar o con cobro parcial. Las facturas ya cobradas al 100&nbsp;% no se cargan aquí. Si el número ya existe para el mismo cliente y sociedad, la fila se rechaza: nunca se crea una segunda cuenta por cobrar.</div></div>
+      <div class="dx-fac-steps">
+        <div class="dx-fac-step">
+          <h3><b>1</b>Descarga la plantilla</h3>
+          <p>Es la misma plantilla de Cuentas por Cobrar: los Excel que ya usas siguen funcionando. Incluye una hoja con tus CEBE, códigos SPOT y cuentas de detracciones.</p>
+          <button class="dx-btn" type="button">⇩ Descargar plantilla .xlsx</button>
+        </div>
+        <div class="dx-fac-step">
+          <h3><b>2</b>Sube el archivo completado</h3>
+          <label class="dx-fac-drop" data-open="preview"><span style="font-size:22px" aria-hidden="true">⇪</span><b style="color:var(--dx-ui-navy)">Arrastra el archivo o haz clic para elegirlo</b><span class="dx-ui-field-hint">Excel .xlsx o .xls · hoja «CxC»</span></label>
+        </div>
+      </div>
+      <div class="dx-ui-dialog-foot"><button class="dx-btn" type="button" data-close>Cancelar</button></div>
+    </div>
+  </div>
+
+  <!-- Modal: vista previa -->
+  <div class="dx-ui-overlay" id="m-preview" hidden>
+    <div class="dx-ui-dialog dx-ui-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="mp-t">
+      <div class="dx-ui-dialog-head"><div><h2 id="mp-t">Revisa antes de importar</h2><p>facturas_noviembre.xlsx · 6 filas leídas</p></div><button class="dx-fac-x" type="button" aria-label="Cerrar" data-close>×</button></div>
+      <div class="dx-fac-sum">
+        <div class="dx-ui-kpi"><strong>4</strong><span>Listas para importar</span></div>
+        <div class="dx-ui-kpi"><strong style="color:var(--dx-ui-amber-fg)">1</strong><span>Con advertencia</span></div>
+        <div class="dx-ui-kpi"><strong style="color:var(--dx-ui-red-fg)">1</strong><span>Rechazada</span></div>
+      </div>
+      <div class="dx-fac-prev">
+        <div class="dx-ui-head dx-fac-pcols"><span>#</span><span>Número</span><span>Cliente</span><span>Total</span><span>Resultado</span></div>
+        <div class="dx-ui-row dx-fac-pcols"><span>2</span><span class="dx-fac-num">F001-00002324</span><span class="dx-fac-client">Pesquera Mar de Grau S.A.</span><span class="dx-fac-money">S/ 12,980.00</span><span class="dx-ui-pill is-green">Lista</span></div>
+        <div class="dx-ui-row dx-fac-pcols"><span>3</span><span class="dx-fac-num">F001-00002325</span><span class="dx-fac-client">Cementos Altiplano S.A.A.</span><span class="dx-fac-money">S/ 7,670.00</span><span class="dx-ui-pill is-green">Lista</span></div>
+        <div class="dx-ui-row dx-fac-pcols"><span>4</span><span class="dx-fac-num">F001-00002326</span><span class="dx-fac-client">Constructora Pacífico Sur S.A.C.</span><span class="dx-fac-money">S/ 21,240.00</span><span class="dx-fac-msg is-warn">⚠ Cliente nuevo: se creará con RUC 20601234567</span></div>
+        <div class="dx-ui-row dx-fac-pcols"><span>5</span><span class="dx-fac-num">F001-00002323</span><span class="dx-fac-client">Minera Santa Lucía de Áncash S.A.C.</span><span class="dx-fac-money">S/ 65,844.00</span><span class="dx-fac-msg is-err">✕ Ya existe esta factura para el mismo cliente y sociedad</span></div>
+        <div class="dx-ui-row dx-fac-pcols"><span>6</span><span class="dx-fac-num">F001-00002327</span><span class="dx-fac-client">Energía Hidroandina del Centro S.A.</span><span class="dx-fac-money">S/ 9,440.00</span><span class="dx-ui-pill is-green">Lista</span></div>
+        <div class="dx-ui-row dx-fac-pcols"><span>7</span><span class="dx-fac-num">F001-00002328</span><span class="dx-fac-client">Agregados Lima Norte S.A.C.</span><span class="dx-fac-money">S/ 5,192.00</span><span class="dx-ui-pill is-green">Lista</span></div>
+      </div>
+      <div class="dx-ui-dialog-foot"><button class="dx-btn" type="button" data-open="carga">Elegir otro archivo</button><button class="dx-btn primary" type="button" data-open="result">Importar 5 facturas</button></div>
+    </div>
+  </div>
+
+  <!-- Modal: resultado -->
+  <div class="dx-ui-overlay" id="m-result" hidden>
+    <div class="dx-ui-dialog" role="dialog" aria-modal="true" aria-labelledby="mr-t">
+      <div class="dx-ui-dialog-head"><div><h2 id="mr-t">Carga terminada</h2><p>facturas_noviembre.xlsx</p></div><button class="dx-fac-x" type="button" aria-label="Cerrar" data-close>×</button></div>
+      <div class="dx-fac-sum" style="padding-bottom:16px">
+        <div class="dx-ui-kpi"><strong style="color:var(--dx-ui-green-fg)">5</strong><span>Facturas creadas, cada una con su CxC</span></div>
+        <div class="dx-ui-kpi"><strong>1</strong><span>Cliente nuevo</span></div>
+        <div class="dx-ui-kpi"><strong style="color:var(--dx-ui-red-fg)">1</strong><span>Rechazada</span></div>
+      </div>
+      <div class="dx-ui-dialog-foot"><button class="dx-btn" type="button">Descargar filas rechazadas</button><button class="dx-btn primary" type="button" data-close>Ver facturas</button></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const HOY='2026-11-09';
+const D=[
+['F001-00002323','factura','Minera Santa Lucía de Áncash S.A.C.','2026-11-05','2026-12-05',55800,10044,65844,'emitida','por_cobrar',65844],
+['F001-00002322','factura','Transportes Interoceánica Cargo S.A.C.','2026-11-02','2026-11-17',8000,1440,9440,'emitida','por_cobrar',9440],
+['F001-00000420','factura','Agregados Lima Norte S.A.C.','2026-10-31','2026-11-15',23940,4309.2,28249.2,'emitida','por_cobrar',28249.2],
+['F001-00000419','factura','Consorcio Vial Los Andes','2026-10-31','2026-12-15',73345,13202.1,86547.1,'emitida','por_cobrar',86547.1],
+['F001-00000418','factura','Compañía Minera Huaytapallana S.A.','2026-10-31','2026-12-30',153964.2,27713.56,181677.76,'emitida','por_cobrar',181677.76],
+['F001-00002321','factura','Energía Hidroandina del Centro S.A.','2026-10-30','2026-12-14',14600,2628,17228,'emitida','por_cobrar',17228],
+['F001-00002320','factura','Agroindustrial Valle Norte S.A.C.','2026-10-24','2026-11-23',69600,12528,82128,'emitida','por_cobrar',82128],
+['F001-00002318','factura','Obras Civiles Inca Ingenieros S.A.C.','2026-10-18','2026-11-02',24700,4446,29146,'cobrada','cobrada',0],
+['F001-00002317','factura','Pesquera Mar de Grau S.A.','2026-10-15','2026-11-14',32700,5886,38586,'emitida','por_cobrar',38586],
+['F001-00002316','factura','Compañía Minera Huaytapallana S.A.','2026-10-12','2026-12-11',52100,9378,61478,'emitida','por_cobrar',61478],
+['F001-00002315','factura','Agregados Lima Norte S.A.C.','2026-10-09','2026-10-24',8800,1584,10384,'cobro_parcial','cobro_parcial',5192],
+['F001-00002314','factura','Minera Cordillera Azul S.A.A.','2026-10-09','2026-11-23',68400,12312,80712,'emitida','por_cobrar',80712],
+['F001-00002313','factura','Transportes Interoceánica Cargo S.A.C.','2026-10-06','2026-10-21',13400,2412,15812,'cobrada','cobrada',0],
+['F001-00002312','factura','Minera Cordillera Azul S.A.A.','2026-10-03','2026-11-17',60400,10872,71272,'emitida','por_cobrar',71272],
+['F001-00002311','factura','Minera Cordillera Azul S.A.A.','2026-09-30','2026-11-14',66000,11880,77880,'emitida','por_cobrar',77880],
+['F001-00000417','factura','Agregados Lima Norte S.A.C.','2026-09-30','2026-10-15',23465,4223.7,27688.7,'cobrada','cobrada',0],
+['F001-00000416','factura','Consorcio Vial Los Andes','2026-09-30','2026-11-14',71740,12913.2,84653.2,'emitida','por_cobrar',84653.2],
+['F001-00000415','factura','Compañía Minera Huaytapallana S.A.','2026-09-30','2026-11-29',158952.5,28611.45,187563.95,'emitida','por_cobrar',187563.95],
+['F001-00000414','factura','Minera Cordillera Azul S.A.A.','2026-09-30','2026-11-14',54505,9810.9,64315.9,'emitida','por_cobrar',64315.9],
+['F001-00002310','factura','Energía Hidroandina del Centro S.A.','2026-09-27','2026-11-11',11300,2034,13334,'emitida','por_cobrar',13334],
+['F001-00002309','factura','Agroindustrial Valle Norte S.A.C.','2026-09-27','2026-10-27',11100,1998,13098,'cobrada','cobrada',0],
+['F001-00002308','factura','Minera Cordillera Azul S.A.A.','2026-09-21','2026-11-05',35300,6354,41654,'cobro_parcial','cobro_parcial',20827],
+['F001-00002307','factura','Obras Civiles Inca Ingenieros S.A.C.','2026-09-21','2026-10-06',38100,6858,44958,'cobrada','cobrada',0],
+['F001-00002306','factura','Pesquera Mar de Grau S.A.','2026-09-18','2026-10-18',64100,11538,75638,'cobrada','cobrada',0],
+['F001-00002305','factura','Cementos Altiplano S.A.A.','2026-09-15','2026-10-15',6500,1170,7670,'cobrada','cobrada',0],
+['F001-00002304','factura','Agregados Lima Norte S.A.C.','2026-09-12','2026-09-27',12500,2250,14750,'cobrada','cobrada',0],
+['F001-00002319','factura','Constructora Pacífico Sur S.A.C.','2026-09-11','2026-10-11',9200,1656,10856,'emitida','vencida',10856],
+['F001-00002303','factura','Minera Santa Lucía de Áncash S.A.C.','2026-09-09','2026-10-09',55400,9972,65372,'cobrada','cobrada',0],
+['F001-00002302','factura','Minera Cordillera Azul S.A.A.','2026-09-09','2026-10-24',49300,8874,58174,'cobrada','cobrada',0],
+['F001-00002301','factura','Consorcio Vial Los Andes','2026-09-06','2026-10-21',63500,11430,74930,'cobrada','cobrada',0],
+['F001-00000413','factura','Consorcio Vial Los Andes','2026-08-31','2026-10-15',53460,9622.8,63082.8,'cobrada','cobrada',0],
+['F001-00000412','factura','Compañía Minera Huaytapallana S.A.','2026-08-31','2026-10-30',123847.5,22292.55,146140.05,'cobrada','cobrada',0],
+['F001-00000411','factura','Minera Cordillera Azul S.A.A.','2026-08-31','2026-10-15',42515,7652.7,50167.7,'cobrada','cobrada',0]
+];
+const TIPOS={factura:'Factura',boleta:'Boleta',nota_credito:'Nota de crédito',nota_debito:'Nota de débito'};
+const money=v=>'S/ '+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fecha=s=>{const[y,m,d]=s.split('-');return d+'/'+m+'/'+y};
+const dias=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
+function cobro(r){
+  const [,,,,ven,,,,fe,ce,saldo]=r;
+  if(fe==='anulada') return {k:'anulada',html:'<span class="dx-ui-pill is-gray"><i></i>Anulada</span>'};
+  if(saldo<=0) return {k:'cobrada',html:'<span class="dx-ui-pill is-green"><i></i>Cobrada</span>'};
+  if(ven<HOY){const n=dias(ven,HOY);return {k:'venc',html:`<span class="dx-ui-pill is-red"><i></i>Vencida · ${n} ${n===1?'día':'días'}</span><span class="dx-fac-small">Saldo ${money(saldo)}</span>`};}
+  if(ce==='cobro_parcial') return {k:'parcial',html:`<span class="dx-ui-pill is-amber"><i></i>Cobro parcial</span><span class="dx-fac-small">Saldo ${money(saldo)}</span>`};
+  return {k:'pend',html:`<span class="dx-ui-pill is-cyan"><i></i>Por cobrar</span><span class="dx-fac-small">Vence en ${dias(HOY,ven)} días</span>`};
+}
+const cli=document.getElementById('f-cli');
+[...new Set(D.map(r=>r[2]))].sort((a,b)=>a.localeCompare(b,'es')).forEach(c=>cli.add(new Option(c,c)));
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+function render(){
+  const q=norm(document.getElementById('q').value.trim()), fc=cli.value, ft=document.getElementById('f-tipo').value, fb=document.getElementById('f-cob').value, fm=document.getElementById('f-mon').value;
+  const out=D.filter(r=>{
+    if(q && !q.split(/\s+/).every(t=>norm(r[0]+' '+r[2]).includes(t))) return false;
+    if(fc && r[2]!==fc) return false; if(ft && r[1]!==ft) return false; if(fm && fm!=='PEN') return false;
+    if(fb && cobro(r).k!==fb) return false; return true;});
+  document.getElementById('rows').innerHTML=out.map(r=>{const c=cobro(r);const late=c.k==='venc';return `
+  <div class="dx-ui-row dx-fac-cols" role="button" tabindex="0" aria-label="Abrir ${r[0]}">
+    <div><span class="dx-fac-label">Comprobante</span><span class="dx-fac-num">${r[0]}</span><span class="dx-fac-small">${TIPOS[r[1]]} · PEN</span></div>
+    <div class="dx-fac-c-client" style="min-width:0"><span class="dx-fac-label">Cliente</span><div class="dx-fac-client" title="${r[2]}">${r[2]}</div><span class="dx-fac-small">${r[0].includes('-00000')?'Sin OS de cliente':'OS de cliente vinculada'}</span></div>
+    <div><span class="dx-fac-label">Emisión · vence</span>${fecha(r[3])}<span class="dx-fac-small ${late?'dx-fac-due-late':''}">Vence ${fecha(r[4])}</span></div>
+    <div style="min-width:0"><span class="dx-fac-label">Total</span><span class="dx-fac-money">${money(r[7])}</span><span class="dx-fac-small">Subt. ${money(r[5]).slice(3)} · IGV ${money(r[6]).slice(3)}</span></div>
+    <div class="dx-fac-stack"><span class="dx-fac-label">Estado de cobro</span>${c.html}</div>
+    <span class="dx-ui-arrow" aria-hidden="true">›</span>
+  </div>`}).join('');
+  document.getElementById('count').textContent=out.length+(out.length===1?' comprobante':' comprobantes');
+  document.getElementById('empty').hidden=out.length>0;
+}
+['q','f-cli','f-tipo','f-cob','f-mon'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+document.getElementById('clear').onclick=()=>{['q','f-cli','f-tipo','f-cob','f-mon'].forEach(id=>document.getElementById(id).value='');render();};
+render();
+const modals={carga:'m-carga',preview:'m-preview',result:'m-result'};
+const closeAll=()=>Object.values(modals).forEach(id=>document.getElementById(id).hidden=true);
+document.addEventListener('click',e=>{const o=e.target.closest('[data-open]');if(o){closeAll();document.getElementById(modals[o.dataset.open]).hidden=false;}
+  if(e.target.closest('[data-close]')||e.target.classList.contains('dx-ui-overlay'))closeAll();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAll();});
+const tb=document.getElementById('theme');let t='auto';
+tb.onclick=()=>{t=t==='auto'?'dark':t==='dark'?'light':'auto';if(t==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.dataset.theme=t;tb.textContent='Tema: '+t;};
+</script>
+</body>
+</html>

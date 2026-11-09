@@ -44,13 +44,8 @@ import {
   leerPlantillaCxpMasiva,
   validarFilasCxpMasiva,
 } from './services/cxpMassiveImportService.js';
-import {
-  cargarCatalogosCxcMasivo,
-  descargarPlantillaCxcMasiva,
-  ejecutarImportacionCxcMasiva,
-  leerPlantillaCxcMasiva,
-  validarFilasCxcMasiva,
-} from './services/cxcMassiveImportService.js';
+import CargaMasivaCxC from './components/CargaMasivaCxC.jsx';
+import FacturacionListado from './pages/facturacion/FacturacionListado.jsx';
 import * as storageService from './services/storageService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
@@ -703,13 +698,8 @@ function CxC() {
   const [confirmAnularFacturaCxC, setConfirmAnularFacturaCxC] = useState(null);
   const [motivoAnularFacturaCxC, setMotivoAnularFacturaCxC] = useState('');
   const [savingCondonar, setSavingCondonar] = useState(false);
-  const [cxcImportRows, setCxcImportRows] = useState([]);
-  const [cxcImportResult, setCxcImportResult] = useState(null);
-  const [cxcImportando, setCxcImportando] = useState(false);
-  const [cxcImportCargando, setCxcImportCargando] = useState(false);
-  const cxcImportFileRef = useRef(null);
+  const [cargaMasivaAbierta, setCargaMasivaAbierta] = useState(false);
 
-  // ── KPIs ──────────────────────────────────────────────────────────────
   const MONEDAS_CXC = [
     { moneda: 'PEN', titulo: 'Soles (PEN)' },
     { moneda: 'USD', titulo: 'Dolares (USD)' },
@@ -1025,90 +1015,6 @@ function CxC() {
     URL.revokeObjectURL(url);
   };
 
-  const descargarPlantillaCxc = async () => {
-    addNotificacion('La plantilla incluirá CEBEs activos y vigentes ahora. La OS es opcional; sin OS el CEBE es obligatorio. Solo admite saldo pendiente, calcula retención automáticamente y el PDF se adjunta después.');
-    if (!isSupabaseConfigured() || !empresa?.id) {
-      addNotificacion('No se puede generar la plantilla dinámica sin conexión al tenant.');
-      return;
-    }
-    try {
-      const sb = await getSupabaseClient();
-      await descargarPlantillaCxcMasiva(sb, empresa.id, empresa.nombre || empresa.razon_social || '');
-    } catch (error) {
-      addNotificacion(`No se pudo descargar la plantilla: ${error.message}`);
-    }
-  };
-
-  const leerArchivoCxcMasivo = async event => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (!isSupabaseConfigured() || !empresa?.id) {
-      addNotificacion('La carga masiva requiere conexión al tenant.');
-      return;
-    }
-    setCxcImportCargando(true);
-    setCxcImportResult(null);
-    try {
-      const sb = await getSupabaseClient();
-      const [rows, catalogos] = await Promise.all([
-        leerPlantillaCxcMasiva(file),
-        cargarCatalogosCxcMasivo(sb, empresa.id),
-      ]);
-      const validadas = validarFilasCxcMasiva(rows, catalogos, { multisociedadHabilitada: Boolean(empresa.multisociedad_habilitado) });
-      setCxcImportRows(validadas);
-      const rechazadas = validadas.filter(row => row._errores.length).length;
-      // La previsualizacion se arma despues de validar el archivo contra los
-      // catalogos y comprobantes actuales del tenant, antes de ejecutar la RPC.
-      addNotificacion(`Archivo validado: ${validadas.length - rechazadas} filas validas y ${rechazadas} rechazadas.`);
-    } catch (error) {
-      addNotificacion(`No se pudo analizar la plantilla: ${error.message}`);
-    } finally {
-      setCxcImportCargando(false);
-    }
-  };
-
-  const ejecutarCargaCxcMasiva = async () => {
-    if (!cxcImportRows.length || cxcImportando || !empresa?.id) return;
-    const advertenciasNumero = cxcImportRows.filter(row => row._advertencias?.length);
-    if (advertenciasNumero.length && !window.confirm(`Hay ${advertenciasNumero.length} fila(s) con un número de factura ya usado por otro cliente en la misma sociedad. Revísalas antes de continuar. ¿Confirmas la importación?`)) return;
-    setCxcImportando(true);
-    try {
-      const sb = await getSupabaseClient();
-      const resultado = await ejecutarImportacionCxcMasiva({ filas: cxcImportRows, empresaId: empresa.id, supabase: sb, confirmarNumerosRepetidos: advertenciasNumero.length > 0 });
-      setCxcImportRows(resultado.filas);
-      setCxcImportResult(resultado);
-      if (resultado.registros.length) {
-        setFacturas(prev => [...resultado.registros.map(item => item.factura), ...prev]);
-        setCxc(prev => [...resultado.registros.map(item => item.cxc), ...prev]);
-        const cobros = resultado.registros.map(item => item.cobro).filter(Boolean);
-        if (cobros.length) setCobrosHistorial(prev => [...cobros, ...prev]);
-        const clientesNuevos = resultado.registros
-          .filter(item => item.cuenta_creada)
-          .map((item, index) => {
-            const fila = resultado.filas.find(row => row._resultado?.factura?.id === item.factura?.id);
-            return {
-              id: item.cuenta_id, empresa_id: empresa.id, ruc: fila?.ruc_cliente || '',
-              razon_social: fila?.razon_social || '', nombre_comercial: fila?.razon_social || `Cliente importado ${index + 1}`,
-              estado: 'activo',
-            };
-          });
-        if (clientesNuevos.length) setCuentas(prev => [...clientesNuevos.filter(cliente => !prev.some(c => c.id === cliente.id)), ...prev]);
-        setOsClientes(prev => prev.map(os => resultado.filas.reduce((actual, row) => (
-          row._estado === 'CREADA' && row.os_cliente_codigo === os.numero
-            ? { ...actual, saldo_por_facturar: Math.max(0, Number(actual.saldo_por_facturar || 0) - Number(row.monto_total || 0)), monto_facturado: Number(actual.monto_facturado || 0) + Number(row.monto_total || 0) }
-            : actual
-        ), os)));
-      }
-      addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas, ${resultado.clientesCreados} clientes creados y ${resultado.cobrosRegistrados} cobros registrados.`);
-    } catch (error) {
-      addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
-    } finally {
-      setCxcImportando(false);
-    }
-  };
-
-  // ── Ficha ─────────────────────────────────────────────────────────────
   let fichaJSX = null;
   if (selCxC) {
     const c = cxcVista.find(x => x.id === selCxC);
@@ -1458,13 +1364,7 @@ function CxC() {
           </div>
         </div>
         <div className="row" style={{gap:8,alignItems:'center'}}>
-          <input ref={cxcImportFileRef} type="file" accept=".xlsx,.xls" onChange={leerArchivoCxcMasivo} style={{display:'none'}} />
-          <button className="btn btn-secondary" onClick={descargarPlantillaCxc} style={{fontSize:13}}>
-            {I.download} Descargar plantilla
-          </button>
-          <button className="btn btn-secondary" onClick={() => cxcImportFileRef.current?.click()} disabled={cxcImportCargando} style={{fontSize:13}}>
-            {I.upload} {cxcImportCargando ? 'Analizando...' : 'Subir plantilla masiva'}
-          </button>
+          <button className="btn btn-secondary" onClick={() => setCargaMasivaAbierta(true)}>{I.upload} Carga masiva</button>
           <button className="btn btn-secondary" onClick={exportarCSV}>{I.download} Exportar</button>
         </div>
       </div>
@@ -2042,54 +1942,7 @@ function CxC() {
           </div>
         </>
       )}
-      {cxcImportRows.length > 0 && (() => {
-        const listas = cxcImportRows.filter(row => row._estado === 'VALIDA').length;
-        const rechazadas = cxcImportRows.filter(row => row._estado === 'RECHAZADA' || row._errores?.length).length;
-        const fallidas = cxcImportRows.filter(row => row._estado === 'FALLIDA').length;
-        return (
-          <div className="modal-backdrop" style={{zIndex:1200}}>
-            <div className="modal" style={{maxWidth:1240,width:'96vw'}}>
-              <div className="modal-head">
-                <div>
-                  <h2>Previsualizacion de carga masiva CxC</h2>
-                  <div className="text-muted" style={{fontSize:13,marginTop:4}}>
-                    {listas} listas - {rechazadas} rechazadas - {fallidas} fallidas
-                  </div>
-                </div>
-                <button className="icon-btn" onClick={() => { if (!cxcImportando) { setCxcImportRows([]); setCxcImportResult(null); } }} disabled={cxcImportando}>{I.x}</button>
-              </div>
-              <div className="modal-body" style={{padding:0}}>
-                {cxcImportResult && <div style={{padding:'12px 16px',background:'var(--bg-subtle)',fontSize:13}}>
-                  Resultado: <strong>{cxcImportResult.creadas}</strong> creadas, <strong>{cxcImportResult.rechazadas}</strong> rechazadas, <strong>{cxcImportResult.fallidas}</strong> fallidas, <strong>{cxcImportResult.clientesCreados}</strong> clientes creados y <strong>{cxcImportResult.cobrosRegistrados}</strong> cobros registrados.
-                </div>}
-                <div className="table-wrap" style={{maxHeight:'58vh',overflowY:'auto'}}>
-                  <table className="tbl">
-                    <thead style={{position:'sticky',top:0,zIndex:1,background:'var(--bg)'}}><tr>
-                      <th>Fila</th><th>Estado</th><th>RUC</th><th>Razon social</th><th>Documento</th><th>Fecha</th><th>Monto</th><th>OS Cliente</th><th>CEBE</th><th>Mensaje</th>
-                    </tr></thead>
-                    <tbody>{cxcImportRows.map(row => {
-                      const estado = row._estado || (row._errores?.length ? 'RECHAZADA' : 'VALIDA');
-                      const listo = estado === 'VALIDA' || estado === 'CREADA';
-                      const tone = estado === 'CREADA' ? 'var(--green)' : estado === 'VALIDA' ? 'var(--cyan)' : 'var(--danger)';
-                      return <tr key={row._fila} style={{background:estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'VALIDA' ? 'transparent' : 'rgba(220,53,69,.06)'}}>
-                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_cliente}</td><td>{row.razon_social}</td><td>{row.numero}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.os_cliente_codigo || '-'}</td><td>{row.centro_beneficio_codigo || (row.os_cliente_codigo ? 'Heredado de OS' : '-')}</td>
-                        <td style={{fontSize:12,color:listo ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' | ') || (row._advertencias || []).join(' | ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
-                      </tr>;
-                    })}</tbody>
-                  </table>
-                </div>
-              </div>
-              <div className="modal-foot" style={{padding:16,borderTop:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span className="text-muted" style={{fontSize:12}}>Solo se procesaran las filas listas; las rechazadas quedan visibles con su motivo.</span>
-                <div className="row" style={{gap:8}}>
-                  <button className="btn btn-secondary" onClick={() => { setCxcImportRows([]); setCxcImportResult(null); }} disabled={cxcImportando}>Cerrar</button>
-                  <button className="btn btn-primary" onClick={ejecutarCargaCxcMasiva} disabled={cxcImportando || listas === 0 || Boolean(cxcImportResult)}>{cxcImportando ? 'Importando...' : `Importar ${listas} filas validas`}</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {cargaMasivaAbierta && <CargaMasivaCxC onClose={() => setCargaMasivaAbierta(false)} />}
     </>
   );
 }
@@ -4631,7 +4484,7 @@ function FacturacionLegacy() {
   );
 }
 
-const TIPO_DOC_LABELS = { factura: 'Factura', nota_credito: 'Nota de Crédito', nota_debito: 'Nota de Débito' };
+const TIPO_DOC_LABELS = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de Crédito', nota_debito: 'Nota de Débito' };
 const CONDICION_PAGO_OPTIONS = [
   { value:'contado', label:'Contado' },
   { value:'anticipado', label:'Anticipado' },
@@ -4671,7 +4524,7 @@ function Facturacion() {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, cuentasBancarias, seriesDocumentarias, centrosBeneficio, empresa,
     emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, registrarAutodetraccion, generarCxC, crearCxP, addNotificacion, navigate, activeParams, searchQuery,
-    empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+    empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], supabaseStatus,
   } = useApp();
 
   const modoVistaSociedadFacturacion = resolverFiltroSociedadesVista({
@@ -4700,6 +4553,7 @@ function Facturacion() {
 
   // ── mode: null=lista, 'val'=desde val, 'directa' ──────────────────────
   const [mode, setMode] = useState(null);
+  const [cargaMasivaAbierta, setCargaMasivaAbierta] = useState(false);
 
   // ── Form state ────────────────────────────────────────────────────────
   const [valSel, setValSel] = useState('');
@@ -4857,14 +4711,6 @@ function Facturacion() {
   const [confirmarExcesoFac, setConfirmarExcesoFac] = useState(false);
 
   // ── Filter state ──────────────────────────────────────────────────────
-  const [fCliente, setFCliente] = useState('');
-  const [fTipo, setFTipo] = useState('');
-  const [fEstado, setFEstado] = useState('');
-  const [fMoneda, setFMoneda] = useState('');
-  const [fEmitDesde, setFEmitDesde] = useState('');
-  const [fEmitHasta, setFEmitHasta] = useState('');
-  const [fVenceDesde, setFVenceDesde] = useState('');
-  const [fVenceHasta, setFVenceHasta] = useState('');
 
   // ── Helpers ───────────────────────────────────────────────────────────
   const getCuenta = id => (cuentas || []).find(c => c.id === id);
@@ -6415,263 +6261,11 @@ function Facturacion() {
   }
 
   // ── List view ─────────────────────────────────────────────────────────
-  const hoy = new Date();
-  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
-  const facMes = facturasVista.filter(f => f.estado !== 'anulada' && (f.fecha_emision||'').startsWith(mesActual));
-  const montoMesPEN = facMes
-    .filter(f => (f.moneda||'PEN') !== 'USD')
-    .reduce((s,f) => s + impactoIngresoDocumento(f), 0);
-  const montoMesUSD = facMes
-    .filter(f => (f.moneda||'PEN') === 'USD')
-    .reduce((s,f) => s + impactoIngresoDocumento(f), 0);
-  const facturasBaseVista = facturasVista.filter(f => TIPOS_DOCUMENTO_BASE.includes(f.tipo_documento));
-  const facturasBasePorId = new Map(facturasBaseVista.map(f => [f.id, f]));
-  // Las 9 facturas sin CxC del hallazgo previo no entran en este total porque
-  // no existe un saldo de CxC que sumar; ese hallazgo queda separado.
-  const cxcPendiente = (cxc || []).filter(c => {
-    const factura = facturasBasePorId.get(c.factura_id);
-    return factura && Number(c.saldo || 0) > 0 && !['anulada', 'cancelada', 'cobrada', 'pagada'].includes(String(c.estado || '').toLowerCase());
-  });
-  const montoPendientePEN = cxcPendiente
-    .filter(c => (c.moneda||'PEN') !== 'USD')
-    .reduce((s,c) => s + Number(c.saldo||0), 0);
-  const montoPendienteUSD = cxcPendiente
-    .filter(c => (c.moneda||'PEN') === 'USD')
-    .reduce((s,c) => s + Number(c.saldo||0), 0);
-
-  const clienteOpts = [...new Map(facturasVista.map(f => [f.cuenta_id, cuentaNombre(f.cuenta_id)])).entries()].filter(([k]) => k);
-  const hasFilters = fCliente||fTipo||fEstado||fMoneda||fEmitDesde||fEmitHasta||fVenceDesde||fVenceHasta;
-  const q = (searchQuery||'').toLowerCase();
-  const filtered = facturasVista.filter(f => {
-    if (fCliente && f.cuenta_id !== fCliente) return false;
-    if (fTipo && f.tipo_documento !== fTipo) return false;
-    if (fEstado && f.estado !== fEstado) return false;
-    if (fMoneda && (f.moneda||'PEN') !== fMoneda) return false;
-    if (fEmitDesde && (f.fecha_emision||'') < fEmitDesde) return false;
-    if (fEmitHasta && (f.fecha_emision||'') > fEmitHasta) return false;
-    if (fVenceDesde && (f.fecha_vencimiento||'') < fVenceDesde) return false;
-    if (fVenceHasta && (f.fecha_vencimiento||'') > fVenceHasta) return false;
-    if (q) return (f.numero||'').toLowerCase().includes(q) || cuentaNombre(f.cuenta_id).toLowerCase().includes(q);
-    return true;
-  });
-
   return (
     <>
       {fichaFac}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Facturación</h1>
-          <div className="page-sub">{facturasVista.length} facturas · {valsParaFacturar.length} valorizaciones listas para facturar</div>
-        </div>
-        <div className="row" style={{gap:10}}>
-          <button className="btn btn-secondary" onClick={() => openMode('directa')}>{I.plus} Factura directa</button>
-          <button className="btn btn-primary" onClick={() => openMode('val')} disabled={valsParaFacturar.length === 0}>{I.plus} Desde valorización</button>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card">
-          <div className="kpi-label">Facturas emitidas este mes</div>
-          <div className="kpi-value" style={{marginTop:12}}>{facMes.filter(f => TIPOS_DOCUMENTO_BASE.includes(f.tipo_documento)).length}</div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Documentos emitidos</div>
-          <div className="kpi-icon cyan">{I.receipt}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Facturado este mes</div>
-          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-            <span>{money(montoMesPEN)}</span>
-            {montoMesUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(montoMesUSD, 'US$')}</span>}
-          </div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>{facMes.length} facturas</div>
-          <div className="kpi-icon green">{I.dollar}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Pendiente de cobro</div>
-          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12, color:'var(--orange)'}}>
-            <span>{money(montoPendientePEN)}</span>
-            {montoPendienteUSD > 0 && <span style={{fontSize:16}}>{money(montoPendienteUSD, 'US$')}</span>}
-          </div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Emitidas + cobro parcial</div>
-          <div className="kpi-icon orange">{I.clock}</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Valorizaciones por facturar</div>
-          <div className="kpi-value" style={{marginTop:12}}>{valsParaFacturar.length}</div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Aprobadas sin factura</div>
-          <div className="kpi-icon cyan">{I.clipboard}</div>
-        </div>
-      </div>
-
-      {/* Filtros */}
-      <div className="card" style={{marginBottom:8}}>
-        <div style={{padding:'12px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center'}}>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={fCliente} onChange={e => setFCliente(e.target.value)}>
-            <option value="">Todos los clientes</option>
-            {clienteOpts.map(([id,nombre]) => <option key={id} value={id}>{nombre}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={fTipo} onChange={e => setFTipo(e.target.value)}>
-            <option value="">Todos los tipos</option>
-            {Object.entries(TIPO_DOC_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={fEstado} onChange={e => setFEstado(e.target.value)}>
-            <option value="">Todos los estados</option>
-            {Object.entries(FAC_BADGE_LABEL).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <select className="select" style={{flex:'1 1 110px', minWidth:100}} value={fMoneda} onChange={e => setFMoneda(e.target.value)}>
-            <option value="">Todas las monedas</option>
-            <option value="PEN">S/ Soles (PEN)</option>
-            <option value="USD">US$ Dólares (USD)</option>
-          </select>
-          <div style={{display:'flex', alignItems:'center', gap:6, flex:'1 1 220px'}}>
-            <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Emisión:</span>
-            <input className="input" type="date" style={{flex:1}} value={fEmitDesde} onChange={e => setFEmitDesde(e.target.value)} title="Desde" />
-            <input className="input" type="date" style={{flex:1}} value={fEmitHasta} onChange={e => setFEmitHasta(e.target.value)} title="Hasta" />
-          </div>
-          <div style={{display:'flex', alignItems:'center', gap:6, flex:'1 1 220px'}}>
-            <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Vence:</span>
-            <input className="input" type="date" style={{flex:1}} value={fVenceDesde} onChange={e => setFVenceDesde(e.target.value)} title="Desde" />
-            <input className="input" type="date" style={{flex:1}} value={fVenceHasta} onChange={e => setFVenceHasta(e.target.value)} title="Hasta" />
-          </div>
-          {hasFilters && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setFCliente(''); setFTipo(''); setFEstado(''); setFMoneda(''); setFEmitDesde(''); setFEmitHasta(''); setFVenceDesde(''); setFVenceHasta(''); }}>
-              {I.x} Limpiar
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Tabla */}
-      <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>N° Factura</th>
-                {mostrarBadgeSociedadFacturacion && <th>Sociedad</th>}
-                <th>Cliente</th>
-                <th>Tipo</th>
-                <th>Factura afectada</th>
-                <th>Valorización</th>
-                <th>OS Cliente</th>
-                <th className="num">Subtotal</th>
-                <th className="num">IGV</th>
-                <th className="num">Total</th>
-                <th>F. Emisión</th>
-                <th>F. Vencimiento</th>
-                <th>Estado</th>
-                <th style={{textAlign:'center',width:64}}>Docs</th>
-                <th style={{textAlign:'center',width:92}}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(f => {
-                const os = getOs(f.os_cliente_id);
-                const val = (valorizaciones||[]).find(v => v.id === f.valorizacion_id);
-                const facturaAfectada = ['nota_credito', 'nota_debito'].includes(f.tipo_documento)
-                  ? (facturas || []).find(origen => origen.id === f.factura_origen_id)
-                  : null;
-                return (
-                  <tr key={f.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}>
-                    <td className="mono" style={{fontWeight:600}}>{f.numero || f.id}</td>
-                    {mostrarBadgeSociedadFacturacion && <td><SociedadBadge sociedadId={f.sociedad_id} /></td>}
-                    <td style={{maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{f.cuentas?.razon_social || cuentaNombre(f.cuenta_id)}</td>
-                    <td style={{fontSize:12}}>{TIPO_DOC_LABELS[f.tipo_documento] || f.tipo_documento || 'Factura'}</td>
-                    <td>
-                      {facturaAfectada ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{padding:0,fontSize:12,color:'var(--cyan)',whiteSpace:'nowrap'}}
-                          onClick={e => { e.stopPropagation(); setSelFac(facturaAfectada.id); setFichaTab('detalle'); }}
-                        >
-                          Afecta a {facturaAfectada.numero || facturaAfectada.id}
-                        </button>
-                      ) : '—'}
-                    </td>
-                    <td className="mono text-muted" style={{fontSize:12}}>{val?.numero || f.valorizaciones?.numero || '—'}</td>
-                    <td className="mono text-muted" style={{fontSize:12}}>{os?.numero || '—'}</td>
-                    <td className="num">{moneyCurrency(f.subtotal, f.moneda)}</td>
-                    <td className="num">{moneyCurrency(f.igv, f.moneda)}</td>
-                    <td className="num" style={{fontWeight:600}}>{moneyCurrency(f.total || f.monto, f.moneda)}</td>
-                    <td className="text-muted">{f.fecha_emision || '—'}</td>
-                    <td className="text-muted">{f.fecha_vencimiento || '—'}</td>
-                    <td style={{whiteSpace:'nowrap'}}>
-                      <span className={'badge ' + (FAC_BADGE_CLASS[f.estado] || 'badge-cyan')}>
-                        {FAC_BADGE_LABEL[f.estado] || f.estado || '—'}
-                      </span>
-                      {esAnuladaSinNC(f) && puedeEditarFacturacion && (
-                        <span
-                          title="Anulada por error — haz clic para restaurarla"
-                          style={{marginLeft:8,fontSize:11,color:'var(--orange)',fontWeight:600,cursor:'pointer',textDecoration:'underline'}}
-                          onClick={e => { e.stopPropagation(); setSelFac(f.id); setFichaTab('detalle'); }}
-                        >
-                          ↩ Restaurar
-                        </span>
-                      )}
-                    </td>
-                    <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
-                      <span style={{display:'inline-flex',gap:4,alignItems:'center'}}>
-                        <span
-                          title={f.archivo_pdf_url ? 'PDF adjunto' : 'Sin PDF'}
-                          style={{fontSize:10,fontWeight:700,padding:'2px 5px',borderRadius:4,
-                            background: f.archivo_pdf_url ? 'color-mix(in srgb,var(--green) 15%,transparent)' : 'var(--surface-2)',
-                            color: f.archivo_pdf_url ? 'var(--green)' : 'var(--fg-muted)',
-                            border: `1px solid ${f.archivo_pdf_url ? 'var(--green)' : 'var(--border)'}`,
-                            cursor: f.archivo_pdf_url ? 'pointer' : 'default',
-                          }}
-                          onClick={() => f.archivo_pdf_url && window.open(f.archivo_pdf_url,'_blank','noopener,noreferrer')}
-                        >PDF</span>
-                        <span
-                          title={f.archivo_zip_url ? 'ZIP adjunto' : 'Sin ZIP'}
-                          style={{fontSize:10,fontWeight:700,padding:'2px 5px',borderRadius:4,
-                            background: f.archivo_zip_url ? 'color-mix(in srgb,var(--green) 15%,transparent)' : 'var(--surface-2)',
-                            color: f.archivo_zip_url ? 'var(--green)' : 'var(--fg-muted)',
-                            border: `1px solid ${f.archivo_zip_url ? 'var(--green)' : 'var(--border)'}`,
-                            cursor: f.archivo_zip_url ? 'pointer' : 'default',
-                          }}
-                          onClick={() => f.archivo_zip_url && window.open(f.archivo_zip_url,'_blank','noopener,noreferrer')}
-                        >ZIP</span>
-                      </span>
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div className="factura-table-actions">
-                        {puedeEditarFacturacion && f.estado !== 'anulada' && (
-                          <button
-                            type="button"
-                            className="factura-table-action"
-                            title="Subir archivos"
-                            aria-label={`Subir archivos a ${f.numero || 'la factura'}`}
-                            onClick={() => { setSelFac(f.id); setFichaTab('archivos'); }}
-                          >
-                            {I.upload}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="factura-table-action"
-                          title="Ver detalle"
-                          aria-label={`Ver detalle de ${f.numero || 'la factura'}`}
-                          onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}
-                        >
-                          {I.eye}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={14 + (mostrarBadgeSociedadFacturacion ? 1 : 0)} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
-                  {q || hasFilters ? 'No se encontraron resultados' : 'No hay facturas registradas'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Panel lateral: Editar factura */}
+      <FacturacionListado facturas={facturasVista} cxc={cxc || []} cuentaNombre={cuentaNombre} vals={valsParaFacturar.length} abrir={id => { setSelFac(id); setFichaTab('detalle'); }} openMode={openMode} abrirCarga={() => setCargaMasivaAbierta(true)} mostrarBadge={mostrarBadgeSociedadFacturacion} Badge={SociedadBadge} searchQuery={searchQuery} loading={supabaseStatus?.loading} />
+      {cargaMasivaAbierta && <CargaMasivaCxC onClose={() => setCargaMasivaAbierta(false)} />}
       {renderPanelEditFac()}
     </>
   );
