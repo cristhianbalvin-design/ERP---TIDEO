@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa, SOCIEDAD_TODAS_ID } from '../../lib/sesionOperativa.js';
 import { cargarDashboardGerencial } from '../../services/opsDashboardService.js';
+import { fechaVisible, ratio, porcentaje, numero, plural, nombre, ETIQUETAS, mes }
+  from './dashboardGerencialFormato.js';
 
 const PERIODOS = [
   ['mes', 'Este mes'],
@@ -24,42 +26,6 @@ function calcularPeriodo(tipo) {
   const hasta = tipo === 'anterior' ? new Date(hoy.getFullYear(), hoy.getMonth(), 0) : hoy;
   return { desde: fechaISO(desde), hasta: fechaISO(hasta) };
 }
-const fechaVisible = (fecha) => fecha.split('-').reverse().join('/');
-const ratio = (numerador, denominador) =>
-  Number(denominador) ? (100 * Number(numerador)) / Number(denominador) : null;
-const porcentaje = (n) =>
-  n == null || !Number.isFinite(Number(n)) ? 'Sin dato' : `${Number(n).toFixed(1)} %`;
-const numero = (n) => Number(n || 0).toLocaleString('es-PE');
-const plural = (n, uno, varios) => (Number(n) === 1 ? uno : varios);
-const nombre = (s) =>
-  String(s || 'Sin dato')
-    .replaceAll('_', ' ')
-    .replace(/^./, (c) => c.toUpperCase());
-const ETIQUETAS = {
-  estado: {
-    ejecucion: 'En ejecución',
-    programada: 'Programada',
-    cerrada: 'Cerrada',
-    borrador: 'Borrador',
-    pausada: 'Pausada',
-    cancelada: 'Cancelada',
-    por_programar: 'Por programar',
-  },
-  tipo: {
-    Preventivo_PM: 'Preventivo',
-    Correctivo: 'Correctivo',
-    Overhaul: 'Overhaul',
-    Acondicionamiento: 'Acondicionamiento',
-    Reclamo_Rework: 'Retrabajo',
-  },
-};
-const mes = (s) => {
-  const [a, m] = s.split('-');
-  return new Date(Number(a), Number(m) - 1, 1).toLocaleDateString('es-PE', {
-    month: 'short',
-    year: 'numeric',
-  });
-};
 function Card({ title, caption, children }) {
   return (
     <div className="dx-opsd-card">
@@ -326,7 +292,9 @@ function Segmentado({ etiqueta, children }) {
   );
 }
 
-function Encabezado({ entidad, rango, periodo, setPeriodo, moneda, setMoneda, tieneTC }) {
+function Encabezado({
+  entidad, rango, periodo, setPeriodo, moneda, setMoneda, tieneTC, exportar, generando, errorPdf, disponible,
+}) {
   return (
     <header className="dx-opsd-head">
       <div>
@@ -361,9 +329,10 @@ function Encabezado({ entidad, rango, periodo, setPeriodo, moneda, setMoneda, ti
             </button>
           ))}
         </Segmentado>
-        <button className="dx-opsd-button" onClick={() => window.print()}>
-          Exportar PDF
+        <button className="dx-opsd-button" onClick={exportar} disabled={generando || !disponible}>
+          {generando ? 'Generando PDF…' : 'Exportar PDF'}
         </button>
+        {errorPdf && <span className="dx-opsd-pdf-error" role="alert">{errorPdf}</span>}
       </div>
     </header>
   );
@@ -542,6 +511,8 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
   const [intento, setIntento] = useState(0);
+  const [generando, setGenerando] = useState(false);
+  const [errorPdf, setErrorPdf] = useState('');
   const rango = useMemo(() => calcularPeriodo(periodo), [periodo]);
   const empresaId = sesion.empresaId;
   const sociedadId =
@@ -646,34 +617,8 @@ export default function DashboardPage() {
       }`,
       'Revisar inventario',
     ]);
-  const entidad =
-    sesion.vistaConsolidada || !sesion.sociedadActiva
-      ? sesion.empresa?.nombre_comercial || sesion.empresa?.razon_social
-      : sesion.sociedadActiva.nombre;
-  return (
-    <main className="dx-opsd dx-ui">
-      <Encabezado {...{ entidad, rango, periodo, setPeriodo, moneda, setMoneda, tieneTC }} />
-      <div className="dx-opsd-tabs" role="tablist" aria-label="Secciones del dashboard">
-        {TABS.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {cargando || sesion.cargando ? (
-        <Esqueleto />
-      ) : error ? (
-        <ErrorCarga {...{ error, empresaId, sesion, setIntento }} />
-      ) : !datos ? (
-        <Card title="Sin datos">
-          <Empty />
-        </Card>
-      ) : (
-        <div role="tabpanel">
-          {tab === 'resumen' && (
-            <>
-              <KpiResumen
-                items={[
+  const indicadores = [
+[
                   [
                     'OT activas',
                     numero(Number(k.ot_ejecucion || 0) + Number(k.ot_programadas || 0)),
@@ -689,7 +634,8 @@ export default function DashboardPage() {
                   [
                     'Utilización de flota',
                     porcentaje(utilizacion),
-                    `${numero(k.equipos_en_uso)} de ${numero(k.equipos_propios)} equipos propios`,
+                    `${numero(k.equipos_en_uso)} de ${numero(k.equipos_propios)} equipos propios` +
+                      (sociedadId ? ' · toda la empresa' : ''),
                   ],
                   [
                     'Disponibilidad (DMR)',
@@ -703,7 +649,105 @@ export default function DashboardPage() {
                       ? `${dinero(ingreso - Number(k.costo_clientes || 0))} de utilidad`
                       : 'Sin ingreso atribuible',
                   ],
-                ]}
+                ],
+[
+                  ['Ingreso atribuible', dinero(k.ingreso), `${numero(k.ots_periodo)} OT del período`],
+                  ['Costo operativo', dinero(k.costo), `${dinero(k.costo_clientes)} en OT de clientes`],
+                  [
+                    'Margen bruto', porcentaje(margen),
+                    ingreso ? `${dinero(ingreso - Number(k.costo_clientes || 0))} de utilidad`
+                      : 'Sin ingreso atribuible',
+                  ],
+                  [
+                    'Desviación vs. estimado',
+                    porcentaje(desviacion),
+                    `${numero(k.ots_sobre_estimado)} OT sobre el 5 %`,
+                  ],
+                  ['Retrabajo', porcentaje(retrabajo), `${dinero(k.retrabajo_costo)} en OT de retrabajo`],
+                ],
+[
+                  [
+                    'Equipos propios',
+                    numero(k.equipos_propios),
+                    `${numero(k.equipos_mantenimiento)} en mantenimiento` +
+                      (sociedadId ? ' · toda la empresa' : ''),
+                  ],
+                  [
+                    'En uso',
+                    numero(k.equipos_en_uso),
+                    `${numero(k.contratos_vigentes)} ${
+        plural(k.contratos_vigentes, 'contrato vigente', 'contratos vigentes')
+      }`,
+                  ],
+                  ['DMR del período', porcentaje(k.dmr), `Meta ponderada ${porcentaje(k.dmr_meta)}`],
+                  [
+                    'Equipos bajo meta', numero(k.equipos_bajo_meta),
+                    `de ${numero(datos?.dmr_equipo?.length)} ${
+                      plural(datos?.dmr_equipo?.length, 'equipo', 'equipos')} en contrato`,
+                  ],
+                ]
+  ];
+  const entidad =
+    sesion.vistaConsolidada || !sesion.sociedadActiva
+      ? sesion.empresa?.nombre_comercial || sesion.empresa?.razon_social
+      : sesion.sociedadActiva.nombre;
+  const exportar = async () => {
+    if (!datos || generando) return;
+    setGenerando(true);
+    setErrorPdf('');
+    try {
+      const [{ pdf }, { DashboardGerencialPdf }] = await Promise.all([
+        import('@react-pdf/renderer'), import('./DashboardGerencialPdf.jsx'),
+      ]);
+      const documento = <DashboardGerencialPdf {...{
+        datos, entidad, rango, moneda, indicadores, alertas, dinero,
+      }} />;
+      const blob = await pdf(documento).toBlob();
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = `dashboard-gerencial-${rango.desde}_${rango.hasta}.pdf`;
+      enlace.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setErrorPdf('No se pudo generar el PDF. Inténtalo nuevamente.');
+    } finally {
+      setGenerando(false);
+    }
+  };
+  return (
+    <main className="dx-opsd dx-ui">
+      <Encabezado {...{
+        entidad, rango, periodo, setPeriodo, moneda, setMoneda, tieneTC, exportar, generando, errorPdf,
+        disponible: !!datos,
+      }} />
+      <div className="dx-opsd-tabs" role="tablist" aria-label="Secciones del dashboard">
+        {TABS.map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sesion.estado === 'sin_sesion' && !sesion.cargando ? (
+        <Card title="Inicia sesión para ver el dashboard">
+          <a className="dx-opsd-button" href={import.meta.env.VITE_ADMIN_APP_URL || '/'}>
+            Ir a iniciar sesión
+          </a>
+        </Card>
+      ) : cargando || sesion.cargando ? (
+        <Esqueleto />
+      ) : error ? (
+        <ErrorCarga {...{ error, empresaId, sesion, setIntento }} />
+      ) : !datos ? (
+        <Card title="Sin datos">
+          <Empty />
+        </Card>
+      ) : (
+        <div role="tabpanel">
+          {tab === 'resumen' && (
+            <>
+              <KpiResumen
+                items={indicadores[0]}
               />
               <div className="dx-opsd-grid">
                 <Card
@@ -728,21 +772,7 @@ export default function DashboardPage() {
           {tab === 'costos' && (
             <>
               <KpiResumen
-                items={[
-                  ['Ingreso atribuible', dinero(k.ingreso), `${numero(k.ots_periodo)} OT del período`],
-                  ['Costo operativo', dinero(k.costo), `${dinero(k.costo_clientes)} en OT de clientes`],
-                  [
-                    'Margen bruto', porcentaje(margen),
-                    ingreso ? `${dinero(ingreso - Number(k.costo_clientes || 0))} de utilidad`
-                      : 'Sin ingreso atribuible',
-                  ],
-                  [
-                    'Desviación vs. estimado',
-                    porcentaje(desviacion),
-                    `${numero(k.ots_sobre_estimado)} OT sobre el 5 %`,
-                  ],
-                  ['Retrabajo', porcentaje(retrabajo), `${dinero(k.retrabajo_costo)} en OT de retrabajo`],
-                ]}
+                items={indicadores[1]}
               />
               <div className="dx-opsd-grid">
                 <TablaMenorMargen datos={datos} dinero={dinero} />
@@ -755,26 +785,7 @@ export default function DashboardPage() {
           {tab === 'flota' && (
             <>
               <KpiResumen
-                items={[
-                  [
-                    'Equipos propios',
-                    numero(k.equipos_propios),
-                    `${numero(k.equipos_mantenimiento)} en mantenimiento`,
-                  ],
-                  [
-                    'En uso',
-                    numero(k.equipos_en_uso),
-                    `${numero(k.contratos_vigentes)} ${
-        plural(k.contratos_vigentes, 'contrato vigente', 'contratos vigentes')
-      }`,
-                  ],
-                  ['DMR del período', porcentaje(k.dmr), `Meta ponderada ${porcentaje(k.dmr_meta)}`],
-                  [
-                    'Equipos bajo meta', numero(k.equipos_bajo_meta),
-                    `de ${numero(datos.dmr_equipo?.length)} ${
-                      plural(datos.dmr_equipo?.length, 'equipo', 'equipos')} en contrato`,
-                  ],
-                ]}
+                items={indicadores[2]}
               />
               <div className="dx-opsd-grid">
                 <Card
