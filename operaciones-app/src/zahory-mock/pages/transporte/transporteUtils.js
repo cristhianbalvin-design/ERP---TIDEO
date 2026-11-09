@@ -440,7 +440,7 @@ export function validarFormularioTarifa(form) {
 
 export const ESTADOS_VIAJE = Object.freeze(['borrador','programado','despachado','en_ruta','con_incidente','entregado','en_liquidacion','cerrado','cancelado']);
 export const ESTADO_VIAJE_LABEL = Object.freeze({ borrador:'Borrador', programado:'Programado', despachado:'Despachado', en_ruta:'En ruta', con_incidente:'Con incidente', entregado:'Entregado', en_liquidacion:'En liquidación', cerrado:'Cerrado', cancelado:'Cancelado' });
-export const ESTADO_VIAJE_COLOR = Object.freeze({ borrador:'is-gray', programado:'is-cyan', despachado:'is-cyan', en_ruta:'is-cyan', con_incidente:'is-amber', entregado:'is-green', en_liquidacion:'is-violet', cerrado:'is-gray', cancelado:'is-red' });
+export const ESTADO_VIAJE_COLOR = Object.freeze({ borrador:'is-gray', programado:'is-amber', despachado:'is-cyan', en_ruta:'is-violet', con_incidente:'is-amber', entregado:'is-green', en_liquidacion:'is-violet', cerrado:'is-gray', cancelado:'is-red' });
 export const TRANSICIONES_VIAJE = Object.freeze({ borrador:['programado','cancelado'], programado:['despachado','borrador','cancelado'], despachado:['en_ruta','cancelado'], en_ruta:['con_incidente','entregado'], con_incidente:['en_ruta','entregado'], entregado:['en_liquidacion'], en_liquidacion:['cerrado','entregado'], cerrado:[], cancelado:[] });
 export const etiquetaEstadoViaje = estado => ESTADO_VIAJE_LABEL[estado] || 'Sin dato';
 export const etiquetaTipoParada = tipo => ({ origen: 'Origen', recojo: 'Recojo', entrega: 'Entrega', destino: 'Destino' })[tipo] || 'Sin dato';
@@ -489,5 +489,221 @@ export function validarFormularioViaje(form = {}) {
     if (form[key] !== '' && form[key] != null && (!Number.isFinite(Number(form[key])) || Number(form[key]) < 0)) errors[key] = 'Ingresa un número igual o mayor que cero.';
   }
   (form.paradas || []).forEach((stop, index) => { if (!String(stop.nombre || '').trim()) errors[`parada_${index}`] = 'Indica el nombre de esta parada.'; });
+  return errors;
+}
+
+// ── Operación: monitor, despacho y flota ──────────────────────────────────
+const normalizarClave = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLocaleLowerCase('es-PE').trim();
+const diasEntre = (desde, hasta) => Math.round((Date.parse(`${hasta}T12:00:00Z`) - Date.parse(`${desde}T12:00:00Z`)) / 864e5);
+export const fechaLocalDeViaje = fecha => fechaUtcAFechaLocalInput(fecha).slice(0, 10);
+export const ESTADOS_VIAJE_EN_CURSO = Object.freeze(['despachado', 'en_ruta', 'con_incidente']);
+
+export function estadoDocumento(vigencia, hoy = fechaHoyLocal()) {
+  if (!vigencia) return { clave: 'sin', etiqueta: 'Sin vigencia registrada', dias: null };
+  const dias = diasEntre(hoy, String(vigencia).slice(0, 10));
+  if (dias < 0) return { clave: 'vencido', etiqueta: `Vencido ${formatearFechaTransporte(vigencia)}`, dias };
+  if (dias <= 30) return { clave: 'vence', etiqueta: dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias === 1 ? '' : 's'}`, dias };
+  return { clave: 'ok', etiqueta: `Al día · ${formatearFechaTransporte(vigencia)}`, dias };
+}
+
+const TIPO_VEHICULO_LABEL = { camion: 'Camión', furgon: 'Furgón', moto: 'Moto', otro: 'Otro' };
+export const etiquetaTipoVehiculo = tipo => TIPO_VEHICULO_LABEL[tipo] || tipo || 'Sin tipo';
+export const mismoTipoUnidad = (a, b) => Boolean(a) && Boolean(b)
+  && normalizarClave(etiquetaTipoVehiculo(a)) === normalizarClave(etiquetaTipoVehiculo(b));
+
+// Viajes en curso por unidad y por conductor: { vehiculos: {id: codigo}, conductores: {id: codigo} }.
+export function recursosEnCurso(viajes = [], excluirViajeId = null) {
+  const ocupados = { vehiculos: {}, conductores: {} };
+  viajes.filter(viaje => viaje.id !== excluirViajeId && ESTADOS_VIAJE_EN_CURSO.includes(viaje.estado))
+    .forEach(viaje => {
+      if (viaje.vehiculo_id) ocupados.vehiculos[viaje.vehiculo_id] = viaje.codigo;
+      if (viaje.conductor_id) ocupados.conductores[viaje.conductor_id] = viaje.codigo;
+    });
+  return ocupados;
+}
+
+export function estadoUnidadFlota(unidad, ocupados = { vehiculos: {} }, hoy = fechaHoyLocal()) {
+  const documento = estadoDocumento(unidad.vigencia_certificado_habilitacion, hoy);
+  const viaje = ocupados.vehiculos?.[unidad.id] || null;
+  if (unidad.activo === false) return { clave: 'inactiva', etiqueta: 'Inactiva', color: 'is-gray', documento, viaje };
+  if (documento.clave === 'vencido') return { clave: 'bloqueada', etiqueta: 'Bloqueada', color: 'is-red', documento, viaje };
+  if (viaje) return { clave: 'en_viaje', etiqueta: 'En viaje', color: 'is-violet', documento, viaje };
+  return { clave: 'disponible', etiqueta: 'Disponible', color: 'is-green', documento, viaje };
+}
+
+export function estadoConductorFlota(conductor, ocupados = { conductores: {} }, hoy = fechaHoyLocal()) {
+  const documento = estadoDocumento(conductor.vigencia_brevete, hoy);
+  const viaje = ocupados.conductores?.[conductor.id] || null;
+  if (conductor.activo === false) return { clave: 'inactivo', etiqueta: 'Inactivo', color: 'is-gray', documento, viaje };
+  if (documento.clave === 'vencido') return { clave: 'bloqueado', etiqueta: viaje ? 'En viaje · vencido' : 'Bloqueado', color: 'is-red', documento, viaje };
+  if (viaje) return { clave: 'en_viaje', etiqueta: 'En viaje', color: 'is-violet', documento, viaje };
+  return { clave: 'disponible', etiqueta: 'Disponible', color: 'is-green', documento, viaje };
+}
+
+// Igual que transporte_viaje_asignar: el bloqueo impide elegir; las observaciones piden motivo.
+export function evaluarUnidadDespacho(unidad, viaje = {}, ocupados = { vehiculos: {} }, hoy = fechaHoyLocal()) {
+  const estado = estadoUnidadFlota(unidad, ocupados, hoy);
+  const bloqueo = estado.clave === 'inactiva' ? 'Inactiva'
+    : estado.clave === 'bloqueada' ? 'Certificado MTC vencido'
+      : estado.viaje ? `En viaje ${estado.viaje}` : '';
+  const observaciones = [];
+  const capacidad = unidad.capacidad_toneladas == null ? null : Number(unidad.capacidad_toneladas);
+  const peso = viaje.peso_toneladas == null || viaje.peso_toneladas === '' ? null : Number(viaje.peso_toneladas);
+  if (capacidad == null) observaciones.push({ nivel: 'warn', texto: 'Capacidad sin registrar' });
+  else if (peso != null && peso > capacidad) observaciones.push({ nivel: 'bad', texto: `Capacidad ${formatearNumeroTransporte(capacidad)} t < ${formatearNumeroTransporte(peso)} t` });
+  if (estado.documento.clave === 'sin') observaciones.push({ nivel: 'warn', texto: 'MTC sin vigencia' });
+  else if (estado.documento.clave === 'vence') observaciones.push({ nivel: 'warn', texto: `MTC ${estado.documento.etiqueta.toLocaleLowerCase('es-PE')}` });
+  if (viaje.tipo_unidad && unidad.tipo && !mismoTipoUnidad(unidad.tipo, viaje.tipo_unidad)) {
+    observaciones.push({ nivel: 'info', texto: `Es ${etiquetaTipoVehiculo(unidad.tipo).toLocaleLowerCase('es-PE')}` });
+  }
+  return { bloqueo, observaciones, estado };
+}
+
+export function evaluarConductorDespacho(conductor, ocupados = { conductores: {} }, hoy = fechaHoyLocal()) {
+  const estado = estadoConductorFlota(conductor, ocupados, hoy);
+  const bloqueo = estado.clave === 'inactivo' ? 'Inactivo'
+    : estado.documento.clave === 'vencido' ? 'Brevete vencido'
+      : estado.viaje ? `En viaje ${estado.viaje}` : '';
+  const observaciones = estado.documento.clave === 'sin' ? [{ nivel: 'warn', texto: 'Brevete sin vigencia' }]
+    : estado.documento.clave === 'vence' ? [{ nivel: 'warn', texto: `Brevete ${estado.documento.etiqueta.toLocaleLowerCase('es-PE')}` }] : [];
+  return { bloqueo, observaciones, estado };
+}
+
+// Controles del panel de despacho. `excepcion` indica si el servidor pedirá motivo.
+export function controlesDespacho({ viaje = {}, unidad = null, conductor = null, hoy = fechaHoyLocal(), sctrConfirmado = false } = {}) {
+  const controles = [];
+  const peso = viaje.peso_toneladas == null || viaje.peso_toneladas === '' ? null : Number(viaje.peso_toneladas);
+  if (!unidad) controles.push({ clave: 'capacidad', nivel: 'pend', titulo: 'Capacidad', detalle: 'Elige una unidad.' });
+  else if (unidad.capacidad_toneladas == null) controles.push({ clave: 'capacidad', nivel: 'warn', titulo: 'Capacidad', detalle: `La unidad no tiene capacidad registrada; no se puede comprobar ${peso == null ? 'la carga' : `${formatearNumeroTransporte(peso)} t`}.`, excepcion: true });
+  else if (peso != null && peso > Number(unidad.capacidad_toneladas)) controles.push({ clave: 'capacidad', nivel: 'bad', titulo: 'Capacidad', detalle: `Excede en ${formatearNumeroTransporte(peso - Number(unidad.capacidad_toneladas))} t.`, excepcion: true });
+  else controles.push({ clave: 'capacidad', nivel: 'ok', titulo: 'Capacidad', detalle: peso == null ? `${formatearNumeroTransporte(unidad.capacidad_toneladas)} t disponibles.` : `${formatearNumeroTransporte(unidad.capacidad_toneladas)} t para ${formatearNumeroTransporte(peso)} t (${Math.round(peso / Number(unidad.capacidad_toneladas) * 100)} %).` });
+  if (!unidad) controles.push({ clave: 'mtc', nivel: 'pend', titulo: 'Certificado MTC', detalle: 'Elige una unidad.' });
+  else {
+    const doc = estadoDocumento(unidad.vigencia_certificado_habilitacion, hoy);
+    controles.push({ clave: 'mtc', nivel: doc.clave === 'ok' ? 'ok' : doc.clave === 'vencido' ? 'bad' : 'warn', titulo: 'Certificado MTC', detalle: `${unidad.nro_certificado_habilitacion || 'Sin número'} · ${doc.etiqueta}`, excepcion: doc.clave === 'sin' });
+  }
+  if (!conductor) controles.push({ clave: 'brevete', nivel: 'pend', titulo: 'Brevete', detalle: 'Elige un conductor.' });
+  else {
+    const doc = estadoDocumento(conductor.vigencia_brevete, hoy);
+    controles.push({ clave: 'brevete', nivel: doc.clave === 'ok' ? 'ok' : doc.clave === 'vencido' ? 'bad' : 'warn', titulo: 'Brevete', detalle: `${[conductor.brevete, conductor.categoria_brevete].filter(Boolean).join(' · ') || 'Sin número'} · ${doc.etiqueta}`, excepcion: doc.clave === 'sin' });
+  }
+  if ((viaje.requisitos || []).includes('sctr')) {
+    controles.push(sctrConfirmado
+      ? { clave: 'sctr', nivel: 'ok', titulo: 'Requisito SCTR', detalle: 'Confirmado por el despachador.' }
+      : { clave: 'sctr', nivel: 'warn', titulo: 'Requisito SCTR', detalle: 'Confirma que el conductor tiene SCTR vigente.', confirmar: true });
+  }
+  return controles;
+}
+export const requiereExcepcionDespacho = controles => controles.some(control => control.excepcion);
+
+export const ETAPAS_VIAJE = Object.freeze([['borrador', 'Borrador'], ['programado', 'Programado'], ['despachado', 'Despachado'],
+  ['en_ruta', 'En ruta'], ['entregado', 'Entregado'], ['en_liquidacion', 'En liquidación'], ['cerrado', 'Cerrado']]);
+
+// Etapas con su fecha del último paso registrado. «Con incidente» cuenta como «En ruta».
+export function etapasViaje(estado, eventos = []) {
+  const actual = estado === 'con_incidente' ? 'en_ruta' : estado;
+  const indice = ETAPAS_VIAJE.findIndex(([clave]) => clave === actual);
+  const fechas = {};
+  eventos.forEach(evento => {
+    const clave = evento.estado_nuevo === 'con_incidente' ? 'en_ruta' : evento.estado_nuevo;
+    if (evento.estado_anterior !== evento.estado_nuevo || !evento.estado_anterior) fechas[clave] = fechas[clave] || evento.created_at;
+  });
+  return ETAPAS_VIAJE.map(([clave, etiqueta], index) => ({
+    clave, etiqueta, fecha: fechas[clave] || null,
+    paso: indice < 0 ? 'futuro' : index < indice ? 'hecho' : index === indice ? 'actual' : 'futuro',
+  }));
+}
+
+// Avance estimado por tiempo transcurrido desde que salió; sin GPS no hay posición real.
+export function avanceEstimadoViaje(viaje = {}, eventos = [], ahora = new Date()) {
+  const horas = Number(viaje.duracion_estimada_horas);
+  if (!['en_ruta', 'con_incidente'].includes(viaje.estado) || !Number.isFinite(horas) || horas <= 0) return null;
+  const salida = [...eventos].reverse().find(evento => evento.estado_nuevo === 'en_ruta' && evento.estado_anterior === 'despachado')?.created_at
+    || viaje.fecha_salida || null;
+  if (!salida) return null;
+  const transcurrido = (ahora.getTime() - new Date(salida).getTime()) / 36e5;
+  return { avance: Math.max(0, Math.min(0.95, transcurrido / horas)), llegada: new Date(new Date(salida).getTime() + horas * 36e5) };
+}
+
+export const columnaTableroViaje = estado => ({ borrador: 'programado', programado: 'programado', despachado: 'despachado',
+  en_ruta: 'en_ruta', con_incidente: 'en_ruta', entregado: 'entregado', en_liquidacion: 'entregado' })[estado] || null;
+
+// Los activos se muestran siempre; el periodo filtra los terminados.
+export function filtrarPeriodoViajes(viajes = [], periodo = 'semana', hoy = fechaHoyLocal()) {
+  if (periodo === 'todos') return viajes;
+  const base = new Date(`${hoy}T12:00:00Z`);
+  const lunes = new Date(base.getTime() - ((base.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
+  const domingo = new Date(Date.parse(`${lunes}T12:00:00Z`) + 6 * 864e5).toISOString().slice(0, 10);
+  return viajes.filter(viaje => {
+    if (['borrador', 'programado', ...ESTADOS_VIAJE_EN_CURSO].includes(viaje.estado)) return true;
+    const fecha = fechaLocalDeViaje(viaje.fecha_programada);
+    if (periodo === 'hoy') return fecha === hoy;
+    if (periodo === 'mes') return fecha.slice(0, 7) === hoy.slice(0, 7);
+    return fecha >= lunes && fecha <= domingo;
+  });
+}
+
+export function resumenMonitorViajes(viajes = [], hoy = fechaHoyLocal()) {
+  const programados = viajes.filter(viaje => viaje.estado === 'programado');
+  const porDespachar = programados.filter(viaje => fechaLocalDeViaje(viaje.fecha_programada) <= hoy);
+  return {
+    porDespachar: porDespachar.length,
+    porDespacharConUnidad: porDespachar.filter(viaje => viaje.vehiculo_id).length,
+    atrasados: programados.filter(viaje => fechaLocalDeViaje(viaje.fecha_programada) < hoy),
+    hoySinUnidad: programados.filter(viaje => fechaLocalDeViaje(viaje.fecha_programada) === hoy && !viaje.vehiculo_id),
+    enRuta: viajes.filter(viaje => viaje.estado === 'en_ruta' || viaje.estado === 'con_incidente').length,
+    despachados: viajes.filter(viaje => viaje.estado === 'despachado').length,
+    conIncidente: viajes.filter(viaje => viaje.estado === 'con_incidente'),
+  };
+}
+
+export const normalizarPlaca = value => String(value || '').toLocaleUpperCase('es-PE').replace(/\s+/g, '').trim();
+export function rucValido(value) {
+  const ruc = String(value || '').trim();
+  if (!/^(10|15|17|20)\d{9}$/.test(ruc)) return false;
+  const suma = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2].reduce((total, peso, index) => total + peso * Number(ruc[index]), 0);
+  const digito = (11 - (suma % 11)) % 10;
+  return digito === Number(ruc[10]);
+}
+const numeroNoNegativo = value => value === '' || value == null || (Number.isFinite(Number(value)) && Number(value) >= 0);
+
+export function validarUnidadFlota(form = {}, vehiculos = [], id = null) {
+  const errors = {};
+  const placa = normalizarPlaca(form.placa);
+  if (!placa) errors.placa = 'Indica la placa.';
+  else if (!/^[A-Z0-9]{3}-?[A-Z0-9]{3}$/.test(placa)) errors.placa = 'Usa el formato ABC-123.';
+  else {
+    const repetida = vehiculos.find(item => item.id !== id && normalizarPlaca(item.placa).replace('-', '') === placa.replace('-', ''));
+    if (repetida) errors.placa = `Ya existe una unidad con la placa ${repetida.placa}.`;
+  }
+  if (!form.transportista_id) errors.transportista_id = 'Elige el transportista.';
+  if (!String(form.tipo || '').trim()) errors.tipo = 'Elige el tipo.';
+  if (form.anio !== '' && form.anio != null && !/^(19[5-9]\d|20\d{2})$/.test(String(form.anio))) errors.anio = 'Año no válido.';
+  for (const key of ['capacidad_toneladas', 'capacidad_m3']) if (!numeroNoNegativo(form[key])) errors[key] = 'Ingresa un número igual o mayor que cero.';
+  return errors;
+}
+
+export function validarConductorFlota(form = {}, conductores = [], id = null) {
+  const errors = {};
+  if (!String(form.nombre || '').trim()) errors.nombre = 'Indica el nombre.';
+  const dni = String(form.dni || '').trim();
+  if (!/^\d{8}$/.test(dni)) errors.dni = 'El DNI tiene 8 dígitos.';
+  else if (conductores.some(item => item.id !== id && String(item.dni || '').trim() === dni)) errors.dni = 'Ya existe un conductor con ese DNI.';
+  if (!form.transportista_id) errors.transportista_id = 'Elige el transportista.';
+  if (!String(form.brevete || '').trim()) errors.brevete = 'Indica el número de brevete.';
+  if (!form.categoria_brevete) errors.categoria_brevete = 'Elige la categoría.';
+  if (!form.vigencia_brevete) errors.vigencia_brevete = 'Indica hasta cuándo está vigente.';
+  return errors;
+}
+
+export function validarTransportistaFlota(form = {}, transportistas = [], id = null) {
+  const errors = {};
+  const ruc = String(form.ruc || '').trim();
+  if (!rucValido(ruc)) errors.ruc = 'RUC no válido.';
+  else if (transportistas.some(item => item.id !== id && String(item.ruc || '').trim() === ruc)) errors.ruc = 'Ya existe un transportista con ese RUC.';
+  if (!String(form.razon_social || '').trim()) errors.razon_social = 'Indica la razón social.';
+  if (!['propio', 'tercero'].includes(form.tipo_operador)) errors.tipo_operador = 'Elige propio o tercero.';
+  if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.email).trim())) errors.email = 'Correo no válido.';
   return errors;
 }

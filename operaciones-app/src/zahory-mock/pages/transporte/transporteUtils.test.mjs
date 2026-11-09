@@ -421,3 +421,70 @@ test('cuenta una ruta una sola vez aunque el lugar sea origen y destino', () => 
     { origen_lugar_id: 'b', destino_lugar_id: 'c' },
   ]), 2);
 });
+
+test('estado de documento distingue sin fecha, vencido, por vencer y al día', () => {
+  assert.equal(utils.estadoDocumento(null, '2026-11-09').clave, 'sin');
+  assert.equal(utils.estadoDocumento('2026-11-08', '2026-11-09').clave, 'vencido');
+  assert.deepEqual([utils.estadoDocumento('2026-11-09', '2026-11-09').etiqueta, utils.estadoDocumento('2026-11-10', '2026-11-09').etiqueta], ['Vence hoy', 'Vence en 1 día']);
+  assert.equal(utils.estadoDocumento('2026-12-09', '2026-11-09').clave, 'vence');
+  assert.equal(utils.estadoDocumento('2026-12-10', '2026-11-09').clave, 'ok');
+});
+
+test('evalúa unidad y conductor para despachar como el servidor', () => {
+  const ocupados = utils.recursosEnCurso([
+    { id: 'v1', codigo: 'TV-1', estado: 'en_ruta', vehiculo_id: 'u2', conductor_id: 'c2' },
+    { id: 'v2', codigo: 'TV-2', estado: 'entregado', vehiculo_id: 'u3', conductor_id: 'c3' },
+  ], 'v9');
+  const viaje = { peso_toneladas: 22, tipo_unidad: 'Furgón', requisitos: ['sctr'] };
+  const libre = utils.evaluarUnidadDespacho({ id: 'u1', tipo: 'furgon', capacidad_toneladas: null, vigencia_certificado_habilitacion: null }, viaje, ocupados, '2026-11-09');
+  assert.equal(libre.bloqueo, '');
+  assert.deepEqual(libre.observaciones.map(item => item.texto), ['Capacidad sin registrar', 'MTC sin vigencia']);
+  assert.equal(utils.evaluarUnidadDespacho({ id: 'u2', capacidad_toneladas: 30 }, viaje, ocupados, '2026-11-09').bloqueo, 'En viaje TV-1');
+  assert.equal(utils.evaluarUnidadDespacho({ id: 'u3', capacidad_toneladas: 30, vigencia_certificado_habilitacion: '2026-11-01' }, viaje, ocupados, '2026-11-09').bloqueo, 'Certificado MTC vencido');
+  assert.equal(utils.evaluarUnidadDespacho({ id: 'u4', activo: false }, viaje, ocupados, '2026-11-09').bloqueo, 'Inactiva');
+  assert.equal(utils.evaluarConductorDespacho({ id: 'c3', vigencia_brevete: '2026-10-01' }, ocupados, '2026-11-09').bloqueo, 'Brevete vencido');
+  assert.equal(utils.evaluarConductorDespacho({ id: 'c2', vigencia_brevete: '2027-01-01' }, ocupados, '2026-11-09').bloqueo, 'En viaje TV-1');
+  const controles = utils.controlesDespacho({ viaje, unidad: { capacidad_toneladas: 28, vigencia_certificado_habilitacion: '2027-06-01' }, conductor: { brevete: 'Q1', vigencia_brevete: '2027-06-01' }, hoy: '2026-11-09' });
+  assert.deepEqual(controles.map(item => item.nivel), ['ok', 'ok', 'ok', 'warn']);
+  assert.equal(utils.requiereExcepcionDespacho(controles), false);
+  const excepcion = utils.controlesDespacho({ viaje, unidad: { capacidad_toneladas: 10 }, conductor: { vigencia_brevete: null }, hoy: '2026-11-09', sctrConfirmado: true });
+  assert.deepEqual(excepcion.map(item => item.nivel), ['bad', 'warn', 'warn', 'ok']);
+  assert.equal(utils.requiereExcepcionDespacho(excepcion), true);
+});
+
+test('etapas, avance estimado, tablero y periodo del monitor', () => {
+  const eventos = [
+    { estado_anterior: null, estado_nuevo: 'borrador', created_at: '2026-11-08T10:00:00Z' },
+    { estado_anterior: 'borrador', estado_nuevo: 'programado', created_at: '2026-11-08T11:00:00Z' },
+    { estado_anterior: 'programado', estado_nuevo: 'programado', created_at: '2026-11-08T12:00:00Z' },
+    { estado_anterior: 'programado', estado_nuevo: 'despachado', created_at: '2026-11-09T12:00:00Z' },
+    { estado_anterior: 'despachado', estado_nuevo: 'en_ruta', created_at: '2026-11-09T13:00:00Z' },
+    { estado_anterior: 'en_ruta', estado_nuevo: 'con_incidente', created_at: '2026-11-09T14:00:00Z' },
+  ];
+  const etapas = utils.etapasViaje('con_incidente', eventos);
+  assert.deepEqual(etapas.map(item => item.paso), ['hecho', 'hecho', 'hecho', 'actual', 'futuro', 'futuro', 'futuro']);
+  assert.equal(etapas[3].fecha, '2026-11-09T13:00:00Z');
+  const avance = utils.avanceEstimadoViaje({ estado: 'con_incidente', duracion_estimada_horas: 4 }, eventos, new Date('2026-11-09T15:00:00Z'));
+  assert.equal(avance.avance, 0.5);
+  assert.equal(utils.avanceEstimadoViaje({ estado: 'programado', duracion_estimada_horas: 4 }, eventos), null);
+  assert.deepEqual(['borrador', 'con_incidente', 'en_liquidacion', 'cancelado'].map(utils.columnaTableroViaje), ['programado', 'en_ruta', 'entregado', null]);
+  const viajes = [
+    { id: 'a', estado: 'programado', fecha_programada: '2026-10-01T13:00:00Z' },
+    { id: 'b', estado: 'entregado', fecha_programada: '2026-11-03T13:00:00Z' },
+    { id: 'c', estado: 'entregado', fecha_programada: '2026-11-11T13:00:00Z' },
+    { id: 'd', estado: 'cerrado', fecha_programada: '2026-11-25T13:00:00Z' },
+  ];
+  assert.deepEqual(utils.filtrarPeriodoViajes(viajes, 'semana', '2026-11-09').map(item => item.id), ['a', 'c']);
+  assert.deepEqual(utils.filtrarPeriodoViajes(viajes, 'mes', '2026-11-09').map(item => item.id), ['a', 'b', 'c', 'd']);
+  const resumen = utils.resumenMonitorViajes([...viajes, { id: 'e', estado: 'programado', fecha_programada: '2026-11-09T17:00:00Z' }], '2026-11-09');
+  assert.deepEqual([resumen.porDespachar, resumen.atrasados.length, resumen.hoySinUnidad.length], [2, 1, 1]);
+});
+
+test('valida formularios de flota', () => {
+  assert.equal(utils.rucValido('20100070970'), true);
+  assert.equal(utils.rucValido('20100070971'), false);
+  assert.deepEqual(Object.keys(utils.validarUnidadFlota({ placa: 'abc 123', transportista_id: 't', tipo: 'Furgón', capacidad_toneladas: '-1' }, [{ id: 'x', placa: 'ABC-123' }])), ['placa', 'capacidad_toneladas']);
+  assert.deepEqual(utils.validarUnidadFlota({ placa: 'ABC-123', transportista_id: 't', tipo: 'Furgón', anio: 2022 }, [{ id: 'x', placa: 'ABC-123' }], 'x'), {});
+  assert.deepEqual(Object.keys(utils.validarConductorFlota({ nombre: 'Ana', dni: '1234', transportista_id: 't', brevete: 'Q1', categoria_brevete: 'A-I' })), ['dni', 'vigencia_brevete']);
+  assert.deepEqual(Object.keys(utils.validarTransportistaFlota({ ruc: '20100070970', razon_social: 'X', tipo_operador: 'tercero', email: 'a@' }, [{ id: 'z', ruc: '20100070970' }])), ['ruc', 'email']);
+});

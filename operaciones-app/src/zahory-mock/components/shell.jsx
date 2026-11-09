@@ -102,9 +102,10 @@ export const SIDEBAR_ZONES = [
         id: 'transporte', label: 'Transporte Comercial', emoji: '🚚',
         roles: ['gerente'],
         items: [
-          { id: 'transporte-viajes',       label: 'Monitor de Viajes',  icon: 'mine' },
+          { id: 'transporte-viajes',       label: 'Monitor de Viajes',  icon: 'mine', altIds: ['transporte-viaje'] },
           { id: 'transporte-lugares',      label: 'Lugares',            icon: 'map' },
           { id: 'transporte-ruta',         label: 'Hoja de Ruta',       icon: 'arrow' },
+          { id: 'transporte-flota',        label: 'Flota',              icon: 'equipment' },
           { id: 'transporte-tarifas',      label: 'Maestro de Rutas',   icon: 'rates' },
           { id: 'transporte-tarifas-config', label: 'Tarifas Transporte', icon: 'rates' },
         ],
