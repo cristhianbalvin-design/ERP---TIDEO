@@ -46,13 +46,15 @@ import {
 } from './services/cxpMassiveImportService.js';
 import CargaMasivaCxC from './components/CargaMasivaCxC.jsx';
 import FacturacionListado from './pages/facturacion/FacturacionListado.jsx';
+import FacturacionEmisionModal from './pages/facturacion/FacturacionEmisionModal.jsx';
+import { calcularTotalesEmision, estimarDetraccion, primerCampoConError, validarEmision } from './pages/facturacion/facturacionEmision.js';
 import * as storageService from './services/storageService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { CerrarFondoModal } from './components/CerrarFondoModal.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
-import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista, resolverSociedadUnicaId } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { participacionCecoCxP, resumirCecosCxP } from './services/cxpDistribucionCeco.js';
 import NotaAfectacionForm from './components/NotaAfectacionForm.jsx';
@@ -4569,6 +4571,10 @@ function Facturacion() {
   const [clienteRetencion, setClienteRetencion] = useState({ aplica: false, tasa: 3 });
   const [ventaContextId, setVentaContextId] = useState(null);
   const [ventaCtxLabel, setVentaCtxLabel] = useState('');
+  const [erroresEmision, setErroresEmision] = useState({});
+  const [focoErrorEmision, setFocoErrorEmision] = useState(null);
+  const [errorEmision, setErrorEmision] = useState('');
+  const [duplicadoEmision, setDuplicadoEmision] = useState(null);
   const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
   const [spotCatalogo, setSpotCatalogo] = useState([]);
   const [familiasSpot, setFamiliasSpot] = useState([]);
@@ -4728,15 +4734,21 @@ function Facturacion() {
       : [{ seleccionado: Boolean(osSel), sociedadId: osOrigenFactura?.sociedad_id || null, label: `La OS Cliente ${osOrigenFactura?.numero || osSel || ''}`.trim() }],
     mensajeSinOrigen: 'La factura directa no tiene OS Cliente; selecciona una sociedad concreta antes de emitirla.',
   });
-  const mensajeFacturaDirecta = 'Selecciona una sociedad en el formulario para emitir una factura directa sin OS Cliente.';
+  const multisociedadEmision = Boolean(empresa?.multisociedad_habilitado);
+  const sociedadUnicaIdEmision = multisociedadEmision ? resolverSociedadUnicaId(sociedadesDisponibles) : null;
+  // Con valorización u OS la sociedad sale del documento de origen; en el comprobante directo la elige el usuario.
+  const sociedadDesdeOrigen = (mode === 'val' || Boolean(osSel)) ? destinoFactura.sociedadId : null;
+  const sociedadEmision = !multisociedadEmision ? null
+    : (sociedadDesdeOrigen || form.sociedad_id || sociedadUnicaIdEmision || null);
+  const sociedadEditableEmision = multisociedadEmision && !sociedadUnicaIdEmision && !sociedadDesdeOrigen;
   const cebeVigenteParaFecha = (cebe, fecha) => Boolean(cebe)
     && cebe.estado === 'activo'
     && (!cebe.fecha_inicio || String(fecha || '').slice(0, 10) >= String(cebe.fecha_inicio).slice(0, 10))
     && (!cebe.fecha_fin || String(fecha || '').slice(0, 10) <= String(cebe.fecha_fin).slice(0, 10));
   const sociedadIdFiltroCebe = mode === 'directa' && !osSel
-    ? form.sociedad_id
+    ? sociedadEmision
     : modoVistaSociedadFacturacion.sociedadIdEscritura;
-  const cebesVigentes = mode === 'directa' && !osSel && !form.sociedad_id
+  const cebesVigentes = mode === 'directa' && !osSel && multisociedadEmision && !sociedadEmision
     ? []
     : filtrarOpcionesPorSociedadEscritura(
       (centrosBeneficio || []).filter(cebe =>
@@ -4745,7 +4757,6 @@ function Facturacion() {
       sociedadIdFiltroCebe,
     );
   const cuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || '—'; };
-  const rucCliente = id => getCuenta(id)?.ruc || '—';
 
   const serieFactura = (seriesDocumentarias || []).find(s => s.documento === 'Facturas' && s.estado === 'activo');
   const nextNumero = serieFactura
@@ -4769,19 +4780,13 @@ function Facturacion() {
 
   // ── Partidas calc ─────────────────────────────────────────────────────
   const esBoleta = form.tipo_documento === 'boleta';
-  const subtotalCalc = partidas.reduce((s, p) => s + Number(p.cantidad||0) * Number(p.precio_unitario||0), 0);
-  // Boleta: precio con IGV incluido; factura: precio sin IGV.
-  const totalCalc = esBoleta ? subtotalCalc : subtotalCalc + Math.round(subtotalCalc * (igvPct/100) * 100) / 100;
-  const subtotalNeto = esBoleta ? Math.round(subtotalCalc / (1 + igvPct/100) * 100) / 100 : subtotalCalc;
-  const igvCalc = esBoleta ? totalCalc - subtotalNeto : Math.round(subtotalCalc * (igvPct/100) * 100) / 100;
-  const retencionCalc = clienteRetencion.aplica
-    ? Math.round(totalCalc * (clienteRetencion.tasa / 100) * 100) / 100
-    : 0;
-  const netoCobrableCalc = clienteRetencion.aplica ? totalCalc - retencionCalc : totalCalc;
+  // Boleta: precio con IGV incluido; factura: precio sin IGV. Importes redondeados a céntimos como el servidor.
+  const totalesEmision = calcularTotalesEmision({ partidas, igvPct, esBoleta, retencion: clienteRetencion });
+  const totalCalc = totalesEmision.total;
 
-  // P7.3 — exceso saldo OS (solo modo 'val')
+  // P7.3 — exceso del saldo de la OS (desde valorización o con OS elegida en el comprobante directo)
   const osParaValidar = mode === 'val' ? getOs(getVal(valSel)?.os_cliente_id) : getOs(osSel);
-  const excedeOsSaldo = mode === 'val' && osParaValidar != null && totalCalc > Number(osParaValidar.saldo_por_facturar || 0);
+  const excedeOsSaldo = osParaValidar != null && totalCalc > Number(osParaValidar.saldo_por_facturar || 0);
 
   const resolverSpotPartida = partida => {
     const servicio = serviciosCatalogo.find(item => item.id === partida?.servicio_id);
@@ -4794,19 +4799,25 @@ function Facturacion() {
   const codigosSpot = [...new Set(spotsResueltos.map(item => item.spot?.codigo).filter(Boolean))];
   const spotMultiTasa = codigosSpot.length > 1;
   const spotPrincipal = spotsResueltos.find(item => item.spot)?.spot || null;
-  const baseSpotSolesEstimada = form.moneda === 'USD' && Number(tipoCambioDetraccion) > 0
-    ? totalCalc * Number(tipoCambioDetraccion)
-    : totalCalc;
-  const depositoSpotEstimado = spotPrincipal
-    ? Math.round(baseSpotSolesEstimada * Number(spotPrincipal.porcentaje || 0) / 100)
-    : 0;
+  const detraccionEstimada = estimarDetraccion({
+    tipoDocumento: form.tipo_documento,
+    moneda: form.moneda,
+    total: totalCalc,
+    tipoCambio: tipoCambioDetraccion,
+    spot: spotPrincipal,
+  });
 
+  // Tipo de cambio referencial de la fecha de emisión: se renueva al cambiar la fecha, salvo que sea manual.
   useEffect(() => {
-    if (form.moneda !== 'USD' || !spotPrincipal || !form.fecha_emision || tipoCambioDetraccion) return;
+    if (form.moneda !== 'USD' || !spotPrincipal || !form.fecha_emision) return undefined;
+    if (tipoCambioFuente === 'manual' && tipoCambioDetraccion) return undefined;
+    let cancelado = false;
+    setTipoCambioDetraccion('');
     getSupabaseClient().then(sb => getTipoCambioPorFecha(form.fecha_emision, sb)).then(tc => {
       const inverso = Number(tc?.usd) > 0 ? 1 / Number(tc.usd) : '';
-      if (inverso) { setTipoCambioDetraccion(String(inverso.toFixed(6))); setTipoCambioFuente('referencial'); }
+      if (!cancelado && inverso) { setTipoCambioDetraccion(String(inverso.toFixed(6))); setTipoCambioFuente('referencial'); }
     }).catch(() => {});
+    return () => { cancelado = true; };
   }, [form.moneda, form.fecha_emision, spotPrincipal?.id]);
 
   const etiquetaServicioCatalogo = servicio => `${servicio?.codigo || servicio?.id || 'Servicio'} — ${servicio?.descripcion || 'Sin descripción'}`;
@@ -5007,13 +5018,19 @@ function Facturacion() {
     setValSel(''); setCuentaSel(''); setOsSel('');
     setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     setIgvPct(18);
-    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id:'' });
+    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id: sociedadUnicaIdEmision || '' });
     setVencimientoManual(false);
     setCondicionManual(false);
     setConfirmarExcesoFac(false);
     setClienteRetencion({ aplica: false, tasa: 3 });
     setVentaContextId(null);
     setVentaCtxLabel('');
+    setErroresEmision({});
+    setFocoErrorEmision(null);
+    setErrorEmision('');
+    setDuplicadoEmision(null);
+    setTipoCambioDetraccion('');
+    setTipoCambioFuente('referencial');
   };
 
   // ── Pre-fill from val ─────────────────────────────────────────────────
@@ -5127,28 +5144,75 @@ function Facturacion() {
     });
   };
 
+  // ── Errores del modal de emisión ──────────────────────────────────────
+  const CLAVE_ERROR_CAMPO = { centro_beneficio_id: 'cebe', sociedad_id: 'sociedad' };
+  const limpiarErrorEmision = (...claves) => {
+    setErrorEmision('');
+    setErroresEmision(prev => {
+      if (!claves.some(clave => prev[clave])) return prev;
+      const siguiente = { ...prev };
+      claves.forEach(clave => { delete siguiente[clave]; });
+      return siguiente;
+    });
+  };
+  const handleFormChangeEmision = (field, value) => {
+    handleFormChange(field, value);
+    limpiarErrorEmision(CLAVE_ERROR_CAMPO[field] || field, ...(field === 'fecha_emision' ? ['fecha_vencimiento'] : []));
+    if (field === 'numero' || field === 'sociedad_id') setDuplicadoEmision(null);
+  };
+  const handleSelectOs = osId => {
+    setOsSel(osId);
+    setConfirmarExcesoFac(false);
+    setDuplicadoEmision(null);
+    setForm(f => ({ ...f, centro_beneficio_id: getOs(osId)?.centro_beneficio_id || '' }));
+    limpiarErrorEmision('cebe', 'sociedad');
+  };
+  // Misma regla que usuario_puede(empresa, 'facturacion', 'crear') en el servidor: admin de empresa,
+  // superadmin o permiso de crear en la pantalla Facturación.
+  const permisosCrearFacturacion = role?.permisos?.crear;
+  const puedeCrearFacturacion = !isSupabaseConfigured() || Boolean(role?.es_admin_empresa || role?.es_superadmin
+    || role?.permisos?.todo || role?.permisos?.plataforma
+    || permisosCrearFacturacion === true || permisosCrearFacturacion?.includes?.('facturacion'));
+
   // ── Submit ────────────────────────────────────────────────────────────
   const handleGuardar = async () => {
+    if (emitiendoRef.current) return;
+    setErrorEmision('');
+    if (!puedeCrearFacturacion) {
+      setErrorEmision('No tienes permiso para emitir comprobantes en esta empresa.');
+      return;
+    }
     const cuentaId = mode === 'val'
       ? getCuenta(getOs(getVal(valSel)?.os_cliente_id)?.cuenta_id)?.id
       : cuentaSel;
-    if (!cuentaId) { alert('Debe seleccionar un cliente.'); return; }
-    if (mode === 'val' && !valSel) { alert('Debe seleccionar una valorización.'); return; }
-    if (mode === 'directa' && !osSel && !form.sociedad_id) { alert(mensajeFacturaDirecta); return; }
-    if (destinoFactura.conflictMessage) { alert(destinoFactura.conflictMessage); return; }
-    if (partidas.every(p => !p.descripcion && !p.precio_unitario)) { alert('Debe completar al menos una partida.'); return; }
-    if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Debe seleccionar una sociedad para emitir la factura.'); return; }
-    const centroBeneficio = (centrosBeneficio || []).find(c => c.id === form.centro_beneficio_id && (!empresa?.id || c.empresa_id === empresa.id));
-    if (!form.centro_beneficio_id) { alert('Debe seleccionar un CEBE para emitir la factura.'); return; }
-    if (spotMultiTasa) { alert('La emisión admite un solo código SPOT por comprobante. Se detectaron varios códigos; separa el comprobante.'); return; }
-    if (spotPrincipal && form.tipo_documento === 'factura' && form.moneda === 'USD' && (!(Number(tipoCambioDetraccion) > 0) || !['manual', 'referencial'].includes(tipoCambioFuente))) {
-      alert('Para una factura USD con detracción debes informar un tipo_cambio_detraccion mayor que cero y tipo_cambio_fuente manual o referencial.'); return;
-    }
-    if (spotPrincipal && clienteRetencion.aplica) { alert('No se puede emitir una factura con retención y detracción simultáneamente.'); return; }
-    if (!centroBeneficio) { alert('El CEBE seleccionado no existe en el tenant actual.'); return; }
-    if (centroBeneficio.estado !== 'activo') { alert('El CEBE seleccionado está inactivo.'); return; }
-    if (!cebeVigenteParaFecha(centroBeneficio, form.fecha_emision)) {
-      alert('El CEBE seleccionado no está vigente para la fecha de emisión.');
+    const centroBeneficio = (centrosBeneficio || [])
+      .find(c => c.id === form.centro_beneficio_id && (!empresa?.id || c.empresa_id === empresa.id));
+    const numeroPropuesto = form.numero || (esBoleta ? nextNumeroBoleta : nextNumero);
+
+    // Validación por campo: todos los errores a la vez y foco en el primero.
+    const errores = validarEmision({
+      mode,
+      cuentaId,
+      valSel,
+      sociedadRequerida: multisociedadEmision,
+      sociedadId: sociedadEmision,
+      conflictoSociedad: destinoFactura.conflictMessage,
+      form: { ...form, numero: numeroPropuesto },
+      partidas,
+      cebe: centroBeneficio,
+      cebeVigente: cebeVigenteParaFecha(centroBeneficio, form.fecha_emision),
+      spotMultiTasa,
+      detraccion: detraccionEstimada,
+      tipoCambio: tipoCambioDetraccion,
+      tipoCambioFuente,
+      retencionAplica: clienteRetencion.aplica,
+      total: totalCalc,
+    });
+    if (mode === 'val' && valSel && !cuentaId) errores.valorizacion = 'La OS de esta valorización no tiene cliente.';
+    setErroresEmision(errores);
+    const primerError = primerCampoConError(errores);
+    if (primerError) {
+      setFocoErrorEmision({ clave: primerError, vez: Date.now() });
       return;
     }
 
@@ -5161,43 +5225,49 @@ function Facturacion() {
         f.tipo_documento !== 'nota_debito'
       );
       if (facActiva) {
-        alert('Esta valorización ya tiene una factura emitida. Si necesitas corregirla usa una nota de crédito o nota de débito.');
+        setErrorEmision('Esta valorización ya tiene una factura emitida. Para corregirla usa una nota de crédito o de débito.');
         return;
       }
     }
     // P7.2 — cuenta bloqueada
-    const cuentaObj = getCuenta(cuentaId);
-    if (cuentaObj?.estado === 'bloqueado') {
-      alert('No se puede emitir la factura. La cuenta de este cliente está bloqueada.');
+    if (getCuenta(cuentaId)?.estado === 'bloqueado') {
+      setErrorEmision('La cuenta de este cliente está bloqueada: no se puede emitir el comprobante.');
       return;
     }
     // P7.3 — total supera saldo OS (requiere confirmación explícita)
-    if (excedeOsSaldo && !confirmarExcesoFac) return;
-
-    const numeroPropuesto = form.numero || (esBoleta ? nextNumeroBoleta : nextNumero);
-    let confirmarNumeroDuplicado = false;
-    if (isSupabaseConfigured()) {
-      const revision = await revisarDuplicadoFactura({
-        empresaId: empresa?.id,
-        sociedadId: empresa?.multisociedad_habilitado ? form.sociedad_id : null,
-        cuentaId,
-        numero: numeroPropuesto,
-      });
-      if (revision.mismoBeneficiario.length) {
-        alert(`No se puede emitir la factura ${numeroPropuesto}: ya existe para este cliente y sociedad.`);
-        return;
-      }
-      if (revision.otrosBeneficiarios.length) {
-        const clientes = [...new Set(revision.otrosBeneficiarios.map(item => item.cuentas?.razon_social || 'otro cliente'))].join(', ');
-        confirmarNumeroDuplicado = window.confirm(`Posible error: el número ${numeroPropuesto} ya existe para ${clientes} en esta sociedad. ¿Deseas emitirla de todas formas para el cliente seleccionado?`);
-        if (!confirmarNumeroDuplicado) return;
-      }
+    if (excedeOsSaldo && !confirmarExcesoFac) {
+      setErrorEmision('Confirma el exceso de saldo de la OS para emitir.');
+      return;
     }
 
-    if (emitiendoRef.current) return;
     emitiendoRef.current = true;
     setSaving(true);
     try {
+      let confirmarNumeroDuplicado = false;
+      if (isSupabaseConfigured()) {
+        const revision = await revisarDuplicadoFactura({
+          empresaId: empresa?.id,
+          sociedadId: sociedadEmision,
+          cuentaId,
+          numero: numeroPropuesto,
+        });
+        if (revision.mismoBeneficiario.length) {
+          setErroresEmision({ numero: `El número ${numeroPropuesto} ya existe para este cliente y sociedad.` });
+          setFocoErrorEmision({ clave: 'numero', vez: Date.now() });
+          return;
+        }
+        if (revision.otrosBeneficiarios.length) {
+          if (!(duplicadoEmision?.numero === numeroPropuesto && duplicadoEmision.confirmado)) {
+            const clientes = [...new Set(revision.otrosBeneficiarios
+              .map(item => item.cuentas?.razon_social || 'otro cliente'))].join(', ');
+            setDuplicadoEmision({ numero: numeroPropuesto, clientes, confirmado: false });
+            setErrorEmision('Confirma el número repetido para emitir.');
+            return;
+          }
+          confirmarNumeroDuplicado = true;
+        }
+      }
+
       const facturaEmitidaId = await emitirFacturaConCxC({
         tipo_documento: form.tipo_documento,
         numero: numeroPropuesto,
@@ -5205,7 +5275,7 @@ function Facturacion() {
         os_cliente_id: mode === 'val' ? getVal(valSel)?.os_cliente_id : (osSel || null),
         valorizacion_id: mode === 'val' ? valSel : null,
         centro_beneficio_id: form.centro_beneficio_id,
-        sociedad_id: empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+        sociedad_id: sociedadEmision,
         items: partidas.map(p => ({
           descripcion: p.descripcion,
           cantidad: Number(p.cantidad || 0),
@@ -5215,8 +5285,8 @@ function Facturacion() {
           origen: p.origen === 'catalogo' ? 'catalogo' : 'manual',
           precio_origen: p.precio_origen || null,
         })),
-        subtotal: subtotalNeto,
-        igv: igvCalc,
+        subtotal: totalesEmision.subtotal,
+        igv: totalesEmision.igv,
         total: totalCalc,
         moneda: form.moneda,
         fecha_emision: form.fecha_emision,
@@ -5226,8 +5296,8 @@ function Facturacion() {
         glosa: form.glosa || null,
         notas: form.notas || null,
         aplica_retencion: clienteRetencion.aplica,
-        monto_retencion: retencionCalc,
-        monto_neto_cobrable: netoCobrableCalc,
+        monto_retencion: totalesEmision.montoRetencion,
+        monto_neto_cobrable: totalesEmision.netoCobrable,
         confirmar_numero_duplicado: confirmarNumeroDuplicado,
         tipo_cambio_detraccion: spotPrincipal && form.moneda === 'USD' ? Number(tipoCambioDetraccion) : null,
         tipo_cambio_fuente: spotPrincipal && form.moneda === 'USD' ? tipoCambioFuente : null,
@@ -5236,10 +5306,12 @@ function Facturacion() {
         try {
           await finanzasService.confirmarVenta(ventaContextId, facturaEmitidaId, null);
         } catch (e) {
-          console.warn('[ventas] confirmarVenta falló (no crítico):', e?.message);
+          addNotificacion(`El comprobante se emitió, pero no se pudo vincular a la venta: ${e?.message || 'error desconocido'}. Vincúlalo desde Ventas.`);
         }
       }
       setMode(null);
+    } catch (error) {
+      setErrorEmision(error?.message || 'No se pudo emitir el comprobante.');
     } finally {
       emitiendoRef.current = false;
       setSaving(false);
@@ -5405,7 +5477,7 @@ function Facturacion() {
     const onCancelNota = () => {
       setNcndForm(null);
       setNcndFacId(null);
-      if (mode === 'directa') setMode(null);
+      if (mode) setMode(null);
       else setSelFac(ncndFacId);
     };
     const onEmitNota = async datos => {
@@ -5448,7 +5520,7 @@ function Facturacion() {
       }
       setNcndForm(null);
       setNcndFacId(null);
-      if (mode === 'directa') setMode(null);
+      if (mode) setMode(null);
       else setSelFac(nota?.id || datos.facturaOrigenId);
     };
     return (
@@ -5922,349 +5994,144 @@ function Facturacion() {
     } // end if (f)
   } // end if (selFac)
 
-  // ── Form view (shared for both modes) ─────────────────────────────────
+  // ── Modal de emisión (directa o desde valorización) ───────────────────
+  let ctxEmision = null;
   if (mode) {
     const valSrc = mode === 'val' ? getVal(valSel) : null;
     const osSrc = getOs(valSrc?.os_cliente_id || osSel);
-    const osesDelCliente = cuentaSel ? filtrarOpcionesPorSociedadEscritura(osClientes || [], modoVistaSociedadFacturacion.sociedadIdEscritura).filter(os => (
+    const osesDelCliente = cuentaSel ? filtrarOpcionesPorSociedadEscritura(
+      osClientes || [],
+      modoVistaSociedadFacturacion.sociedadIdEscritura,
+    ).filter(os => (
       os.cuenta_id === cuentaSel
       && ['activa', 'activo', 'en_ejecucion'].includes(os.estado)
       && Number(os.saldo_por_facturar || 0) > 0
     )) : [];
-
-    return (
-      <>
-        <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
-          <div>
-            <button className="btn btn-ghost" onClick={() => setMode(null)} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>
-              ← Volver a Facturación
-            </button>
-            <h1 className="page-title">{mode === 'val' ? 'Factura desde Valorización' : 'Comprobante Directo'}</h1>
-            <div className="page-sub">
-              {mode === 'val' ? 'Emite la factura y genera la CxC automáticamente desde una valorización aprobada.' : 'Emite factura o boleta sin valorización previa — mensualidad, anticipo, servicio puntual.'}
-            </div>
-          </div>
-          <div className="row" style={{gap:10}}>
-            <button className="btn btn-secondary" onClick={() => setMode(null)} disabled={saving}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleGuardar} disabled={saving || (mode === 'val' && !valSel) || (!cuentaSel && mode === 'directa') || (mode === 'directa' && !osSel && !form.sociedad_id) || Boolean(destinoFactura.conflictMessage) || (excedeOsSaldo && !confirmarExcesoFac)} title={mode === 'directa' && !osSel && !form.sociedad_id ? mensajeFacturaDirecta : destinoFactura.conflictMessage || undefined}>
-              {saving ? 'Emitiendo...' : <>{I.check} Emitir factura</>}
-            </button>
-          </div>
-        </div>
-
-        <div style={{display:'grid', gridTemplateColumns:'1fr 360px', gap:20, marginTop:20}}>
-          {/* Left — main form */}
-          <div style={{display:'flex', flexDirection:'column', gap:16}}>
-
-            {/* Banner origen venta */}
-            {ventaContextId && (
-              <div style={{padding:'10px 14px',borderRadius:8,background:'color-mix(in srgb,var(--cyan) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--cyan) 30%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:13}}>
-                <span>Facturando desde venta — <strong>{ventaCtxLabel || ventaContextId}</strong></span>
-                <button type="button" className="btn btn-ghost" style={{fontSize:11,padding:0,color:'var(--fg-muted)'}} onClick={() => { setVentaContextId(null); setVentaCtxLabel(''); }}>Descartar vínculo</button>
-              </div>
-            )}
-
-            {/* Tipo y número */}
-            <div className="card card-body">
-              <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => handleFormChange('sociedad_id', sociedad_id)} />
-              <div className="grid-2" style={{gap:16}}>
-                <div className="input-group">
-                  <label>Tipo de documento</label>
-                  <select className="select" value={form.tipo_documento} onChange={e => handleFormChange('tipo_documento', e.target.value)}>
-                    <option value="factura">Factura</option>
-                    <option value="boleta">Boleta de Venta</option>
-                    <option value="nota_credito">Nota de Crédito</option>
-                    <option value="nota_debito">Nota de Débito</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Número <span style={{fontWeight:400,color:'var(--fg-muted)',fontSize:11}}>(editable)</span></label>
-                  <input className="input mono" value={form.numero} onChange={e => handleFormChange('numero', e.target.value)} placeholder={nextNumero} />
-                  {form.numero === nextNumero && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:3}}>Número auto-generado — cámbialo si usas otra serie (ej. E001-16)</div>}
-                </div>
-              </div>
-            </div>
-
-            {/* Origen */}
-            <div className="card card-body">
-              <h3 style={{margin:'0 0 14px', fontSize:14}}>Origen</h3>
-              {mode === 'val' ? (
-                <div className="input-group">
-                  <label>Valorización aprobada <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" value={valSel} onChange={e => handleSelectVal(e.target.value)}>
-                    <option value="">Seleccione valorización...</option>
-                    {valsParaFacturar.map(v => {
-                      const os = getOs(v.os_cliente_id);
-                      return <option key={v.id} value={v.id}>{v.numero} — {cuentaNombre(os?.cuenta_id)} — {moneyCurrency(v.total||0, v.moneda)}</option>;
-                    })}
-                  </select>
-                  {valsParaFacturar.length === 0 && (
-                    <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:6}}>No hay valorizaciones aprobadas sin facturar.</div>
-                  )}
-                </div>
-              ) : (
-                <div className="grid-2" style={{gap:16}}>
-                  <div className="input-group" style={{gridColumn:'1/-1'}}>
-                    <label>Cliente <span style={{color:'var(--danger)'}}>*</span></label>
-                    <select className="select" value={cuentaSel} onChange={e => handleSelectCuenta(e.target.value)}>
-                      <option value="">Seleccione cliente...</option>
-                      {(cuentas||[]).filter(c => c.estado !== 'inactivo').map(c => (
-                        <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="input-group" style={{gridColumn:'1/-1'}}>
-                    <label>OS Cliente <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
-                    <select className="select" value={osSel} onChange={e => {
-                      const osId = e.target.value;
-                      setOsSel(osId);
-                      setForm(f => ({ ...f, centro_beneficio_id: getOs(osId)?.centro_beneficio_id || '' }));
-                    }}>
-                      <option value="">Sin OS asociada</option>
-                      {osesDelCliente.map(os => <option key={os.id} value={os.id}>{os.numero} — {money(os.monto_aprobado||0)}</option>)}
-                    </select>
-                  </div>
-                </div>
-              )}
-              {valSrc && (
-                <div style={{marginTop:12, padding:'10px 14px', borderRadius:6, background:'var(--bg-subtle)', fontSize:12, display:'flex', gap:24, flexWrap:'wrap'}}>
-                  <span>OS: <strong>{osSrc?.numero || '—'}</strong></span>
-                  <span>Cliente: <strong>{cuentaNombre(osSrc?.cuenta_id)}</strong></span>
-                  <span>Período: <strong>{valSrc.periodo || '—'}</strong></span>
-                  <span>Moneda: <strong>{valSrc.moneda || 'PEN'}</strong></span>
-                </div>
-              )}
-              {(mode === 'val' || osSel) && <SociedadReadOnlyField {...destinoFactura} style={{marginTop:16}} />}
-              {mode === 'directa' && !osSel && !form.sociedad_id && <div className="alert alert-warning" style={{marginTop:16}}>{mensajeFacturaDirecta}</div>}
-              <div className="input-group" style={{marginTop:16}}>
-                <label>CEBE <span style={{color:'var(--danger)'}}>*</span></label>
-                <select className="select" value={form.centro_beneficio_id} onChange={e => handleFormChange('centro_beneficio_id', e.target.value)} disabled={mode === 'directa' && !osSel && !form.sociedad_id}>
-                  <option value="">Seleccionar CEBE...</option>
-                  {cebesVigentes.map(cebe => <option key={cebe.id} value={cebe.id}>{cebe.codigo ? `${cebe.codigo} — ` : ''}{cebe.nombre}</option>)}
-                </select>
-                <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
-                  {osSrc?.centro_beneficio_id
-                    ? 'Preseleccionado desde la OS vinculada; puedes cambiarlo.'
-                    : 'Obligatorio. Selecciona un CEBE activo y vigente para la fecha de emisión.'}
-                </div>
-              </div>
-            </div>
-
-            {/* Partidas */}
-            <div className="card">
-              <div style={{padding:'14px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                <h3 style={{margin:0, fontSize:14}}>Partidas</h3>
-                <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} {mode === 'directa' ? 'Agregar línea personalizada' : 'Agregar línea'}</button>
-              </div>
-              {mode === 'directa' && (
-                <datalist id="facturacion-catalogo-servicios">
-                  {serviciosCatalogo.map(servicio => (
-                    <option key={servicio.id} value={etiquetaServicioCatalogo(servicio)} />
-                  ))}
-                </datalist>
-              )}
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      {mode === 'directa' && <th style={{minWidth:260}}>Servicio de catálogo</th>}
-                      <th>Descripción</th>
-                      <th style={{minWidth:220}}>SPOT efectivo</th>
-                      <th style={{width:90}}>Cant.</th>
-                      <th style={{width:140}}>P. Unitario</th>
-                      <th style={{width:130}} className="num">Subtotal</th>
-                      <th style={{width:40}}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {partidas.map(p => (
-                      <tr key={p.id}>
-                        {mode === 'directa' && (
-                          <td>
-                            {p.servicio_id ? (
-                              <div style={{display:'flex', flexDirection:'column', gap:5}}>
-                                <div style={{fontSize:12, fontWeight:600}}>{p.catalogo_busqueda || p.servicio_id}</div>
-                                <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
-                                  {p.precio_origen && <span className="badge badge-cyan" style={{fontSize:10}}>Precio {p.precio_origen === 'cliente' ? 'cliente' : 'general'}</span>}
-                                  <button type="button" className="btn btn-ghost btn-sm" style={{fontSize:11, padding:0, color:'var(--cyan)'}} onClick={() => desvincularServicioCatalogo(p.id)}>Desvincular del catálogo</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                <input
-                                  className="input"
-                                  list="facturacion-catalogo-servicios"
-                                  value={p.catalogo_busqueda || ''}
-                                  disabled={!cuentaSel || cargandoServiciosCatalogo}
-                                  onChange={e => seleccionarServicioCatalogo(p.id, e.target.value)}
-                                  placeholder={!cuentaSel ? 'Selecciona primero un cliente' : (cargandoServiciosCatalogo ? 'Cargando servicios...' : 'Buscar por código o descripción')}
-                                />
-                                {errorServiciosCatalogo && <div style={{fontSize:11,color:'var(--danger)',marginTop:4}}>{errorServiciosCatalogo}</div>}
-                              </>
-                            )}
-                            {p.catalogo_cargando && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Resolviendo precio…</div>}
-                            {p.catalogo_advertencia && <div style={{fontSize:11,color:'var(--warning)',marginTop:4,lineHeight:1.35}}>{p.catalogo_advertencia}</div>}
-                          </td>
-                        )}
-                        <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
-                        <td>
-                          {(() => { const resuelto = resolverSpotPartida(p); return <>
-                            <select className="select" value={p.spot_catalogo_id || ''} onChange={e => updatePartida(p.id, 'spot_catalogo_id', e.target.value)} disabled={Boolean(p.servicio_id)}>
-                              <option value="">{resuelto.spot ? `${resuelto.spot.codigo} · ${resuelto.origen}` : 'Sin detracción'}</option>
-                              {!p.servicio_id && spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}
-                            </select>
-                            <div className="text-muted" style={{fontSize:10,marginTop:3}}>Origen: {resuelto.origen}</div>
-                          </>; })()}
-                        </td>
-                        <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} /></td>
-                        <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} /></td>
-                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(p.cantidad||0) * Number(p.precio_unitario||0), form.moneda)}</td>
-                        <td><button className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{padding:'12px 16px', borderTop:'1px solid var(--border)'}}>
-                <div style={{width:280, marginLeft:'auto'}}>
-                  {!esBoleta && (
-                    <>
-                      <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-                        <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
-                        <span className="num">{moneyCurrency(subtotalCalc, form.moneda)}</span>
-                      </div>
-                      <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
-                        <div style={{display:'flex', alignItems:'center', gap:6}}>
-                          <span className="text-muted" style={{fontSize:13}}>IGV</span>
-                          <input type="number" className="input num" min="0" max="100" style={{width:56, padding:'3px 6px', fontSize:12}}
-                            value={igvPct} onChange={e => setIgvPct(Number(e.target.value))} />
-                          <span style={{fontSize:12, color:'var(--fg-muted)'}}>%</span>
-                        </div>
-                        <span className="num">{moneyCurrency(igvCalc, form.moneda)}</span>
-                      </div>
-                    </>
-                  )}
-                  <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
-                    <span>Total</span>
-                    <span className="num">{moneyCurrency(totalCalc, form.moneda)}</span>
-                  </div>
-                  {esBoleta && (
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,textAlign:'right'}}>IGV incluido — {igvPct}%</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="card" style={{padding:16,borderColor: spotMultiTasa ? 'var(--danger)' : 'var(--border)'}}>
-              <div style={{fontWeight:700,marginBottom:8}}>Detracción SPOT <span className="badge badge-orange" style={{marginLeft:6}}>ESTIMADO</span></div>
-              {spotMultiTasa ? <div className="alert alert-danger">La emisión admite un solo código SPOT por comprobante. Se detectaron: {codigosSpot.join(', ')}. Separa el comprobante.</div> : <>
-                <div style={{fontSize:13}}>{spotPrincipal && form.tipo_documento === 'factura' ? <>Aplica · código <strong>{spotPrincipal.codigo}</strong> · tasa <strong>{Number(spotPrincipal.porcentaje || 0).toFixed(2)}%</strong></> : <>No aplica: {form.tipo_documento === 'boleta' ? 'boleta' : spotPrincipal ? 'condición del comprobante' : 'sin código'}</>}</div>
-                 {spotPrincipal && form.tipo_documento === 'factura' && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:6}}>Base en soles: {moneySpot(baseSpotSolesEstimada)} · Depósito: {moneySpot(depositoSpotEstimado)} · Neto a cobrar: {moneySpotCurrency(netoCobrableCalc - depositoSpotEstimado, form.moneda)}</div>}
-                {spotPrincipal && form.moneda === 'USD' && form.tipo_documento === 'factura' && <div className="grid-2" style={{gap:10,marginTop:10}}><div className="input-group"><label>Tipo de cambio (S/ por USD)</label><input className="input" type="number" min="0.000001" step="0.000001" value={tipoCambioDetraccion} onChange={e => { setTipoCambioDetraccion(e.target.value); setTipoCambioFuente('manual'); }} /></div><div className="input-group"><label>Fuente</label><select className="select" value={tipoCambioFuente} onChange={e => setTipoCambioFuente(e.target.value)}><option value="referencial">Referencial</option><option value="manual">Manual</option></select></div></div>}
-              </>}
-            </div>
-
-            {/* Glosa y notas */}
-            <div className="card card-body">
-              <div className="input-group" style={{marginBottom:14}}>
-                <label>Glosa <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
-                <input className="input" value={form.glosa} onChange={e => handleFormChange('glosa', e.target.value)} placeholder="Por servicios de mantenimiento según OS N°..." />
-              </div>
-              <div className="input-group">
-                <label>Notas adicionales <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
-                <textarea className="input" rows={2} value={form.notas} onChange={e => handleFormChange('notas', e.target.value)} placeholder="Instrucciones de pago, cuentas bancarias, etc." />
-              </div>
-            </div>
-          </div>
-
-          {/* Right — sidebar */}
-          <div style={{display:'flex', flexDirection:'column', gap:16}}>
-            <div className="card card-body">
-              <h3 style={{margin:'0 0 14px', fontSize:14}}>Fechas y cobro</h3>
-              <div className="input-group" style={{marginBottom:12}}>
-                <label>Fecha de emisión</label>
-                <input className="input" type="date" value={form.fecha_emision} onChange={e => handleFormChange('fecha_emision', e.target.value)} />
-              </div>
-              <div className="input-group" style={{marginBottom:12}}>
-                <label>Condición de pago</label>
-                <select className="select" value={form.condicion_pago} onChange={e => handleFormChange('condicion_pago', e.target.value)}>
-                  {CONDICION_PAGO_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </div>
-              <div className="input-group" style={{marginBottom:12}}>
-                <label>Fecha de vencimiento</label>
-                <input className="input" type="date" value={form.fecha_vencimiento} onChange={e => handleFormChange('fecha_vencimiento', e.target.value)} />
-              </div>
-              <div className="input-group">
-                <label>Moneda</label>
-                <select className="select" value={form.moneda} onChange={e => handleFormChange('moneda', e.target.value)}>
-                  <option value="PEN">Soles (PEN)</option>
-                  <option value="USD">Dólares (USD)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Cliente info */}
-            {cuentaSel && (
-              <div className="card card-body">
-                <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:8}}>Datos del cliente</div>
-                <div style={{fontWeight:600, marginBottom:4}}>{cuentaNombre(cuentaSel)}</div>
-                <div style={{fontSize:12, color:'var(--fg-muted)'}}>RUC: {rucCliente(cuentaSel)}</div>
-              </div>
-            )}
-
-            {/* Bloque retención SUNAT */}
-            {clienteRetencion.aplica && totalCalc > 0 && (
-              <div style={{padding:'12px 14px', borderRadius:8, border:'2px solid rgba(251,191,36,0.4)', background:'rgba(251,191,36,0.06)'}}>
-                <div style={{fontWeight:700, fontSize:13, color:'var(--warning)', marginBottom:10}}>⚠ Agente de Retención SUNAT ({clienteRetencion.tasa}%)</div>
-                {[
-                  ['Total facturado', moneyCurrency(totalCalc, form.moneda), null],
-                  [`Retención SUNAT (${clienteRetencion.tasa}%)`, `- ${moneyCurrency(retencionCalc, form.moneda)}`, 'var(--warning)'],
-                ].map(([label, val, color]) => (
-                  <div key={label} style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4}}>
-                    <span style={{color:'var(--fg-muted)'}}>{label}</span>
-                    <span style={{fontWeight:600, color: color || 'var(--fg)'}}>{val}</span>
-                  </div>
-                ))}
-                <div style={{display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:700, borderTop:'1px solid rgba(251,191,36,0.3)', paddingTop:8, marginTop:4}}>
-                  <span>Neto a cobrar</span>
-                  <span style={{color:'var(--cyan)', fontFamily:'Sora'}}>{moneyCurrency(netoCobrableCalc, form.moneda)}</span>
-                </div>
-                <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:8}}>El cliente retendrá este monto al momento del pago. No afecta el Estado de Resultados — es crédito fiscal ante SUNAT.</div>
-              </div>
-            )}
-
-            {/* P7.3 — aviso exceso saldo OS */}
-            {excedeOsSaldo && (
-              <div className="card card-body" style={{border:'1px solid var(--warning)', background:'color-mix(in srgb, var(--warning) 8%, transparent)'}}>
-                <div style={{fontWeight:600, fontSize:13, color:'var(--warning)', marginBottom:6}}>Total supera saldo OS</div>
-                <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>
-                  El total ({moneyCurrency(totalCalc, form.moneda)}) supera el saldo por facturar ({moneyCurrency(Number(osParaValidar?.saldo_por_facturar || 0), form.moneda)}). ¿Deseas continuar igualmente?
-                </div>
-                <label style={{display:'flex', gap:8, alignItems:'center', fontSize:13, cursor:'pointer'}}>
-                  <input type="checkbox" checked={confirmarExcesoFac} onChange={e => setConfirmarExcesoFac(e.target.checked)} />
-                  Confirmo que el exceso es intencional
-                </label>
-              </div>
-            )}
-
-            {/* Total resumen */}
-            <div className="card" style={{padding:'16px 20px', background:'color-mix(in srgb, var(--cyan) 6%, transparent)', border:'1px solid color-mix(in srgb, var(--cyan) 20%, transparent)'}}>
-              <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total a facturar</div>
-              <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{moneyCurrency(totalCalc, form.moneda)}</div>
-              <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Vence: {form.fecha_vencimiento || '—'}</div>
-            </div>
-          </div>
-        </div>
-      </>
-    );
+    const etiquetaSociedad = s => `${s.codigo ? `${s.codigo} - ` : ''}${s.nombre}`;
+    const sociedadObj = (sociedadesDisponibles || []).find(s => s.id === sociedadEmision);
+    ctxEmision = {
+      mode,
+      cambiarOrigen: m => { if (m !== mode) openMode(m); },
+      onClose: () => { if (!saving) setMode(null); },
+      onEmitir: handleGuardar,
+      saving,
+      form,
+      onFormChange: handleFormChangeEmision,
+      errores: erroresEmision,
+      errorServidor: errorEmision,
+      focoError: focoErrorEmision,
+      numeroSugerido: esBoleta ? nextNumeroBoleta : nextNumero,
+      sociedad: {
+        visible: multisociedadEmision,
+        editable: sociedadEditableEmision,
+        opciones: (sociedadesDisponibles || []).map(s => ({ id: s.id, etiqueta: etiquetaSociedad(s) })),
+        texto: sociedadObj ? etiquetaSociedad(sociedadObj) : '',
+        ayuda: sociedadDesdeOrigen ? 'Tomada del documento de origen.' : destinoFactura.emptyMessage || '',
+      },
+      valorizacion: {
+        opciones: valsParaFacturar.map(v => ({
+          id: v.id,
+          etiqueta: `${v.numero} — ${cuentaNombre(getOs(v.os_cliente_id)?.cuenta_id)} — ${moneyCurrency(v.total || 0, v.moneda)}`,
+        })),
+        seleccionada: valSrc ? {
+          titulo: `${valSrc.numero}${valSrc.periodo ? ` · ${valSrc.periodo}` : ''}`,
+          detalle: `${osSrc?.numero || 'Sin OS'} · ${cuentaNombre(osSrc?.cuenta_id)} · ${moneyCurrency(valSrc.total || 0, valSrc.moneda)}`,
+        } : null,
+        onSeleccionar: id => {
+          handleSelectVal(id);
+          setConfirmarExcesoFac(false);
+          setDuplicadoEmision(null);
+          limpiarErrorEmision('valorizacion', 'cebe', 'sociedad');
+        },
+      },
+      cliente: {
+        id: cuentaSel,
+        opciones: (cuentas || []).filter(c => c.estado !== 'inactivo')
+          .map(c => ({ id: c.id, etiqueta: c.razon_social || c.nombre_comercial })),
+        onSeleccionar: id => {
+          handleSelectCuenta(id);
+          setConfirmarExcesoFac(false);
+          setDuplicadoEmision(null);
+          limpiarErrorEmision('cliente', 'cebe');
+        },
+        osId: osSel,
+        oses: osesDelCliente.map(os => ({
+          id: os.id,
+          etiqueta: `${os.numero} · saldo ${moneyCurrency(Number(os.saldo_por_facturar || 0), os.moneda)}`,
+        })),
+        onSeleccionarOs: handleSelectOs,
+      },
+      cebes: cebesVigentes.map(c => ({ id: c.id, etiqueta: `${c.codigo ? `${c.codigo} · ` : ''}${c.nombre}` })),
+      cebeAyuda: osSrc?.centro_beneficio_id
+        ? 'Heredado de la OS; puedes cambiarlo.'
+        : multisociedadEmision && !sociedadEmision
+          ? 'Elige primero la sociedad.'
+          : 'CEBE activo y vigente para la fecha de emisión.',
+      partidas: {
+        lista: partidas,
+        onAgregar: addPartida,
+        onQuitar: removePartida,
+        onCambiar: (id, campo, valor) => {
+          updatePartida(id, campo, valor);
+          limpiarErrorEmision(`partida:${id}:${campo === 'precio_unitario' ? 'precio' : campo}`, 'partidas');
+        },
+      },
+      catalogo: {
+        habilitado: mode === 'directa',
+        servicios: serviciosCatalogo,
+        cargando: cargandoServiciosCatalogo,
+        error: errorServiciosCatalogo,
+        etiqueta: etiquetaServicioCatalogo,
+        onSeleccionar: seleccionarServicioCatalogo,
+        onDesvincular: desvincularServicioCatalogo,
+      },
+      spot: { resolver: resolverSpotPartida, catalogo: spotCatalogo, etiqueta: spotLabel },
+      totales: totalesEmision,
+      igvPct,
+      onIgvPct: setIgvPct,
+      detraccion: detraccionEstimada,
+      tipoCambio: {
+        visible: form.tipo_documento === 'factura' && form.moneda === 'USD' && Boolean(spotPrincipal),
+        valor: tipoCambioDetraccion,
+        fuente: tipoCambioFuente,
+        ayuda: tipoCambioFuente === 'manual'
+          ? 'Ingresado manualmente.'
+          : 'Referencial de la fecha de emisión; puedes cambiarlo.',
+        onCambiar: valor => {
+          setTipoCambioDetraccion(valor);
+          setTipoCambioFuente('manual');
+          limpiarErrorEmision('tipo_cambio', 'tipo_cambio_fuente');
+        },
+        onFuente: valor => {
+          setTipoCambioFuente(valor);
+          limpiarErrorEmision('tipo_cambio_fuente');
+        },
+      },
+      retencion: clienteRetencion,
+      exceso: excedeOsSaldo ? {
+        aplica: true,
+        confirmado: confirmarExcesoFac,
+        onConfirmar: valor => { setConfirmarExcesoFac(valor); setErrorEmision(''); },
+        texto: `${osParaValidar?.numero || 'OS'} · saldo por facturar ${moneyCurrency(Number(osParaValidar?.saldo_por_facturar || 0), osParaValidar?.moneda || form.moneda)} · este comprobante ${moneyCurrency(totalCalc, form.moneda)}.`,
+      } : null,
+      duplicado: duplicadoEmision ? {
+        ...duplicadoEmision,
+        onConfirmar: valor => { setDuplicadoEmision(d => (d ? { ...d, confirmado: valor } : d)); setErrorEmision(''); },
+      } : null,
+      venta: ventaContextId ? {
+        label: ventaCtxLabel || ventaContextId,
+        onDescartar: () => { setVentaContextId(null); setVentaCtxLabel(''); },
+      } : null,
+      condiciones: CONDICION_PAGO_OPTIONS,
+    };
   }
 
   // ── List view ─────────────────────────────────────────────────────────
   return (
     <>
       {fichaFac}
-      <FacturacionListado facturas={facturasVista} cxc={cxc || []} cuentaNombre={cuentaNombre} vals={valsParaFacturar.length} abrir={id => { setSelFac(id); setFichaTab('detalle'); }} openMode={openMode} abrirCarga={() => setCargaMasivaAbierta(true)} mostrarBadge={mostrarBadgeSociedadFacturacion} Badge={SociedadBadge} searchQuery={searchQuery} loading={supabaseStatus?.loading} />
+      <FacturacionListado facturas={facturasVista} cxc={cxc || []} cuentaNombre={cuentaNombre} vals={valsParaFacturar.length} abrir={id => { setSelFac(id); setFichaTab('detalle'); }} openMode={openMode} abrirCarga={() => setCargaMasivaAbierta(true)} mostrarBadge={mostrarBadgeSociedadFacturacion} Badge={SociedadBadge} searchQuery={searchQuery} loading={supabaseStatus?.loading} puedeCrear={puedeCrearFacturacion} />
+      {ctxEmision && <FacturacionEmisionModal ctx={ctxEmision} />}
       {cargaMasivaAbierta && <CargaMasivaCxC onClose={() => setCargaMasivaAbierta(false)} />}
       {renderPanelEditFac()}
     </>
