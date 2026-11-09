@@ -9523,3 +9523,8 @@ width:20px;height:20px}
     display: block;
   }
 }
+
+.dx-opsd-pdf-error {
+  color: var(--opsd-red);
+  font-size: 12px;
+}
