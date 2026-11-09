@@ -1,0 +1,109 @@
+.dx-carga .dx-ui-dialog {
+  container-type: inline-size;
+}
+.dx-carga .dx-ui-dialog:focus {
+  outline: none;
+}
+.dx-carga .dx-carga-note,
+.dx-carga .dx-carga-confirm {
+  display: block;
+  margin: 16px 20px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--dx-ui-amber-bg);
+  color: var(--dx-ui-amber-fg);
+}
+.dx-carga .dx-carga-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 16px 20px;
+}
+.dx-carga .dx-carga-steps > div {
+  padding: 16px;
+  border: 1px solid var(--dx-ui-line);
+  border-radius: 12px;
+}
+.dx-carga h3 {
+  color: var(--dx-ui-navy);
+  margin: 0 0 10px;
+}
+.dx-carga p {
+  color: var(--dx-ui-gray);
+}
+.dx-carga .dx-carga-drop {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 118px;
+  padding: 16px;
+  border: 1.5px dashed var(--dx-ui-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dx-ui-gray);
+  cursor: pointer;
+}
+.dx-carga .dx-carga-drop b {
+  color: var(--dx-ui-navy);
+}
+.dx-carga .dx-carga-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 16px 20px 0;
+}
+.dx-carga .dx-carga-preview {
+  margin: 14px 20px 16px;
+  border: 1px solid var(--dx-ui-line);
+  border-radius: 10px;
+}
+.dx-carga .dx-carga-cols {
+  --dx-ui-cols: 28px minmax(90px, .9fr) minmax(110px, 1.4fr) minmax(90px, .8fr) minmax(140px, 1.6fr);
+}
+.dx-carga .dx-carga-preview .dx-ui-row {
+  min-height: 52px;
+  cursor: default;
+}
+.dx-carga .dx-carga-preview .dx-ui-pill {
+  justify-self: start;
+}
+.dx-carga .dx-carga-cols > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dx-carga .dx-carga-error-text,
+.dx-carga .dx-carga-error {
+  color: var(--dx-ui-red-fg);
+}
+.dx-carga .dx-carga-warning-text {
+  color: var(--dx-ui-amber-fg);
+}
+.dx-carga .dx-ui-dialog-foot .dx-carga-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+.dx-carga .dx-carga-cobros {
+  margin: 16px 20px;
+}
+.dx-carga .dx-carga-x {
+  border: 0;
+  background: transparent;
+  color: var(--dx-ui-gray);
+  font-size: 24px;
+  cursor: pointer;
+}
+@container (max-width:760px) {
+  .dx-carga .dx-carga-preview .dx-ui-head {
+    display: none;
+  }
+  .dx-carga .dx-carga-cols {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .dx-carga .dx-carga-cols > :nth-child(n + 2) {
+    grid-column: 2;
+  }
+  .dx-carga .dx-carga-cols > :nth-child(2) {
+    white-space: nowrap;
+  }
+}

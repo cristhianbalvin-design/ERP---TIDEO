@@ -95,7 +95,7 @@ const SIDEBAR = [
     { key: 'financiamiento', label: 'Financiamiento y Deuda', icon: I.bank },
     { key: 'cxc', label: 'Cuentas por Cobrar', icon: I.dollar },
     { key: 'cxp', label: 'Cuentas por Pagar', icon: I.dollar },
-    { key: 'facturacion', label: 'Facturacion', icon: I.receipt },
+    { key: 'facturacion', label: 'Facturación', icon: I.receipt },
     { key: 'tesoreria', label: 'Tesoreria / Match', icon: I.bank },
     { key: 'resultados', label: 'Estado Resultados', icon: I.trend },
     { key: 'valorizacion', label: 'Valorizaciones', icon: I.dollar },

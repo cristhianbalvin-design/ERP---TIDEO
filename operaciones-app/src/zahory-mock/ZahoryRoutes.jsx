@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isSupabaseMode } from '../../../src/lib/dataMode.js';
 import DashboardPage from './pages/dashboardGerencial.jsx';
+import InicioOperativo from './pages/inicioOperativo.jsx';
 import MisOTsPage from './pages/MisOTsPage.jsx';
 import { MapaCampo } from './pages/TransportePages.jsx';
 import { MockBackendBanner } from './components/MockBackendBanner.jsx';
@@ -9,6 +10,7 @@ import { workshopOperationsRouteIds, renderWorkshopOperationsRoute } from './rou
 import { supplyAdministrationRouteIds, renderSupplyAdministrationRoute } from './routes/supplyAdministrationRoutes.jsx';
 
 export const availableZahoryRoutes = new Set([
+  'inicio',
   'dashboard',
   'mis-ots-hoy',
   'mis-ots',
@@ -31,6 +33,9 @@ export function ZahoryRoutes({ route, routeParams, onNavigate }) {
 
   let content;
   switch (route) {
+    case 'inicio':
+      content = <InicioOperativo onNavigate={onNavigate} />;
+      break;
     case 'dashboard':
       content = <DashboardPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
       break;

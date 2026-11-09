@@ -32,6 +32,7 @@ import { AdvertenciaHojaCosteoDuplicada } from './components/AdvertenciaHojaCost
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 import { TIPOS_COBRO, esCobroMensual, etiquetaTipoCobro, validarCobroOS } from './utils/cobroMensual.js';
 import './os_cliente.css';
+import BIOperativoReal from './bi_operativo.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -6051,293 +6052,27 @@ function BIComercial() {
   </div>;
 }
 function BIOperativo() {
-  const [tab, setTab] = useState('ots');
-  const [periodoMO, setPeriodoMO] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+  return <BIOperativoReal renderMO={(periodo, datos, scope, linea) => <BIOperativoMO periodoMO={periodo} datos={datos} scope={scope} linea={linea} />} />;
+}
+
+function BIOperativoMO({ periodoMO, datos, scope, linea }) {
   const [vistaHorasMO, setVistaHorasMO] = useState('colaborador');
   const [expandedRowMO, setExpandedRowMO] = useState(null);
   const [tareosMO, setTareosMO] = useState([]);
-  const { ots, partes, backlog, cuentas, personalOperativo = [], personalAdmin = [], empresa } = useApp();
-
-  const otsMes = [
-    ...ots,
-    { id:'ot_e1', numero:'OT-25-0011', cliente:'Planta Industrial Norte', tipo:'Preventiva', estado:'cerrada', avance:100, sla:'ok',     responsable:'Luis Mendoza',  costoEst:6000,  costoReal:5800  },
-    { id:'ot_e2', numero:'OT-25-0010', cliente:'Logística Altiplano',      tipo:'Correctiva',estado:'cerrada', avance:100, sla:'riesgo',  responsable:'Carlos Reyes',  costoEst:12000, costoReal:13500 },
-    { id:'ot_e3', numero:'OT-25-0009', cliente:'Minera Andes SAC',         tipo:'Preventiva', estado:'cerrada', avance:100, sla:'ok',     responsable:'Rosa Huanca',   costoEst:9000,  costoReal:8700  },
-    { id:'ot_e4', numero:'OT-25-0008', cliente:'Facilities Lima',          tipo:'Proyectiva', estado:'ejecucion',avance:65, sla:'ok',    responsable:'Pedro Condori', costoEst:18000, costoReal:11200 },
-  ];
-
-  const otsCerradas = otsMes.filter(o => o.estado === 'cerrada').length;
-  const slaPct      = Math.round(otsMes.filter(o => o.sla === 'ok').length / otsMes.length * 100);
-  const horasMes    = partes.reduce((s, p) => s + p.horas, 0);
-  const avanceProm  = Math.round(otsMes.reduce((s, o) => s + (o.avance || 0), 0) / otsMes.length);
-
-  const tipoMap = {};
-  otsMes.forEach(o => { tipoMap[o.tipo] = (tipoMap[o.tipo] || 0) + 1; });
-  const maxTipo = Math.max(...Object.values(tipoMap), 1);
-
-  const respMap = {};
-  otsMes.forEach(o => {
-    if (!respMap[o.responsable]) respMap[o.responsable] = { total: 0, cerradas: 0, horas: 0 };
-    respMap[o.responsable].total++;
-    if (o.estado === 'cerrada') respMap[o.responsable].cerradas++;
-  });
-  partes.forEach(p => {
-    if (respMap[p.tecnico]) respMap[p.tecnico].horas += p.horas;
-    else respMap[p.tecnico] = { total: 0, cerradas: 0, horas: p.horas };
-  });
-  const maxRespTotal = Math.max(...Object.values(respMap).map(r => r.total), 1);
-
-  const tendencia = [
-    { mes:'Nov', ots:12, cerradas:10 },
-    { mes:'Dic', ots:8,  cerradas:7  },
-    { mes:'Ene', ots:15, cerradas:13 },
-    { mes:'Feb', ots:11, cerradas:9  },
-    { mes:'Mar', ots:14, cerradas:12 },
-    { mes:'Abr', ots:otsMes.length, cerradas:otsCerradas },
-  ];
-  const maxOts = Math.max(...tendencia.map(t => t.ots), 1);
-
-  const bkPend     = backlog.filter(b => b.estado === 'pendiente');
-  const bkPriority = { alta: bkPend.filter(b=>b.prioridad==='alta').length, media: bkPend.filter(b=>b.prioridad==='media').length, baja: bkPend.filter(b=>b.prioridad==='baja').length };
-
-  const otsCerDat  = otsMes.filter(o => o.estado === 'cerrada' && (o.costoEst || 0) > 0);
-  const eficiencia = otsCerDat.length > 0 ? Math.round(otsCerDat.reduce((s, o) => s + (o.costoReal || 0) / (o.costoEst || 1) * 100, 0) / otsCerDat.length) : 100;
-
-  const tipoColors = ['var(--cyan)','var(--purple)','var(--orange)','var(--green)'];
-
+  const { ots: otsContexto = [], partes: partesContexto = [], cuentas = [], personalOperativo = [], personalAdmin = [], empresa } = useApp();
+  const idsOT = new Set(datos.ots.map(o => o.id));
+  const ots = otsContexto.filter(o => idsOT.has(o.id));
+  const partes = partesContexto.filter(p => idsOT.has(p.ot_id || p.orden_trabajo_id));
   useEffect(() => {
-    if (tab !== 'horas_mo' || !empresa?.id) return;
+    if (!empresa?.id) return;
     const [y, m] = periodoMO.split('-');
     const desde = `${y}-${m}-01`;
     const hasta = new Date(Number(y), Number(m), 0).toISOString().split('T')[0];
-    tareosAdminService.cargarTareos(empresa.id, { desde, hasta })
-      .then(setTareosMO)
-      .catch(() => setTareosMO([]));
-  }, [tab, empresa?.id, periodoMO]);
-
+    tareosAdminService.cargarTareos(empresa.id, { desde, hasta }).then(setTareosMO).catch(() => setTareosMO([]));
+  }, [empresa?.id, periodoMO]);
   return (
     <>
-      <div className="page-header">
-        <div><h1 className="page-title">BI Operativo</h1><div className="page-sub">Rendimiento de OTs, técnicos y SLAs · Abril 2026</div></div>
-        <button className="btn btn-secondary">{I.download} Exportar</button>
-      </div>
-
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">OTs del mes</div><div className="kpi-value">{otsMes.length}</div><div className="kpi-icon cyan">{I.wrench}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Completadas</div><div className="kpi-value" style={{color:'var(--green)'}}>{otsCerradas}</div><div className="kpi-icon green">{I.check}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Avance promedio</div><div className="kpi-value">{avanceProm}%</div><div className="kpi-icon purple">{I.trend}</div></div>
-        <div className="kpi-card"><div className="kpi-label">SLA cumplido</div><div className="kpi-value" style={{color:slaPct>=80?'var(--green)':'var(--orange)'}}>{slaPct}%</div><div className={'kpi-icon '+(slaPct>=80?'green':'orange')}>{I.shield}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Horas campo</div><div className="kpi-value">{horasMes}h</div><div className="kpi-icon orange">{I.clock}</div></div>
-      </div>
-
-      <div className="tabs">
-        <div className={'tab '+(tab==='ots'?'active':'')} onClick={()=>setTab('ots')}>OTs y Ejecución</div>
-        <div className={'tab '+(tab==='recursos'?'active':'')} onClick={()=>setTab('recursos')}>Recursos</div>
-        <div className={'tab '+(tab==='backlog'?'active':'')} onClick={()=>setTab('backlog')}>Backlog y Alertas</div>
-        <div className={'tab '+(tab==='horas_mo'?'active':'')} onClick={()=>setTab('horas_mo')}>Horas y costos de MO</div>
-      </div>
-
-      {tab === 'ots' && (
-        <div style={{display:'grid', gap:20}}>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div className="card">
-              <div className="card-head"><h3>Tendencia OTs — últimos 6 meses</h3></div>
-              <div style={{padding:'20px 24px'}}>
-                <div style={{display:'flex', gap:6, alignItems:'flex-end', height:160}}>
-                  {tendencia.map((t, i) => (
-                    <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
-                      <div style={{flex:1, width:'100%', display:'flex', gap:3, alignItems:'flex-end'}}>
-                        <div style={{flex:1, height:Math.round(t.ots/maxOts*140)+'px', background:i===5?'var(--cyan)':'var(--navy)', borderRadius:'2px 2px 0 0', opacity:i===5?1:0.6}}/>
-                        <div style={{flex:1, height:Math.round(t.cerradas/maxOts*140)+'px', background:'var(--green)', borderRadius:'2px 2px 0 0', opacity:0.75}}/>
-                      </div>
-                      <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{t.mes}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{display:'flex', gap:16, marginTop:12, fontSize:12}}>
-                  <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:10,height:10,borderRadius:2,background:'var(--navy)',display:'inline-block'}}/> Total</span>
-                  <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:10,height:10,borderRadius:2,background:'var(--green)',display:'inline-block'}}/> Completadas</span>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3>OTs por Tipo</h3></div>
-              <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:14}}>
-                {Object.entries(tipoMap).sort((a,b)=>b[1]-a[1]).map(([tipo, cnt], i) => (
-                  <div key={i} style={{display:'grid', gridTemplateColumns:'120px 1fr 40px', gap:10, alignItems:'center'}}>
-                    <span style={{fontSize:13}}>{tipo}</span>
-                    <div style={{height:10, background:'var(--bg-subtle)', borderRadius:4}}>
-                      <div style={{width:Math.round(cnt/maxTipo*100)+'%', height:'100%', background:tipoColors[i%tipoColors.length], borderRadius:4}}/>
-                    </div>
-                    <span style={{fontSize:13, fontWeight:700, textAlign:'right'}}>{cnt}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h3>OTs — Estado actual</h3><span className="text-muted" style={{fontSize:12}}>{otsMes.length} OTs este mes</span></div>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>OT</th><th>Cliente</th><th>Tipo</th><th>Responsable</th><th>Avance</th><th>SLA</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {otsMes.map(o => (
-                    <tr key={o.id} className="hover-row">
-                      <td className="mono" style={{fontWeight:600}}>{o.numero}</td>
-                      <td><strong>{o.cliente}</strong></td>
-                      <td><span className="badge badge-cyan" style={{fontSize:11}}>{o.tipo}</span></td>
-                      <td>{o.responsable}</td>
-                      <td>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:3}}>
-                            <div style={{width:(o.avance||0)+'%',height:'100%',background:o.avance===100?'var(--green)':o.avance>50?'var(--cyan)':'var(--orange)',borderRadius:3}}/>
-                          </div>
-                          <span style={{fontSize:12,fontWeight:600,minWidth:28}}>{o.avance||0}%</span>
-                        </div>
-                      </td>
-                      <td><span className={'badge '+(o.sla==='ok'?'badge-green':'badge-orange')}>{(o.sla || '').toUpperCase()}</span></td>
-                      <td><span className={'badge '+(o.estado==='cerrada'?'badge-purple':o.estado==='ejecucion'?'badge-cyan':'badge-gray')}>{o.estado}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === 'recursos' && (
-        <div style={{display:'grid', gap:20}}>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div className="card">
-              <div className="card-head"><h3>OTs por Técnico</h3></div>
-              <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:16}}>
-                {Object.entries(respMap).sort((a,b)=>b[1].total-a[1].total).map(([resp, data], i) => (
-                  <div key={i}>
-                    <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-                      <span style={{fontSize:13, fontWeight:500}}>{resp}</span>
-                      <span style={{fontSize:12, color:'var(--fg-muted)'}}>{data.total} OTs · {data.horas}h</span>
-                    </div>
-                    <div style={{display:'flex', height:8, borderRadius:4, overflow:'hidden'}}>
-                      <div style={{flex:data.cerradas, background:'var(--green)'}}/>
-                      <div style={{flex:data.total-data.cerradas, background:'var(--cyan)', opacity:0.5}}/>
-                    </div>
-                    <div style={{display:'flex', gap:12, marginTop:4, fontSize:11, color:'var(--fg-muted)'}}>
-                      <span style={{color:'var(--green)'}}>■ {data.cerradas} cerradas</span>
-                      <span style={{color:'var(--cyan)'}}>■ {data.total-data.cerradas} en curso</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3>Eficiencia de Costo</h3><span className="badge badge-cyan">Real vs. Estimado</span></div>
-              <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:14}}>
-                {otsCerDat.map(o => {
-                  const pct = o.costoEst > 0 ? Math.round((o.costoReal||0)/o.costoEst*100) : 0;
-                  return (
-                    <div key={o.id} style={{display:'grid', gridTemplateColumns:'110px 1fr 46px', gap:10, alignItems:'center'}}>
-                      <span className="mono" style={{fontSize:12}}>{o.numero}</span>
-                      <div style={{height:8, background:'var(--bg-subtle)', borderRadius:4}}>
-                        <div style={{width:Math.min(pct,100)+'%', height:'100%', background:pct>100?'var(--danger)':pct>90?'var(--orange)':'var(--green)', borderRadius:4}}/>
-                      </div>
-                      <span style={{fontSize:12, fontWeight:700, textAlign:'right', color:pct>100?'var(--danger)':pct>90?'var(--orange)':'var(--green)'}}>{pct}%</span>
-                    </div>
-                  );
-                })}
-                <div style={{padding:'12px 0', borderTop:'1px solid var(--border-subtle)', display:'flex', justifyContent:'space-between', fontSize:13}}>
-                  <span className="text-muted">Eficiencia promedio</span>
-                  <strong style={{color:eficiencia<=100?'var(--green)':'var(--danger)'}}>{eficiencia}%</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h3>Partes diarios registrados</h3><span className="badge badge-cyan">{partes.length}</span></div>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>Parte</th><th>OT</th><th>Técnico</th><th>Fecha</th><th>Horas</th><th>Avance</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {partes.map(p => (
-                    <tr key={p.id} className="hover-row">
-                      <td className="mono" style={{fontWeight:600}}>{p.id}</td>
-                      <td className="mono text-muted">{ots.find(o=>o.id===p.ot_id)?.numero||p.ot_id}</td>
-                      <td>{p.tecnico}</td>
-                      <td className="text-muted">{p.fecha}</td>
-                      <td className="num" style={{fontWeight:600}}>{p.horas}h</td>
-                      <td><span className="badge badge-cyan">{p.avance_reportado}%</span></td>
-                      <td><span className={'badge '+(p.estado==='aprobado'?'badge-green':'badge-orange')}>{p.estado.replace('_',' ')}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === 'backlog' && (
-        <div style={{display:'grid', gap:20}}>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div className="card">
-              <div className="card-head"><h3>Backlog pendiente</h3><span className="badge badge-orange">{bkPend.length}</span></div>
-              <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:16}}>
-                {[{k:'alta',l:'Alta prioridad',color:'var(--danger)',b:'badge-red'},{k:'media',l:'Media prioridad',color:'var(--orange)',b:'badge-orange'},{k:'baja',l:'Baja prioridad',color:'var(--green)',b:'badge-green'}].map(pr => (
-                  <div key={pr.k} className="row" style={{justifyContent:'space-between', padding:'14px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid '+pr.color}}>
-                    <span style={{fontSize:13, fontWeight:500}}>{pr.l}</span>
-                    <span className={'badge '+pr.b} style={{fontSize:14, padding:'2px 12px'}}>{bkPriority[pr.k]}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3>OTs con SLA en riesgo</h3></div>
-              <div style={{padding:'16px 24px'}}>
-                {otsMes.filter(o=>o.sla!=='ok').length === 0 ? (
-                  <div style={{textAlign:'center', padding:32, color:'var(--green)'}}>
-                    <div style={{fontSize:28, marginBottom:8}}>✓</div>
-                    <div style={{fontWeight:600}}>Sin OTs con SLA en riesgo</div>
-                  </div>
-                ) : otsMes.filter(o=>o.sla!=='ok').map(o => (
-                  <div key={o.id} style={{padding:'12px', border:'1px solid var(--border)', borderRadius:8, marginBottom:12, borderLeft:'3px solid var(--danger)'}}>
-                    <div className="row" style={{justifyContent:'space-between'}}>
-                      <strong className="mono">{o.numero}</strong>
-                      <span className="badge badge-orange">{(o.sla || '').toUpperCase()}</span>
-                    </div>
-                    <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>{o.cliente} · {o.responsable}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h3>Requerimientos pendientes de programación</h3></div>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>ID</th><th>Prioridad</th><th>Cliente</th><th>Título</th><th>Origen</th><th>Fecha</th></tr></thead>
-                <tbody>
-                  {bkPend.map(b => {
-                    const cuenta = cuentas.find(c=>c.id===b.cuenta_id);
-                    return (
-                      <tr key={b.id} className="hover-row">
-                        <td className="mono">{b.id}</td>
-                        <td><span className={'badge '+(b.prioridad==='alta'?'badge-red':b.prioridad==='media'?'badge-orange':'badge-green')}>{(b.prioridad || '').toUpperCase()}</span></td>
-                        <td><strong>{cuenta?.razon_social||b.cuenta_id}</strong></td>
-                        <td style={{maxWidth:200}}>{b.titulo}</td>
-                        <td className="text-muted" style={{fontSize:12}}>{b.origen}</td>
-                        <td className="text-muted">{b.fecha}</td>
-                      </tr>
-                    );
-                  })}
-                  {bkPend.length===0 && <tr><td colSpan="6" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>Backlog limpio</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === 'horas_mo' && (() => {
+      {(() => {
         const [y, m] = periodoMO.split('-');
         const desde = `${y}-${m}-01`;
         const hasta = new Date(Number(y), Number(m), 0).toISOString().split('T')[0];
@@ -6347,7 +6082,9 @@ function BIOperativo() {
         });
         const tareosP = (tareosMO || []).filter(t => {
           const f = t.fecha || t.created_at?.slice?.(0, 10);
-          return f >= desde && f <= hasta && String(t.estado || '').toLowerCase() !== 'anulado';
+          const otPermitida = t.ot_id && ots.some(o => o.id === t.ot_id);
+          const librePermitido = !t.ot_id && scope.sinFiltro && !linea;
+          return f >= desde && f <= hasta && String(t.estado || '').toLowerCase() !== 'anulado' && (otPermitida || librePermitido);
         });
 
         const tarifaP = (p) => Number(p?.tarifa_hora ?? p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0) || 0;
@@ -6458,7 +6195,7 @@ function BIOperativo() {
                   <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{periodoMO}</div>
                 </div>
                 <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  <input className="input" type="month" value={periodoMO} onChange={e => setPeriodoMO(e.target.value)} style={{ minWidth: 150 }} />
+                  
                   <div style={{ display: 'flex', gap: 4, background: 'var(--bg-subtle)', borderRadius: 6, padding: 3 }}>
                     <button className={`btn btn-sm ${vistaHorasMO === 'colaborador' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaHorasMO('colaborador')}>Por colaborador</button>
                     <button className={`btn btn-sm ${vistaHorasMO === 'ot' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaHorasMO('ot')}>Por OT</button>
