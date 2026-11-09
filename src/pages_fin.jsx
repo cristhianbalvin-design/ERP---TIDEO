@@ -4825,6 +4825,8 @@ function Facturacion() {
         moneda: f.moneda || 'PEN',
         estado: 'por_cobrar',
       });
+    } catch (error) {
+      addNotificacion(error?.message || 'No se pudo generar la cuenta por cobrar.');
     } finally {
       setGenerandoCxC(false);
     }

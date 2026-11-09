@@ -5396,13 +5396,10 @@ export function AppProvider({ children }) {
       fecha_vencimiento: vencimientoCxC.fechaVencimiento,
       condicion_pago: vencimientoCxC.condicionPago,
     };
-    setCxc(prev => [...prev, cuentaCobrar]);
-
     if (isSupabaseConfigured()) {
-      finSync(async () => {
-        await finanzasService.generarCxC({ ...cuentaCobrar, fecha_vencimiento_resuelta: true });
-      });
+      await finanzasService.generarCxC({ ...cuentaCobrar, fecha_vencimiento_resuelta: true });
     }
+    setCxc(prev => [...prev, cuentaCobrar]);
     auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cuentaCobrar.id, accion: 'crear', valor_nuevo: cuentaCobrar });
     if (vencimientoCxC.usoFallback && !omitirAvisoCondicionPago) {
       addNotificacion(mensajeFallbackCondicionPagoCxC);
