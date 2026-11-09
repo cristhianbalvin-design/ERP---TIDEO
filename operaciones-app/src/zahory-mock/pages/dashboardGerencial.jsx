@@ -585,10 +585,10 @@ export default function DashboardPage() {
     const divisor = abs >= 1e6 ? 1e6 : abs >= 1e3 ? 1e3 : 1;
     const sufijo = divisor === 1e6 ? ' M' : divisor === 1e3 ? ' mil' : '';
     const cifra = (monto / divisor).toLocaleString('es-PE', { maximumFractionDigits: divisor === 1 ? 0 : 1 });
-    return `${simbolo} ${cifra}${sufijo}`;
+    return `${simbolo}\u00a0${cifra}${sufijo}`;
   };
   const dinero = (valor) =>
-    `${simbolo} ${
+    `${simbolo}\u00a0${
       convertir(valor).toLocaleString('es-PE', {
         minimumFractionDigits: 2, maximumFractionDigits: 2,
       })

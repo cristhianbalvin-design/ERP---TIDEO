@@ -9268,7 +9268,7 @@ width:20px;height:20px}
   font:
     700 20px/1.2 Sora,
     sans-serif;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 .dx-opsd .dx-ui-kpi span,
 .dx-opsd .dx-ui-kpi em {
@@ -9475,6 +9475,11 @@ width:20px;height:20px}
   .dx-opsd-grid,
   .dx-opsd-grid3 {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (width < 760px) {
+  .dx-opsd .dx-ui-kpi strong {
+    font-size: 18px;
   }
 }
 @container (max-width:600px) {
