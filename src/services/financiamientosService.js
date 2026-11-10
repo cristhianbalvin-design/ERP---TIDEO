@@ -374,3 +374,140 @@ export const createFinanciamientosDataSource = ({
     }),
   };
 };
+
+const cuotaPagada = cuota => cuota?.estado === 'pagada';
+
+// Calcula la edicion de un financiamiento existente. Las cuotas pagadas se conservan tal cual;
+// las demas se regeneran con los nuevos parametros sobre el saldo que queda despues del capital
+// ya pagado (cuotas + abonos). Devuelve { error } si la edicion no es coherente.
+export function construirEdicionFinanciamiento(financiamiento, form) {
+  const tablaActual = financiamiento?.tabla_amortizacion || [];
+  const pagadas = tablaActual.filter(cuotaPagada);
+  const numerosPagados = new Set(pagadas.map(c => Number(c.numero)));
+  const maxPagada = pagadas.reduce((max, c) => Math.max(max, Number(c.numero) || 0), 0);
+  const tienePagos = pagadas.length > 0 || (financiamiento?.pagos_realizados || []).length > 0;
+  const capitalPagado = round2(Math.max(0, Number(financiamiento?.monto_original || 0) - Number(financiamiento?.saldo_pendiente || 0)));
+  const monto = Number(form.monto_original || 0);
+  const plazo = Number(form.plazo_meses || 0);
+  const gracia = Math.max(0, Number(form.meses_gracia || 0));
+
+  if (!String(form.entidad || '').trim()) return { error: 'La entidad es obligatoria.' };
+  if (!(monto > 0)) return { error: 'El monto recibido debe ser mayor a cero.' };
+  if (!(plazo >= 1)) return { error: 'El plazo debe ser de al menos 1 mes.' };
+  if (plazo < maxPagada) return { error: `El plazo no puede ser menor a ${maxPagada} meses: la cuota ${maxPagada} ya está pagada.` };
+  if (monto < capitalPagado) return { error: `El monto no puede ser menor al capital ya pagado (${capitalPagado.toFixed(2)}).` };
+  if (tienePagos && (form.moneda || 'PEN') !== (financiamiento.moneda || 'PEN')) return { error: 'No se puede cambiar la moneda de un financiamiento con pagos registrados.' };
+
+  const parametros = {
+    tasaAnual: form.tasa_anual,
+    mesesGracia: gracia,
+    fechaDesembolso: form.fecha_desembolso,
+    diaPago: form.dia_pago,
+    tipoCuota: form.tipo_cuota,
+  };
+  const base = generarAmortizacion({ ...parametros, monto, plazoMeses: plazo });
+  const nuevoSaldo = round2(monto - capitalPagado);
+  let tabla = base;
+
+  if (tienePagos || capitalPagado > 0) {
+    const porPagar = base.filter(c => !numerosPagados.has(c.numero));
+    if (nuevoSaldo > 0 && porPagar.length === 0) return { error: 'No quedan cuotas por pagar para el saldo pendiente; amplía el plazo.' };
+    const graciaRestante = porPagar.filter(c => c.numero <= gracia).length;
+    const recalculadas = nuevoSaldo > 0
+      ? generarAmortizacion({ ...parametros, monto: nuevoSaldo, plazoMeses: porPagar.length, mesesGracia: graciaRestante })
+      : [];
+    let idx = 0;
+    tabla = base.map(c => {
+      if (numerosPagados.has(c.numero)) return pagadas.find(p => Number(p.numero) === c.numero);
+      const r = recalculadas[idx];
+      const primera = idx === 0;
+      idx += 1;
+      if (!r) return { ...c, capital: 0, interes: 0, total: 0, saldo: 0, estado: 'cancelada' };
+      return { ...c, capital: r.capital, interes: r.interes, total: r.total, saldo: r.saldo, estado: primera ? 'pendiente' : 'futura' };
+    });
+  }
+
+  const proxima = tabla.find(c => c.estado === 'pendiente');
+  const estado = nuevoSaldo <= 0 ? 'cancelado' : (financiamiento.estado === 'cancelado' ? 'vigente' : financiamiento.estado);
+  const datos = {
+    tipo: form.tipo,
+    entidad: String(form.entidad).trim(),
+    moneda: form.moneda || 'PEN',
+    sociedad_id: form.sociedad_id || null,
+    monto_original: monto,
+    tasa_anual: Number(form.tasa_anual || 0),
+    plazo_meses: plazo,
+    meses_gracia: gracia,
+    dia_pago: Number(form.dia_pago || 0),
+    tipo_cuota: form.tipo_cuota,
+    fecha_desembolso: form.fecha_desembolso || null,
+    contacto_nombre: form.contacto_nombre || '',
+    cuenta_bancaria_destino: form.cuenta_bancaria_destino || '',
+    proposito: form.proposito || '',
+    notas: form.notas || '',
+    cuota_mensual: proxima?.total ?? tabla[0]?.total ?? 0,
+    fecha_primer_pago: tabla[0]?.fecha || null,
+    fecha_ultimo_pago: tabla[tabla.length - 1]?.fecha || null,
+    saldo_pendiente: nuevoSaldo,
+    estado,
+  };
+  return { datos, tabla, nuevoSaldo, capitalPagado, tienePagos, cuotasPagadas: pagadas.length };
+}
+
+export async function editarFinanciamientoRpc({ empresa, id, datos, cuotas }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('editar_financiamiento', {
+    p_empresa_id: empresa.id,
+    p_id: id,
+    p_datos: datos,
+    p_cuotas: cuotas,
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Con ejecutar=false solo devuelve el impacto de eliminar (para la segunda confirmacion).
+export async function eliminarFinanciamientoRpc({ empresa, id, ejecutar = false }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('eliminar_financiamiento', {
+    p_empresa_id: empresa.id,
+    p_id: id,
+    p_ejecutar: ejecutar,
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Impacto calculado con los datos cargados en pantalla (modo demo / sin Supabase).
+export function impactoLocalEliminarFinanciamiento(financiamiento, movimientos = [], gastos = []) {
+  const pagos = financiamiento?.pagos_realizados || [];
+  const movs = movimientos.filter(m => m.vinculo_tipo === 'financiamiento' && m.vinculo_id === financiamiento.id);
+  const gas = gastos.filter(g => g.financiamiento_id === financiamiento.id);
+  const porCuenta = movs.reduce((acc, m) => {
+    const key = `${m.cuenta_bancaria || 'Sin cuenta'}|${m.moneda || 'PEN'}`;
+    acc[key] = acc[key] || { cuenta: m.cuenta_bancaria || 'Sin cuenta', moneda: m.moneda || 'PEN', cantidad: 0, total: 0 };
+    acc[key].cantidad += 1;
+    acc[key].total += Number(m.monto || 0);
+    return acc;
+  }, {});
+  const sum = (rows, k) => round2(rows.reduce((s, r) => s + Number(r[k] || 0), 0));
+  return {
+    id: financiamiento.id,
+    codigo: financiamiento.codigo,
+    entidad: financiamiento.entidad,
+    moneda: financiamiento.moneda || 'PEN',
+    monto_original: financiamiento.monto_original,
+    saldo_pendiente: financiamiento.saldo_pendiente,
+    cuotas: (financiamiento.tabla_amortizacion || []).length,
+    cuotas_pagadas: (financiamiento.tabla_amortizacion || []).filter(cuotaPagada).length,
+    pagos: pagos.length,
+    pagos_total: sum(pagos, 'total'),
+    pagos_capital: sum(pagos, 'capital'),
+    pagos_interes: sum(pagos, 'interes'),
+    movimientos: movs.length,
+    movimientos_total: sum(movs, 'monto'),
+    movimientos_por_cuenta: Object.values(porCuenta),
+    gastos: gas.length,
+    gastos_total: sum(gas, 'monto'),
+  };
+}
