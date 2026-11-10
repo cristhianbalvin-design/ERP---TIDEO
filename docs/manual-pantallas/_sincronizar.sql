@@ -1,6 +1,8 @@
 -- Generado por scripts/generar-manual-pantallas.mjs a partir de docs/manual-pantallas/*.txt. No editar a mano.
 -- Sincroniza las fichas del manual de Aria con Supabase (proyecto ERP - Tideo). Idempotente.
+-- La primera instrucción rechaza el archivo si la base ya tiene una revisión más nueva (catalogo/sincronizacion.json).
 BEGIN;
+SELECT public.aria_sincronizacion_autorizar('manual', 2, '69485476e7784744');
 DELETE FROM public.asistente_manual_pasos WHERE ficha_clave IN ('bandeja_ots','caja','como_usar_aria','compras_gastos','cxc','cxp','despachos_almacen','facturacion','financiamiento','inicio_operaciones','mis_ots_dia','monitor_viajes','nueva_ot','ordenes_compra','partes_taller','proceso_caja_chica','proceso_solpe_pago','proveedores','recepciones','reserva_repuestos','solpe','tesoreria');
 INSERT INTO public.asistente_manual_fichas (clave,tipo,pantalla_key,titulo,resumen,fuentes,revision) VALUES ('bandeja_ots','pantalla','ot','Bandeja de OTs','Lista todas las órdenes de trabajo con sus indicadores, filtros y búsqueda, y permite iniciar una OT programada.','["operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#OTsListadoPage"]'::jsonb,'b22cbde9d1')
   ON CONFLICT (clave) DO UPDATE SET tipo=EXCLUDED.tipo, pantalla_key=EXCLUDED.pantalla_key, titulo=EXCLUDED.titulo, resumen=EXCLUDED.resumen, fuentes=EXCLUDED.fuentes, revision=EXCLUDED.revision;

@@ -15,6 +15,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Trae main para comparar la revisión de las sincronizaciones
+        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
       - name: Pruebas del catálogo y del manual
         run: npm run test:manual
       - name: Todas las pantallas del código están en el catálogo
