@@ -48,7 +48,7 @@ function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitti
       <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
         <div className="side-panel-head"><div><div className="eyebrow">{edicion ? `Editar financiamiento · ${edicion.codigo}` : 'Nuevo financiamiento'}</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{edicion ? edicion.entidad : 'Los campos * son obligatorios'}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
         <form className="side-panel-body" onSubmit={onSubmit}>
-          {edicion && monedaBloqueada && <div style={{padding:'10px 12px', borderRadius:8, background:'rgba(245,158,11,0.10)', border:'1px solid rgba(245,158,11,0.35)', fontSize:13, marginBottom:16}}>Este préstamo tiene {calculoEdicion?.cuotasPagadas || 0} cuota(s) pagada(s). Las cuotas pagadas no cambian; las pendientes se recalculan sobre el saldo que queda tras el capital ya pagado. La moneda no se puede cambiar.</div>}
+          {edicion && monedaBloqueada && <div style={{padding:'10px 12px', borderRadius:8, background:'rgba(245,158,11,0.10)', border:'1px solid rgba(245,158,11,0.35)', fontSize:13, marginBottom:16}}>Este préstamo ya tiene pagos registrados{calculoEdicion?.cuotasPagadas ? ` (${calculoEdicion.cuotasPagadas} cuota(s) pagada(s))` : ''}. Las cuotas pagadas no cambian; las pendientes se recalculan sobre el saldo que queda tras el capital ya pagado. La moneda no se puede cambiar.</div>}
           <div className="grid-2" style={{gap:16}}>
             <div className="input-group"><label>Tipo *</label><select className="select" value={form.tipo} onChange={e=>set('tipo', e.target.value)}><option value="bancario">Prestamo bancario</option><option value="tercero">Prestamo de tercero</option><option value="leasing">Leasing</option><option value="linea_credito">Linea de credito</option><option value="otro">Otro</option></select></div>
             <div className="input-group"><label>Entidad *</label><input className="input" value={form.entidad} onChange={e=>set('entidad', e.target.value)} required/></div>
@@ -120,12 +120,12 @@ function EliminarFinanciamientoModal({ data, onClose, onContinuar, onConfirmar }
             <p style={{margin:0}}>Al confirmar se borrará <strong>de forma permanente</strong> lo siguiente:</p>
             <ul style={{margin:0, paddingLeft:20, display:'flex', flexDirection:'column', gap:6}}>
               <li>El préstamo <strong>{impacto.codigo}</strong> por {money(impacto.monto_original)} con saldo pendiente de {money(impacto.saldo_pendiente)}.</li>
-              <li>Su tabla de amortización: <strong>{impacto.cuotas}</strong> cuota(s), de las cuales {impacto.cuotas_pagadas} figuran como pagadas.</li>
-              <li><strong>{impacto.pagos}</strong> pago(s) registrado(s) por {money(impacto.pagos_total)} (capital {money(impacto.pagos_capital)} · intereses {money(impacto.pagos_interes)}).</li>
-              <li><strong>{impacto.movimientos}</strong> egreso(s) de Tesorería por {money(impacto.movimientos_total)}. Al desaparecer, el saldo de estas cuentas <strong>subirá</strong> en ese importe:
+              <li>Su tabla de amortización: <strong>{impacto.cuotas}</strong> cuota(s){impacto.cuotas_pagadas > 0 ? `, de las cuales ${impacto.cuotas_pagadas} figuran como pagadas` : ''}.</li>
+              {impacto.pagos > 0 && <li><strong>{impacto.pagos}</strong> pago(s) registrado(s) por {money(impacto.pagos_total)} (capital {money(impacto.pagos_capital)} · intereses {money(impacto.pagos_interes)}).</li>}
+              {impacto.movimientos > 0 && <li><strong>{impacto.movimientos}</strong> egreso(s) de Tesorería por {money(impacto.movimientos_total)}. Al desaparecer, el saldo de estas cuentas <strong>subirá</strong> en ese importe:
                 {(impacto.movimientos_por_cuenta || []).length > 0 && <ul style={{marginTop:4, paddingLeft:18}}>{impacto.movimientos_por_cuenta.map(c => <li key={c.cuenta + c.moneda}>{c.cuenta}: +{fmtMoney(c.moneda, c.total)} ({c.cantidad} mov.)</li>)}</ul>}
-              </li>
-              <li><strong>{impacto.gastos}</strong> gasto(s) de intereses por {money(impacto.gastos_total)}; dejarán de aparecer en Compras/Gastos y en el Estado de Resultados.</li>
+              </li>}
+              {impacto.gastos > 0 && <li><strong>{impacto.gastos}</strong> gasto(s) de intereses por {money(impacto.gastos_total)}; dejarán de aparecer en Compras/Gastos y en el Estado de Resultados.</li>}
             </ul>
             {conMovimientos && <div style={{padding:'10px 12px', borderRadius:8, background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.35)', fontSize:13}}>Si estos pagos ocurrieron realmente en el banco, eliminarlos dejará los saldos del ERP distintos a los del banco. Hazlo solo si el préstamo se registró por error.</div>}
             <label className="row" style={{gap:8, alignItems:'flex-start', cursor:'pointer'}}><input type="checkbox" checked={entendido} onChange={e => setEntendido(e.target.checked)} style={{marginTop:3}}/><span>Entiendo lo que se eliminará y que no se puede deshacer.</span></label>

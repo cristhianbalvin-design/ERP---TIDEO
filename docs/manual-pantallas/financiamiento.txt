@@ -5,7 +5,7 @@ catalogo: admin/financiamiento
 titulo: Financiamiento y Deuda
 resumen: Registra los préstamos, leasing y líneas de crédito de la empresa con su tabla de amortización, sus pagos y el reporte de deuda por moneda.
 componentes: src/pages_fin_deuda.jsx#FinanciamientoDeuda
-huella: de27070f50
+huella: 2095f9b5c2
 paso: 1 | pantalla=financiamiento | permiso=ninguno | Revisa la deuda vigente, las cuotas e intereses del mes y el capital pendiente en los indicadores; los importes se muestran por moneda. Usa las pestañas Todos los préstamos, Vigentes, Cancelados y Reporte de deuda.
 paso: 2 | pantalla=financiamiento | permiso=financiamiento:crear | Usa Nuevo financiamiento para registrar un préstamo con su entidad, monto, moneda, tasa, plazo, meses de gracia, día de pago y tipo de cuota; la vista previa muestra la cuota estimada y al guardar se genera la tabla de amortización.
 paso: 3 | pantalla=financiamiento | permiso=ninguno | Usa Ver en un préstamo para abrir su resumen, la tabla de amortización, los pagos realizados y los documentos.
