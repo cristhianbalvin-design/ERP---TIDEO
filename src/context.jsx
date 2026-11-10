@@ -7550,7 +7550,12 @@ export function AppProvider({ children }) {
             movimiento.fecha || movimiento.fecha_movimiento || new Date().toISOString().slice(0, 10),
             isSupabaseConfigured() ? await getSupabaseClient() : null,
           );
-      updates = prepararVinculacionMovimientoCuenta(movimiento, cuentaBanco, tc);
+      try {
+        updates = prepararVinculacionMovimientoCuenta(movimiento, cuentaBanco, tc);
+      } catch (error) {
+        addNotificacion(error.message);
+        return false;
+      }
     }
 
     setMovimientosTesoreria(prev => prev.map(m =>
@@ -7565,11 +7570,11 @@ export function AppProvider({ children }) {
 
   const conciliarMovimientoBancoConDocumento = async (movId, vinculadoTipo, vinculadoId) => {
     const mov = movimientosBanco.find(m => m.id === movId);
-    if (!mov || !vinculadoId) return;
+    if (!mov || !vinculadoId) return false;
     // Part 8: bloquear doble conciliación
     if (mov.conciliado) {
       addNotificacion('Este movimiento bancario ya está conciliado y no puede vincularse nuevamente.');
-      return;
+      return false;
     }
 
     const cuentaBanco = (cuentasBancarias || []).find(c => c.id === mov.cuenta_bancaria_id);

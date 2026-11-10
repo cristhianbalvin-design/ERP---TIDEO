@@ -1,5 +1,5 @@
 import { formatCurrencyTotals, sumByCurrency } from '../lib/currency.js';
-import { convertirMonto } from './tipoCambioService.js';
+import { solesPorUnidad, factorDireccional } from './tipoCambioConversion.js';
 
 const fechaMovimiento = mov =>
   mov?.fecha || mov?.fecha_movimiento || mov?.fecha_operacion || mov?.created_at || mov?.creado_en || '';
@@ -26,26 +26,21 @@ export function obtenerFactorTcAplicado(origen, destino, tc) {
   const monedaOrigen = normalizarMoneda(origen);
   const monedaDestino = normalizarMoneda(destino);
   if (monedaOrigen === monedaDestino) return 1;
-  if (!tc) return null;
-  if (monedaOrigen === 'PEN' && monedaDestino === 'USD') return tc.usd || null;
-  if (monedaOrigen === 'USD' && monedaDestino === 'PEN') return tc.usd ? redondear2(1 / tc.usd) : null;
-  if (monedaOrigen === 'PEN' && monedaDestino === 'EUR') return tc.eur || null;
-  if (monedaOrigen === 'EUR' && monedaDestino === 'PEN') return tc.eur ? redondear2(1 / tc.eur) : null;
-  return null;
+  if (monedaOrigen !== 'PEN' && monedaDestino !== 'PEN') return factorDireccional(monedaOrigen, monedaDestino, 1);
+  const extranjera = monedaOrigen === 'PEN' ? monedaDestino : monedaOrigen;
+  return factorDireccional(monedaOrigen, monedaDestino, solesPorUnidad(tc, extranjera));
 }
 
 export function prepararVinculacionMovimientoCuenta(movimiento, cuentaBancaria, tipoCambio) {
   const monedaMov = normalizarMoneda(monedaMovimiento(movimiento));
   const monedaCuenta = normalizarMoneda(cuentaBancaria?.moneda);
-  const mismoMoneda = monedaMov === monedaCuenta;
   const monto = redondear2(movimiento?.monto);
-  const montoEnMonedaCuenta = mismoMoneda
-    ? monto
-    : convertirMonto(monto, monedaMov, monedaCuenta, tipoCambio);
+  const factor = obtenerFactorTcAplicado(monedaMov, monedaCuenta, tipoCambio);
+  const montoEnMonedaCuenta = monto * factor;
 
   return {
     cuenta_bancaria_id: cuentaBancaria?.id || null,
-    tc_aplicado: mismoMoneda ? 1 : obtenerFactorTcAplicado(monedaMov, monedaCuenta, tipoCambio),
+    tc_aplicado: factor,
     monto_en_moneda_cuenta: redondear2(montoEnMonedaCuenta),
   };
 }

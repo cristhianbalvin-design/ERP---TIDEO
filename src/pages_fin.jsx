@@ -3189,13 +3189,21 @@ function Tesoreria() {
     ? convertirMonto(candidatoSeleccionado.monto, monedaSistemaMatch, cuentaBancoMovSel.moneda)
     : candidatoSeleccionado?.monto;
 
-  const abrirMatch = mov => { setMovSel(mov); setPanel(true); setTarget(''); setConDiferencia(false); setMotivoDif(''); setMontoDif(''); };
+  const [errorMatch, setErrorMatch] = useState('');
+  const abrirMatch = mov => { setErrorMatch(''); setMovSel(mov); setPanel(true); setTarget(''); setConDiferencia(false); setMotivoDif(''); setMontoDif(''); };
 
   const confirmar = async e => {
     e.preventDefault();
     const cand = candidatos.find(c => `${c.tipo}:${c.id}` === target);
     if (!movSel || !cand) return;
-    await conciliarMovimientoBancoConDocumento(movSel.id, cand.tipo, cand.id);
+    setErrorMatch('');
+    try {
+      const resultado = await conciliarMovimientoBancoConDocumento(movSel.id, cand.tipo, cand.id);
+      if (resultado === false) { setErrorMatch('No se pudo conciliar el movimiento.'); return; }
+    } catch (error) {
+      setErrorMatch(error?.message || 'No se pudo conciliar el movimiento.');
+      return;
+    }
     if (conDiferencia && Number(montoDif) !== 0) {
       addNotificacion(`Diferencia de ${money(Math.abs(Number(montoDif)))} registrada: ${motifoDif || 'sin motivo'}.`);
     }
@@ -3910,6 +3918,7 @@ function Tesoreria() {
               <button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={confirmar} data-local-form="true">
+              {errorMatch && <div role="alert" style={{color:'var(--danger)', marginBottom:12}}>{errorMatch}</div>}
               <div style={{background:'var(--surface-2)', borderRadius:8, padding:12, fontSize:13, display:'flex', flexDirection:'column', gap:4}}>
                 <div><strong>Descripción:</strong> {movSel?.descripcion || movSel?.desc}</div>
                 <div><strong>Fecha:</strong> {movSel?.fecha} &nbsp; <strong>Tipo:</strong> {movSel?.tipo}</div>
