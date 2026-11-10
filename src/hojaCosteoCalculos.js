@@ -29,10 +29,13 @@ export function agruparMaterialesPorTrabajo({ lineas = [], materiales = [], fami
     const familiaId = lineaTarea?.familia_trabajo_id || linea.familia_trabajo_id || '';
     const actividadId = lineaTarea?.actividad_receta_id || lineaTarea?.actividad_id || linea.actividad_receta_id || linea.actividad_id || '';
     const tareaId = lineaTarea?.tarea_id || linea.tarea_id || '';
-    const key = `${familiaId}:${actividadId}:${tareaId}`;
+    // Material de una pieza del diagnóstico de fabricación: va en su propio grupo, no en "Sin trabajo".
+    const piezas = !familiaId && Boolean(linea.diagnostico_pieza_id);
+    const key = piezas ? 'piezas' : `${familiaId}:${actividadId}:${tareaId}`;
     if (!grupos.has(key)) {
       grupos.set(key, {
         key,
+        piezas,
         familia_trabajo_id: familiaId || null,
         actividad_id: actividadId || null,
         tarea_id: tareaId || null,
