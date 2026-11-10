@@ -1,6 +1,8 @@
 -- Generado por scripts/generar-manual-pantallas.mjs a partir de docs/manual-pantallas/*.txt. No editar a mano.
 -- Sincroniza las fichas del manual de Aria con Supabase (proyecto ERP - Tideo). Idempotente.
+-- La primera instrucción rechaza el archivo si la base ya tiene una revisión más nueva (catalogo/sincronizacion.json).
 BEGIN;
+SELECT public.aria_sincronizacion_autorizar('manual', 1, 'fca68663bb172a31');
 DELETE FROM public.asistente_manual_pasos WHERE ficha_clave IN ('caja','como_usar_aria','compras_gastos','financiamiento','inicio_operaciones','proceso_caja_chica','proceso_solpe_pago','tesoreria');
 INSERT INTO public.asistente_manual_fichas (clave,tipo,pantalla_key,titulo,resumen,fuentes,revision) VALUES ('caja','pantalla','caja','Caja Chica','Administra fondos de caja chica, sus egresos, aportes, rendiciones, arqueos y el cierre del fondo con saldo cero.','["src/pages_fin.jsx#CajaChica","src/components/NuevoEgreso.jsx#NuevoEgreso","src/components/CerrarFondoModal.jsx#CerrarFondoModal","src/services/cajaChicaService.js"]'::jsonb,'8d126ca1e8 2c804b78dc e7344f6212 dd29ade38d')
   ON CONFLICT (clave) DO UPDATE SET tipo=EXCLUDED.tipo, pantalla_key=EXCLUDED.pantalla_key, titulo=EXCLUDED.titulo, resumen=EXCLUDED.resumen, fuentes=EXCLUDED.fuentes, revision=EXCLUDED.revision;

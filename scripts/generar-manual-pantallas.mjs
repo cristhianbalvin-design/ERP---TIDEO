@@ -6,6 +6,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { huellas } from './manual/huella.mjs';
+import { leerRevision, lineaAutorizacion } from './manual/revision-sincronizacion.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const docsDir = path.join(root, 'docs/manual-pantallas');
@@ -64,7 +65,7 @@ const q = value => `'${String(value).replaceAll("'", "''")}'`;
 const nullable = value => value == null ? 'NULL' : q(value);
 
 // Sincronización idempotente de las fichas con las tablas de Aria (no recrea tablas ni funciones).
-export function renderSync(fichas) {
+export function renderSync(fichas, revision = leerRevision()) {
   const claves = fichas.map(f => q(f.clave)).join(',');
   const pasosTotal = fichas.reduce((n, f) => n + f.pasos.length, 0);
   const filas = fichas.flatMap(ficha => {
@@ -72,10 +73,7 @@ export function renderSync(fichas) {
     const pasos = ficha.pasos.map(step => `INSERT INTO public.asistente_manual_pasos (ficha_clave,orden,pantalla_key,permiso_pantalla,permiso_accion,texto) VALUES (${q(ficha.clave)},${step.orden},${q(step.pantalla)},${nullable(step.permisoPantalla)},${nullable(step.permiso)},${q(step.texto)});`);
     return [cabecera, ...pasos];
   });
-  return `-- Generado por scripts/generar-manual-pantallas.mjs a partir de docs/manual-pantallas/*.txt. No editar a mano.
--- Sincroniza las fichas del manual de Aria con Supabase (proyecto ERP - Tideo). Idempotente.
-BEGIN;
-DELETE FROM public.asistente_manual_pasos WHERE ficha_clave IN (${claves});
+  const cuerpo = `DELETE FROM public.asistente_manual_pasos WHERE ficha_clave IN (${claves});
 ${filas.join('\n')}
 DO $verificacion$
 BEGIN
@@ -86,7 +84,13 @@ BEGIN
     RAISE EXCEPTION 'Sincronización del manual: se esperaban ${pasosTotal} pasos';
   END IF;
 END
-$verificacion$;
+$verificacion$;`;
+  return `-- Generado por scripts/generar-manual-pantallas.mjs a partir de docs/manual-pantallas/*.txt. No editar a mano.
+-- Sincroniza las fichas del manual de Aria con Supabase (proyecto ERP - Tideo). Idempotente.
+-- La primera instrucción rechaza el archivo si la base ya tiene una revisión más nueva (catalogo/sincronizacion.json).
+BEGIN;
+${lineaAutorizacion('manual', revision, cuerpo)}
+${cuerpo}
 COMMIT;
 `;
 }

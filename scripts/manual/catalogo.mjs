@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { inventario, pantallasPermisos, raiz } from './inventario-codigo.mjs';
 import { parseFicha } from '../generar-manual-pantallas.mjs';
 import { clasificarOrigen, origenDatos } from './origen-datos.mjs';
+import { leerRevision, lineaAutorizacion, verificarRevisionContraBase } from './revision-sincronizacion.mjs';
 
 export const catalogoPath = path.join(raiz, 'catalogo/pantallas.json');
 export const coberturaPath = path.join(raiz, 'docs/manual/COBERTURA.md');
@@ -209,11 +210,14 @@ END $verificacion$;`;
   return [pantallasSql, equivalenciasSql, coberturaSql];
 }
 
-export function renderCatalogoSync(catalogo, cobertura) {
+export function renderCatalogoSync(catalogo, cobertura, revision = leerRevision()) {
+  const cuerpo = bloquesCatalogoSync(catalogo, cobertura).join('\n\n');
   return `-- Generado por scripts/manual/catalogo.mjs a partir de catalogo/pantallas.json. No editar a mano.
 -- Sincroniza el catálogo canónico de pantallas y la cobertura de Aria con Supabase (proyecto ERP - Tideo). Idempotente.
+-- La primera instrucción rechaza el archivo si la base ya tiene una revisión más nueva (catalogo/sincronizacion.json).
 BEGIN;
-${bloquesCatalogoSync(catalogo, cobertura).join('\n\n')}
+${lineaAutorizacion('catalogo', revision, cuerpo)}
+${cuerpo}
 COMMIT;
 `;
 }
@@ -222,7 +226,7 @@ export function generarTodo(root = raiz) {
   const catalogo = leerCatalogo(root);
   const herramientas = herramientasAria(root);
   const cobertura = calcularCobertura(catalogo, herramientas, leerFichas(root));
-  return { cobertura: renderCobertura(catalogo, cobertura, herramientas), sync: renderCatalogoSync(catalogo, cobertura) };
+  return { cobertura: renderCobertura(catalogo, cobertura, herramientas), sync: renderCatalogoSync(catalogo, cobertura, leerRevision(root)) };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -240,6 +244,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const leer = ruta => existsSync(ruta) ? readFileSync(ruta, 'utf8').replace(/\r\n/g, '\n') : '';
       if (leer(coberturaPath) !== cobertura) errores.push('docs/manual/COBERTURA.md no está al día; ejecuta node scripts/manual/catalogo.mjs generar');
       if (leer(catalogoSyncPath) !== sync) errores.push('catalogo/_sincronizar.sql no está al día; ejecuta node scripts/manual/catalogo.mjs generar');
+      const revision = verificarRevisionContraBase();
+      errores.push(...revision.errores);
+      for (const aviso of revision.avisos) process.stderr.write(`AVISO ${aviso}\n`);
       for (const error of errores) process.stderr.write(`ERROR ${error}\n`);
       if (errores.length) process.exitCode = 1;
       else process.stdout.write(`Catálogo vigente: ${catalogo.pantallas.length} pantallas, todas las rutas del código registradas.\n`);

@@ -4,6 +4,8 @@ import { verificarCatalogo, verificarEstados, calcularCobertura, renderCatalogoS
 import { inventario, pantallasPermisos } from './inventario-codigo.mjs';
 import { codigoComponente, huellaComponente } from './huella.mjs';
 import { clasificarOrigen, origenDatos } from './origen-datos.mjs';
+import { compararConBase, huellaContenido, leerAutorizacion, lineaAutorizacion, verificarRevisionContraBase } from './revision-sincronizacion.mjs';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -90,7 +92,7 @@ test('cobertura cruza fichas, procesos y herramientas por permiso', () => {
 test('la sincronización del catálogo es idempotente y verifica conteos', () => {
   const c = base();
   const cobertura = calcularCobertura(c, [], []);
-  const sql = renderCatalogoSync(c, cobertura);
+  const sql = renderCatalogoSync(c, cobertura, 3);
   assert.match(sql, /^-- Generado por scripts\/manual\/catalogo\.mjs/);
   assert.match(sql, /ON CONFLICT \(clave\) DO UPDATE/);
   assert.match(sql, /se esperaban 2 pantallas/);
@@ -136,4 +138,48 @@ test('el estado del catálogo debe coincidir con el origen de datos del código'
   assert.match(errores, /admin\/fija_activa: .*datos fijos en el código/);
   assert.match(errores, /admin\/falsa_maqueta: está como "maqueta" pero ya lee solo datos reales/);
   assert.doesNotMatch(errores, /admin\/(real|mixto|maqueta_ok|puente):/);
+});
+
+test('la sincronización del catálogo abre con su autorización de revisión y huella', () => {
+  const c = base();
+  const cobertura = calcularCobertura(c, [], []);
+  const sql = renderCatalogoSync(c, cobertura, 7);
+  const autorizacion = leerAutorizacion(sql);
+  assert.equal(autorizacion.objeto, 'catalogo');
+  assert.equal(autorizacion.revision, 7);
+  assert.match(sql, /^BEGIN;\nSELECT public\.aria_sincronizacion_autorizar\('catalogo', 7, '[0-9a-f]{16}'\);\n/m);
+  c.pantallas[0].estado = 'maqueta';
+  assert.notEqual(leerAutorizacion(renderCatalogoSync(c, calcularCobertura(c, [], []), 7)).huella, autorizacion.huella, 'otro contenido, otra huella');
+  assert.equal(huellaContenido('a\r\nb'), huellaContenido('a\nb'), 'la huella no depende del fin de línea');
+  assert.throws(() => lineaAutorizacion('otro', 1, ''), /desconocido/);
+});
+
+test('la revisión debe subir cuando el contenido cambia respecto de la rama base', () => {
+  const base = { objeto: 'catalogo', revision: 4, huella: 'a'.repeat(16) };
+  assert.deepEqual(compararConBase('catalogo', { ...base }, base), [], 'mismo contenido');
+  assert.deepEqual(compararConBase('catalogo', { ...base, huella: 'b'.repeat(16), revision: 5 }, base), [], 'cambio con revisión nueva');
+  assert.deepEqual(compararConBase('catalogo', { ...base, huella: 'b'.repeat(16) }, null), [], 'base sin autorización (formato anterior)');
+  assert.match(compararConBase('catalogo', { ...base, huella: 'b'.repeat(16) }, base).join(), /no es mayor que la de la base \(4\).*a 5/);
+  assert.match(compararConBase('catalogo', { ...base, huella: 'b'.repeat(16), revision: 3 }, base).join(), /trae origin\/main/);
+  assert.match(compararConBase('manual', null, base).join(), /no tiene la línea de autorización/);
+});
+
+test('una rama atrasada respecto de la base no pasa la verificación', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'catalogo-revision-'));
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=prueba', '-c', 'user.email=prueba@ejemplo.test', '-c', 'commit.gpgsign=false', ...args], { cwd: root, stdio: 'pipe' });
+  const escribir = (rel, revision, contenido) => {
+    mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    writeFileSync(path.join(root, rel), `BEGIN;\n${lineaAutorizacion(rel.startsWith('catalogo') ? 'catalogo' : 'manual', revision, contenido)}\n${contenido}\nCOMMIT;\n`, 'utf8');
+  };
+  git('init', '-q', '-b', 'base');
+  escribir('catalogo/_sincronizar.sql', 2, 'contenido nuevo');
+  escribir('docs/manual-pantallas/_sincronizar.sql', 2, 'manual');
+  git('add', '.');
+  git('commit', '-q', '-m', 'base');
+  assert.deepEqual(verificarRevisionContraBase(root, 'base').errores, [], 'igual a la base');
+  escribir('catalogo/_sincronizar.sql', 1, 'contenido viejo');
+  assert.match(verificarRevisionContraBase(root, 'base').errores.join(), /catalogo\/_sincronizar\.sql: el contenido cambió/);
+  escribir('catalogo/_sincronizar.sql', 3, 'contenido de la rama');
+  assert.deepEqual(verificarRevisionContraBase(root, 'base').errores, [], 'cambio propio con revisión mayor');
+  assert.match(verificarRevisionContraBase(root, 'no-existe').avisos.join(), /no se pudo leer no-existe/);
 });
