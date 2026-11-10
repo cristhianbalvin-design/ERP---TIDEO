@@ -1,10 +1,12 @@
 clave: compras_gastos
 tipo: pantalla
 pantalla: compras_gastos
+catalogo: admin/compras_gastos
 titulo: Compras / Gastos
-resumen: Registra y consulta compras y gastos con sus documentos de sustento.
-fuentes: src/pages_ops.jsx,src/data.js
-revision: dd85e0e
-paso: 1 | pantalla=compras_gastos | permiso=ninguno | Revisa los gastos y compras registrados, y usa los filtros para localizar un documento o proveedor.
-paso: 2 | pantalla=compras_gastos | permiso=caja:editar | Para editar un registro, ábrelo y guarda los cambios permitidos en el formulario. En esta pantalla la edición efectiva exige el permiso de edición de Caja.
-paso: 3 | pantalla=compras_gastos | permiso=ninguno | Registra una compra o gasto con sus datos y adjunta el sustento correspondiente.
+resumen: Consulta y registra compras y gastos con su comprobante, revisa los gastos que llegan desde campo y edita los que no dependen de otro módulo.
+componentes: src/pages_ops.jsx#ComprasGastos, src/components/NuevoEgreso.jsx#NuevoEgreso
+huella: 74938db849 2c804b78dc
+paso: 1 | pantalla=compras_gastos | permiso=ninguno | Revisa los gastos y compras registrados con las pestañas Todos, Campo, Backoffice y Pendientes revisión. Usa la búsqueda y los filtros para localizar un documento o proveedor.
+paso: 2 | pantalla=compras_gastos | permiso=ninguno | Usa Nuevo egreso para registrar una compra o gasto con el asistente de tres pasos: tipo de gasto, datos (fecha, monto, comprobante, proveedor, centro de costo, categoría del Estado de Resultados y método de pago) y revisión. Si el pago es por transferencia indica la cuenta bancaria; puedes vincular la orden de compra de origen y la OT.
+paso: 3 | pantalla=compras_gastos | permiso=ninguno | Los gastos registrados desde campo llegan como pendientes de revisión. Ábrelos, verifica el comprobante y usa Confirmar — marcar revisado.
+paso: 4 | pantalla=compras_gastos | permiso=caja:editar | Para editar un gasto ábrelo y usa Editar; la edición exige el permiso de edición de Caja. No se puede editar aquí si tiene una CxP generada, si viene de Personal/Nómina, si está registrado en Caja Chica o si se capitalizó como activo fijo; la pantalla indica dónde editarlo.

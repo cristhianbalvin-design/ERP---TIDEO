@@ -126,6 +126,12 @@ Toda pantalla nueva o rediseñada de `operaciones-app` sigue **`docs/diseno/SIST
 - Si falta algo en la base, se agrega a la base compartida, no a la pantalla.
 - Referencia de código: el listado de `DiagnosticoTecnicoPage.jsx`. Primero un mock aprobado por Cristhian y después el código; verificación a 375, 800, 901, 1000, 1100 y 1280 px, claro y oscuro.
 
-## 8. Manual de pantallas de Aria
+## 8. Catálogo de pantallas y manual de Aria
 
-Cuando se modifique una pantalla del piloto (Tesorería, Caja Chica o Compras / Gastos), revisa y actualiza la ficha correspondiente en `docs/manual-pantallas/` en el mismo cambio. Actualiza `revision` al commit que contiene la revisión, y ejecuta `node scripts/verificar-manual-pantallas.mjs` antes de cerrar el PR. Si cambian las fichas, regenera y revisa la migración con `node scripts/generar-manual-pantallas.mjs`.
+**Todo desarrollo (pantalla, botón, flujo o permiso nuevo o modificado) se registra en el catálogo canónico y en su ficha del manual de Aria en el mismo cambio.**
+
+- `catalogo/pantallas.json` es el catálogo canónico: una entrada por pantalla navegable de Administración (`src/App.jsx`), Operaciones (`operaciones-app/src/zahory-mock/routes/`) y Versión Móvil (`src/pages_mobile.jsx`), con módulo, título, ruta, alias, componente, permiso de `src/data.js` (`pantallasPermisos`), tipo y estado. Si agregas, quitas o mueves una pantalla, actualiza su entrada.
+- `docs/manual-pantallas/*.txt` son las fichas que usa Aria (modo consultor). Cada ficha indica su entrada del catálogo (`catalogo:`), sus componentes (`archivo#Componente`) y una huella por componente. Si cambias el código de una pantalla con ficha, revisa la ficha y luego ejecuta `node scripts/generar-manual-pantallas.mjs --actualizar-huellas`.
+- Antes de cerrar el cambio ejecuta `npm run verificar:catalogo` (falla si una ruta del código no está en el catálogo o si una ficha quedó desactualizada) y `npm run test:manual`. Si cambió el catálogo, las fichas o las herramientas `asistente_*`, regenera con `node scripts/manual/catalogo.mjs generar` y `node scripts/generar-manual-pantallas.mjs`.
+- `docs/manual/COBERTURA.md` muestra qué pantallas tienen ficha, datos y registro en Aria. Se genera; no se edita a mano.
+- Tras el merge, aplica en Supabase `catalogo/_sincronizar.sql` y `docs/manual-pantallas/_sincronizar.sql` (idempotentes, con verificación de conteos).

@@ -1,1 +1,1 @@
-- [ ] Si cambiaron pantallas del piloto de Aria, actualicé sus fichas y ejecuté `node scripts/verificar-manual-pantallas.mjs`.
+- [ ] Toda pantalla, botón, flujo o permiso nuevo o modificado está en `catalogo/pantallas.json` y en su ficha del manual de Aria; ejecuté `npm run verificar:catalogo` y `npm run test:manual`.

@@ -1,12 +1,16 @@
 clave: caja
 tipo: pantalla
 pantalla: caja
+catalogo: admin/caja
 titulo: Caja Chica
-resumen: Administra fondos, egresos, rendiciones, reposiciones y arqueos de caja chica.
-fuentes: src/pages_fin.jsx,src/services/cajaChicaService.js
-revision: dd85e0e
-paso: 1 | pantalla=caja | permiso=caja:crear | Crea un fondo indicando su responsable, importe y origen. Revisa los datos antes de confirmar.
-paso: 2 | pantalla=caja | permiso=ninguno | Registra un egreso desde el fondo correspondiente e ingresa el concepto y su sustento.
-paso: 3 | pantalla=caja | permiso=ninguno | Presenta la rendición del fondo indicando el periodo y el importe solicitado. La solicitud queda disponible para revisión.
-paso: 4 | pantalla=caja | permiso=caja:aprobar | Revisa una rendición y registra el importe aprobado para continuar con la reposición.
-paso: 5 | pantalla=caja | permiso=ninguno | Registra el arqueo con el efectivo contado y los comprobantes pendientes. Luego revisa las diferencias antes de cerrar el fondo.
+resumen: Administra fondos de caja chica, sus egresos, aportes, rendiciones, arqueos y el cierre del fondo con saldo cero.
+componentes: src/pages_fin.jsx#CajaChica, src/components/NuevoEgreso.jsx#NuevoEgreso, src/components/CerrarFondoModal.jsx#CerrarFondoModal, src/services/cajaChicaService.js
+huella: 8d126ca1e8 2c804b78dc e7344f6212 dd29ade38d
+paso: 1 | pantalla=caja | permiso=caja:crear | Usa Nuevo fondo para crear un fondo con su responsable, importe, moneda y origen del dinero (cuenta bancaria o aporte directo). Mientras el fondo no tenga movimientos se puede modificar.
+paso: 2 | pantalla=caja | permiso=ninguno | Usa Nuevo egreso para registrar un gasto del fondo. El asistente tiene tres pasos: elige el tipo de gasto (puedes buscar por tipo o por categoría del Estado de Resultados), completa los datos del comprobante y del fondo, y revisa antes de confirmar. Lo puede registrar el responsable del fondo o quien tenga permiso de crear en Caja Chica.
+paso: 3 | pantalla=caja | permiso=ninguno | En el paso de datos del egreso la categoría del Estado de Resultados es obligatoria y editable; la IA puede sugerirla a partir del tipo de gasto y la descripción. Adjunta el comprobante y vincula la OT si corresponde.
+paso: 4 | pantalla=caja | permiso=ninguno | Usa Agregar aporte para reforzar el fondo con dinero de una cuenta bancaria o con un aporte directo.
+paso: 5 | pantalla=caja | permiso=ninguno | Usa Solicitar rendición para presentar los egresos del periodo; la solicitud queda disponible para revisión.
+paso: 6 | pantalla=caja | permiso=caja:aprobar | Revisa la rendición y usa Aprobar o Rechazar para continuar con la reposición del fondo.
+paso: 7 | pantalla=caja | permiso=ninguno | Usa Arqueo y luego Registrar arqueo con el efectivo contado; revisa las diferencias que muestra la pantalla.
+paso: 8 | pantalla=caja | permiso=caja:editar | Usa Cerrar para cerrar el fondo. Ningún fondo puede cerrar con saldo a favor: transfiere el saldo a otra caja abierta de la misma moneda y sociedad, o devuélvelo a una cuenta bancaria activa.

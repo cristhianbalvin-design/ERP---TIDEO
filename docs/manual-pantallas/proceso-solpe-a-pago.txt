@@ -1,13 +1,15 @@
 clave: proceso_solpe_pago
 tipo: proceso
 pantalla: ninguna
+catalogo: admin/solpe, admin/sourcing_bandeja, admin/ordenes_compra, admin/recepciones, admin/cxp, admin/tesoreria
 titulo: De la SOLPE al pago conciliado
 resumen: Sigue una compra desde la solicitud interna hasta su pago y conciliación bancaria.
-fuentes: src/pages_ops.jsx,src/pages_fin.jsx,src/data.js
-revision: dd85e0e
+componentes: src/pages_ops.jsx#SOLPE, src/pages_ops.jsx#BandejaSourcing, src/pages_ops.jsx#OrdenesCompra, src/pages_ops.jsx#Recepciones, src/pages_fin.jsx#CxP, src/pages_fin.jsx#Tesoreria
+huella: e43d59cb5b 59f4c3339c 0fbfbec78b 4edd4b32ac d66ee1335d b0397fbc8c
 pantalla_recorrido: solpe,ordenes_compra,recepciones,cxp,tesoreria
-paso: 1 | pantalla=solpe | permiso=ninguno | Registra o revisa la solicitud de compra y su estado. La solicitud inicia el recorrido de compra.
-paso: 2 | pantalla=ordenes_compra | permiso=ninguno | Continúa con la orden de compra vinculada a la solicitud. Revisa sus datos y el estado de atención.
-paso: 3 | pantalla=recepciones | permiso=ninguno | Registra o consulta la recepción de los bienes o servicios de la orden.
-paso: 4 | pantalla=cxp | permiso=ninguno | Revisa el documento por pagar asociado y su vencimiento antes de programar el pago.
-paso: 5 | pantalla=tesoreria | permiso=ninguno | Registra el movimiento de pago y relaciónalo con el movimiento bancario correspondiente.
+paso: 1 | pantalla=solpe | permiso=ninguno | Crea la SOLPE con Nueva SOLPE, agrega los ítems y envíala. Quien la atiende puede generar la orden de compra desde la propia SOLPE.
+paso: 2 | pantalla=ordenes_compra | permiso=ninguno | Si los materiales se compran a varios proveedores, usa la Bandeja de Sourcing para asignar un proveedor por línea y generar una orden de compra por proveedor.
+paso: 3 | pantalla=ordenes_compra | permiso=ninguno | Revisa la orden de compra, sus datos y su estado de atención.
+paso: 4 | pantalla=recepciones | permiso=ninguno | Registra la recepción de lo comprado con Nueva recepción y confirma las cantidades. La factura del proveedor puede completarse después con Completar.
+paso: 5 | pantalla=cxp | permiso=ninguno | Revisa la cuenta por pagar generada para la compra y su vencimiento antes de programar el pago.
+paso: 6 | pantalla=tesoreria | permiso=ninguno | Registra el pago y concílialo con el movimiento del extracto bancario en Match Bancario.

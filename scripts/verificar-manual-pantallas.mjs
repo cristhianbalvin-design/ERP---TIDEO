@@ -1,41 +1,44 @@
-import { execFileSync } from 'node:child_process';
+// Verifica el manual de Aria: cada ficha apunta a una pantalla del catálogo, su huella coincide con el código
+// actual de sus componentes y la sincronización con Supabase está regenerada.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { migrationPath, readFichas, renderMigration } from './generar-manual-pantallas.mjs';
+import { readFichas, renderSync, syncPath } from './generar-manual-pantallas.mjs';
+import { huellas } from './manual/huella.mjs';
+import { leerCatalogo } from './manual/catalogo.mjs';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-
-export async function verify({ fichas, currentHead, changedSince, dirtyFiles = [], migration, generated, resolveRevision, isAncestor } = {}) {
-  const errors = [];
+export function verify({ fichas, catalogo, calcular = huellas, sync, esperado }) {
+  const errores = [];
+  const avisos = [];
+  const porClave = new Map(catalogo.pantallas.map(p => [p.clave, p]));
   for (const ficha of fichas) {
-    let revision;
-    try { revision = resolveRevision ? resolveRevision(ficha.revision) : git('rev-parse', '--verify', `${ficha.revision}^{commit}`).trim(); }
-    catch { errors.push(`${ficha.clave}: revisión ${ficha.revision} no existe`); continue; }
-    const head = currentHead ?? git('rev-parse', 'HEAD').trim();
-    try { if (isAncestor) isAncestor(revision, head); else git('merge-base', '--is-ancestor', revision, head); }
-    catch { errors.push(`${ficha.clave}: la revisión ${ficha.revision} no es ancestro del HEAD actual`); continue; }
-    const sources = new Set(ficha.fuentes);
-    const changed = changedSince ? changedSince(ficha.revision, head) : git('diff', '--name-only', `${revision}..${head}`, '--', ...ficha.fuentes).split(/\r?\n/).filter(Boolean);
-    const dirty = dirtyFiles.filter(file => sources.has(file));
-    const stale = [...new Set([...changed, ...dirty])].filter(file => sources.has(file));
-    if (stale.length) errors.push(`${ficha.clave}: revisar ficha; cambiaron fuentes: ${stale.join(', ')}. Actualiza revision tras revisarla.`);
+    for (const clave of ficha.catalogo) {
+      const pantalla = porClave.get(clave);
+      if (!pantalla) { errores.push(`${ficha.clave}: la entrada de catálogo ${clave} no existe en catalogo/pantallas.json`); continue; }
+      if (ficha.tipo === 'pantalla' && pantalla.permiso !== ficha.pantalla) errores.push(`${ficha.clave}: el permiso de pantalla (${ficha.pantalla}) no coincide con el del catálogo (${pantalla.permiso})`);
+    }
+    let actuales;
+    try { actuales = calcular(ficha.componentes); }
+    catch (error) { errores.push(`${ficha.clave}: ${error.message}`); continue; }
+    const cambiados = ficha.componentes.filter((_, i) => actuales[i] !== ficha.huella[i]);
+    if (cambiados.length) avisos.push(`${ficha.clave}: ficha desactualizada; cambió el código de ${cambiados.join(', ')}. Revisa la ficha, luego ejecuta node scripts/generar-manual-pantallas.mjs --actualizar-huellas`);
   }
-  const expected = generated ?? renderMigration(fichas);
-  const actual = migration ?? await readFile(migrationPath, 'utf8');
-  const normalizeClosure = sql => sql.replace(/(^|\r?\n)(?:ROLLBACK|COMMIT);[ \t]*(?:\r?\n)*$/, '$1ROLLBACK;');
-  if (normalizeClosure(actual) !== normalizeClosure(expected)) errors.push('La migración 617 no coincide con las fichas actuales; ejecuta scripts/generar-manual-pantallas.mjs y revisa el diff.');
-  return errors;
+  if (sync !== undefined && esperado !== undefined && sync.replace(/\r\n/g, '\n') !== esperado.replace(/\r\n/g, '\n')) {
+    errores.push('docs/manual-pantallas/_sincronizar.sql no coincide con las fichas; ejecuta node scripts/generar-manual-pantallas.mjs');
+  }
+  return { errores, avisos };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const fichas = await readFichas();
-    const dirtyFiles = git('diff', '--name-only').split(/\r?\n/).filter(Boolean);
-    const errors = await verify({ fichas, dirtyFiles });
-    if (errors.length) { process.stderr.write(`${errors.join('\n')}\n`); process.exitCode = 1; }
-    else process.stdout.write(`Manual vigente: ${fichas.length} fichas y migración sincronizada.\n`);
+    let sync = '';
+    try { sync = await readFile(syncPath, 'utf8'); } catch { sync = ''; }
+    const { errores, avisos } = verify({ fichas, catalogo: leerCatalogo(), sync, esperado: renderSync(fichas) });
+    for (const aviso of avisos) process.stderr.write(`AVISO ${aviso}\n`);
+    for (const error of errores) process.stderr.write(`ERROR ${error}\n`);
+    if (errores.length || (avisos.length && !process.argv.includes('--solo-avisar'))) process.exitCode = 1;
+    else process.stdout.write(`Manual vigente: ${fichas.length} fichas al día con su código y su sincronización.\n`);
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

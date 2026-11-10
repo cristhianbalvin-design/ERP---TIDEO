@@ -8,6 +8,8 @@
     "build": "node scripts/build-deployment.mjs",
     "build:admin": "vite build",
     "test:access": "node --test src/access/roleAccess.test.js",
+    "test:manual": "node --test scripts/manual-pantallas.test.mjs scripts/manual/catalogo.test.mjs",
+    "verificar:catalogo": "node scripts/manual/catalogo.mjs verificar && node scripts/verificar-manual-pantallas.mjs",
     "preview": "vite preview",
     "test:e2e:organigrama": "playwright test e2e/organigrama_v2.spec.js"
   },
