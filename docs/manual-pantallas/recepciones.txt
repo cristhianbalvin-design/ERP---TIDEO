@@ -1,0 +1,13 @@
+clave: recepciones
+tipo: pantalla
+pantalla: recepciones
+catalogo: admin/recepciones
+titulo: Recepciones
+resumen: Registra la llegada de la mercadería de una orden de compra, completa la factura del proveedor para generar la cuenta por pagar y gestiona devoluciones.
+componentes: src/pages_ops.jsx#Recepciones
+huella: 4edd4b32ac
+paso: 1 | pantalla=recepciones | permiso=ninguno | Usa Nueva recepcion para registrar lo que llegó de una OC: indica las cantidades recibidas por línea y confirma con Confirmar recepcion. La recepción actualiza el stock.
+paso: 2 | pantalla=recepciones | permiso=ninguno | La recepción física y la factura van por separado. Si la factura llegó después, usa Completar factura y generar CxP e ingresa el número de factura del proveedor; con eso se crea la cuenta por pagar.
+paso: 3 | pantalla=recepciones | permiso=ninguno | Si el precio o el monto de la factura se aleja de la OC más que la tolerancia de compras de la empresa (5 % por defecto), la pantalla lo advierte; corrige el monto o usa Confirmar igualmente si la diferencia es correcta.
+paso: 4 | pantalla=recepciones | permiso=ninguno | Para devolver mercadería usa Iniciar devolución a proveedor en una recepción confirmada, total o parcial. La devolución se crea en borrador, se envía al proveedor y se marca aceptada; luego puedes registrar la nota de crédito del proveedor.
+paso: 5 | pantalla=recepciones | permiso=ninguno | Anular una recepción revierte el stock que ingresó; confirma la anulación solo si la mercadería no llegó realmente.

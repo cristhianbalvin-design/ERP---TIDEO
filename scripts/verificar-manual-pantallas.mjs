@@ -21,7 +21,7 @@ export function verify({ fichas, catalogo, calcular = huellas, sync, esperado })
     try { actuales = calcular(ficha.componentes); }
     catch (error) { errores.push(`${ficha.clave}: ${error.message}`); continue; }
     const cambiados = ficha.componentes.filter((_, i) => actuales[i] !== ficha.huella[i]);
-    if (cambiados.length) avisos.push(`${ficha.clave}: ficha desactualizada; cambió el código de ${cambiados.join(', ')}. Revisa la ficha, luego ejecuta node scripts/generar-manual-pantallas.mjs --actualizar-huellas`);
+    if (cambiados.length) avisos.push(`${ficha.clave}: ficha desactualizada; cambió el código de ${cambiados.join(', ')}. Revisa la ficha (node scripts/manual/extraer.mjs ayuda a ver qué cambió), corrígela si hace falta y ejecuta node scripts/generar-manual-pantallas.mjs --actualizar-huellas y node scripts/generar-manual-pantallas.mjs. El PR no pasa hasta hacerlo.`);
   }
   if (sync !== undefined && esperado !== undefined && sync.replace(/\r\n/g, '\n') !== esperado.replace(/\r\n/g, '\n')) {
     errores.push('docs/manual-pantallas/_sincronizar.sql no coincide con las fichas; ejecuta node scripts/generar-manual-pantallas.mjs');

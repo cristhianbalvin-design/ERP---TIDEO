@@ -212,3 +212,19 @@ test('usa frases breves con singular y plural en los resúmenes de vencimiento',
     }
   }
 });
+
+test('resumen de Aria para soporte incluye todo el contexto de cada pregunta', () => {
+  const correo = construirCorreoNotificacion({
+    evento_codigo: 'aria_manual_sin_respuesta',
+    titulo: 'Aria: 1 pregunta sin respuesta en el manual',
+    payload: {
+      fecha: '2026-11-10', total: 1, consultas: 3,
+      items: [{ empresa: 'PRUEBA', pantalla: 'Planner', usuario: 'Ana', correo_usuario: 'ana@x.pe', pregunta: '¿Cómo armo turnos <b>?', busqueda: 'turnos', veces: 3, ultima_vez: '10/11/2026 09:15' }],
+    },
+  });
+  assert.equal(correo.asunto, 'Aria: 1 pregunta sin respuesta en el manual · 10/11/2026');
+  assert.match(correo.html, /Preguntas a Aria sin respuesta en el manual/);
+  assert.match(correo.html, /¿Cómo armo turnos &lt;b&gt;\?/);
+  assert.match(correo.texto, /PRUEBA \| Planner \| Ana · ana@x\.pe \| ¿Cómo armo turnos <b>\? \| turnos \| 3 \| 10\/11\/2026 09:15/);
+  assert.match(correo.texto, /3 consultas/);
+});

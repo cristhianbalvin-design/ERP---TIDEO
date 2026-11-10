@@ -1,0 +1,13 @@
+clave: reserva_repuestos
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-reservas
+titulo: Reserva de repuestos
+resumen: Muestra los repuestos reservados para cada OT y permite despacharlos, liberarlos, revertir un despacho o trasladar la reserva.
+componentes: operaciones-app/src/zahory-mock/pages/ReservaRepuestosPage.jsx#ReservaRepuestosPage
+huella: 3d08475098
+paso: 1 | pantalla=inventario | permiso=ninguno | Elige una OT de la lista para ver sus repuestos reservados, despachados y pendientes.
+paso: 2 | pantalla=inventario | permiso=inventario:despachar | Despachar entrega la cantidad reservada al taller y actualiza el kardex. Revertir devuelve un despacho a la reserva de la OT, solo si la OT está programada o en ejecución.
+paso: 3 | pantalla=inventario | permiso=inventario:liberar | Liberar devuelve la cantidad reservada al stock disponible, con motivo.
+paso: 4 | pantalla=inventario | permiso=inventario:despachar | Si la reserva está en otro almacén, Trasladar la mueve al almacén de la OT.
+paso: 5 | pantalla=inventario | permiso=ninguno | Ver Kardex abre los movimientos del material y Volver a OT regresa a la orden de trabajo.

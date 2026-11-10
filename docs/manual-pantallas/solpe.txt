@@ -1,0 +1,14 @@
+clave: solpe
+tipo: pantalla
+pantalla: solpe
+catalogo: admin/solpe
+titulo: SOLPE Interna
+resumen: Registra los pedidos internos de materiales o servicios, los envía a atención y los deriva a Compras para generar la orden de compra.
+componentes: src/pages_ops.jsx#SOLPE
+huella: e43d59cb5b
+paso: 1 | pantalla=solpe | permiso=ninguno | Usa Nueva SOLPE para crear un pedido. Completa el tipo, el área solicitante, la urgencia, el centro de costo (CECO), la descripción de la necesidad y, si aplica, la OT asociada.
+paso: 2 | pantalla=solpe | permiso=ninguno | En Ítems solicitados agrega cada material con su cantidad y unidad. En pedidos de tipo bien es obligatorio al menos un ítem con material y cantidad; sin CECO la SOLPE no se guarda.
+paso: 3 | pantalla=solpe | permiso=ninguno | La SOLPE nace en borrador. Usa Enviar (o Enviar solicitud en su detalle) para pasarla a solicitada y dejarla pendiente de atención.
+paso: 4 | pantalla=solpe | permiso=ninguno | Quien la revisa usa Atender o Atender SOLPE: la SOLPE queda aprobada y disponible para Compras.
+paso: 5 | pantalla=solpe | permiso=ninguno | Con la SOLPE aprobada, Generar OC abre la Bandeja de Sourcing, donde se elige el proveedor por línea y se genera la orden de compra. La columna Etapa de compras indica si la SOLPE aún no está en sourcing, si espera OC o si ya tiene OC.
+paso: 6 | pantalla=solpe | permiso=ninguno | Filtra la lista por estado, fechas, solicitante o texto. Haz clic en una SOLPE para ver su detalle, sus ítems con cantidad pedida y recibida, y la OC vinculada.

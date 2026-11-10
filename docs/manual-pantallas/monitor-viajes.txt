@@ -1,0 +1,12 @@
+clave: monitor_viajes
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-viajes
+titulo: Monitor de viajes
+resumen: Seguimiento de los viajes de transporte comercial: estado, filtros, asignación de unidad y conductor, y creación de órdenes de viaje.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/MonitorViajesPage.jsx#MonitorViajesPage
+huella: 89fb9d5ef7
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | El tablero agrupa los viajes por estado (programado, despachado y siguientes) y marca los atrasados, los que salen hoy, los que no tienen unidad asignada y los que tienen incidentes. Usa los filtros y Limpiar filtros para volver a verlos todos.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Nueva orden de viaje abre el registro de un viaje nuevo con su ruta y cliente.
+paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Cuando hay viajes atrasados o que salen hoy sin unidad, aparece un aviso con Asignar y despachar, que abre el viaje para asignar unidad y conductor.
+paso: 4 | pantalla=transporte_comercial | permiso=ninguno | Abre un viaje para ver su detalle y su hoja de ruta. Exportar descarga la lista.

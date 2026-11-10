@@ -1,0 +1,12 @@
+clave: bandeja_ots
+tipo: pantalla
+pantalla: ot
+catalogo: operaciones/ots
+titulo: Bandeja de OTs
+resumen: Lista todas las órdenes de trabajo con sus indicadores, filtros y búsqueda, y permite iniciar una OT programada.
+componentes: operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#OTsListadoPage
+huella: b22cbde9d1
+paso: 1 | pantalla=ot | permiso=ninguno | Los indicadores de arriba (abiertas, programadas, en ejecución, sin técnico, por valorizar, con sobrecosto) filtran la lista al tocarlos.
+paso: 2 | pantalla=ot | permiso=ninguno | Busca por número, cliente o servicio y filtra por estado o técnico. Solo retrabajos muestra las OT de retrabajo propio. Limpiar quita todos los filtros.
+paso: 3 | pantalla=ot | permiso=ninguno | Para iniciar una OT programada usa Iniciar en su fila: la OT debe tener técnico responsable y centro de costo, y necesitas una sociedad operativa seleccionada (la vista consolidada es solo de lectura).
+paso: 4 | pantalla=ot | permiso=ninguno | Nueva OT abre el asistente de creación.

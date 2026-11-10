@@ -64,6 +64,21 @@ function construirResumenOperaciones({ row, payload, appUrl, evento }) {
   return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
 }
 
+// Resumen diario para soporte de OPERA: preguntas que el manual de Aria no pudo responder, con todo su contexto.
+function construirResumenAriaSinRespuesta({ row, payload, appUrl }) {
+  const fecha = formatearFechaNotificacion(payload.fecha);
+  const total = Number(payload.total ?? payload.items.length) || 0;
+  const asunto = `${valor(row.titulo) || 'Aria: preguntas sin respuesta en el manual'} · ${fecha}`;
+  const mensaje = `Aria no encontró respuesta en el manual para ${total === 1 ? 'esta pregunta' : `estas ${total} preguntas`} (${Number(payload.consultas ?? total) || total} consultas). Documéntalas en docs/manual-pantallas/.`;
+  const columnas = ['Empresa', 'Pantalla', 'Usuario', 'Pregunta', 'Búsqueda', 'Veces', 'Última vez'];
+  const valores = item => [item?.empresa, item?.pantalla, [valor(item?.usuario), valor(item?.correo_usuario)].filter(Boolean).join(' · '), item?.pregunta, item?.busqueda || '—', item?.veces, item?.ultima_vez];
+  const celda = 'padding:9px 10px;border-bottom:1px solid #e8edf1;vertical-align:top';
+  const filas = payload.items.map(item => `<tr>${valores(item).map(value => `<td style="${celda}">${escaparHtml(value)}</td>`).join('')}</tr>`).join('');
+  const contenidoHtml = `<h1 style="margin:0 0 16px;color:#1A2B4A;font-size:22px">Preguntas a Aria sin respuesta en el manual</h1><p>${escaparHtml(mensaje)}</p><table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${columnas.map(c => `<th style="${celda};text-align:left;color:#5b6b80">${escaparHtml(c)}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table>`;
+  const contenidoTexto = `${mensaje}\n\n${columnas.join(' | ')}\n${payload.items.map(item => valores(item).map(valor).join(' | ')).join('\n')}`;
+  return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
+}
+
 export function construirCorreoNotificacion(row = {}, appUrl = APP_URL_DEFAULT) {
   const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
   const evento = valor(row.evento_codigo);
@@ -106,6 +121,10 @@ export function construirCorreoNotificacion(row = {}, appUrl = APP_URL_DEFAULT) 
     const contenidoHtml = `<h1 style="margin:0 0 16px;color:#1A2B4A;font-size:22px">Resumen diario de tardanzas</h1><p>${escaparHtml(mensaje)}</p><p>Umbral: <strong>${escaparHtml(umbral)} minutos</strong>. Alcance: <strong>${escaparHtml(alcance)}</strong>.</p><table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:20px 0"><thead><tr style="background:#1A2B4A;color:#fff"><th align="left" style="padding:10px">Nombre</th><th align="left" style="padding:10px">Hora de entrada</th><th align="right" style="padding:10px">Minutos</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
     const contenidoTexto = `${mensaje}\nUmbral: ${umbral} minutos. Alcance: ${alcance}.\n\nNombre | Hora de entrada | Minutos\n${items.map(item => `${valor(item?.nombre)} | ${valor(item?.hora_entrada)} | ${valor(item?.minutos)}`).join('\n')}`;
     return plantilla({ asunto, contenidoHtml, contenidoTexto, appUrl });
+  }
+
+  if (evento === 'aria_manual_sin_respuesta' && Array.isArray(payload.items) && payload.items.length > 0) {
+    return construirResumenAriaSinRespuesta({ row, payload, appUrl });
   }
 
   const asunto = valor(row.titulo) || 'Notificación de OPERA';

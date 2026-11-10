@@ -12,7 +12,7 @@ La fuente de verdad de las reglas del repositorio es **`CLAUDE.md`** en la raíz
 - Estado de la pantalla: `activa` solo si lee datos reales; si solo usa mock (`data.js`, `ZAHORY_SAC_DATA`, `*MOCK*`) o datos fijos, `maqueta`. `npm run verificar:catalogo` lo comprueba contra el código.
 - Cambio en una pantalla que tiene ficha en `docs/manual-pantallas/`: revisa la ficha y ejecuta `node scripts/generar-manual-pantallas.mjs --actualizar-huellas`.
 - Si cambió el catálogo, las fichas o las herramientas `asistente_*`: `node scripts/manual/catalogo.mjs generar` y `node scripts/generar-manual-pantallas.mjs`.
-- Antes de cerrar: `npm run verificar:catalogo` y `npm run test:manual`. El workflow `catalogo-aria.yml` bloquea el PR si una ruta del código no está en el catálogo.
+- Antes de cerrar: `npm run verificar:catalogo` y `npm run test:manual`. El workflow `catalogo-aria.yml` bloquea el PR si una ruta del código no está en el catálogo o si una ficha quedó desactualizada. Para escribir o revisar una ficha: `npm run manual:extraer -- <clave del catálogo>`.
 
 ## 2. Reglas de trabajo
 

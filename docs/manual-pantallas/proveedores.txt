@@ -1,0 +1,13 @@
+clave: proveedores
+tipo: pantalla
+pantalla: proveedores
+catalogo: admin/proveedores
+titulo: Proveedores
+resumen: Mantiene la ficha de cada proveedor: datos, contactos, cuentas bancarias, documentos, evaluaciones y familias de materiales que atiende.
+componentes: src/pages_ops.jsx#Proveedores
+huella: 72e8365316
+paso: 1 | pantalla=proveedores | permiso=ninguno | Usa Nuevo proveedor para registrarlo. El RUC peruano debe tener 11 dígitos y empezar con 1 o 2, y el teléfono 9 dígitos empezando con 9.
+paso: 2 | pantalla=proveedores | permiso=ninguno | En Ver ficha agrega contactos, documentos y cuentas bancarias (banco y número de cuenta o CCI). La cuenta del Banco de la Nación para detracciones debe estar en soles; al registrar una nueva, la anterior se inactiva.
+paso: 3 | pantalla=proveedores | permiso=ninguno | Nueva evaluacion registra la calificación del proveedor; su estado (por ejemplo homologado u observado) define si aparece al crear órdenes de compra.
+paso: 4 | pantalla=proveedores | permiso=ninguno | Emparejar Proveedores y Familias asigna qué familias de materiales atiende cada proveedor; la Bandeja de Sourcing usa esa relación para sugerir proveedores.
+paso: 5 | pantalla=proveedores | permiso=ninguno | Desde la ficha puedes iniciar Nueva OC o Solicitar cotizacion. Importar Excel carga muchos proveedores con la plantilla, y Descargar reporte exporta la lista.

@@ -1,0 +1,16 @@
+clave: cxp
+tipo: pantalla
+pantalla: cxp
+catalogo: admin/cxp
+titulo: Cuentas por pagar
+resumen: Registra y controla las deudas con proveedores, colaboradores y tributos: facturas, recibos por honorarios, notas de crédito o débito, detracciones y pagos.
+componentes: src/pages_fin.jsx#CxP
+huella: d66ee1335d
+paso: 1 | pantalla=cxp | permiso=ninguno | Usa Nuevo egreso para registrar una obligación. Según el tipo, completa proveedor y factura, el emisor del recibo por honorarios (interno o externo), el tributo y su periodo, o el colaborador del reembolso.
+paso: 2 | pantalla=cxp | permiso=ninguno | Una factura de compra debe vincularse a su orden de compra de origen. La pantalla avisa si el número de factura ya existe para ese proveedor y sociedad.
+paso: 3 | pantalla=cxp | permiso=ninguno | Para pagar usa Pagar en la CxP: elige la cuenta bancaria de origen, la fecha y el monto. Se admiten pagos parciales y el saldo queda pendiente.
+paso: 4 | pantalla=cxp | permiso=ninguno | Si la factura está sujeta a detracción (SPOT), registra la obligación con Aplicar detracción y paga al proveedor exactamente el neto; el depósito al Banco de la Nación se registra con la constancia.
+paso: 5 | pantalla=cxp | permiso=ninguno | Registrar NC y Registrar ND ajustan la deuda con notas de crédito o débito del proveedor. Completar factura agrega los datos de una CxP preliminar.
+paso: 6 | pantalla=cxp | permiso=cxp:editar | Puedes cambiar la Prioridad de pago de una CxP para ordenar qué se paga primero.
+paso: 7 | pantalla=cxp | permiso=cxp:anular | Anular una CxP conserva su historial e indica el motivo; antes la pantalla verifica que no tenga pagos ni dependencias que lo impidan.
+paso: 8 | pantalla=cxp | permiso=ninguno | Para cargar muchas deudas a la vez usa Descargar plantilla, complétala y súbela con Subir plantilla masiva; la pantalla muestra las filas válidas y rechazadas antes de importar. Descargar reporte Excel exporta las cuentas y sus pagos.

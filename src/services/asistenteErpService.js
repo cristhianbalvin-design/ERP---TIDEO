@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
-const PANTALLAS_MANUAL = new Set(['tesoreria', 'caja', 'compras_gastos']);
+// Toda pantalla con clave de permiso viaja como contexto: el manual la usa para ordenar sus fichas.
+const esPantallaValida = pantalla => typeof pantalla === 'string' && /^[a-z][a-z0-9_]{1,59}$/.test(pantalla);
 
 export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, historial, contexto }) {
   const supabase = await getSupabaseClient();
@@ -13,9 +14,9 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
     })),
   };
   if (sociedadId) body.sociedad_id = sociedadId;
-  if ((contexto?.tipo && contexto?.id) || PANTALLAS_MANUAL.has(contexto?.pantalla)) body.contexto = {
+  if ((contexto?.tipo && contexto?.id) || esPantallaValida(contexto?.pantalla)) body.contexto = {
     ...(contexto?.tipo && contexto?.id ? { modulo: contexto.modulo, tipo: contexto.tipo, id: contexto.id } : {}),
-    ...(PANTALLAS_MANUAL.has(contexto?.pantalla) ? { pantalla: contexto.pantalla } : {}),
+    ...(esPantallaValida(contexto?.pantalla) ? { pantalla: contexto.pantalla } : {}),
   };
   const { data, error } = await supabase.functions.invoke('asistente-erp', { body });
   if (error) {

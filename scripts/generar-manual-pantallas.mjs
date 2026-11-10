@@ -10,7 +10,8 @@ import { huellas } from './manual/huella.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const docsDir = path.join(root, 'docs/manual-pantallas');
 export const syncPath = path.join(docsDir, '_sincronizar.sql');
-const ACCIONES = ['ver', 'crear', 'editar', 'aprobar', 'anular', 'exportar'];
+// Acciones que entiende usuario_puede; despachar y liberar son permisos extra de inventario.
+const ACCIONES = ['ver', 'crear', 'editar', 'aprobar', 'anular', 'exportar', 'despachar', 'liberar'];
 const OPCIONALES = ['catalogo', 'pantalla_recorrido', 'captura', 'ejemplo'];
 
 export async function readFichas(dir = docsDir) {
