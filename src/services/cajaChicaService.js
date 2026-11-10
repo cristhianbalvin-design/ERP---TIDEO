@@ -37,12 +37,16 @@ export function traducirErrorModificacion(error) {
 }
 
 // Un egreso queda bloqueado si su fecha cae en una rendición solicitada, aprobada o repuesta del fondo.
-export function egresoEnRendicion(egreso, rendiciones = []) {
+export function rendicionDeEgreso(egreso, rendiciones = []) {
   const fecha = String(egreso?.fecha || '').slice(0, 10);
-  if (!fecha) return false;
-  return rendiciones.some(r => r.fondo_id === egreso.fondo_id
+  if (!fecha) return null;
+  return rendiciones.find(r => r.fondo_id === egreso.fondo_id
     && ['solicitada', 'aprobada', 'repuesta'].includes(String(r.estado || '').toLowerCase())
-    && fecha >= String(r.periodo_inicio || '') && fecha <= String(r.periodo_fin || ''));
+    && fecha >= String(r.periodo_inicio || '') && fecha <= String(r.periodo_fin || '')) || null;
+}
+
+export function egresoEnRendicion(egreso, rendiciones = []) {
+  return Boolean(rendicionDeEgreso(egreso, rendiciones));
 }
 
 const stripUnknownColumn = (error, payload) => {
@@ -277,6 +281,7 @@ export const cajaChicaService = {
       ...(egresos.data || []).map(e => ({
         ...e,
         tipo_movimiento: 'egreso',
+        rendicion_bloqueo: rendicionDeEgreso(e, rendiciones.data || []),
         bloqueado_rendicion: egresoEnRendicion(e, rendiciones.data || []),
         fondo_nombre: fondoNombre.get(e.fondo_id) || null,
         fecha_movimiento: e.fecha,
