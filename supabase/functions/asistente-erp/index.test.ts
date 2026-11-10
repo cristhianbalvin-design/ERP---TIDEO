@@ -1700,3 +1700,10 @@ Deno.test("egreso con datos faltantes no envía tarjeta", async () => {
   const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Registra un taxi de S/ 20" }))).json();
   equal(result.borrador, undefined);
 });
+
+Deno.test("caja chica por reponer no exige consultar CxP ni stock bajo", () => {
+  equal(topicsWithoutCoverage("¿Qué fondos de caja chica debo reponer?", ["asistente_resumen_caja_chica"]).join(","), "");
+  equal(topicsWithoutCoverage("¿Cuánto debo?", []).join(","), "cuentas por pagar");
+  assert(topicsWithoutCoverage("¿Qué materiales debo reponer?", []).includes("stock bajo y reposición"));
+  assert(!topicsWithoutCoverage("¿Qué materiales debo reponer?", []).includes("cuentas por pagar"));
+});
