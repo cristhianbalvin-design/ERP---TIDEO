@@ -101,12 +101,13 @@ export function RendicionDetalle({ viajeId, empresaId, perm, onNav }) {
     {!terminado && <div className="dx-tmsliq-note is-gray" role="note">El viaje sigue en curso: el conductor aún puede registrar gastos. La rendición se aprueba al terminar.</div>}
 
     <div className="dx-ui-kpi-row">
-      <div className="dx-ui-kpi"><strong>{formatearImporte(fondo, moneda)}</strong><span>Fondo entregado<small>{ren?.fondo_referencia || 'Sin referencia'}</small></span></div>
-      <div className="dx-ui-kpi"><strong>{formatearImporte(gastado, moneda)}</strong><span>Gastado<small>{etiquetaContador(validos.length, 'gasto')} válidos</small></span></div>
+      <div className="dx-ui-kpi"><strong>{formatearImporte(fondo, moneda)}</strong><span>Fondo entregado</span></div>
+      <div className="dx-ui-kpi"><strong>{formatearImporte(gastado, moneda)}</strong><span>Gastado</span></div>
       <div className="dx-ui-kpi"><strong>{formatearImporte(aprobado, moneda)}</strong><span>Aprobado</span></div>
-      <div className="dx-ui-kpi"><strong>{formatearImporte(Math.abs(saldo), moneda)}</strong><span>{saldo > 0 ? 'A reembolsar al conductor' : saldo < 0 ? 'A devolver por el conductor' : 'Saldo'}
-        <small>{pendientes ? 'Si se aprueban los pendientes' : 'Saldo final'}</small></span></div>
+      <div className="dx-ui-kpi"><strong>{formatearImporte(Math.abs(saldo), moneda)}</strong><span>{saldo > 0 ? 'A reembolsar' : saldo < 0 ? 'A devolver' : 'Saldo'}</span></div>
     </div>
+    <p className="dx-tmsliq-help dx-tmsliq-kpinote">Fondo: {ren?.fondo_referencia || 'sin referencia'} · {etiquetaContador(validos.length, 'gasto')} válidos
+      {saldo !== 0 && ` · ${saldo > 0 ? 'el conductor gastó más del fondo' : 'al conductor le sobró fondo'}${pendientes ? ' (si se aprueban los pendientes)' : ''}`}</p>
 
     <div className="dx-ui-card">
       <div className="dx-ui-toolbar"><h2>Gastos registrados en la app <span className="dx-tmsliq-count">{etiquetaContador(gastos.length, 'gasto')}</span></h2></div>

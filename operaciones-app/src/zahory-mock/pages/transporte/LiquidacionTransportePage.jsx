@@ -115,11 +115,11 @@ export function LiquidacionTransportePage({ onNav, routeParams = {} }) {
     </header>
 
     <div className="dx-ui-kpi-row">
-      <div className="dx-ui-kpi"><strong>{por.length}</strong><span>Viajes por liquidar<small>{sumaPorMoneda(por, 'ingreso_estimado')} de flete</small></span></div>
+      <div className="dx-ui-kpi" title={`${sumaPorMoneda(por, 'ingreso_estimado')} de flete`}><strong>{por.length}</strong><span>Viajes por liquidar</span></div>
       <div className="dx-ui-kpi"><strong>{liqs.filter(l => l.estado === 'en_revision').length}</strong><span>En revisión</span></div>
-      <div className="dx-ui-kpi"><strong>{liqs.filter(l => l.estado === 'con_cliente').length}</strong><span>Con el cliente<small>Esperando conformidad</small></span></div>
+      <div className="dx-ui-kpi"><strong>{liqs.filter(l => l.estado === 'con_cliente').length}</strong><span>Esperando al cliente</span></div>
       <div className="dx-ui-kpi"><strong>{renPorRevisar.length}</strong><span>Rendiciones por revisar</span></div>
-      <div className="dx-ui-kpi"><strong>{sumaPorMoneda(enVentasMes, 'total')}</strong><span>Enviado a Ventas<small>Este mes, con IGV</small></span></div>
+      <div className="dx-ui-kpi"><strong>{sumaPorMoneda(enVentasMes, 'total')}</strong><span>A Ventas este mes</span></div>
     </div>
 
     <div className="dx-tmsliq-tabs" role="tablist" aria-label="Vistas de liquidación">
@@ -149,7 +149,8 @@ export function LiquidacionTransportePage({ onNav, routeParams = {} }) {
             })}
         </div>
           : tab === 'por' ? <div className="dx-ui-card">
-            <div className="dx-ui-toolbar"><h2>Viajes entregados por liquidar <span className="dx-tmsliq-count">{etiquetaContador(por.length, 'viaje')}</span></h2></div>
+            <div className="dx-ui-toolbar"><h2>Viajes entregados por liquidar <span className="dx-tmsliq-count">{etiquetaContador(por.length, 'viaje')}</span></h2>
+              {por.length > 0 && <span className="dx-tmsliq-help">{sumaPorMoneda(por, 'ingreso_estimado')} de flete sin IGV</span>}</div>
             {!grupos.length ? <div className="dx-tms-state"><span className="dx-tms-state-i">✓</span><b>No hay viajes por liquidar</b>
               <span>Los viajes comerciales aparecen aquí cuando se entregan.</span></div>
               : grupos.map(g => {

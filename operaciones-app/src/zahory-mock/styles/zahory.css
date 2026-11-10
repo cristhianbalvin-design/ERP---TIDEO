@@ -10171,7 +10171,7 @@ width:20px;height:20px}
 
 /* ===== TMS · Liquidación y rendiciones (dx-tmsliq-) ===== */
 .dx-tmsliq .dx-btn.link { height:auto; min-height:0; }
-.dx-tmsliq .dx-ui-kpi span small { display:block; font-size:11px; }
+.dx-tmsliq-kpinote { margin:-6px 0 14px; }
 .dx-tmsliq .dx-ui-kpi strong { white-space:nowrap; }
 .dx-tmsliq-back { margin:0 0 8px; padding:0; border:0; background:none; color:var(--dx-ui-cyan-fg); font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
 .dx-tmsliq-count { display:inline-flex; align-items:center; height:22px; margin-left:6px; padding:0 8px; border-radius:999px; background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); font:700 12px 'DM Sans',sans-serif; vertical-align:middle; }
