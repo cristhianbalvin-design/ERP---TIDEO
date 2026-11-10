@@ -3,6 +3,7 @@
 import React from 'react';
 import { InicioBase, Icon } from '../../src/inicio/Inicio.jsx';
 import { fecha } from '../../src/inicio/datos.js';
+import robotAria from '../../src/assets/aria/b_base.webp?no-inline';
 import './inicio_operaciones.css';
 
 const preguntas = ['¿Qué OT están atrasadas?', '¿Qué partes faltan revisar?',
@@ -58,7 +59,7 @@ export function InicioOperaciones({ sesion, onNavigate }) {
     return <div className="ops-inicio-aria"><div className="dxi-empty" role="status">
       {sesion?.cargando || sesion?.estado === 'cargando' ? 'Cargando tu inicio…' : 'Selecciona o solicita acceso a una empresa para ver tu inicio.'}</div></div>;
   }
-  return <div className="ops-inicio-aria">
+  return <div className="ops-inicio-aria" style={{ '--ops-aria-robot': `url(${robotAria})` }}>
     <InicioBase empresaId={sesion.empresaId} sociedadId={sociedadId} authUser={authUser} navigate={onNavigate}
       rpc="inicio_operaciones_pendientes" preguntas={preguntas} Indicadores={Indicadores} Lateral={Lateral} />
   </div>;
