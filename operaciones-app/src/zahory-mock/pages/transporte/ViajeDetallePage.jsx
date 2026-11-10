@@ -187,7 +187,8 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
         : viaje.estado === 'despachado' ? ['Marcar en ruta', () => transicion('en_ruta', null, 'Viaje en ruta.')]
           : viaje.estado === 'en_ruta' ? ['Registrar entrega', () => transicion('entregado', null, 'Entrega registrada.')]
             : viaje.estado === 'con_incidente' ? ['Cerrar incidente', () => transicion('en_ruta', 'Incidente cerrado', 'Incidente cerrado.')]
-              : viaje.estado === 'entregado' ? ['Enviar a liquidación', () => transicion('en_liquidacion', null, 'Viaje enviado a liquidación.')] : null;
+              : viaje.estado === 'entregado' ? ['Liquidar', () => onNav('transporte-liquidacion', { tab: 'por' })]
+                : viaje.estado === 'en_liquidacion' ? ['Ver liquidación', () => onNav('transporte-liquidacion', {})] : null;
   if (access.editar && ['borrador', 'programado'].includes(viaje.estado)) acciones.push(['Editar', () => onNav(esLogistica ? 'transporte-ruta' : 'transporte-crear-ov', { id: viaje.id })]);
   if (access.editar && viaje.estado === 'en_ruta') acciones.push(['Reportar incidente', abrirIncidente]);
   if (access.editar && viaje.estado === 'con_incidente') acciones.push(['Registrar entrega', () => transicion('entregado', null, 'Entrega registrada.')]);
