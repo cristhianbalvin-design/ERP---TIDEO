@@ -60,6 +60,16 @@ function TextoSeguro({ texto }) {
 }
 
 // Panel de Aria sin dependencia del contexto de una app: lo usan Administración y Operaciones.
+// Botones de opciones que devuelve Aria (fondo, categoría, CECO…). Solo se aceptan textos simples.
+function opcionesValidas(opciones) {
+  if (!opciones || typeof opciones.titulo !== 'string' || !Array.isArray(opciones.items)) return null;
+  const items = opciones.items
+    .filter(item => item && typeof item.etiqueta === 'string' && typeof item.valor === 'string' && item.etiqueta.trim() && item.valor.trim())
+    .slice(0, 20)
+    .map(item => ({ etiqueta: item.etiqueta.slice(0, 80), valor: item.valor.slice(0, 200), detalle: typeof item.detalle === 'string' ? item.detalle.slice(0, 80) : '' }));
+  return items.length ? { titulo: opciones.titulo.slice(0, 80), items } : null;
+}
+
 export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false }) {
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
@@ -164,7 +174,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     setError(null); setConsultando(true);
     try {
       const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
-      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null }]);
+      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones) }]);
       if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {
@@ -196,6 +206,12 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
             <div className={`dx-asis-message ${mensaje.role === 'user' ? 'me' : 'ai'}`}>{mensaje.role === 'assistant' && <span className="dx-asis-mini" aria-hidden="true"><AriaLogo size={24} /></span>}<div className={`dx-asis-msg ${mensaje.role === 'user' ? 'me' : 'ai'}`}><TextoSeguro texto={mensaje.content} /></div></div>
             {mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresaId} estadoInicial={mensaje.borradorEstado}
               onCambio={info => setMensajes(prev => prev.map((item, posicion) => posicion === index ? { ...item, borradorEstado: info } : item))} />}
+            {mensaje.role === 'assistant' && mensaje.opciones && index === mensajes.length - 1 && !consultando && <div className="dx-asis-opciones" role="group" aria-label={mensaje.opciones.titulo}>
+              <span className="dx-asis-opciones-t">{mensaje.opciones.titulo}</span>
+              <div className="dx-asis-opciones-l">{mensaje.opciones.items.map(item => <button type="button" key={item.valor} className="dx-asis-opcion" disabled={agotada} onClick={() => enviar(item.valor)}>
+                <b>{item.etiqueta}</b>{item.detalle && <small>{item.detalle}</small>}
+              </button>)}</div>
+            </div>}
             {mensaje.role === 'assistant' && mensaje.herramientas?.length > 0 && <div className="dx-asis-tools">{[...new Set(mensaje.herramientas.map(etiquetaHerramienta))].map(etiqueta => <span className="dx-asis-pill cy" key={etiqueta}><i />{etiqueta}</span>)}</div>}
           </React.Fragment>)}
           {consultando && <div className="dx-asis-tools"><span className="dx-asis-dots" aria-hidden="true"><span/><span/><span/></span><span role="status">Aria está revisando…</span></div>}

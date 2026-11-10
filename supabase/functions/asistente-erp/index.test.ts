@@ -925,6 +925,26 @@ Deno.test("si el único reintento no llama herramientas, responde neutral y audi
   equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "guarda_sin_herramienta");
 });
 
+Deno.test("egreso con datos faltantes devuelve botones de opciones y acepta el monto dicho antes", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_preparar_egreso_caja_chica"
+      ? { data: { estado: "faltan_datos", faltan: ["categoria"], opciones: { tipos_parecidos: [], categorias: ["Costos indirectos de taller", "SSOMA operativo"] } }, error: null }
+      : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "egreso", type: "function", function: { name: "asistente_preparar_egreso_caja_chica", arguments: JSON.stringify({ concepto: "Guantes", monto: 100, fondo: "Taller" }) } }] })
+      : completion({ role: "assistant", content: "Esa categoría no existe. Ya tengo S/ 100.00 y el fondo Caja Chica Taller Ate. ¿Cuál categoría usamos?" }),
+  });
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "costos directos de taller", historial: [
+    { role: "user", content: "registrar un egreso de caja chica por 100 soles, compra de guantes para taller" },
+    { role: "assistant", content: "¿De qué fondo sale?" }, { role: "user", content: "caja chica taller" }, { role: "assistant", content: "Falta la categoría." }] }));
+  equal(res.status, 200);
+  const body = await res.json();
+  assert(String(body.respuesta).includes("S/ 100.00"));
+  equal(body.opciones.campo, "categoria");
+  equal(body.opciones.items[0].valor, "Categoría: Costos indirectos de taller");
+});
+
 Deno.test("manual sin resultados registra la pregunta para soporte y lo indica a la IA", async () => {
   let n = 0;
   const x = setup({
@@ -1087,6 +1107,9 @@ Deno.test("importes exactos y sumas respaldadas por herramientas del turno tiene
   assert(hasUnsupportedMoney("S/ 83,630.79", [], ["Saldo previo: S/ 83,630.79.", "Dame mas detalle"]));
   assert(!hasUnsupportedMoney("S/ 1,180.00", [], ["facturas de 1180"]));
   assert(!hasUnsupportedMoney("S/ 50.00", [], ["Incluye S/ 50.00?"]));
+  // Un monto que la persona dijo en un mensaje anterior se puede repetir; uno que solo dijo Aria, no.
+  assert(!hasUnsupportedMoney("Ya tengo S/ 100.00 y el fondo.", [], ["costos directos de taller"], ["registrar un egreso de caja chica por 100 soles"]));
+  assert(hasUnsupportedMoney("Ya tengo S/ 250.00 y el fondo.", [], ["costos directos de taller"], ["registrar un egreso de caja chica por 100 soles"]));
 });
 
 Deno.test("suma subconjuntos de dos o tres filas del mismo arreglo queda respaldada, incluso tres de cuatro", () => {
