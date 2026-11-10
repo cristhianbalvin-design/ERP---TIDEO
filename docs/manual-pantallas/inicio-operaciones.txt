@@ -5,7 +5,7 @@ catalogo: operaciones/inicio
 titulo: Inicio de Operaciones con Aria
 resumen: Muestra tu día en Operaciones: resumen de Aria, indicadores, pendientes por resolver de taller, producción, almacén, transporte, flota y compras, avisos, tus OT y accesos rápidos.
 componentes: operaciones-app/src/InicioOperaciones.jsx#InicioOperaciones, src/inicio/Inicio.jsx#InicioBase, src/inicio/datos.js
-huella: 80dd055400 6912d1acde ab320441f0
+huella: 5bdad52509 6912d1acde ab320441f0
 paso: 1 | pantalla=app_operativo | permiso=ninguno | Al entrar a Operaciones se abre Inicio. Aria te saluda y resume tu día; Escuchar mi día lo lee en voz alta y Preséntame mi día recorre contigo los indicadores y pendientes.
 paso: 2 | pantalla=app_operativo | permiso=ninguno | Los indicadores muestran tus pendientes, las OT en ejecución, los partes por revisar y los repuestos por despachar. Cada uno aparece solo si tienes permiso para ver esa información.
 paso: 3 | pantalla=app_operativo | permiso=ninguno | En Por resolver elige Míos para ver lo asignado a ti o Mi área para ver todo lo de tu área, y filtra por Taller, Almacén, Producción, Transporte, Flota o Compras. El botón de cada pendiente abre la pantalla donde se resuelve; el reloj lo pospone hasta mañana.
