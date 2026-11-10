@@ -7,6 +7,7 @@ La fuente de verdad de las reglas del repositorio es **`CLAUDE.md`** en la raíz
 **Todo desarrollo (pantalla, botón, flujo o permiso nuevo o modificado) se registra en el catálogo canónico y en su ficha del manual de Aria en el mismo cambio.** Detalle en `CLAUDE.md` §8.
 
 - Pantalla nueva, movida o retirada: actualiza su entrada en `catalogo/pantallas.json`.
+- Estado de la pantalla: `activa` solo si lee datos reales; si solo usa mock (`data.js`, `ZAHORY_SAC_DATA`, `*MOCK*`) o datos fijos, `maqueta`. `npm run verificar:catalogo` lo comprueba contra el código.
 - Cambio en una pantalla que tiene ficha en `docs/manual-pantallas/`: revisa la ficha y ejecuta `node scripts/generar-manual-pantallas.mjs --actualizar-huellas`.
 - Si cambió el catálogo, las fichas o las herramientas `asistente_*`: `node scripts/manual/catalogo.mjs generar` y `node scripts/generar-manual-pantallas.mjs`.
 - Antes de cerrar: `npm run verificar:catalogo` y `npm run test:manual`. El workflow `catalogo-aria.yml` bloquea el PR si una ruta del código no está en el catálogo.

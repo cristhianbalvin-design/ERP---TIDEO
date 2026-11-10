@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventario, pantallasPermisos, raiz } from './inventario-codigo.mjs';
 import { parseFicha } from '../generar-manual-pantallas.mjs';
+import { clasificarOrigen, origenDatos } from './origen-datos.mjs';
 
 export const catalogoPath = path.join(raiz, 'catalogo/pantallas.json');
 export const coberturaPath = path.join(raiz, 'docs/manual/COBERTURA.md');
@@ -18,7 +19,7 @@ const NOMBRE_APP = { admin: 'Administración', operaciones: 'Operaciones', movil
 
 export const leerCatalogo = (root = raiz) => JSON.parse(readFileSync(path.join(root, 'catalogo/pantallas.json'), 'utf8'));
 
-export function verificarCatalogo(catalogo, inv, permisos) {
+export function verificarCatalogo(catalogo, inv, permisos, root = raiz) {
   const errores = [];
   const claves = new Set();
   const permisosValidos = new Set([...permisos.map(p => p.clave), ...(catalogo.permisos_adicionales ?? []).map(p => p.clave)]);
@@ -55,6 +56,26 @@ export function verificarCatalogo(catalogo, inv, permisos) {
   }
   for (const p of catalogo.pantallas ?? []) {
     if (APPS.includes(p.app) && !enCodigo.get(p.app).has(p.ruta)) errores.push(`${p.clave}: está en el catálogo pero ya no existe en el código; quítala o márcala correctamente`);
+  }
+  errores.push(...verificarEstados(catalogo, root));
+  return errores;
+}
+
+// El estado debe coincidir con el origen de datos que se lee del código (scripts/manual/origen-datos.mjs):
+// - "activa" exige datos reales (Supabase, servicios o el contexto que los carga); si solo hay mock o datos fijos, es "maqueta".
+// - "maqueta" no puede leer solo datos reales; si ya no usa mock, es "activa".
+// Las pantallas "mixtas" (datos reales con algún respaldo ficticio) se aceptan como activas.
+export function verificarEstados(catalogo, root = raiz) {
+  const errores = [];
+  for (const p of catalogo.pantallas ?? []) {
+    if (!p.componente || !['activa', 'maqueta'].includes(p.estado)) continue;
+    if (!existsSync(path.join(root, p.componente.split('#')[0]))) continue; // el resto de la verificación ya reporta componentes movidos
+    const origen = origenDatos(p.componente, root);
+    const tipo = clasificarOrigen(origen);
+    if (p.estado === 'activa' && (tipo === 'mock' || tipo === 'sin_datos')) {
+      errores.push(`${p.clave}: está como "activa" pero no lee datos reales (${tipo === 'mock' ? `solo mock: ${origen.fuentesMock.join(', ')}` : 'datos fijos en el código'}); márcala "maqueta"`);
+    }
+    if (p.estado === 'maqueta' && tipo === 'real') errores.push(`${p.clave}: está como "maqueta" pero ya lee solo datos reales; márcala "activa"`);
   }
   return errores;
 }

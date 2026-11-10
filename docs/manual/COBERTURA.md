@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 4 (5 %) | 21 (27 %) | 1 | 54 |
-| Operaciones | 121 | 1 (1 %) | 26 (21 %) | 0 | 94 |
+| Operaciones | 120 | 1 (1 %) | 26 (22 %) | 0 | 93 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 207 | 5 (2 %) | 47 (23 %) | 1 | 157 |
+| **Total** | 206 | 5 (2 %) | 47 (23 %) | 1 | 156 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -62,7 +62,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Configuración | Roles y Permisos (`roles`) | activa | — | — | — | — |
 | Configuración | Salud Implementacion (`salud_implementacion_tenant`) | activa | — | — | — | — |
 | Configuración | Catalogo Servicios (`servicios`) | activa | — | — | — | — |
-| Configuración | Tarifarios (`tarifarios`) | activa | — | — | — | — |
+| Configuración | Tarifarios (`tarifarios`) | maqueta | — | — | — | — |
 | Configuración | Usuarios (`usuarios`) | activa | — | — | — | — |
 | CRM & Marketing | Actividades (`actividades`) | activa | — | — | — | — |
 | CRM & Marketing | Leads y Scoring (`leads`) | activa | — | — | 3 | — |
@@ -86,8 +86,8 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Operaciones | Partes Diarios (`partes`) | activa | — | — | — | — |
 | Operaciones | Planner y Recursos (`planner`) | activa | — | — | — | — |
 | Operaciones | Soporte y Tickets (`tickets`) | activa | — | — | — | — |
-| Plataforma | Metricas SaaS (`metricas_saas`) | activa | — | — | — | — |
-| Plataforma | Planes y Licencias (`planes`) | activa | — | — | — | — |
+| Plataforma | Metricas SaaS (`metricas_saas`) | maqueta | — | — | — | — |
+| Plataforma | Planes y Licencias (`planes`) | maqueta | — | — | — | — |
 | Plataforma | Salud de implementación (plataforma) (`salud_implementacion`) | activa | — | — | — | — |
 | Plataforma | Empresas / Tenants (`tenants`) | activa | — | — | — | — |
 | RRHH | Control de Asistencia (`asistencia`) | activa | — | — | — | — |
@@ -125,8 +125,8 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Ubicaciones (`almacen-ubicaciones`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Vencimientos y lotes (`almacen-vencimientos`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
-| Clientes & Activos | Clientes & Contratos (`clientes`) | activa | — | — | 3 | — |
-| Clientes & Activos | Equipos & Activos (`equipos`) | activa | — | — | — | — |
+| Clientes & Activos | Clientes & Contratos (`clientes`) | maqueta | — | — | 3 | — |
+| Clientes & Activos | Equipos & Activos (`equipos`) | maqueta | — | — | — | — |
 | Clientes & Activos | Proyectos & Tarifas (`proyectos`) | activa | — | — | — | — |
 | Compras & Importación | Cotizaciones Compra (`compras-cotizaciones`) | puente | — | — | 2 | — |
 | Compras & Importación | Importaciones & DUA (`compras-importaciones`) | placeholder | — | — | — | — |
@@ -134,36 +134,36 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras & Importación | Proveedores (`compras-proveedores`) | puente | — | — | 3 | — |
 | Compras & Importación | Recepciones (`compras-recepciones`) | activa | — | — | 3 | — |
 | Confiabilidad | Backlog Operativo (`backlog`) | puente | — | — | — | — |
-| Confiabilidad | KPIs de Confiabilidad (`confiabilidad`) | activa | — | — | — | — |
-| Confiabilidad | Disponibilidad Mecánica (`disponibilidad-mecanica`) | activa | — | — | — | — |
-| Confiabilidad | Programación PM (`programacion-pm`) | activa | — | — | — | — |
-| Confiabilidad | Análisis SOS (`sos-telemetria`) | activa | — | — | — | — |
-| Configuración | Parámetros Globales (`configuracion`) | activa | — | — | — | — |
+| Confiabilidad | KPIs de Confiabilidad (`confiabilidad`) | maqueta | — | — | — | — |
+| Confiabilidad | Disponibilidad Mecánica (`disponibilidad-mecanica`) | maqueta | — | — | — | — |
+| Confiabilidad | Programación PM (`programacion-pm`) | maqueta | — | — | — | — |
+| Confiabilidad | Análisis SOS (`sos-telemetria`) | maqueta | — | — | — | — |
+| Configuración | Parámetros Globales (`configuracion`) | maqueta | — | — | — | — |
 | Configuración | Usuarios & Roles (`usuarios`) | puente | — | — | — | — |
-| Finanzas & Facturación | Consolidado Facturación (`consolidado`) | activa | — | — | 4 | — |
+| Finanzas & Facturación | Consolidado Facturación (`consolidado`) | maqueta | — | — | 4 | — |
 | Finanzas & Facturación | Cuentas por Cobrar (`finanzas-cxc`) | puente | — | — | 4 | — |
 | Finanzas & Facturación | Cuentas por Pagar (`finanzas-cxp`) | puente | — | — | 4 | — |
 | Finanzas & Facturación | Tesorería (`finanzas-tesoreria`) | puente | — | — | 3 | — |
-| Finanzas & Facturación | Costos & Rentabilidad (`ots-costos`) | activa | — | — | — | — |
+| Finanzas & Facturación | Costos & Rentabilidad (`ots-costos`) | maqueta | — | — | — | — |
 | Flota & Alquileres | Certificaciones del Activo (`certificaciones-activo`) | activa | — | — | — | — |
 | Flota & Alquileres | Actas & Despachos (`checkout`) | activa | — | — | — | — |
 | Flota & Alquileres | Contratos Rental (`contratos-rental`) | activa | — | — | — | — |
-| Flota & Alquileres | Dashboard de Flota y Alquileres (`dashboard-rental`) | activa | — | — | — | — |
+| Flota & Alquileres | Dashboard de Flota y Alquileres (`dashboard-rental`) | maqueta | — | — | — | — |
 | Flota & Alquileres | Panel de Flota (`flota`) | activa | — | — | — | — |
 | Flota & Alquileres | Gestión de Garantías (`gestion-garantias`) | activa | — | — | — | — |
 | Flota & Alquileres | Liquidación & DMR (`liquidacion`) | activa | — | — | — | — |
 | Flota & Alquileres | Monitoreo Equipos (`monitoreo-equipos`) | placeholder | — | — | — | — |
 | Flota & Alquileres | Pasaporte de Equipos (`pasaporte-equipos`) | activa | — | — | — | — |
-| HSE — SEGURIDAD | Análisis de Riesgo (ATS) (`analisis-riesgo-ats`) | activa | — | — | — | — |
-| HSE — SEGURIDAD | EPP & Certificaciones (`epp-certificaciones`) | activa | — | — | — | — |
+| HSE — SEGURIDAD | Análisis de Riesgo (ATS) (`analisis-riesgo-ats`) | maqueta | — | — | — | — |
+| HSE — SEGURIDAD | EPP & Certificaciones (`epp-certificaciones`) | maqueta | — | — | — | — |
 | HSE — SEGURIDAD | Dashboard HSE (`hse-dashboard`) | maqueta | — | — | — | — |
-| HSE — SEGURIDAD | Permisos de Trabajo (`permisos-trabajo`) | activa | — | — | — | — |
-| HSE — SEGURIDAD | Protocolo LOTO (`protocolo-loto`) | activa | — | — | — | — |
-| HSE — SEGURIDAD | Registro de Incidentes (`registro-incidentes`) | activa | — | — | — | — |
-| Inicio | Dashboard Gerencial (`dashboard`) | maqueta | — | — | — | — |
+| HSE — SEGURIDAD | Permisos de Trabajo (`permisos-trabajo`) | maqueta | — | — | — | — |
+| HSE — SEGURIDAD | Protocolo LOTO (`protocolo-loto`) | maqueta | — | — | — | — |
+| HSE — SEGURIDAD | Registro de Incidentes (`registro-incidentes`) | maqueta | — | — | — | — |
+| Inicio | Dashboard Gerencial (`dashboard`) | activa | — | — | — | — |
 | Inicio | Mapa de Campo (`mapa-campo`) | maqueta | — | — | — | — |
-| Inicio | Mis OTs del día (`mis-ots-hoy`) | maqueta | — | — | — | — |
-| Operaciones | Documentos (`docs`) | activa | — | — | — | — |
+| Inicio | Mis OTs del día (`mis-ots-hoy`) | activa | — | — | — | — |
+| Operaciones | Documentos (`docs`) | maqueta | — | — | — | — |
 | Operaciones | Indicadores de confiabilidad (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
 | Inicio | Inicio operativo (Aria) (`inicio`) | activa | inicio_operaciones | — | — | — |
 | Operaciones | Proveedores (operaciones) (`proveedores`) | placeholder | — | — | — | — |
@@ -171,7 +171,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Diagnóstico Técnico (`diagnostico-tecnico`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Nuevo reporte de mina (`nuevo-reporte`) | activa | — | — | — | — |
-| Órdenes de Trabajo | Detalle de OT (`ot-detalle`) | activa | — | — | — | — |
+| Órdenes de Trabajo | Detalle de OT (`ot-detalle`) | maqueta | — | — | — | — |
 | Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Reportes Mina (`partes-mina`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Gestión de partes de taller (`partes-taller`) | activa | — | — | — | — |
@@ -183,58 +183,58 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Producción | Maestranza (`area-maestranza`) | maqueta | — | — | — | — |
 | Producción | Soldadura (`area-soldadura`) | maqueta | — | — | — | — |
 | Producción | Dashboard Producción (`dashboard-produccion`) | maqueta | — | — | — | — |
-| Producción | Ensamble de Componentes (`fab-ensamble`) | activa | — | — | — | — |
-| Producción | Fabricación de Estructuras (`fab-estructuras`) | activa | — | — | — | — |
-| Producción | Fabricación de Piezas (`fab-piezas`) | activa | — | — | — | — |
-| Producción | Pruebas y Control de Calidad (`fab-pruebas`) | activa | — | — | — | — |
-| Producción | Planos y Especificaciones (`ing-planos`) | activa | — | — | — | — |
-| Producción | Estimación de Tiempos (`ing-tiempos`) | activa | — | — | — | — |
-| Producción | Cromado Industrial (`mae-cromado`) | activa | — | — | — | — |
-| Producción | Fresado (`mae-fresado`) | activa | — | — | — | — |
-| Producción | Rectificado (`mae-rectificado`) | activa | — | — | — | — |
-| Producción | Recuperación de Piezas (`mae-recuperacion`) | activa | — | — | — | — |
-| Producción | Taladrado / Mandrinado (`mae-taladrado`) | activa | — | — | — | — |
-| Producción | Torneado (`mae-torneado`) | activa | — | — | — | — |
-| Producción | Lista de Materiales (BOM) (`maestranza-bom`) | activa | — | — | — | — |
+| Producción | Ensamble de Componentes (`fab-ensamble`) | maqueta | — | — | — | — |
+| Producción | Fabricación de Estructuras (`fab-estructuras`) | maqueta | — | — | — | — |
+| Producción | Fabricación de Piezas (`fab-piezas`) | maqueta | — | — | — | — |
+| Producción | Pruebas y Control de Calidad (`fab-pruebas`) | maqueta | — | — | — | — |
+| Producción | Planos y Especificaciones (`ing-planos`) | maqueta | — | — | — | — |
+| Producción | Estimación de Tiempos (`ing-tiempos`) | maqueta | — | — | — | — |
+| Producción | Cromado Industrial (`mae-cromado`) | maqueta | — | — | — | — |
+| Producción | Fresado (`mae-fresado`) | maqueta | — | — | — | — |
+| Producción | Rectificado (`mae-rectificado`) | maqueta | — | — | — | — |
+| Producción | Recuperación de Piezas (`mae-recuperacion`) | maqueta | — | — | — | — |
+| Producción | Taladrado / Mandrinado (`mae-taladrado`) | maqueta | — | — | — | — |
+| Producción | Torneado (`mae-torneado`) | maqueta | — | — | — | — |
+| Producción | Lista de Materiales (BOM) (`maestranza-bom`) | maqueta | — | — | — | — |
 | Producción | Órdenes de Fab. (OF) (`maestranza-of`) | activa | — | — | — | — |
-| Producción | Control de Producción (`maestranza-piso`) | activa | — | — | — | — |
-| Producción | Control de Calidad (`of-calidad`) | activa | — | — | — | — |
+| Producción | Control de Producción (`maestranza-piso`) | maqueta | — | — | — | — |
+| Producción | Control de Calidad (`of-calidad`) | maqueta | — | — | — | — |
 | Producción | Informes y Certificados (`of-informes`) | placeholder | — | — | — | — |
-| Producción | No Conformidades (`of-no-conformidades`) | activa | — | — | — | — |
-| Producción | OEE y Rendimiento (`of-oee`) | activa | — | — | — | — |
-| Producción | Planificación de OF (`of-planificacion`) | activa | — | — | — | — |
-| Producción | Tiempos y MTM (`of-tiempos-mtm`) | activa | — | — | — | — |
-| Producción | Trazabilidad de OF (`of-trazabilidad`) | activa | — | — | — | — |
+| Producción | No Conformidades (`of-no-conformidades`) | maqueta | — | — | — | — |
+| Producción | OEE y Rendimiento (`of-oee`) | maqueta | — | — | — | — |
+| Producción | Planificación de OF (`of-planificacion`) | maqueta | — | — | — | — |
+| Producción | Tiempos y MTM (`of-tiempos-mtm`) | maqueta | — | — | — | — |
+| Producción | Trazabilidad de OF (`of-trazabilidad`) | placeholder | — | — | — | — |
 | Producción | Nueva OF (`produccion-crear-of`) | activa | — | — | — | — |
 | Producción | Detalle de OF (`produccion-detalle-of`) | activa | — | — | — | — |
-| Producción | Garantías de producción (`produccion-garantias`) | activa | — | — | — | — |
-| Producción | Ingeniería y BOM (`produccion-ingenieria`) | activa | — | — | — | — |
-| Producción | Pasaporte de componente (`produccion-pasaporte`) | activa | — | — | — | — |
-| Producción | Tiempos estándar (`produccion-tiempos`) | activa | — | — | — | — |
-| Producción | Corte Térmico (`sol-corte`) | activa | — | — | — | — |
-| Producción | Soldadura Estructural (`sol-estructural`) | activa | — | — | — | — |
-| Producción | MIG / TIG / SMAW (`sol-mig-tig`) | activa | — | — | — | — |
-| Producción | Recargue y Recuperación (`sol-recargue`) | activa | — | — | — | — |
-| Transporte Comercial | Dashboard de Transporte (`dashboard-transporte`) | activa | — | — | — | — |
+| Producción | Garantías de producción (`produccion-garantias`) | maqueta | — | — | — | — |
+| Producción | Ingeniería y BOM (`produccion-ingenieria`) | maqueta | — | — | — | — |
+| Producción | Pasaporte de componente (`produccion-pasaporte`) | maqueta | — | — | — | — |
+| Producción | Tiempos estándar (`produccion-tiempos`) | maqueta | — | — | — | — |
+| Producción | Corte Térmico (`sol-corte`) | maqueta | — | — | — | — |
+| Producción | Soldadura Estructural (`sol-estructural`) | maqueta | — | — | — | — |
+| Producción | MIG / TIG / SMAW (`sol-mig-tig`) | maqueta | — | — | — | — |
+| Producción | Recargue y Recuperación (`sol-recargue`) | maqueta | — | — | — | — |
+| Transporte Comercial | Dashboard de Transporte (`dashboard-transporte`) | maqueta | — | — | — | — |
 | Transporte Comercial | Nueva orden de viaje (`transporte-crear-ov`) | activa | — | — | — | — |
 | Transporte Comercial | Flota (`transporte-flota`) | activa | — | — | — | — |
-| Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | activa | — | — | — | — |
+| Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | maqueta | — | — | — | — |
 | Transporte Comercial | Lugares (`transporte-lugares`) | activa | — | — | — | — |
 | Transporte Comercial | Hoja de Ruta (`transporte-ruta`) | activa | — | — | — | — |
 | Transporte Comercial | Maestro de Rutas (`transporte-tarifas`) | activa | — | — | — | — |
-| Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | maqueta | — | — | — | — |
+| Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | activa | — | — | — | — |
 | Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | — | — | — | — |
 | Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | — | — | — | — |
 | Venta de Repuestos | Catálogo de venta (`catalogo`) | activa | — | — | — | — |
-| Venta de Repuestos | Catálogo de precios (`catalogo-precios`) | activa | — | — | — | — |
-| Venta de Repuestos | Dashboard de Repuestos (`dashboard-repuestos`) | activa | — | — | — | — |
-| Venta de Repuestos | Despachos de repuestos (`despachos-repuestos`) | activa | — | — | — | — |
-| Venta de Repuestos | Pedidos de venta (`pedidos-venta`) | activa | — | — | — | — |
-| Venta de Repuestos | Cotizaciones Venta (`repuestos-cotizaciones`) | activa | — | — | — | — |
-| Venta de Repuestos | Nuevo pedido de repuestos (`repuestos-crear-pedido`) | activa | — | — | — | — |
+| Venta de Repuestos | Catálogo de precios (`catalogo-precios`) | maqueta | — | — | — | — |
+| Venta de Repuestos | Dashboard de Repuestos (`dashboard-repuestos`) | maqueta | — | — | — | — |
+| Venta de Repuestos | Despachos de repuestos (`despachos-repuestos`) | maqueta | — | — | — | — |
+| Venta de Repuestos | Pedidos de venta (`pedidos-venta`) | maqueta | — | — | — | — |
+| Venta de Repuestos | Cotizaciones Venta (`repuestos-cotizaciones`) | maqueta | — | — | — | — |
+| Venta de Repuestos | Nuevo pedido de repuestos (`repuestos-crear-pedido`) | maqueta | — | — | — | — |
 | Venta de Repuestos | Guías & Despachos (`repuestos-despachos`) | puente | — | — | 5 | — |
-| Venta de Repuestos | Detalle de pedido de repuestos (`repuestos-detalle-pedido`) | activa | — | — | — | — |
-| Venta de Repuestos | Órdenes de Venta (`repuestos-ordenes`) | activa | — | — | — | — |
+| Venta de Repuestos | Detalle de pedido de repuestos (`repuestos-detalle-pedido`) | maqueta | — | — | — | — |
+| Venta de Repuestos | Órdenes de Venta (`repuestos-ordenes`) | maqueta | — | — | — | — |
 
 ## Versión Móvil
 
