@@ -1,4 +1,4 @@
--- 675: Modo consultor de Aria.
+-- 677: Modo consultor de Aria.
 -- 1) Búsqueda del manual sin distinción de tildes, primero con todas las palabras y luego con cualquiera,
 --    con más peso al título y al resumen; la pantalla activa ordena pero ya no oculta fichas de otras pantallas.
 -- 2) Los pasos de fichas generales (pantalla "ninguna") los ve cualquier miembro de la empresa.
@@ -223,13 +223,13 @@ END $$;
 DO $$
 DECLARE v_puede boolean;
 BEGIN
-  IF public.aria_sin_tildes('Rendición ÁRBOL') <> 'rendicion arbol' THEN RAISE EXCEPTION '675: aria_sin_tildes no normaliza'; END IF;
-  IF plainto_tsquery('spanish', public.aria_texto_busqueda('¿Cómo hago la rendición de caja chica?'))::text <> '''rendicion'' & ''caj'' & ''chic''' THEN RAISE EXCEPTION '675: aria_texto_busqueda no limpia la pregunta'; END IF;
-  IF to_regclass('public.aria_manual_sin_respuesta') IS NULL THEN RAISE EXCEPTION '675: falta la tabla aria_manual_sin_respuesta'; END IF;
-  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.aria_manual_sin_respuesta'::regclass) THEN RAISE EXCEPTION '675: RLS no está activo'; END IF;
-  IF has_function_privilege('anon', 'public.aria_registrar_sin_respuesta(text,text,text,text)', 'EXECUTE') THEN RAISE EXCEPTION '675: anon no debe registrar'; END IF;
-  IF has_function_privilege('authenticated', 'public.aria_enviar_resumen_sin_respuesta(text)', 'EXECUTE') THEN RAISE EXCEPTION '675: el resumen no debe ser invocable por usuarios'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.notif_eventos_catalogo WHERE codigo = 'aria_manual_sin_respuesta') THEN RAISE EXCEPTION '675: falta el evento de notificación'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aria-manual-sin-respuesta-diario') THEN RAISE EXCEPTION '675: falta la tarea diaria'; END IF;
-  IF to_regprocedure('public.asistente_consultar_manual(text,text,text,integer)') IS NULL THEN RAISE EXCEPTION '675: falta asistente_consultar_manual'; END IF;
+  IF public.aria_sin_tildes('Rendición ÁRBOL') <> 'rendicion arbol' THEN RAISE EXCEPTION '677: aria_sin_tildes no normaliza'; END IF;
+  IF plainto_tsquery('spanish', public.aria_texto_busqueda('¿Cómo hago la rendición de caja chica?'))::text <> '''rendicion'' & ''caj'' & ''chic''' THEN RAISE EXCEPTION '677: aria_texto_busqueda no limpia la pregunta'; END IF;
+  IF to_regclass('public.aria_manual_sin_respuesta') IS NULL THEN RAISE EXCEPTION '677: falta la tabla aria_manual_sin_respuesta'; END IF;
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.aria_manual_sin_respuesta'::regclass) THEN RAISE EXCEPTION '677: RLS no está activo'; END IF;
+  IF has_function_privilege('anon', 'public.aria_registrar_sin_respuesta(text,text,text,text)', 'EXECUTE') THEN RAISE EXCEPTION '677: anon no debe registrar'; END IF;
+  IF has_function_privilege('authenticated', 'public.aria_enviar_resumen_sin_respuesta(text)', 'EXECUTE') THEN RAISE EXCEPTION '677: el resumen no debe ser invocable por usuarios'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.notif_eventos_catalogo WHERE codigo = 'aria_manual_sin_respuesta') THEN RAISE EXCEPTION '677: falta el evento de notificación'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aria-manual-sin-respuesta-diario') THEN RAISE EXCEPTION '677: falta la tarea diaria'; END IF;
+  IF to_regprocedure('public.asistente_consultar_manual(text,text,text,integer)') IS NULL THEN RAISE EXCEPTION '677: falta asistente_consultar_manual'; END IF;
 END $$;

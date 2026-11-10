@@ -1,4 +1,4 @@
 {
-  "revision": 2,
+  "revision": 5,
   "nota": "Revisión común de catalogo/_sincronizar.sql y docs/manual-pantallas/_sincronizar.sql. Súbela en 1 en la rama que cambie el catálogo, las fichas o las herramientas de Aria. Supabase rechaza aplicar una revisión menor que la vigente, o la misma con otro contenido."
 }

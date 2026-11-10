@@ -1,7 +1,7 @@
--- 676: Umbral de la búsqueda amplia del manual de Aria. Si no coinciden todas las palabras, una ficha
+-- 678: Umbral de la búsqueda amplia del manual de Aria. Si no coinciden todas las palabras, una ficha
 -- solo cuenta cuando comparte al menos la mitad de las palabras importantes de la pregunta; si no hay
 -- ninguna así, el manual responde "sin resultados" y la pregunta llega a soporte.
--- Parte de la versión vigente (675, verificada con pg_get_functiondef).
+-- Parte de la versión vigente (677, verificada con pg_get_functiondef).
 
 CREATE OR REPLACE FUNCTION public.asistente_consultar_manual(p_empresa_id text, p_texto text DEFAULT NULL::text, p_pantalla text DEFAULT NULL::text, p_limite integer DEFAULT 5)
  RETURNS jsonb
@@ -73,6 +73,6 @@ END; $function$;
 DO $$
 DECLARE v_def text := pg_get_functiondef('public.asistente_consultar_manual(text,text,text,integer)'::regprocedure);
 BEGIN
-  IF position('v_minimo' IN v_def) = 0 THEN RAISE EXCEPTION '676: la búsqueda no quedó con umbral'; END IF;
-  IF position('ninguna' IN v_def) = 0 THEN RAISE EXCEPTION '676: se perdió la visibilidad de fichas generales'; END IF;
+  IF position('v_minimo' IN v_def) = 0 THEN RAISE EXCEPTION '678: la búsqueda no quedó con umbral'; END IF;
+  IF position('ninguna' IN v_def) = 0 THEN RAISE EXCEPTION '678: se perdió la visibilidad de fichas generales'; END IF;
 END $$;
