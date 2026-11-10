@@ -8,6 +8,7 @@ import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
 import { DEFAULT_WORK_BACK_LABEL, WORK_COMPACT_QUERY, requestWorkBack } from './workMode.js';
 import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
+import { AriaOperaciones } from './AriaOperaciones.jsx';
 import { useNotificacionesSistema, useTemaOscuro } from './useCuentaOperativa.js';
 import {
   findAreaForRoute,
@@ -485,6 +486,7 @@ export function OperationalApp() {
           </main>
         )}
       </section>
+      <AriaOperaciones sesion={sesionOperativa} ruta={route} />
     </div>
   );
 }

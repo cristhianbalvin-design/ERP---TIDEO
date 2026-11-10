@@ -12,6 +12,12 @@ export const isSupabaseConfigured = () => {
   return Boolean(url && anonKey);
 };
 
+// Operaciones comparte componentes de Administración (Aria): les entrega su propio cliente para no crear
+// un segundo cliente de autenticación sobre la misma sesión.
+export function usarClienteSupabase(cliente) {
+  supabaseClient = cliente || null;
+}
+
 export async function getSupabaseClient() {
   if (supabaseClient) return supabaseClient;
 
