@@ -1,7 +1,7 @@
 // Lógica de la Edge aria-transcribir: convierte en texto la pregunta que la persona le dicta a Aria.
 // Sin dependencias de Deno para poder probarla con Node (handler.test.mjs).
 // Exige sesión, que la persona pertenezca a la empresa y respeta el límite de 60 transcripciones al
-// día (función aria_registrar_transcripcion, migración 673). No guarda el audio ni el texto.
+// día (función aria_registrar_transcripcion, migración 674). No guarda el audio ni el texto.
 
 export const ALLOWED_ORIGIN = 'https://erp.tideo.tech';
 export const MAX_AUDIO_BYTES = 4 * 1024 * 1024;

@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 3 (4 %) | 21 (27 %) | 1 | 55 |
+| Administración | 77 | 4 (5 %) | 21 (27 %) | 1 | 54 |
 | Operaciones | 121 | 1 (1 %) | 26 (21 %) | 0 | 94 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 207 | 4 (2 %) | 47 (23 %) | 1 | 158 |
+| **Total** | 207 | 5 (2 %) | 47 (23 %) | 1 | 157 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -28,7 +28,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Administración | Cuentas por Cobrar (`cxc`) | activa | — | — | 4 | — |
 | Administración | Cuentas por Pagar (`cxp`) | activa | — | proceso_solpe_pago | 4 | — |
 | Administración | Facturación (`facturacion`) | activa | — | — | 4 | — |
-| Administración | Financiamiento y Deuda (`financiamiento`) | activa | — | — | — | — |
+| Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | — | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | — | — | — | — |
 | Administración | Estado Resultados (`resultados`) | activa | — | — | — | — |

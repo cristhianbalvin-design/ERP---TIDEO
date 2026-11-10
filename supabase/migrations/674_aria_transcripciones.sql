@@ -1,4 +1,4 @@
--- 673: Contador de transcripciones de voz de Aria (Edge aria-transcribir).
+-- 674: Contador de transcripciones de voz de Aria (Edge aria-transcribir).
 -- Límite propio de 60 transcripciones al día por usuario y empresa (hora de Lima); la pregunta
 -- que luego se envía a Aria sigue contando en la cuota de 30 de asistente_verificar_cuota.
 -- Aditiva: tabla nueva + función nueva. Los usuarios solo leen sus propias filas; se escribe
@@ -56,9 +56,9 @@ GRANT EXECUTE ON FUNCTION public.aria_registrar_transcripcion(text, integer) TO 
 -- Comprobación: si algo no quedó como se espera, se revierte toda la migración.
 DO $$
 BEGIN
-  IF to_regclass('public.aria_transcripciones') IS NULL THEN RAISE EXCEPTION '673: falta la tabla aria_transcripciones'; END IF;
-  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.aria_transcripciones'::regclass) THEN RAISE EXCEPTION '673: RLS no está activo'; END IF;
-  IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'aria_transcripciones') <> 1 THEN RAISE EXCEPTION '673: políticas inesperadas'; END IF;
-  IF to_regprocedure('public.aria_registrar_transcripcion(text,integer)') IS NULL THEN RAISE EXCEPTION '673: falta la función'; END IF;
-  IF has_function_privilege('anon', 'public.aria_registrar_transcripcion(text,integer)', 'EXECUTE') THEN RAISE EXCEPTION '673: anon no debe ejecutar la función'; END IF;
+  IF to_regclass('public.aria_transcripciones') IS NULL THEN RAISE EXCEPTION '674: falta la tabla aria_transcripciones'; END IF;
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.aria_transcripciones'::regclass) THEN RAISE EXCEPTION '674: RLS no está activo'; END IF;
+  IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'aria_transcripciones') <> 1 THEN RAISE EXCEPTION '674: políticas inesperadas'; END IF;
+  IF to_regprocedure('public.aria_registrar_transcripcion(text,integer)') IS NULL THEN RAISE EXCEPTION '674: falta la función'; END IF;
+  IF has_function_privilege('anon', 'public.aria_registrar_transcripcion(text,integer)', 'EXECUTE') THEN RAISE EXCEPTION '674: anon no debe ejecutar la función'; END IF;
 END $$;
