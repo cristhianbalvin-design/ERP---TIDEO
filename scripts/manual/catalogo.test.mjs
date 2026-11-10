@@ -1,8 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verificarCatalogo, calcularCobertura, renderCatalogoSync, bloquesCatalogoSync, leerCatalogo, generarTodo } from './catalogo.mjs';
+import { verificarCatalogo, verificarEstados, calcularCobertura, renderCatalogoSync, bloquesCatalogoSync, leerCatalogo, generarTodo } from './catalogo.mjs';
 import { inventario, pantallasPermisos } from './inventario-codigo.mjs';
 import { codigoComponente, huellaComponente } from './huella.mjs';
+import { clasificarOrigen, origenDatos } from './origen-datos.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+// Mini proyecto en disco para probar el detector de origen de datos.
+const proyectoTemporal = () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'catalogo-origen-'));
+  mkdirSync(path.join(root, 'src/services'), { recursive: true });
+  const escribir = (rel, txt) => writeFileSync(path.join(root, rel), txt, 'utf8');
+  escribir('src/data.js', 'export const MOCK = { ventas: [{ id: 1 }] };\n');
+  escribir('src/services/ventasService.js', "export const listarVentas = () => supabase.from('ventas').select();\n");
+  escribir('src/real.jsx', "import { listarVentas } from './services/ventasService.js';\nexport function Real() { listarVentas(); return <div/>; }\n");
+  escribir('src/maqueta.jsx', "import { MOCK } from './data.js';\nconst RESUMEN = MOCK.ventas.length;\nexport function Maqueta() { return <div>{RESUMEN}</div>; }\n");
+  escribir('src/fijo.jsx', "export function Fijo() { const planes = [{ nombre: 'A' }]; return <div>{planes.length}</div>; }\n");
+  escribir('src/mixto.jsx', "import { MOCK } from './data.js';\nimport { listarVentas } from './services/ventasService.js';\nexport function Mixto() { listarVentas(); return <div>{MOCK.ventas.length}</div>; }\n");
+  escribir('src/padre.jsx', "import { Maqueta } from './maqueta.jsx';\nexport function Padre() { return <section><Maqueta/></section>; }\n");
+  return root;
+};
 
 const permisos = [{ clave: 'caja' }, { clave: 'cxp' }];
 const base = () => ({
@@ -90,4 +109,31 @@ test('la huella de un componente incluye las declaraciones locales que usa y es 
   assert.equal(huellaComponente('src/pages_fin.jsx#Tesoreria'), huellaComponente('src/pages_fin.jsx#Tesoreria'));
   assert.match(huellaComponente('src/pages_fin.jsx#Tesoreria'), /^[0-9a-f]{10}$/);
   assert.throws(() => codigoComponente('src/pages_fin.jsx#NoExiste'), /no se encontró/);
+});
+
+test('el detector distingue datos reales, mock, fijos y mixtos, también en componentes hijos', () => {
+  const root = proyectoTemporal();
+  assert.equal(clasificarOrigen(origenDatos('src/real.jsx#Real', root)), 'real');
+  assert.equal(clasificarOrigen(origenDatos('src/maqueta.jsx#Maqueta', root)), 'mock');
+  assert.equal(clasificarOrigen(origenDatos('src/fijo.jsx#Fijo', root)), 'sin_datos');
+  assert.equal(clasificarOrigen(origenDatos('src/mixto.jsx#Mixto', root)), 'mixto');
+  assert.equal(clasificarOrigen(origenDatos('src/padre.jsx#Padre', root)), 'mock');
+});
+
+test('el estado del catálogo debe coincidir con el origen de datos del código', () => {
+  const root = proyectoTemporal();
+  const pantalla = (ruta, componente, estado) => ({ clave: `admin/${ruta}`, app: 'admin', ruta, componente, estado });
+  const errores = verificarEstados({ pantallas: [
+    pantalla('real', 'src/real.jsx#Real', 'activa'),
+    pantalla('mixto', 'src/mixto.jsx#Mixto', 'activa'),
+    pantalla('maqueta_ok', 'src/maqueta.jsx#Maqueta', 'maqueta'),
+    pantalla('falsa_activa', 'src/maqueta.jsx#Maqueta', 'activa'),
+    pantalla('fija_activa', 'src/fijo.jsx#Fijo', 'activa'),
+    pantalla('falsa_maqueta', 'src/real.jsx#Real', 'maqueta'),
+    pantalla('puente', 'src/maqueta.jsx#Maqueta', 'puente'),
+  ] }, root).join('\n');
+  assert.match(errores, /admin\/falsa_activa: está como "activa" pero no lee datos reales \(solo mock: MOCK\)/);
+  assert.match(errores, /admin\/fija_activa: .*datos fijos en el código/);
+  assert.match(errores, /admin\/falsa_maqueta: está como "maqueta" pero ya lee solo datos reales/);
+  assert.doesNotMatch(errores, /admin\/(real|mixto|maqueta_ok|puente):/);
 });

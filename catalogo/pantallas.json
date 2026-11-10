@@ -569,7 +569,7 @@
       "componente": "src/pages_admin.jsx#Tarifarios",
       "permiso": "tarifarios",
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "admin/usuarios",
@@ -857,7 +857,7 @@
       "componente": "src/pages_admin.jsx#MetricasSaaS",
       "permiso": "metricas_saas",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "admin/planes",
@@ -869,7 +869,7 @@
       "componente": "src/pages_admin.jsx#Planes",
       "permiso": "planes",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "admin/salud_implementacion",
@@ -1265,7 +1265,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ClientesContratosPage.jsx#ClientesContratosPage",
       "permiso": "cuentas",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/equipos",
@@ -1277,7 +1277,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/EquiposPage.jsx#EquiposPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/proyectos",
@@ -1373,7 +1373,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ConfiabilidadPage.jsx#KPIsConfiabilidad",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/disponibilidad-mecanica",
@@ -1385,7 +1385,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#DisponibilidadMecanica",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/programacion-pm",
@@ -1397,7 +1397,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#ProgramacionPM",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/sos-telemetria",
@@ -1411,7 +1411,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AnalisisSOS",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/configuracion",
@@ -1425,7 +1425,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ConfiguracionPage.jsx#ConfiguracionPage",
       "permiso": "parametros",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/usuarios",
@@ -1449,7 +1449,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#ConsolidadoPage",
       "permiso": "facturacion",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/finanzas-cxc",
@@ -1499,7 +1499,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/pages1.jsx#CostosPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/certificaciones-activo",
@@ -1547,7 +1547,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/AlquileresPages.jsx#DashboardRentalPage",
       "permiso": "flota_panel",
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/flota",
@@ -1619,7 +1619,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/HSEPage.jsx#AnalisisRiesgoATS",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/epp-certificaciones",
@@ -1631,7 +1631,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/HSEPage.jsx#EPPCertificaciones",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/hse-dashboard",
@@ -1655,7 +1655,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/HSEPage.jsx#PermisosTrabajoHSE",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/protocolo-loto",
@@ -1667,7 +1667,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/HSEPage.jsx#ProtocoloLOTO",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/registro-incidentes",
@@ -1679,7 +1679,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/HSEPage.jsx#RegistroIncidentes",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/dashboard",
@@ -1691,7 +1691,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/dashboardGerencial.jsx#DashboardPage",
       "permiso": "dashboard",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/mapa-campo",
@@ -1717,7 +1717,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/MisOTsPage.jsx#MisOTsPage",
       "permiso": "ot",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/docs",
@@ -1729,7 +1729,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#DocsPage",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/indicadores-confiabilidad",
@@ -1825,7 +1825,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/pages1.jsx#OTDetallePage",
       "permiso": "ot",
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/ots",
@@ -1974,7 +1974,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/fab-estructuras",
@@ -1986,7 +1986,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/fab-piezas",
@@ -1998,7 +1998,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/fab-pruebas",
@@ -2010,7 +2010,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/ing-planos",
@@ -2022,7 +2022,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/ing-tiempos",
@@ -2034,7 +2034,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/mae-cromado",
@@ -2046,7 +2046,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/mae-fresado",
@@ -2058,7 +2058,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/mae-rectificado",
@@ -2070,7 +2070,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/mae-recuperacion",
@@ -2082,7 +2082,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/mae-taladrado",
@@ -2094,7 +2094,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/mae-torneado",
@@ -2106,7 +2106,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/maestranza-bom",
@@ -2120,7 +2120,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/maestranza-of",
@@ -2148,7 +2148,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#ControlProduccion",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/of-calidad",
@@ -2162,7 +2162,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#CalidadPage",
       "permiso": "of",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/of-informes",
@@ -2188,7 +2188,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#NoConformidadesPage",
       "permiso": "of",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/of-oee",
@@ -2202,7 +2202,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#OEEPage",
       "permiso": "of",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/of-planificacion",
@@ -2216,7 +2216,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#PlanificacionOFPage",
       "permiso": "of",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/of-tiempos-mtm",
@@ -2230,7 +2230,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#TiemposMTMPage",
       "permiso": "of",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/of-trazabilidad",
@@ -2242,7 +2242,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#TrazabilidadOF",
       "permiso": "of",
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "placeholder"
     },
     {
       "clave": "operaciones/produccion-crear-of",
@@ -2278,7 +2278,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#GarantiasPage",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/produccion-ingenieria",
@@ -2290,7 +2290,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#IngenieriaBOM",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/produccion-pasaporte",
@@ -2302,7 +2302,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#PasaporteComponentePage",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/produccion-tiempos",
@@ -2314,7 +2314,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#TiemposEstandarPage",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/sol-corte",
@@ -2326,7 +2326,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/sol-estructural",
@@ -2338,7 +2338,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/sol-mig-tig",
@@ -2350,7 +2350,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/sol-recargue",
@@ -2362,7 +2362,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AreaProcesoPage",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/dashboard-transporte",
@@ -2374,7 +2374,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/TransportePages.jsx#DashboardTransporte",
       "permiso": "transporte_comercial",
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/transporte-crear-ov",
@@ -2410,7 +2410,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/TransportePages.jsx#LiquidacionTransporte",
       "permiso": "transporte_comercial",
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/transporte-lugares",
@@ -2458,7 +2458,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/transporte/TarifasTransportePage.jsx#TarifasTransportePage",
       "permiso": "transporte_comercial",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/transporte-viaje",
@@ -2506,7 +2506,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#CatalogoPrecios",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/dashboard-repuestos",
@@ -2518,7 +2518,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#DashboardRepuestos",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/despachos-repuestos",
@@ -2530,7 +2530,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#DespachosRepuestos",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/pedidos-venta",
@@ -2542,7 +2542,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#PedidosVenta",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/repuestos-cotizaciones",
@@ -2554,7 +2554,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#CotizacionesVenta",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/repuestos-crear-pedido",
@@ -2566,7 +2566,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#CrearPedidoPage",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/repuestos-despachos",
@@ -2590,7 +2590,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#DetallePedidoPage",
       "permiso": null,
       "tipo": "subpantalla",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "operaciones/repuestos-ordenes",
@@ -2602,7 +2602,7 @@
       "componente": "operaciones-app/src/zahory-mock/pages/RepuestosVentaPages.jsx#OrdenesVenta",
       "permiso": null,
       "tipo": "menu",
-      "estado": "activa"
+      "estado": "maqueta"
     },
     {
       "clave": "movil/administrativo",
