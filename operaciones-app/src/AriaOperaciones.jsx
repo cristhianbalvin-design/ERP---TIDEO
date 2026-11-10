@@ -27,5 +27,5 @@ export function AriaOperaciones({ sesion, ruta }) {
   const habilitado = sesion?.estado === 'listo' && Boolean(sesion?.empresaId);
   const sociedadId = sesion?.vistaConsolidada ? undefined : (sesion?.sociedadId || undefined);
   return <AsistenteErpPanelBase empresaId={sesion?.empresaId} sociedadId={sociedadId} nombreUsuario={nombre}
-    habilitado={habilitado} pantallaActiva={pantalla} />;
+    habilitado={habilitado} pantallaActiva={pantalla} ocultarFab={ruta === 'inicio'} />;
 }

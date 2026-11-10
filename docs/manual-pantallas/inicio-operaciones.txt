@@ -1,0 +1,14 @@
+clave: inicio_operaciones
+tipo: pantalla
+pantalla: app_operativo
+catalogo: operaciones/inicio
+titulo: Inicio de Operaciones con Aria
+resumen: Muestra tu día en Operaciones: resumen de Aria, indicadores, pendientes por resolver de taller, producción, almacén, transporte, flota y compras, avisos, tus OT y accesos rápidos.
+componentes: operaciones-app/src/InicioOperaciones.jsx#InicioOperaciones, src/inicio/Inicio.jsx#InicioBase, src/inicio/datos.js
+huella: 80dd055400 6912d1acde ab320441f0
+paso: 1 | pantalla=app_operativo | permiso=ninguno | Al entrar a Operaciones se abre Inicio. Aria te saluda y resume tu día; Escuchar mi día lo lee en voz alta y Preséntame mi día recorre contigo los indicadores y pendientes.
+paso: 2 | pantalla=app_operativo | permiso=ninguno | Los indicadores muestran tus pendientes, las OT en ejecución, los partes por revisar y los repuestos por despachar. Cada uno aparece solo si tienes permiso para ver esa información.
+paso: 3 | pantalla=app_operativo | permiso=ninguno | En Por resolver elige Míos para ver lo asignado a ti o Mi área para ver todo lo de tu área, y filtra por Taller, Almacén, Producción, Transporte, Flota o Compras. El botón de cada pendiente abre la pantalla donde se resuelve; el reloj lo pospone hasta mañana.
+paso: 4 | pantalla=app_operativo | permiso=ninguno | La bandeja reúne partes diarios por revisar, órdenes de fabricación con compromiso vencido, viajes programados sin iniciar, reservas de repuestos por despachar, diagnósticos técnicos en borrador, SOLPE por aprobar, certificaciones de equipos que vencen en 30 días y OT en ejecución sin parte desde ayer.
+paso: 5 | pantalla=app_operativo | permiso=ninguno | En la columna derecha, Aria te avisa de certificaciones por vencer, viajes atrasados y OT con mucho tiempo en ejecución; Mi día lista tus OT programadas y en ejecución, y Accesos rápidos te lleva al Planner, a Nueva OT, a la Bandeja de OT y al Monitor de viajes.
+paso: 6 | pantalla=app_operativo | permiso=ninguno | Para preguntar o registrar algo usa el cuadro Pregúntale a Aria o el robot de Aria, que está disponible en todas las pantallas de Operaciones.

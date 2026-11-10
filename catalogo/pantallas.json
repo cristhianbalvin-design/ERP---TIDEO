@@ -1746,12 +1746,12 @@
     {
       "clave": "operaciones/inicio",
       "app": "operaciones",
-      "modulo": "Operaciones",
-      "titulo": "Inicio operativo",
+      "modulo": "Inicio",
+      "titulo": "Inicio operativo (Aria)",
       "ruta": "inicio",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/inicioOperativo.jsx#InicioOperativo",
-      "permiso": null,
+      "componente": "operaciones-app/src/InicioOperaciones.jsx#InicioOperaciones",
+      "permiso": "app_operativo",
       "tipo": "menu",
       "estado": "activa"
     },

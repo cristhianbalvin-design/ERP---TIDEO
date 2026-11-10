@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 3 (4 %) | 21 (27 %) | 1 | 56 |
-| Operaciones | 121 | 0 (0 %) | 26 (21 %) | 0 | 95 |
+| Operaciones | 121 | 1 (1 %) | 26 (21 %) | 0 | 94 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 207 | 3 (1 %) | 47 (23 %) | 1 | 160 |
+| **Total** | 207 | 4 (2 %) | 47 (23 %) | 1 | 159 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -165,7 +165,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Inicio | Mis OTs del día (`mis-ots-hoy`) | maqueta | — | — | — | — |
 | Operaciones | Documentos (`docs`) | activa | — | — | — | — |
 | Operaciones | Indicadores de confiabilidad (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
-| Operaciones | Inicio operativo (`inicio`) | activa | — | — | — | — |
+| Inicio | Inicio operativo (Aria) (`inicio`) | activa | inicio_operaciones | — | — | — |
 | Operaciones | Proveedores (operaciones) (`proveedores`) | placeholder | — | — | — | — |
 | Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | — | — | — | — |

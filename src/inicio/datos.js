@@ -16,7 +16,22 @@ export const formatos = {
   sourcing: ['box', 'cyan', 'Regla automática', 'Ir a Sourcing',
     n => `${n} SOLPE ${n === 1 ? 'aprobada espera' : 'aprobadas esperan'} OC`],
   cot_sin_respuesta: ['file', 'violet', 'Sugerido por Aria', 'Hacer seguimiento',
-    n => `${n} ${n === 1 ? 'cotización sin respuesta' : 'cotizaciones sin respuesta'}`]
+    n => `${n} ${n === 1 ? 'cotización sin respuesta' : 'cotizaciones sin respuesta'}`],
+  // Pendientes del Inicio de Operaciones (inicio_operaciones_pendientes)
+  ops_partes_revision: ['wrench', 'violet', 'Urgente', 'Revisar partes',
+    n => `${n} ${n === 1 ? 'parte diario' : 'partes diarios'} por revisar`],
+  ops_of_atrasada: ['file', 'red', 'Atrasado', 'Ver OF',
+    n => `${n} ${n === 1 ? 'orden de fabricación' : 'órdenes de fabricación'} con compromiso vencido`],
+  ops_viajes_atrasados: ['truck', 'red', 'Atrasado', 'Abrir monitor',
+    n => `${n} ${n === 1 ? 'viaje programado' : 'viajes programados'} sin iniciar`],
+  ops_reservas_despacho: ['box', 'amber', 'Regla automática', 'Ir a despachos',
+    n => `${n} ${n === 1 ? 'reserva de repuestos' : 'reservas de repuestos'} por despachar`],
+  ops_diagnosticos_borrador: ['wrench', 'cyan', 'Sugerido por Aria', 'Abrir diagnósticos',
+    n => `${n} ${n === 1 ? 'diagnóstico técnico' : 'diagnósticos técnicos'} en borrador`],
+  ops_solpe_aprobar: ['file', 'amber', 'Urgente', 'Revisar SOLPE',
+    n => `${n} SOLPE por aprobar`],
+  ops_cert_por_vencer: ['check', 'amber', 'Urgente', 'Ver certificación',
+    n => `${n} ${n === 1 ? 'certificación de equipo' : 'certificaciones de equipo'} por vencer`]
 };
 
 export const fecha = value => value ? new Intl.DateTimeFormat('es-PE', {
@@ -66,7 +81,15 @@ export function subtitulo(item, mio) {
     rrhh: [rrhh, m.tercero],
     oc_atrasada: [m.documento, m.tercero, atraso],
     sourcing: ['Listas para asignar en la Bandeja de Sourcing'],
-    cot_sin_respuesta: [m.documento, saldo, m.fecha && `Enviada el ${fecha(m.fecha)}`]
+    cot_sin_respuesta: [m.documento, saldo, m.fecha && `Enviada el ${fecha(m.fecha)}`],
+    ops_partes_revision: [m.documento, m.tercero && `Técnico: ${m.tercero}`, m.fecha && `Del ${fecha(m.fecha)}`],
+    ops_of_atrasada: [m.documento, m.tercero, atraso],
+    ops_viajes_atrasados: [m.documento, m.tercero, atraso],
+    ops_reservas_despacho: [m.documento && `OT ${m.documento}`,
+      m.estado === 'reservado_parcial_solpe' ? 'Parcial, a la espera de SOLPE' : m.estado && 'Reservada'],
+    ops_diagnosticos_borrador: [m.tercero, m.fecha && `Inspección del ${fecha(m.fecha)}`],
+    ops_solpe_aprobar: [m.documento, m.tercero, urgencia],
+    ops_cert_por_vencer: [m.documento, m.tercero, m.fecha && `Vence el ${fecha(m.fecha)}`]
   };
   return (partes[item.id] || []).filter(Boolean).join(' · ');
 }
@@ -110,5 +133,6 @@ export function textoHablado(texto) {
     })
     .replace(/\bSOLPE\b/g, 'solpes')
     .replace(/\bOC\b/g, 'órdenes de compra')
+    .replace(/\bOF\b(?!-)/g, 'orden de fabricación')
     .replace(/\bOT\b(?!-)/g, 'orden de trabajo');
 }
