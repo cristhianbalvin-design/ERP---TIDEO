@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 4 (5 %) | 21 (27 %) | 1 | 55 |
+| Administración | 77 | 4 (5 %) | 21 (27 %) | 1 | 54 |
 | Operaciones | 121 | 1 (1 %) | 26 (21 %) | 0 | 94 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 207 | 5 (2 %) | 47 (23 %) | 1 | 158 |
+| **Total** | 207 | 5 (2 %) | 47 (23 %) | 1 | 157 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -74,7 +74,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Customer Success | Planes de Exito (`cs_planes`) | activa | — | — | — | — |
 | Customer Success | Renovaciones (`cs_renovaciones`) | activa | — | — | — | — |
 | Dashboards | Dashboards (`dashboard`) | activa | — | — | — | — |
-| Inicio | Inicio (pendientes de hoy) (`inicio`) | activa | — | — | — | — |
+| Inicio | Inicio (pendientes de hoy) (`inicio`) | activa | — | como_usar_aria | — | — |
 | Integraciones | API Keys (`api_keys`) | activa | — | — | — | — |
 | Logística | Almacenes (`inventario`) | activa | — | — | 8 | — |
 | Logística | Transporte y Guias (`remision`) | activa | — | — | 5 | — |
