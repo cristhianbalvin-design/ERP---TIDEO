@@ -34,3 +34,35 @@ export function mensajeErrorAsistente(status) {
   if (status === 502 || status === 504) return 'El asistente no está disponible en este momento. Inténtalo de nuevo.';
   return 'No pude completar la consulta. Inténtalo de nuevo en un momento.';
 }
+
+// Egreso de caja chica preparado por Aria: solo la persona lo confirma desde la tarjeta.
+function mensajeErrorEgreso(error) {
+  const texto = String(error?.message || '');
+  const legible = texto.includes(': ') ? texto.split(': ').slice(1).join(': ') : '';
+  return legible || 'No se pudo registrar el egreso. Inténtalo de nuevo.';
+}
+
+export async function obtenerGastoIdBorrador(borradorId) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.from('asistente_borradores').select('payload').eq('id', borradorId).single();
+  if (error) throw new Error('No se encontró el borrador.');
+  return data?.payload?.gasto_id || null;
+}
+
+export async function confirmarBorradorEgreso({ borradorId, comprobanteUrl, numComprobante }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('asistente_confirmar_borrador', {
+    p_borrador_id: borradorId,
+    p_comprobante_url: comprobanteUrl || null,
+    p_num_comprobante: numComprobante || null,
+  });
+  if (error) throw new Error(mensajeErrorEgreso(error));
+  return data;
+}
+
+export async function cancelarBorradorEgreso(borradorId) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('asistente_cancelar_borrador', { p_borrador_id: borradorId });
+  if (error) throw new Error('No se pudo cancelar el borrador.');
+  return data;
+}

@@ -1,4 +1,4 @@
-import { collectBackedNumbers, comparisonRanges, createHandler, extractMoneyAmounts, hasUnsupportedMoney, isConceptText, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, topicsWithoutCoverage, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
+import { collectBackedNumbers, comparisonRanges, createHandler, ESCRITURA_PROMPT, extractMoneyAmounts, fromAnthropicResponse, toAnthropicRequest, hasUnsupportedMoney, isConceptText, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, topicsWithoutCoverage, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
 
 const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
@@ -1483,4 +1483,227 @@ Deno.test("resumen financiero respalda sus importes con la RPC compuesta", async
   equal(result.respuesta, "Tu CxC total es S/ 120.00 y S/ 20.00 está vencido.");
   equal(x.aiCalls.length, 2);
   equal(result.herramientas_usadas.join(","), "asistente_resumen_financiero");
+});
+
+// ── Claude como proveedor principal, OpenAI de respaldo ───────────────────────
+
+const claudeMsg = (content: any[], stop_reason = "end_turn", usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100 }) =>
+  ({ response: jsonResponse({}), data: fromAnthropicResponse({ content, stop_reason, usage }) });
+
+function setupClaude(options: { claude?: (messages: any[], tools: unknown[], model: string, signal: AbortSignal, toolChoice?: string) => any; ai?: (...args: any[]) => any; rpc?: (name: string, args: Record<string, unknown>) => any; superadmin?: boolean; quota?: unknown; envExtra?: Record<string, string>; sinOpenAI?: boolean } = {}) {
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const claudeCalls: Array<{ messages: any[]; tools: unknown[]; model: string; toolChoice?: string }> = [];
+  const openaiCalls: Array<any[]> = [];
+  const supabase: SupabaseLike = {
+    auth: { getUser: () => Promise.resolve({ data: { user: { id: "user" } }, error: null }) },
+    rpc: (name, args) => {
+      calls.push({ name, args });
+      if (name === "asistente_verificar_cuota") return Promise.resolve({ data: options.quota ?? { conteo: 1, limite: 30, puede_continuar: true }, error: null });
+      if (name === "asistente_registrar_historial") return Promise.resolve({ data: uuid, error: null });
+      if (name === "usuario_es_superadmin_plataforma") return Promise.resolve({ data: options.superadmin === true, error: null });
+      if (name === "plataforma_reportar_falla_credencial") return Promise.resolve({ data: true, error: null });
+      return Promise.resolve(options.rpc ? options.rpc(name, args) : { data: { filas: [] }, error: null });
+    },
+  };
+  const baseEnv: Record<string, string> = { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", ANTHROPIC_API_KEY: "sk-ant", OPENAI_MODEL_ASISTENTE: "gpt-4.1-mini", ...(options.sinOpenAI ? {} : { OPENAI_API_KEY: "test" }), ...(options.envExtra ?? {}) };
+  const handler = createHandler({
+    createSupabase: () => supabase,
+    env: (name) => baseEnv[name],
+    now: () => 1000,
+    callClaude: async (messages, tools, model, signal, toolChoice) => {
+      claudeCalls.push({ messages: structuredClone(messages), tools, model, toolChoice });
+      return options.claude ? await options.claude(messages, tools, model, signal, toolChoice) : claudeMsg([{ type: "text", text: "Hola, soy Aria." }]);
+    },
+    callOpenAI: async (messages, ..._rest) => {
+      openaiCalls.push(structuredClone(messages));
+      return options.ai ? await options.ai(messages, ..._rest) : completion({ role: "assistant", content: "Respuesta de respaldo." });
+    },
+  });
+  const request = (body: Record<string, unknown> = { empresa_id: EMPRESA, pregunta: "Hola" }) => new Request("https://edge.example/asistente-erp", {
+    method: "POST", headers: { Authorization: "Bearer valid-token", Origin: "https://erp.tideo.tech", "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const historial = () => calls.filter(c => c.name === "asistente_registrar_historial").map(c => c.args);
+  return { handler, request, calls, claudeCalls, openaiCalls, historial };
+}
+
+Deno.test("adaptador Claude: system cacheado, herramientas, tool_result y sin parámetros de muestreo", () => {
+  const thinking = { type: "thinking", thinking: "", signature: "sig" };
+  const body = toAnthropicRequest([
+    { role: "system", content: "fijo" },
+    { role: "system", content: "fijo 2" },
+    { role: "system", content: "Fecha de hoy" },
+    { role: "assistant", content: "respuesta previa" },
+    { role: "user", content: "¿cuánto hay en bancos?" },
+    { role: "assistant", content: null, tool_calls: [{ id: "t1", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }], _anthropic_content: [thinking, { type: "tool_use", id: "t1", name: "asistente_resumen_tesoreria", input: {} }] },
+    { role: "tool", tool_call_id: "t1", content: "<datos>{}</datos>" },
+    { role: "system", content: "Verifica cada importe" },
+  ], OPENAI_TOOLS as any[], "claude-haiku-5-5", "required", "low") as any;
+  equal(body.system.length, 3);
+  equal(body.system[1].cache_control?.type, "ephemeral");
+  equal(body.system[2].cache_control, undefined);
+  equal(body.messages[0].role, "user");
+  equal(body.messages[1].role, "assistant");
+  equal(body.messages[3].content[0].type, "thinking");
+  const ultimo = body.messages[body.messages.length - 1];
+  equal(ultimo.role, "user");
+  equal(ultimo.content[0].type, "tool_result");
+  equal(ultimo.content[0].tool_use_id, "t1");
+  assert(String(ultimo.content[1].text).startsWith("[Indicación del sistema]"));
+  equal(body.tool_choice.type, "any");
+  equal(body.tools.length, OPENAI_TOOLS.length);
+  equal(body.tools[body.tools.length - 1].cache_control?.type, "ephemeral");
+  equal(body.output_config.effort, "low");
+  assert(!("temperature" in body) && !("top_p" in body));
+});
+
+Deno.test("adaptador Claude: tool_calls sin bloques previos se convierten en tool_use", () => {
+  const body = toAnthropicRequest([
+    { role: "system", content: "fijo" },
+    { role: "user", content: "hola" },
+    { role: "assistant", content: null, tool_calls: [{ id: "x", type: "function", function: { name: "asistente_resumen_cxc", arguments: "{\"texto\":\"ACME\"}" } }] },
+    { role: "tool", tool_call_id: "x", content: "{}" },
+  ], [], "claude-haiku-5-5") as any;
+  equal(body.messages[1].content[0].type, "tool_use");
+  equal(body.messages[1].content[0].input.texto, "ACME");
+  assert(!("tools" in body));
+});
+
+Deno.test("respuesta de Claude se traduce a mensaje interno con uso de tokens", () => {
+  const data = fromAnthropicResponse({ content: [{ type: "thinking", thinking: "", signature: "s" }, { type: "text", text: "Listo." }, { type: "tool_use", id: "a", name: "asistente_resumen_cxp", input: { texto: "X" } }], stop_reason: "tool_use", usage: { input_tokens: 5, cache_read_input_tokens: 90, cache_creation_input_tokens: 3, output_tokens: 7 } });
+  const message = data.choices[0].message;
+  equal(message.content, "Listo.");
+  equal(message.tool_calls[0].function.name, "asistente_resumen_cxp");
+  equal(JSON.parse(message.tool_calls[0].function.arguments).texto, "X");
+  equal(message._anthropic_content.length, 3);
+  equal(data.usage.prompt_tokens, 98);
+  equal(data.usage.completion_tokens, 7);
+});
+
+Deno.test("con clave de Claude responde Haiku y audita el modelo", async () => {
+  const x = setupClaude();
+  const result = await (await x.handler(x.request())).json();
+  equal(result.respuesta, "Hola, soy Aria.");
+  equal(x.claudeCalls.length, 1);
+  equal(x.claudeCalls[0].model, "claude-haiku-5-5");
+  equal(x.openaiCalls.length, 0);
+  equal(x.historial()[0].p_modelo, "claude-haiku-5-5");
+  equal(x.historial()[0].p_error_code, null);
+  equal(x.claudeCalls[0].messages[1].content, ESCRITURA_PROMPT);
+});
+
+Deno.test("ASISTENTE_PROVEEDOR=openai apaga Claude sin desplegar", async () => {
+  const x = setupClaude({ envExtra: { ASISTENTE_PROVEEDOR: "openai" } });
+  equal((await (await x.handler(x.request())).json()).respuesta, "Respuesta de respaldo.");
+  equal(x.claudeCalls.length, 0);
+  equal(x.historial()[0].p_modelo, "gpt-4.1-mini");
+});
+
+Deno.test("si Claude falla responde OpenAI y queda registrado el respaldo", async () => {
+  const x = setupClaude({ claude: async () => ({ response: new Response("{}", { status: 529 }) }) });
+  const result = await (await x.handler(x.request())).json();
+  equal(result.respuesta, "Respuesta de respaldo.");
+  equal(x.historial()[0].p_modelo, "gpt-4.1-mini");
+  equal(x.historial()[0].p_error_code, "respaldo_openai_http_529");
+  assert(!x.calls.some(c => c.name === "plataforma_reportar_falla_credencial"));
+});
+
+Deno.test("clave rechazada (401) avisa a plataforma y responde con OpenAI", async () => {
+  const x = setupClaude({ claude: async () => ({ response: new Response("{}", { status: 401 }) }) });
+  equal((await x.handler(x.request())).status, 200);
+  const aviso = x.calls.find(c => c.name === "plataforma_reportar_falla_credencial");
+  equal(aviso?.args.p_credencial, "anthropic_aria");
+  equal(x.historial()[0].p_error_code, "respaldo_openai_http_401");
+});
+
+Deno.test("una negativa de Claude (refusal) pasa a OpenAI", async () => {
+  const x = setupClaude({ claude: async () => claudeMsg([], "refusal") });
+  equal((await (await x.handler(x.request())).json()).respuesta, "Respuesta de respaldo.");
+  equal(x.historial()[0].p_error_code, "respaldo_openai_refusal");
+});
+
+Deno.test("respaldo a mitad de conversación quita los bloques de Claude antes de enviar a OpenAI", async () => {
+  let n = 0;
+  const x = setupClaude({
+    claude: async () => ++n === 1
+      ? claudeMsg([{ type: "thinking", thinking: "", signature: "s" }, { type: "tool_use", id: "c1", name: "asistente_resumen_tesoreria", input: {} }], "tool_use")
+      : { response: new Response("{}", { status: 500 }) },
+    rpc: () => ({ data: { cuentas: [] }, error: null }),
+  });
+  equal((await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿cuánto hay en bancos?" }))).json()).respuesta, "Respuesta de respaldo.");
+  equal(x.openaiCalls.length, 1);
+  assert(x.openaiCalls[0].every((message: any) => !("_anthropic_content" in message)));
+  assert(x.openaiCalls[0].some((message: any) => message.role === "assistant" && message.tool_calls?.[0]?.id === "c1"));
+  equal(x.claudeCalls[1].messages.find((m: any) => m.role === "assistant")._anthropic_content[0].type, "thinking");
+});
+
+Deno.test("ronda final con Claude envía herramientas con tool_choice none", async () => {
+  const x = setupClaude({
+    claude: async (_m, tools, _model, _s, choice) => choice === "none"
+      ? claudeMsg([{ type: "text", text: "Con lo consultado no encontré datos." }])
+      : claudeMsg([{ type: "tool_use", id: `t${Math.random()}`, name: "asistente_buscar_leads", input: {} }], "tool_use"),
+  });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿qué leads hay?" }))).json();
+  equal(result.respuesta, "Con lo consultado no encontré datos.");
+  const final = x.claudeCalls[x.claudeCalls.length - 1];
+  equal(final.toolChoice, "none");
+  equal((final.tools as unknown[]).length, OPENAI_TOOLS.length);
+});
+
+Deno.test("modo prueba de modelos: solo superadmin, sin cuota, sin respaldo y con datos de costo", async () => {
+  const denegado = setupClaude({ superadmin: false });
+  equal((await denegado.handler(denegado.request({ empresa_id: EMPRESA, pregunta: "Hola", modelo_eval: "claude-sonnet-5-5" }))).status, 403);
+  equal(denegado.claudeCalls.length, 0);
+
+  const x = setupClaude({ superadmin: true, quota: { conteo: 30, limite: 30, puede_continuar: false } });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Hola", modelo_eval: "claude-sonnet-5-5" }))).json();
+  equal(result.respuesta, "Hola, soy Aria.");
+  equal(result.modelo, "claude-sonnet-5-5");
+  equal(result.tokens_entrada, 110);
+  equal(x.claudeCalls[0].model, "claude-sonnet-5-5");
+  equal(x.historial()[0].p_error_code, "eval");
+
+  const sinRespaldo = setupClaude({ superadmin: true, claude: async () => ({ response: new Response("{}", { status: 500 }) }) });
+  equal((await sinRespaldo.handler(sinRespaldo.request({ empresa_id: EMPRESA, pregunta: "Hola", modelo_eval: "claude-haiku-5-5" }))).status, 502);
+  equal(sinRespaldo.openaiCalls.length, 0);
+
+  const malo = setupClaude({ superadmin: true });
+  equal((await malo.handler(malo.request({ empresa_id: EMPRESA, pregunta: "Hola", modelo_eval: "gpt-9" }))).status, 400);
+});
+
+Deno.test("egreso de caja chica: el borrador listo viaja a la tarjeta y Aria no puede confirmarlo", async () => {
+  let n = 0;
+  const borrador = { id: "b1", fondo: "Caja Chica Taller Ate", monto: 35.5, moneda: "PEN", concepto: "Taxi", categoria: "Logistica", saldo_despues: 5624.5 };
+  const x = setupClaude({
+    claude: async () => ++n === 1
+      ? claudeMsg([{ type: "tool_use", id: "e1", name: "asistente_preparar_egreso_caja_chica", input: { concepto: "Taxi", monto: 35.5, fondo: "Taller Ate", tipo_gasto: "taxi", ceco: "1000" } }], "tool_use")
+      : claudeMsg([{ type: "text", text: "Preparé el borrador por S/ 35.50 del fondo Caja Chica Taller Ate. Revísalo en la tarjeta y pulsa Confirmar." }]),
+    rpc: (name) => name === "asistente_preparar_egreso_caja_chica" ? { data: { estado: "listo", borrador }, error: null } : { data: null, error: null },
+  });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Registra un taxi de S/ 35.50 en la caja chica de Taller Ate, CECO 1000" }))).json();
+  equal(result.borrador.id, "b1");
+  assert(String(result.respuesta).includes("Confirmar"));
+  const rpc = x.calls.find(c => c.name === "asistente_preparar_egreso_caja_chica")!;
+  equal(rpc.args.p_monto, 35.5);
+  equal(rpc.args.p_tipo_gasto, "taxi");
+  equal(rpc.args.p_sociedad_id, null);
+  assert(!TOOL_SPECS.some(tool => tool.name.includes("confirmar")));
+});
+
+Deno.test("egreso con datos faltantes no envía tarjeta", async () => {
+  let n = 0;
+  const x = setupClaude({
+    claude: async () => ++n === 1
+      ? claudeMsg([{ type: "tool_use", id: "e1", name: "asistente_preparar_egreso_caja_chica", input: { concepto: "Taxi", monto: 20 } }], "tool_use")
+      : claudeMsg([{ type: "text", text: "¿De qué fondo sale el gasto?" }]),
+    rpc: () => ({ data: { estado: "faltan_datos", faltan: ["fondo"] }, error: null }),
+  });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Registra un taxi de S/ 20" }))).json();
+  equal(result.borrador, undefined);
+});
+
+Deno.test("caja chica por reponer no exige consultar CxP ni stock bajo", () => {
+  equal(topicsWithoutCoverage("¿Qué fondos de caja chica debo reponer?", ["asistente_resumen_caja_chica"]).join(","), "");
+  equal(topicsWithoutCoverage("¿Cuánto debo?", []).join(","), "cuentas por pagar");
+  assert(topicsWithoutCoverage("¿Qué materiales debo reponer?", []).includes("stock bajo y reposición"));
+  assert(!topicsWithoutCoverage("¿Qué materiales debo reponer?", []).includes("cuentas por pagar"));
 });
