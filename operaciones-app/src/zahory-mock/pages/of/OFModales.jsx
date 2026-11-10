@@ -8,7 +8,7 @@ import {
 } from './ofFichaLogic.js';
 
 // Marco común: fondo, Escape, foco inicial y aviso de cambios sin guardar.
-function ModalBase({ titulo, ayuda, onClose, sucio = false, estrecho = false, children, pie }) {
+export function ModalBase({ titulo, ayuda, onClose, sucio = false, estrecho = false, children, pie }) {
   const ref = useRef(null);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
   const intentarCerrar = () => { if (sucio) setConfirmarSalida(true); else onClose(); };
@@ -51,7 +51,7 @@ function ModalBase({ titulo, ayuda, onClose, sucio = false, estrecho = false, ch
   );
 }
 
-function Campo({ id, label, requerido, error, ayuda, children, completo }) {
+export function Campo({ id, label, requerido, error, ayuda, children, completo }) {
   return (
     <div className={`dx-ui-field${completo ? ' dx-ui-field-full' : ''}`}>
       <label htmlFor={id}>{label}{requerido && <span className="dx-ui-required"> *</span>}</label>
