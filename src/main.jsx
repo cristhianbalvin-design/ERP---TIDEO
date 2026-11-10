@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
+import './aria_asistente.css';
 import './dx_ui_base.css';
 import './ventas.css';
 

@@ -19,6 +19,8 @@ export default defineConfig(({ mode }) => {
       __COMMIT_MSG__: JSON.stringify(getCommitMessage()),
     },
     plugins: [react()],
+    // Aria se comparte con Administración (../src): una sola copia de React y de Supabase en el bundle.
+    resolve: { dedupe: ['react', 'react-dom', '@supabase/supabase-js'] },
     // Puerto fijo para no coincidir con el Vite administrativo ni crear un
     // proxy recursivo cuando este último se inicia en un puerto alternativo.
     server: { port: 5175, strictPort: true },

@@ -1,0 +1,10 @@
+/* Inicio de Operaciones: usa los estilos del Inicio de Administración (src/inicio/inicio.css, dx_ui_base.css).
+   Aquí solo el contenedor (las consultas @container main del Inicio) y los accesos rápidos. */
+.ops-inicio-aria { container: main / inline-size; min-width: 0; --green: #4CAF50; }
+.ops-inicio-aria > .dxi-empty { margin: 24px; }
+.dx-opsini-acc { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 16px; }
+/* En pantallas angostas (celular y tablet en campo) Aria se muestra solo como robot, no con el avatar humano. */
+@container main (max-width:700px) {
+  .ops-inicio-aria .dxi-stage #heroAv { visibility: hidden; }
+  .ops-inicio-aria .dxi-stage { background: var(--ops-aria-robot) center / contain no-repeat; }
+}

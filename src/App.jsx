@@ -6,7 +6,7 @@ import { DASHBOARDS_ACCESS_ANY_OF } from './dashboardsTabs.js';
 import { ApplicationWelcome } from './ApplicationWelcome.jsx';
 import { puedeVerPantalla, tieneAccesoTotal } from './access/roleAccess.js';
 import { AsistenteErpProvider } from './context/AsistenteErpContext.jsx';
-import { AsistenteErpPanel } from './components/AsistenteErpPanel.jsx';
+import { AsistenteErpPanel } from './components/AsistenteErpPanelAdmin.jsx';
 
 // ─── Lazy imports ─────────────────────────────────────────────────────────────
 // Cada archivo de páginas genera un chunk separado, cargado solo cuando el

@@ -2,7 +2,6 @@ import AriaFab from './AriaFab.jsx';
 import AriaLogo from './AriaLogo.jsx';
 import AriaTarjetaEgreso from './AriaTarjetaEgreso.jsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { useApp } from '../context.jsx';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
 
@@ -58,8 +57,8 @@ function TextoSeguro({ texto }) {
   });
 }
 
-export function AsistenteErpPanel({ pantallaActiva }) {
-  const { empresa, sociedadActiva, authSession, authUser } = useApp();
+// Panel de Aria sin dependencia del contexto de una app: lo usan Administración y Operaciones.
+export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false }) {
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
   const [pendientes, setPendientes] = useState(null);
@@ -80,10 +79,8 @@ export function AsistenteErpPanel({ pantallaActiva }) {
   const ultimaConsulta = useRef(null);
   const solicitudInicial = useRef(solicitudApertura);
   const solicitudEnviada = useRef(solicitudApertura);
-  const habilitado = Boolean(authSession && empresa?.id);
-  const sociedadId = sociedadActiva?.id && !['todas', 'all', '**todas**'].includes(String(sociedadActiva.id).toLowerCase()) ? sociedadActiva.id : undefined;
   const sugerencias = sugerenciasPorTipo[contexto?.tipo] || sugerenciasPredeterminadas;
-  const primerNombre = String(authUser?.nombre || '').trim().split(/\s+/)[0];
+  const primerNombre = String(nombreUsuario || '').trim().split(/\s+/)[0];
   const tituloContexto = contexto?.etiqueta || (contexto?.tipo ? `${contexto.tipo} ${contexto.id}` : '');
   const agotada = error?.status === 429 || cuotaRestante === 0;
 
@@ -139,7 +136,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
     if (!reintento) { setMensajes(base); setPregunta(''); }
     setError(null); setConsultando(true);
     try {
-      const data = await consultarAsistenteErp({ empresaId: empresa.id, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
+      const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
       setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null }]);
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {
@@ -156,7 +153,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
 
   if (!habilitado) return null;
   return <div className="dx-asis">
-    <AriaFab ref={botonRef} pendientes={pendientes} abierto={abierto} oculto={pantallaActiva === 'inicio'} onClick={() => setAbierto(true)} />
+    <AriaFab ref={botonRef} pendientes={pendientes} abierto={abierto} oculto={ocultarFab} onClick={() => setAbierto(true)} />
     {abierto && <>
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
@@ -169,7 +166,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
           {!mensajes.length && <><div className="dx-asis-hello"><h3>{primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
           {mensajes.map((mensaje, index) => <React.Fragment key={`${index}-${mensaje.role}`}>
             <div className={`dx-asis-message ${mensaje.role === 'user' ? 'me' : 'ai'}`}>{mensaje.role === 'assistant' && <span className="dx-asis-mini" aria-hidden="true"><AriaLogo size={24} /></span>}<div className={`dx-asis-msg ${mensaje.role === 'user' ? 'me' : 'ai'}`}><TextoSeguro texto={mensaje.content} /></div></div>
-            {mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresa.id} estadoInicial={mensaje.borradorEstado}
+            {mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresaId} estadoInicial={mensaje.borradorEstado}
               onCambio={info => setMensajes(prev => prev.map((item, posicion) => posicion === index ? { ...item, borradorEstado: info } : item))} />}
             {mensaje.role === 'assistant' && mensaje.herramientas?.length > 0 && <div className="dx-asis-tools">{[...new Set(mensaje.herramientas.map(etiquetaHerramienta))].map(etiqueta => <span className="dx-asis-pill cy" key={etiqueta}><i />{etiqueta}</span>)}</div>}
           </React.Fragment>)}

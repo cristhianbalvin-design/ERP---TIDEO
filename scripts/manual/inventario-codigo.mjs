@@ -175,6 +175,14 @@ export function inventarioOperaciones(root = raiz) {
       if (!porRuta.has(caso.ruta)) porRuta.set(caso.ruta, { ...caso, componente: ubicarComponente(imports, archivo, caso.componente) });
     }
   }
+  // Pantallas que OperationalApp renderiza fuera del shadow root (p. ej. el Inicio con Aria).
+  const app = 'operaciones-app/src/OperationalApp.jsx';
+  const { ast: astApp, codigo: codigoApp } = leerAst(app, root);
+  const importsApp = mapaImportaciones(astApp, app);
+  for (const m of codigoApp.matchAll(/route === '([a-z0-9-]+)' \?\s*\(\s*<main[^>]*>\s*<([A-Z][A-Za-z0-9]*)/g)) {
+    const previo = porRuta.get(m[1]);
+    porRuta.set(m[1], { ruta: m[1], alias: previo?.alias ?? [], componente: ubicarComponente(importsApp, app, m[2]) });
+  }
   const { ast: shell } = leerAst(`${base}/components/shell.jsx`, root);
   const zonas = arregloDeclarado(shell, 'SIDEBAR_ZONES');
   const menu = new Map();

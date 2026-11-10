@@ -8,6 +8,8 @@ import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
 import { DEFAULT_WORK_BACK_LABEL, WORK_COMPACT_QUERY, requestWorkBack } from './workMode.js';
 import { WorkDrawerFooter } from './WorkDrawerFooter.jsx';
+import { AriaOperaciones } from './AriaOperaciones.jsx';
+import { InicioOperaciones } from './InicioOperaciones.jsx';
 import { useNotificacionesSistema, useTemaOscuro } from './useCuentaOperativa.js';
 import {
   findAreaForRoute,
@@ -480,11 +482,16 @@ export function OperationalApp() {
             <div className="ops-placeholder">Contenido operativo próximamente</div>
           </main>
         ) : (
-          <main className="ops-imported-main">
-            <ZahoryScreenHost route={route} routeParams={routeParams} onNavigate={navigate} />
-          </main>
+          route === 'inicio' ? (
+            <main className="ops-imported-main"><InicioOperaciones sesion={sesionOperativa} onNavigate={navigate} /></main>
+          ) : (
+            <main className="ops-imported-main">
+              <ZahoryScreenHost route={route} routeParams={routeParams} onNavigate={navigate} />
+            </main>
+          )
         )}
       </section>
+      <AriaOperaciones sesion={sesionOperativa} ruta={route} />
     </div>
   );
 }

@@ -1,23 +1,21 @@
 import AriaFab from '../components/AriaFab.jsx';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useApp } from '../context.jsx';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
-import { SOCIEDAD_TODAS_ID } from '../services/sociedadesService.js';
 import { formatos, fecha, importe, subtitulo, titulo, resumenDia, textoHablado } from './datos.js';
 import { crearMotor } from './motorAria.js';
 import sprite from './sprite.svg?raw';
 import './inicio.css';
 
-const Icon = ({ name }) => <svg className="dxi-i" aria-hidden="true"><use href={`#i-${name}`} /></svg>;
-const preguntas = ['¿Qué debo pagar hoy?', '¿Qué cobros están vencidos?',
+export const Icon = ({ name }) => <svg className="dxi-i" aria-hidden="true"><use href={`#i-${name}`} /></svg>;
+const preguntasAdmin = ['¿Qué debo pagar hoy?', '¿Qué cobros están vencidos?',
   '¿Qué OC están atrasadas?', '¿Qué falta aprobar?'];
 const hoy = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit'
 }).format(new Date());
 const color = { red: 'dxi-ic-red', amber: 'dxi-ic-am', violet: 'dxi-ic-vi', cyan: 'dxi-ic-cy', green: 'dxi-ic-gr' };
-const pill = { 'Vence hoy': 'dxi-is-red', Urgente: 'dxi-is-amber',
+const pill = { 'Vence hoy': 'dxi-is-red', Atrasado: 'dxi-is-red', Urgente: 'dxi-is-amber',
   'Sugerido por Aria': 'dxi-is-cyan', 'Regla automática': 'dxi-is-gray' };
 const valor = (grupo, moneda) => grupo?.por_moneda?.find(x => x.moneda === moneda);
 
@@ -45,7 +43,7 @@ function Hero({ saludo, nombre, dia, resumen, cargando, error, data, hablando, e
   </section>;
 }
 
-function Preguntar({ pregunta, setPregunta, ask }) {
+function Preguntar({ pregunta, setPregunta, ask, preguntas }) {
   return <div className="dxi-ask" id="ask" style={matchMedia('(prefers-reduced-motion: reduce)').matches
     ? undefined : { opacity: 0, transform: 'translateY(14px)' }}>
     <div className="dxi-ask-in">
@@ -183,8 +181,11 @@ function Superposicion({ overlay, data, aviso }) {
   </div>, document.body);
 }
 
-export default function Inicio() {
-  const { empresa, sociedadActiva, authUser, navigate } = useApp();
+// Inicio con Aria, compartido por Administración (InicioAdmin.jsx) y Operaciones (InicioOperaciones.jsx).
+// Cada app entrega su empresa, sociedad, usuario, navegación y la función RPC de su bandeja; Operaciones
+// además reemplaza los indicadores y la columna lateral.
+export function InicioBase({ empresaId, sociedadId = null, authUser, navigate, rpc = 'inicio_pendientes',
+  preguntas = preguntasAdmin, Indicadores = null, Lateral = null }) {
   const { solicitarApertura } = useAsistenteErp();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -199,12 +200,11 @@ export default function Inicio() {
   const [aviso, setAviso] = useState('');
   const root = useRef(null), overlay = useRef(null), motor = useRef(null), steps = useRef([]);
   const toastTimer = useRef(null), tourFrame = useRef(null);
-  const sociedadId = sociedadActiva?.id === SOCIEDAD_TODAS_ID ? null : sociedadActiva?.id || null;
   useEffect(() => {
     let activo = true, timer, cancelarEspera;
     const esperas = [1500, 3000, 5000];
     setData(null); setError(''); setCargando(true);
-    if (!empresa?.id) { setCargando(false); return () => { activo = false; }; }
+    if (!empresaId) { setCargando(false); return () => { activo = false; }; }
     (async () => {
       try {
         const cliente = await getSupabaseClient();
@@ -212,8 +212,8 @@ export default function Inicio() {
         for (let intento = 0; activo; intento++) {
           let respuesta;
           try {
-            respuesta = await cliente.rpc('inicio_pendientes', {
-              p_empresa_id: empresa.id, p_sociedad_id: sociedadId
+            respuesta = await cliente.rpc(rpc, {
+              p_empresa_id: empresaId, p_sociedad_id: sociedadId
             });
           } catch (fallo) {
             if (!(fallo instanceof TypeError) || intento >= esperas.length) throw fallo;
@@ -238,8 +238,8 @@ export default function Inicio() {
       } finally { if (activo) setCargando(false); }
     })();
     return () => { activo = false; clearTimeout(timer); cancelarEspera?.(); };
-  }, [empresa?.id, sociedadId, recarga]);
-  const prefijo = `dx-inicio:${authUser?.id || ''}:${empresa?.id || ''}:`;
+  }, [empresaId, sociedadId, recarga, rpc]);
+  const prefijo = `dx-inicio:${authUser?.id || ''}:${empresaId || ''}:`;
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem(prefijo + hoy()) || '[]');
@@ -312,22 +312,23 @@ export default function Inicio() {
     <div aria-hidden="true" dangerouslySetInnerHTML={{ __html: sprite }} />
     <section className="dxi-root" ref={root}><div className="dxi-main">
       <Hero {...{ saludo, nombre, dia, resumen, cargando, error, data, hablando, escuchar, recorrer }} />
-      <section className="dxi-content"><Preguntar {...{ pregunta, setPregunta, ask }} />
+      <section className="dxi-content"><Preguntar {...{ pregunta, setPregunta, ask, preguntas }} />
         {cargando && <div className="dxi-empty" role="status">Cargando pendientes…</div>}
         {error && <div className="dxi-empty" role="alert">{error} <button onClick={() => setRecarga(x => x + 1)}>
           Reintentar</button></div>}
         {data && <><div className="dx-ui-kpi-row dxi-reveal" id="kpis"><div className="dx-ui-kpi">
           <strong id="kN">{data.filas_mias || 0}</strong><span>Míos por resolver<br />
             <i id="kA" style={{ fontStyle: 'normal' }}>{data.filas_area || 0} en mi área</i></span></div>
+          {Indicadores && <Indicadores data={data} />}
           {data.ver_finanzas && <><Kpi cero grupo={data.dinero?.pagar_hoy} titulo={<>Por pagar<br />hoy</>} />
             <Kpi grupo={data.dinero?.pagar_vencido} titulo="CxP vencida" />
             <Kpi grupo={data.dinero?.cobrar_vencido} titulo="CxC vencida" /></>}</div>
           {data.fuentes_con_error?.length > 0 && <div className="dxi-empty" role="status">
             Falta información de algunas áreas: {data.fuentes_con_error.join(', ')}.</div>}
           <div className="dxi-cols"><Bandeja {...{ data, scope, setScope, area, setArea, visibles, filtrados,
-            navigate, posponer }} /><div className="dxi-side"><Avisos {...{ data, navigate }} />
+            navigate, posponer }} /><div className="dxi-side">{Lateral ? <Lateral {...{ data, navigate }} /> : <><Avisos {...{ data, navigate }} />
             {data.ver_finanzas && data.dinero && <Dinero dinero={data.dinero} {...{ moneda, setMoneda }} />}
-            {data.agenda && <Agenda agenda={data.agenda} />}</div></div></>}
+            {data.agenda && <Agenda agenda={data.agenda} />}</>}</div></div></>}
       </section>
     </div></section><Superposicion {...{ overlay, data, aviso }} />
   </>;
