@@ -1,10 +1,14 @@
 clave: tesoreria
 tipo: pantalla
 pantalla: tesoreria
+catalogo: admin/tesoreria
 titulo: Tesorería y match bancario
-resumen: Consulta saldos y movimientos bancarios, y relaciona movimientos con operaciones registradas.
-fuentes: src/pages_fin.jsx,src/services/tesoreriaService.js
-revision: dd85e0e
-paso: 1 | pantalla=tesoreria | permiso=ninguno | Revisa las cuentas bancarias y sus saldos por moneda. El resumen también muestra ingresos y egresos del mes.
-paso: 2 | pantalla=tesoreria | permiso=ninguno | Abre los movimientos para revisar ingresos, egresos y referencias. Usa los filtros disponibles para acotar la lista.
-paso: 3 | pantalla=tesoreria | permiso=ninguno | Enlaza un movimiento bancario con el registro correspondiente mediante la conciliación. Verifica la cuenta, fecha e importe antes de guardar.
+resumen: Consulta saldos y flujo de caja, concilia movimientos con el extracto del banco y registra movimientos manuales y transferencias entre cuentas propias.
+componentes: src/pages_fin.jsx#Tesoreria, src/services/tesoreriaService.js
+huella: b0397fbc8c 5f79da0382
+paso: 1 | pantalla=tesoreria | permiso=ninguno | En la pestaña Flujo de caja revisa las cuentas bancarias, sus saldos por moneda y la proyección a 90 días. Si se proyecta un saldo negativo, la pantalla muestra una alerta.
+paso: 2 | pantalla=tesoreria | permiso=ninguno | En Extracto banco usa Importar extracto para cargar los movimientos del banco desde un archivo CSV. El historial de lotes permite revisar lo importado y borrar un lote cargado por error.
+paso: 3 | pantalla=tesoreria | permiso=ninguno | En Match Bancario compara los movimientos del sistema con los del extracto. Selecciona ambos lados y usa Confirmar match; verifica cuenta, fecha e importe antes de confirmar. Un match se puede deshacer.
+paso: 4 | pantalla=tesoreria | permiso=ninguno | Usa Movimiento manual para registrar un ingreso o egreso que no proviene de otro módulo, indicando cuenta, fecha, monto y referencia.
+paso: 5 | pantalla=tesoreria | permiso=tesoreria:crear | Para mover dinero entre cuentas propias elige Movimiento manual y el tipo Transferencia entre cuentas. Indica cuenta de origen y de destino, fecha y monto; ambas deben estar activas, ser de la misma sociedad y no ser cuentas de detracciones. Si las monedas son distintas, ingresa el tipo de cambio en soles por unidad extranjera; la pantalla muestra el monto recibido y la diferencia referencial.
+paso: 6 | pantalla=tesoreria | permiso=ninguno | Usa Agregar cuenta para registrar una cuenta bancaria con su sociedad y su saldo inicial.

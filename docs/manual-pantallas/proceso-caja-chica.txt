@@ -1,13 +1,15 @@
 clave: proceso_caja_chica
 tipo: proceso
 pantalla: ninguna
+catalogo: admin/caja
 titulo: Ciclo del fondo de Caja Chica
-resumen: Controla un fondo desde su asignación hasta el arqueo y cierre.
-fuentes: src/pages_fin.jsx,src/services/cajaChicaService.js
-revision: dd85e0e
+resumen: Controla un fondo desde su creación hasta el arqueo y el cierre con saldo cero.
+componentes: src/pages_fin.jsx#CajaChica, src/components/NuevoEgreso.jsx#NuevoEgreso, src/components/CerrarFondoModal.jsx#CerrarFondoModal
+huella: 8d126ca1e8 2c804b78dc e7344f6212
 pantalla_recorrido: caja
-paso: 1 | pantalla=caja | permiso=caja:crear | Crea el fondo e indica su responsable, importe y origen. Revisa los datos antes de confirmar.
-paso: 2 | pantalla=caja | permiso=ninguno | Registra cada egreso contra el fondo y adjunta el sustento disponible.
-paso: 3 | pantalla=caja | permiso=ninguno | Presenta la rendición indicando el periodo y el importe solicitado.
-paso: 4 | pantalla=caja | permiso=caja:aprobar | Revisa y aprueba el importe de la rendición para gestionar la reposición del fondo.
-paso: 5 | pantalla=caja | permiso=ninguno | Realiza el arqueo informando el efectivo contado y los comprobantes pendientes; revisa diferencias y cierra el fondo.
+paso: 1 | pantalla=caja | permiso=caja:crear | Crea el fondo con su responsable, importe, moneda y origen del dinero.
+paso: 2 | pantalla=caja | permiso=ninguno | Registra cada egreso con Nuevo egreso: tipo de gasto, categoría del Estado de Resultados, comprobante adjunto y revisión final.
+paso: 3 | pantalla=caja | permiso=ninguno | Cuando el fondo necesite reposición, presenta la rendición del periodo.
+paso: 4 | pantalla=caja | permiso=caja:aprobar | Revisa y aprueba o rechaza la rendición para reponer el fondo.
+paso: 5 | pantalla=caja | permiso=ninguno | Realiza el arqueo con el efectivo contado y revisa las diferencias.
+paso: 6 | pantalla=caja | permiso=caja:editar | Cierra el fondo dejando el saldo en cero: transfiere lo que quede a otra caja abierta o devuélvelo a una cuenta bancaria.

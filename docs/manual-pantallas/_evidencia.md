@@ -11,3 +11,10 @@ El acceso `ver` para fichas de pantalla se aplica con `asistente_autorizar` en `
 `proceso-caja-chica`: ciclo y permisos en `src/pages_fin.jsx:7147-7156,7463-7512,7571-7572,7738,7746-7750`; cierre está en `supabase/migrations/585_caja_chica_cierre_atomico.sql`.
 
 Permisos de acción no verificados: conciliar en Tesorería; egreso, solicitar rendición, aporte y arqueo/cierre en Caja Chica; crear compra o gasto en Compras/Gastos. Los pasos correspondientes solo exigen `ver` de su pantalla. La creación de fondo y la aprobación/rechazo de rendición sí declaran `caja:crear` y `caja:aprobar`; edición de Compras/Gastos declara el permiso efectivo `caja:editar`.
+
+## Revisión 2026-11-10 (F0 del catálogo)
+
+- `tesoreria`: transferencias entre cuentas propias en `TransferenciaPanel` (`src/pages_fin.jsx`), RPC `registrar_transferencia_tesoreria` en `supabase/migrations/667_tesoreria_transferencias.sql:45-132`, que exige `tesoreria:crear`, cuentas activas, misma sociedad, sin detracciones y tipo de cambio cuando las monedas difieren. Pestañas `match`, `resumen` y `extracto` en el componente `Tesoreria`.
+- `caja` y `proceso_caja_chica`: egreso con `NuevoEgreso` (`src/components/NuevoEgreso.jsx`, pasos 1-3, categoría del ER obligatoria con `MENSAJE_CATEGORIA_EGRESO_REQUERIDA` en `src/utils/egresoCategoria.js:70` y sugerencia de `sugerirCategoriaEgresoService.js`); el egreso lo registra quien tenga `caja:crear` o sea responsable del fondo (`supabase/migrations/585_caja_chica_cierre_atomico.sql:374`); el cierre exige `caja:editar` (`585_caja_chica_cierre_atomico.sql:471`) y saldo cero con destino en otra caja o cuenta (`src/services/cajaChicaCierreLogic.js`, `CerrarFondoModal`).
+- `compras_gastos`: pestañas Todos/Campo/Backoffice/Pendientes revisión, «Confirmar — marcar revisado» y bloqueos de edición de `motivoBloqueoEdicion` en `ComprasGastos` (`src/pages_ops.jsx`); edición con `caja:editar`.
+- `proceso_solpe_pago`: botones «Nueva SOLPE» y «Generar OC» en `SOLPE`, «Nueva recepcion» y «Completar» en `Recepciones`, y la Bandeja de Sourcing (`BandejaSourcing`, permiso `ordenes_compra`).

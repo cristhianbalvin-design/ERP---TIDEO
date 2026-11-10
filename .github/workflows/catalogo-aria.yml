@@ -1,0 +1,23 @@
+name: Catálogo de pantallas y manual de Aria
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Pruebas del catálogo y del manual
+        run: npm run test:manual
+      - name: Todas las pantallas del código están en el catálogo
+        run: node scripts/manual/catalogo.mjs verificar
+      - name: Fichas del manual al día con su código
+        run: node scripts/verificar-manual-pantallas.mjs --solo-avisar
