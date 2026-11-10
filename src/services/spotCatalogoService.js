@@ -6,7 +6,7 @@ export async function listarSpotCatalogoVigente(fecha = hoyPeru()) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from('spot_catalogo')
-    .select('id,codigo,descripcion,anexo,porcentaje,vigencia_desde,vigencia_hasta')
+    .select('id,codigo,descripcion,anexo,porcentaje,monto_minimo,umbral_operador,vigencia_desde,vigencia_hasta')
     .lte('vigencia_desde', fecha)
     .or(`vigencia_hasta.is.null,vigencia_hasta.gte.${fecha}`)
     .order('codigo');

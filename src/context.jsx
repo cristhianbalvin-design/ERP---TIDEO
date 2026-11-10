@@ -5434,10 +5434,18 @@ export function AppProvider({ children }) {
       throw new Error('El CEBE seleccionado no está vigente para la fecha de emisión.');
     }
 
-    const serieDoc = (seriesDocumentarias || []).find(s => s.documento === 'Facturas' && s.estado === 'activo');
-    const numero = datos.numero || (serieDoc
+    // Cada tipo usa su serie: la boleta no debe avanzar el correlativo de facturas.
+    const esBoletaDoc = datos.tipo_documento === 'boleta';
+    const serieDoc = (seriesDocumentarias || [])
+      .find(s => s.documento === (esBoletaDoc ? 'Boletas' : 'Facturas') && s.estado === 'activo');
+    const numeroSerie = serieDoc
       ? `${serieDoc.serie}-${String(Number(serieDoc.siguiente_correlativo)).padStart(4,'0')}`
+      : null;
+    const numero = datos.numero || numeroSerie || (esBoletaDoc
+      ? `B001-${String((facturas||[]).filter(f => f.tipo_documento === 'boleta').length+1).padStart(4,'0')}`
       : `F001-${String((facturas||[]).length+1).padStart(4,'0')}`);
+    // Solo avanza la serie si se usó el número que ella propuso (no si el usuario escribió otro).
+    const avanzaSerie = Boolean(serieDoc) && numero === numeroSerie;
 
     // En Supabase la factura y su CxC se persisten juntas. No se debe usar
     // emitirFactura + generarCxC por separado: ambas escrituras compiten y la
@@ -5480,7 +5488,7 @@ export function AppProvider({ children }) {
         setValorizaciones(prev => prev.map(v => v.id === datos.valorizacion_id ? { ...v, estado: 'facturada' } : v));
       }
       if (resultado.os?.id) setOsClientes(prev => prev.map(os => os.id === resultado.os.id ? resultado.os : os));
-      if (serieDoc) {
+      if (avanzaSerie) {
         const nextCorr = Number(serieDoc.siguiente_correlativo) + 1;
         setSeriesDocumentarias(prev => prev.map(s => s.id === serieDoc.id ? { ...s, siguiente_correlativo: nextCorr } : s));
         getSupabaseClient().then(sb =>
@@ -5518,7 +5526,7 @@ export function AppProvider({ children }) {
       monto_neto_cobrable: datos.aplica_retencion ? (datos.monto_neto_cobrable || datos.total) : null,
     });
 
-    if (serieDoc && facturaId) {
+    if (avanzaSerie && facturaId) {
       const nextCorr = Number(serieDoc.siguiente_correlativo) + 1;
       setSeriesDocumentarias(prev => prev.map(s => s.id === serieDoc.id ? { ...s, siguiente_correlativo: nextCorr } : s));
       if (isSupabaseConfigured()) {

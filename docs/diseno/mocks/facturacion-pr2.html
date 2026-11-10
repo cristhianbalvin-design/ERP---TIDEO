@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emisión de comprobantes · mock PR2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+
+/* Mock PR1 Facturación — clases dx-ui-* del estándar (src/dx_ui_base.css) + prefijo dx-fac- para lo propio de la pantalla.
+   Datos: tenant PRUEBA (emp_2000000000), consultados el 2026-11-09. */
+:root{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3;
+  --dx-ui-border:#C9CFD8; --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937; --dx-ui-hover:#F6FBFC;
+  --dx-ui-cyan-bg:#E0F7FA; --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A; --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08);
+  --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-hover:#172033;
+  --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08);
+  --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-hover:#172033;
+  --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--dx-ui-bg);color:var(--dx-ui-ink);font:14px/1.4 'DM Sans',sans-serif;padding:20px 16px 48px;overflow-x:hidden}
+.mock-bar{max-width:1180px;margin:0 auto 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--dx-ui-gray);font-size:12px}
+.mock-bar b{color:var(--dx-ui-navy)}
+.mock-bar button{height:32px;padding:0 12px;border:1px solid var(--dx-ui-line);border-radius:999px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:600 12px 'DM Sans',sans-serif;cursor:pointer}
+.mock-bar .sp{margin-left:auto}
+
+/* ===== Estándar dx-ui (copia literal de src/dx_ui_base.css, lo necesario para el mock) ===== */
+.dx-ui{max-width:1180px;margin:0 auto;color:var(--dx-ui-ink)}
+.dx-ui .dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui .dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui .dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui .dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.dx-ui .dx-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.dx-ui .dx-btn:hover{background:var(--dx-ui-hover)}
+.dx-ui .dx-btn.primary{border-color:var(--dx-ui-navy);background:var(--dx-ui-navy);color:var(--dx-ui-bg)}
+.dx-ui .dx-btn.primary:hover{opacity:.88}
+.dx-ui .dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ui .dx-btn:disabled{border-color:var(--dx-ui-line);background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);opacity:.55;cursor:not-allowed}
+.dx-ui .dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui .dx-ui-kpi{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card)}
+.dx-ui .dx-ui-kpi strong{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif;white-space:nowrap}
+.dx-ui .dx-ui-kpi span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui .dx-ui-card{container-type:inline-size;overflow:hidden;width:100%;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 1px 2px rgba(15,27,48,.04)}
+.dx-ui .dx-ui-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-toolbar h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 16px/1.4 'Sora',sans-serif}
+.dx-ui .dx-ui-count{color:var(--dx-ui-gray);font-size:12px;white-space:nowrap}
+.dx-ui .dx-ui-search{display:flex;align-items:center;gap:8px;width:340px;max-width:100%;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-search:focus-within{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ui .dx-ui-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui .dx-ui-head,.dx-ui .dx-ui-row{display:grid;grid-template-columns:var(--dx-ui-cols,minmax(0,1fr));column-gap:16px;align-items:center;padding-inline:20px}
+.dx-ui .dx-ui-head{min-height:38px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ui .dx-ui-row{min-height:68px;border-bottom:1px solid var(--dx-ui-line-soft);cursor:pointer;transition:background .12s}
+.dx-ui .dx-ui-row:last-child{border-bottom:0}
+.dx-ui .dx-ui-row:hover{background:var(--dx-ui-hover)}
+.dx-ui .dx-ui-row:hover .dx-ui-arrow{color:var(--dx-ui-navy);transform:translateX(2px)}
+.dx-ui .dx-ui-row:focus-visible{position:relative;z-index:1;outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-ui .dx-ui-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ui .dx-ui-pill i{width:6px;height:6px;flex:none;border-radius:50%;background:currentColor}
+.dx-ui .dx-ui-pill.is-amber{background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)} .dx-ui .dx-ui-pill.is-amber i{background:var(--dx-ui-amber-dot)}
+.dx-ui .dx-ui-pill.is-green{background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg)}
+.dx-ui .dx-ui-pill.is-red{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)} .dx-ui .dx-ui-pill.is-red i{background:var(--dx-ui-red-dot)}
+.dx-ui .dx-ui-pill.is-gray{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)} .dx-ui .dx-ui-pill.is-gray i{background:var(--dx-ui-gray-dot)}
+.dx-ui .dx-ui-pill.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui .dx-ui-arrow{color:#9AA3B2;transition:.12s}
+.dx-ui .dx-ui-empty{padding:48px 20px;color:var(--dx-ui-gray);text-align:center}
+.dx-ui .dx-ui-field{display:flex;min-width:0;flex-direction:column;gap:6px;font-size:12px;font-weight:600}
+.dx-ui .dx-ui-field > label{min-height:18px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-ui .dx-ui-field input,.dx-ui .dx-ui-select{box-sizing:border-box;width:100%;min-width:0;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui .dx-ui-select{padding:0 34px 0 12px;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dx-ui-gray) 50%),linear-gradient(135deg,var(--dx-ui-gray) 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.dx-ui .dx-ui-field input:focus,.dx-ui .dx-ui-select:focus{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-ui .dx-ui-field-hint{color:var(--dx-ui-gray);font-size:12px;font-weight:400}
+/* Modal: se trae de zahory.css al admin (pregunta 4 aprobada) */
+.dx-ui .dx-ui-overlay{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;overflow:auto;padding:20px;background:color-mix(in srgb,#0B1220 55%,transparent)}
+.dx-ui .dx-ui-dialog{display:flex;flex-direction:column;width:min(620px,100%);max-height:calc(100dvh - 40px);overflow:auto;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 18px 48px rgba(0,0,0,.24)}
+.dx-ui .dx-ui-dialog-wide{width:min(940px,100%)}
+.dx-ui .dx-ui-dialog-head,.dx-ui .dx-ui-dialog-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-dialog-head h2{margin:0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif}
+.dx-ui .dx-ui-dialog-head p{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-dialog-foot{justify-content:flex-end;margin-top:auto;border-top:1px solid var(--dx-ui-line);border-bottom:0;flex-wrap:wrap}
+
+/* ===== Propio del modal de emisión: dx-fem- ===== */
+.dx-ui .dx-ui-dialog.dx-fem{width:min(1080px,100%);container-type:inline-size;overflow:hidden;max-height:calc(100dvh - 40px)}
+.dx-fem .dx-fem-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0;min-height:0;flex:1 1 auto;overflow:auto}
+.dx-fem .dx-fem-aside{position:sticky;top:0;align-self:start}
+.dx-fem .dx-ui-dialog-foot,.dx-fem .dx-ui-dialog-head{flex:none;background:var(--dx-ui-card)}
+.dx-fem .dx-fem-main{display:grid;gap:18px;padding:18px 20px;min-width:0}
+.dx-fem .dx-fem-aside{border-left:1px solid var(--dx-ui-line);background:var(--dx-ui-head);padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.dx-fem .dx-fem-block{display:grid;gap:12px}
+.dx-fem .dx-fem-block h3{margin:0;color:var(--dx-ui-navy);font:700 14px 'Sora',sans-serif;display:flex;align-items:center;gap:8px}
+.dx-fem .dx-fem-block h3 b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:11px}
+.dx-fem .dx-ui-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:14px 16px}
+.dx-fem .dx-ui-form-grid.is-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dx-fem .dx-ui-required{color:var(--dx-ui-red-fg)}
+.dx-fem .dx-ui-field-error{color:var(--dx-ui-red-fg);font-size:12px;font-weight:400}
+.dx-fem [aria-invalid="true"]{border-color:var(--dx-ui-red-dot)!important}
+.dx-fem textarea{box-sizing:border-box;width:100%;min-height:64px;padding:10px 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif;resize:vertical}
+.dx-fem .dx-fem-tabs{display:inline-flex;gap:4px;padding:3px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-head)}
+.dx-fem .dx-fem-tabs button{height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-fem .dx-fem-tabs button[aria-pressed="true"]{background:var(--dx-ui-card);color:var(--dx-ui-navy);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.dx-fem .dx-fem-lines{border:1px solid var(--dx-ui-line);border-radius:10px;overflow:hidden}
+.dx-fem .dx-fem-lcols{--dx-ui-cols:minmax(0,1fr) 120px 70px 110px 110px 32px}
+.dx-fem .dx-fem-lines .dx-ui-head,.dx-fem .dx-fem-lines .dx-ui-row{padding-inline:12px;column-gap:10px}
+.dx-fem .dx-fem-lines .dx-ui-row{min-height:60px;cursor:default;align-items:start;padding-block:10px}
+.dx-fem .dx-fem-lines input,.dx-fem .dx-fem-lines select{box-sizing:border-box;width:100%;height:40px;padding:0 10px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-fem .dx-fem-lines input.num{text-align:right;font-variant-numeric:tabular-nums}
+.dx-fem .dx-fem-amt{height:40px;display:flex;align-items:center;justify-content:flex-end;font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy);font-variant-numeric:tabular-nums}
+.dx-fem .dx-fem-del{width:32px;height:40px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font-size:18px;cursor:pointer}
+.dx-fem .dx-fem-addline{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;border-top:1px solid var(--dx-ui-line-soft)}
+.dx-fem .dx-fem-hint{color:var(--dx-ui-gray);font-size:12px}
+.dx-fem .dx-fem-resolved{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:40px;padding:6px 6px 6px 12px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-head)}
+.dx-fem .dx-fem-resolved b{color:var(--dx-ui-navy)}
+.dx-fem .dx-fem-resolved small{display:block;color:var(--dx-ui-gray)}
+.dx-fem .dx-fem-tot{display:grid;gap:8px}
+.dx-fem .dx-fem-tot div{display:flex;justify-content:space-between;gap:10px;font-variant-numeric:tabular-nums}
+.dx-fem .dx-fem-tot span{color:var(--dx-ui-gray)}
+.dx-fem .dx-fem-tot .is-total{padding-top:10px;border-top:1px solid var(--dx-ui-line)}
+.dx-fem .dx-fem-tot .is-total b{font:700 22px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-fem .dx-fem-tot .is-net b{color:var(--dx-ui-green-fg)}
+.dx-fem .dx-fem-card{display:grid;gap:6px;padding:12px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);font-size:13px}
+.dx-fem .dx-fem-card h4{margin:0;font:700 13px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-fem .dx-fem-card div{display:flex;justify-content:space-between;gap:8px}
+.dx-fem .dx-fem-card span{color:var(--dx-ui-gray)}
+.dx-fem .dx-fem-warn{padding:12px;border:1px solid color-mix(in srgb,var(--dx-ui-amber-dot) 35%,transparent);border-radius:10px;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg);font-size:13px;display:grid;gap:8px}
+.dx-fem .dx-fem-warn label{display:flex;gap:8px;align-items:flex-start;font-weight:600}
+.dx-fem .dx-fem-err{padding:10px 12px;border-radius:10px;background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);font-size:13px}
+.dx-fem .dx-ui-dialog-foot{justify-content:space-between}
+.dx-fem .dx-ui-dialog-head{flex-wrap:wrap;align-items:flex-start}
+.dx-fem .dx-fem-headtools{display:flex;gap:10px;align-items:center;margin-left:auto}
+.dx-fem .dx-fem-foot-msg{color:var(--dx-ui-gray);font-size:12px;margin-right:auto}
+@container (max-width:900px){
+  .dx-fem .dx-fem-body{grid-template-columns:minmax(0,1fr)}
+  .dx-fem .dx-fem-aside{border-left:0;border-top:1px solid var(--dx-ui-line);position:static}
+}
+@container (max-width:760px){
+  .dx-fem .dx-ui-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dx-fem .dx-fem-lines .dx-ui-head{display:none}
+  .dx-fem .dx-fem-lcols{--dx-ui-cols:minmax(0,1fr) minmax(0,1fr)}
+  .dx-fem .dx-fem-lcols > :first-child{grid-column:1 / -1}
+  .dx-fem .dx-fem-lcols > .dx-fem-amt{justify-content:flex-start}
+}
+@container (max-width:480px){ .dx-fem .dx-fem-headtools{width:100%;justify-content:space-between} .dx-fem .dx-ui-form-grid,.dx-fem .dx-ui-form-grid.is-2{grid-template-columns:minmax(0,1fr)} }
+.mock-bg{max-width:1180px;margin:0 auto;opacity:.5}
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <b>Mock PR2 · Emisión de comprobantes</b> · datos reales del tenant PRUEBA al 09/11/2026
+  <span class="sp"></span>
+  <button type="button" data-st="directa">Factura directa</button>
+  <button type="button" data-st="errores">Errores de validación</button>
+  <button type="button" data-st="val">Desde valorización</button>
+  <button type="button" id="theme">Tema: auto</button>
+</div>
+<div class="dx-ui">
+<div class="dx-ui-overlay">
+<div class="dx-ui-dialog dx-ui-dialog-wide dx-fem" role="dialog" aria-modal="true" aria-labelledby="fem-t">
+  <div class="dx-ui-dialog-head">
+    <div><h2 id="fem-t">Emitir comprobante</h2><p id="fem-sub">Factura directa · se crea con su cuenta por cobrar</p></div>
+    <div class="dx-fem-headtools">
+      <div class="dx-fem-tabs" role="group" aria-label="Origen"><button type="button" aria-pressed="true" data-st="directa">Directa</button><button type="button" aria-pressed="false" data-st="val">Desde valorización</button></div>
+      <button class="dx-fac-x" type="button" aria-label="Cerrar" style="width:36px;height:36px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font-size:20px">×</button>
+    </div>
+  </div>
+  <div class="dx-fem-body">
+    <div class="dx-fem-main" id="main"></div>
+    <aside class="dx-fem-aside" id="aside" aria-label="Resumen del comprobante"></aside>
+  </div>
+  <div class="dx-ui-dialog-foot">
+    <span class="dx-fem-foot-msg" id="foot-msg">Se emite la factura y su CxC en una sola operación.</span>
+    <button class="dx-btn" type="button">Cancelar</button>
+    <button class="dx-btn primary" type="button" id="emit">Emitir factura</button>
+  </div>
+</div>
+</div>
+</div>
+<script>
+const F = {
+  directa: { sub:'Factura directa · se crea con su cuenta por cobrar', errs:{} },
+  errores: { sub:'Factura directa · se crea con su cuenta por cobrar', errs:{
+    cliente:'Selecciona el cliente.', cebe:'Selecciona el CEBE.', linea0:'Escribe la descripción de la partida.', precio0:'El precio debe ser mayor que 0.', venc:'El vencimiento no puede ser anterior a la emisión.' } },
+  val: { sub:'Desde valorización · VAL-D0004 · Agosto 2026', errs:{} },
+};
+const field=(id,label,ctrl,{req=false,err='',hint=''}={})=>{
+  const attrs=` id="${id}"${err?' aria-invalid="true"':''}`;
+  return `<div class="dx-ui-field"><label for="${id}">${label}${req?' <span class="dx-ui-required">*</span>':''}</label>`+
+    ctrl.replace('{A}',attrs)+(err?`<span class="dx-ui-field-error" role="alert">${err}</span>`:hint?`<span class="dx-ui-field-hint">${hint}</span>`:'')+'</div>';
+};
+const select=(opts,v='')=>`<select class="dx-ui-select"{A}>${opts.map(o=>`<option${o===v?' selected':''}>${o}</option>`).join('')}</select>`;
+const fix=s=>s;
+function render(st){
+  const e=F[st].errs, isVal=st==='val';
+  document.getElementById('fem-sub').textContent=F[st].sub;
+  document.querySelectorAll('.dx-fem-tabs button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.st===(isVal?'val':'directa'))));
+  const cliente = st==='errores' ? '' : (isVal ? '' : 'Cementos Altiplano S.A.A.');
+  const doc = `<section class="dx-fem-block"><h3><b>1</b>Documento</h3><div class="dx-ui-form-grid">
+    ${field('f-tipo','Tipo',select(['Factura','Boleta de venta','Nota de crédito','Nota de débito'],'Factura'),{req:true})}
+    ${field('f-num','Número','<input{A} value="F001-0034">',{req:true,hint:'Propuesto por la serie de facturas; puedes cambiarlo.'})}
+    ${field('f-soc','Sociedad',select(['Andes Industrial Services','Andes Rental & Logistics'],'Andes Industrial Services'),{req:true})}
+  </div></section>`;
+  const origen = isVal ? `<section class="dx-fem-block"><h3><b>2</b>Origen</h3>
+    <div class="dx-ui-form-grid is-2">
+      <div class="dx-ui-field"><label>Valorización <span class="dx-ui-required">*</span></label><div class="dx-fem-resolved"><div><b>VAL-D0004 · Agosto 2026</b><small>OS-2026-0163 · Transportes Interoceánica Cargo S.A.C.</small></div><button class="dx-btn" type="button" style="height:32px">Cambiar</button></div></div>
+      ${field('f-cebe','CEBE',select(['CEBE-OS-BETA-001 · Órdenes de Servicio Planta Beta'],'CEBE-OS-BETA-001 · Órdenes de Servicio Planta Beta'),{req:true,hint:'Heredado de la OS; puedes cambiarlo.'})}
+    </div></section>`
+  : `<section class="dx-fem-block"><h3><b>2</b>Cliente y origen</h3><div class="dx-ui-form-grid">
+    ${field('f-cli','Cliente',select(['Selecciona un cliente…','Cementos Altiplano S.A.A.','Minera Cordillera Azul S.A.A.','Pesquera Mar de Grau S.A.'],cliente||'Selecciona un cliente…'),{req:true,err:e.cliente})}
+    ${field('f-os','OS de cliente',select(['Sin OS (factura directa)','OS-2026-0163 · saldo S/ 0.00'],'Sin OS (factura directa)'),{hint:'Opcional. Si eliges una OS se valida su saldo.'})}
+    ${field('f-cebe','CEBE',select(['Selecciona un CEBE…','CEBE-CTR-ALFA-001 · Contrato Minera Alfa','CEBE-CTR-GAMMA-001 · Contrato Constructora Gamma'], st==='errores'?'Selecciona un CEBE…':'CEBE-CTR-GAMMA-001 · Contrato Constructora Gamma'),{req:true,err:e.cebe})}
+  </div></section>`;
+  const lines = isVal
+    ? [['Avance de inspección estructural y END de tolva — agosto 2026','037 · Demás servicios',1,'2,037.00','2,037.00']]
+    : st==='errores' ? [['','Sin detracción',1,'0.00','0.00']]
+    : [['Mantenimiento correctivo de bomba hidráulica','037 · Demás servicios',1,'4,800.00','4,800.00'],['Inspección con ultrasonido de línea','037 · Demás servicios',2,'650.00','1,300.00']];
+  const partidas = `<section class="dx-fem-block"><h3><b>3</b>Partidas</h3><div class="dx-fem-lines">
+    <div class="dx-ui-head dx-fem-lcols"><span>Descripción</span><span>Detracción</span><span>Cant.</span><span>P. unitario</span><span style="text-align:right">Importe</span><span></span></div>
+    ${lines.map((l,i)=>`<div class="dx-ui-row dx-fem-lcols">
+      <div class="dx-ui-field" style="gap:4px"><input value="${l[0]}" placeholder="Servicio del catálogo o descripción libre" aria-label="Descripción" ${i===0&&e.linea0?'aria-invalid="true"':''}>${i===0&&e.linea0?`<span class="dx-ui-field-error">${e.linea0}</span>`:''}</div>
+      <select class="dx-ui-select" aria-label="Código SPOT"><option>${l[1]}</option></select>
+      <input class="num" value="${l[2]}" aria-label="Cantidad">
+      <div class="dx-ui-field" style="gap:4px"><input class="num" value="${l[3]}" aria-label="Precio unitario" ${i===0&&e.precio0?'aria-invalid="true"':''}>${i===0&&e.precio0?`<span class="dx-ui-field-error">${e.precio0}</span>`:''}</div>
+      <span class="dx-fem-amt">${l[4]}</span>
+      <button class="dx-fem-del" type="button" aria-label="Quitar partida">×</button></div>`).join('')}
+    <div class="dx-fem-addline"><button class="dx-btn" type="button" style="height:36px">＋ Agregar partida</button><button class="dx-btn" type="button" style="height:36px">＋ Desde catálogo de servicios</button></div>
+  </div></section>`;
+  const cobro = `<section class="dx-fem-block"><h3><b>4</b>Fechas, cobro y moneda</h3><div class="dx-ui-form-grid">
+    ${field('f-mon','Moneda',select(['PEN · Soles','USD · Dólares'], isVal?'USD · Dólares':'PEN · Soles'),{req:true})}
+    ${field('f-emi','Fecha de emisión','<input{A} type="date" value="2026-11-09">',{req:true})}
+    ${field('f-cond','Condición de pago',select(['Contado','15 días','30 días','45 días','60 días'], isVal?'15 días':'30 días'),{req:true})}
+    ${field('f-ven','Vencimiento',`<input{A} type="date" value="${st==='errores'?'2026-11-01':isVal?'2026-11-24':'2026-12-09'}">`,{req:true,err:e.venc,hint:'Calculado con la condición; puedes cambiarlo.'})}
+    ${isVal?field('f-tc','Tipo de cambio para la detracción','<input{A} value="3.440000">',{req:true,hint:'Referencial SBS del 09/11/2026 · editable'}):''}
+    ${isVal?field('f-tcf','Fuente del tipo de cambio',select(['Referencial','Manual'],'Referencial'),{req:true}):''}
+  </div></section>
+  <section class="dx-fem-block"><h3><b>5</b>Glosa y notas</h3><div class="dx-ui-form-grid is-2">
+    ${field('f-glo','Glosa','<textarea{A} placeholder="Texto que acompaña al comprobante"></textarea>')}
+    ${field('f-not','Notas internas','<textarea{A} placeholder="Solo visibles en el ERP"></textarea>')}
+  </div></section>`;
+  document.getElementById('main').innerHTML = fix(doc+origen+partidas+cobro);
+  const t = isVal ? {mon:'US$',sub:'2,037.00',igv:'366.66',tot:'2,403.66',spot:{base:'S/ 8,268.59',dep:'S/ 992.00',eq:'≈ US$ 288.37'},net:'2,115.29'}
+          : st==='errores' ? {mon:'S/',sub:'0.00',igv:'0.00',tot:'0.00',spot:null,net:'0.00'}
+          : {mon:'S/',sub:'6,100.00',igv:'1,098.00',tot:'7,198.00',spot:{base:'S/ 7,198.00',dep:'S/ 864.00',eq:''},net:'6,334.00'};
+  document.getElementById('aside').innerHTML = `
+    <div class="dx-fem-tot">
+      <div><span>Subtotal</span><b>${t.mon} ${t.sub}</b></div>
+      <div><span>IGV 18 %</span><b>${t.mon} ${t.igv}</b></div>
+      <div class="is-total"><span>Total</span><b>${t.mon} ${t.tot}</b></div>
+    </div>
+    ${t.spot?`<div class="dx-fem-card"><h4>Detracción SPOT 037 · 12 %</h4>
+      <div><span>Base en soles</span><b>${t.spot.base}</b></div>
+      <div><span>Umbral</span><b>S/ 700.00 · aplica</b></div>
+      <div><span>Depósito (redondeado)</span><b>${t.spot.dep}</b></div>${t.spot.eq?`<div><span>Equivale a</span><b>${t.spot.eq}</b></div>`:''}</div>`
+      :`<div class="dx-fem-card"><h4>Detracción</h4><div><span>Sin código SPOT</span><b>No aplica</b></div></div>`}
+    <div class="dx-fem-tot"><div class="is-net"><span>Neto a cobrar al cliente</span><b>${t.mon} ${t.net}</b></div></div>
+    <div class="dx-fem-card"><h4>Cobro</h4><div><span>Vence</span><b>${isVal?'24/11/2026':st==='errores'?'Sin dato':'09/12/2026'}</b></div><div><span>Retención</span><b>${isVal?'No aplica':'Cliente no es agente'}</b></div></div>
+    ${isVal?`<div class="dx-fem-warn" role="alert"><b>El total supera el saldo por facturar de la OS.</b><span>OS-2026-0163 · saldo por facturar S/ 0.00 · esta factura US$ 2,403.66.</span><label><input type="checkbox"> Confirmo que el exceso es intencional</label></div>`:''}`;
+  document.getElementById('emit').disabled = isVal;
+  document.getElementById('foot-msg').innerHTML = st==='errores'
+    ? '<span class="dx-fem-err" role="alert">Revisa los 5 campos marcados.</span>'
+    : isVal ? 'Confirma el exceso de saldo de la OS para emitir.' : 'Se emite la factura y su CxC en una sola operación.';
+}
+document.addEventListener('click',ev=>{const b=ev.target.closest('[data-st]'); if(b) render(b.dataset.st);});
+render('directa');
+const tb=document.getElementById('theme');let th='auto';
+tb.onclick=()=>{th=th==='auto'?'dark':th==='dark'?'light':'auto';if(th==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.dataset.theme=th;tb.textContent='Tema: '+th;};
+</script>
+</body>
+</html>

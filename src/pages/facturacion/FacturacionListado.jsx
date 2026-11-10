@@ -66,6 +66,7 @@ export default function FacturacionListado({
   Badge,
   searchQuery,
   loading,
+  puedeCrear = true,
 }) {
   const [filters, setFilters] = useState({
     cliente: '',
@@ -139,13 +140,28 @@ export default function FacturacionListado({
           </p>
         </div>
         <div className="dx-ui-actions">
-          <button className="dx-btn" onClick={abrirCarga}>
+          <button
+            className="dx-btn"
+            onClick={abrirCarga}
+            disabled={!puedeCrear}
+            title={puedeCrear ? undefined : 'No tienes permiso para emitir comprobantes'}
+          >
             Carga masiva
           </button>
-          <button className="dx-btn" onClick={() => openMode('directa')}>
+          <button
+            className="dx-btn"
+            onClick={() => openMode('directa')}
+            disabled={!puedeCrear}
+            title={puedeCrear ? undefined : 'No tienes permiso para emitir comprobantes'}
+          >
             Factura directa
           </button>
-          <button className="dx-btn primary" onClick={() => openMode('val')} disabled={!vals}>
+          <button
+            className="dx-btn primary"
+            onClick={() => openMode('val')}
+            disabled={!vals || !puedeCrear}
+            title={puedeCrear ? undefined : 'No tienes permiso para emitir comprobantes'}
+          >
             Desde valorización
           </button>
         </div>
