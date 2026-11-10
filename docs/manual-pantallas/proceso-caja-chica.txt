@@ -5,7 +5,7 @@ catalogo: admin/caja
 titulo: Ciclo del fondo de Caja Chica
 resumen: Controla un fondo desde su creación hasta el arqueo y el cierre con saldo cero.
 componentes: src/pages_fin.jsx#CajaChica, src/components/NuevoEgreso.jsx#NuevoEgreso, src/components/CerrarFondoModal.jsx#CerrarFondoModal
-huella: 8d126ca1e8 2c804b78dc e7344f6212
+huella: 5690a76c15 2c804b78dc e7344f6212
 pantalla_recorrido: caja
 paso: 1 | pantalla=caja | permiso=caja:crear | Crea el fondo con su responsable, importe, moneda y origen del dinero.
 paso: 2 | pantalla=caja | permiso=ninguno | Registra cada egreso con Nuevo egreso: tipo de gasto, categoría del Estado de Resultados, comprobante adjunto y revisión final.

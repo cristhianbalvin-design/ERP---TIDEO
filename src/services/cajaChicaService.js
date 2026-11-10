@@ -26,6 +26,25 @@ export function traducirErrorCategoriaEgreso(error) {
   return traducido;
 }
 
+// Los RPC de edición/anulación devuelven "CODIGO: mensaje"; al usuario se le muestra solo el mensaje.
+export function traducirErrorModificacion(error) {
+  const texto = String(error?.message || error || '');
+  const match = texto.match(/^[A-Z_]+:\s*(.+)$/s);
+  const traducido = new Error(match ? match[1] : texto);
+  traducido.code = texto.match(/^([A-Z_]+):/)?.[1] || error?.code;
+  traducido.cause = error;
+  return traducido;
+}
+
+// Un egreso queda bloqueado si su fecha cae en una rendición solicitada, aprobada o repuesta del fondo.
+export function egresoEnRendicion(egreso, rendiciones = []) {
+  const fecha = String(egreso?.fecha || '').slice(0, 10);
+  if (!fecha) return false;
+  return rendiciones.some(r => r.fondo_id === egreso.fondo_id
+    && ['solicitada', 'aprobada', 'repuesta'].includes(String(r.estado || '').toLowerCase())
+    && fecha >= String(r.periodo_inicio || '') && fecha <= String(r.periodo_fin || ''));
+}
+
 const stripUnknownColumn = (error, payload) => {
   const col = error?.message?.match(/column "([^"]+)" of relation/)?.[1]
     || error?.message?.match(/'([^']+)' column/)?.[1];
@@ -258,6 +277,7 @@ export const cajaChicaService = {
       ...(egresos.data || []).map(e => ({
         ...e,
         tipo_movimiento: 'egreso',
+        bloqueado_rendicion: egresoEnRendicion(e, rendiciones.data || []),
         fondo_nombre: fondoNombre.get(e.fondo_id) || null,
         fecha_movimiento: e.fecha,
         monto_movimiento: -Number(e.monto || 0),
@@ -270,7 +290,7 @@ export const cajaChicaService = {
         fecha_movimiento: r.aprobado_en || r.creado_en,
         monto_movimiento: Number(r.monto_aprobado || 0),
       }))),
-      ...((aportes.data || []).filter(isActivo).map(a => ({
+      ...((aportes.data || []).map(a => ({
         ...a,
         tipo_movimiento: 'aporte',
         fondo_nombre: fondoNombre.get(a.fondo_id) || null,
@@ -413,6 +433,37 @@ export const cajaChicaService = {
       p_payload: { ...payload, sociedad_id: sociedadId },
     });
     if (error) throw traducirErrorCategoriaEgreso(error);
+    return data;
+  },
+
+  async editarEgresoFondo(id, { concepto, categoria, ceco_id = null, num_comprobante = null, fecha }) {
+    validarCategoriaEgresoFondo({ categoria });
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('editar_egreso_caja_chica', {
+      p_id: id,
+      p_concepto: concepto,
+      p_categoria: categoria,
+      p_ceco_id: ceco_id || null,
+      p_num_comprobante: num_comprobante || null,
+      p_fecha: fecha,
+    });
+    if (error) throw traducirErrorModificacion(error);
+    return data;
+  },
+
+  async anularEgresoFondo(id, motivo) {
+    if (!String(motivo || '').trim()) throw new Error('Indica el motivo de la anulación.');
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('anular_egreso_caja_chica', { p_id: id, p_motivo: motivo });
+    if (error) throw traducirErrorModificacion(error);
+    return data;
+  },
+
+  async anularAporte(id, motivo) {
+    if (!String(motivo || '').trim()) throw new Error('Indica el motivo de la anulación.');
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('anular_aporte_caja_chica', { p_id: id, p_motivo: motivo });
+    if (error) throw traducirErrorModificacion(error);
     return data;
   },
 

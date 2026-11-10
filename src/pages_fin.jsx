@@ -6451,6 +6451,14 @@ function CajaChica() {
   const [fCeco, setFCeco] = useState('');
   const [movimientosTab, setMovimientosTab] = useState('ingresos');
   const [historialTab, setHistorialTab] = useState('ingresos');
+  const [modMov, setModMov] = useState(null);
+  const [savingModMov, setSavingModMov] = useState(false);
+  useEffect(() => { setModMov(null); }, [fondoSelId]);
+  const [erCatsCaja, setErCatsCaja] = useState([]);
+  useEffect(() => {
+    if (!empresaId) return;
+    cargarConfiguracionER(empresaId).then(cats => setErCatsCaja((cats || []).map(c => c.nombre).filter(Boolean))).catch(() => setErCatsCaja([]));
+  }, [empresaId]);
 
   const perm = accion => {
     const p = role?.permisos || {};
@@ -6601,6 +6609,40 @@ function CajaChica() {
     setPreconfigNE(null);
     setFondoEgresoFijo(null);
     cargar();
+  };
+
+  const esMovActivo = m => !['anulado', 'anulada'].includes(String(m?.estado || '').toLowerCase());
+  const puedeEditarEgreso = (m, fondo) => m.tipo_movimiento === 'egreso' && esMovActivo(m) && !m.bloqueado_rendicion
+    && fondo?.estado === 'activo' && (puedeEditar || esResponsable(fondo));
+  const puedeAnularMov = (m, fondo) => {
+    if (!esMovActivo(m) || fondo?.estado !== 'activo') return false;
+    if (m.tipo_movimiento === 'egreso') return !m.bloqueado_rendicion && (puedeEditar || puedeEliminar || esResponsable(fondo));
+    if (m.tipo_movimiento === 'aporte') return puedeGestionar;
+    return false;
+  };
+  const abrirEditarEgreso = m => setModMov({
+    accion: 'editar', mov: m,
+    form: { concepto: m.concepto || '', categoria: m.categoria || '', ceco_id: m.ceco_id || '', num_comprobante: m.num_comprobante || '', fecha: String(m.fecha || '').slice(0, 10) },
+  });
+  const abrirAnularMov = m => setModMov({ accion: 'anular', mov: m, form: { motivo: '' } });
+  const guardarModMov = async () => {
+    if (!modMov) return;
+    const { accion, mov, form } = modMov;
+    if (accion === 'anular' && !form.motivo.trim()) { addNotificacion('Indica el motivo de la anulación.'); return; }
+    if (accion === 'editar' && (!form.concepto.trim() || !form.categoria || !form.fecha)) { addNotificacion('Concepto, categoría y fecha son obligatorios.'); return; }
+    setSavingModMov(true);
+    try {
+      if (accion === 'editar') await cajaChicaService.editarEgresoFondo(mov.id, form);
+      else if (mov.tipo_movimiento === 'aporte') await cajaChicaService.anularAporte(mov.id, form.motivo);
+      else await cajaChicaService.anularEgresoFondo(mov.id, form.motivo);
+      addToast?.(accion === 'editar' ? 'Egreso actualizado' : (mov.tipo_movimiento === 'aporte' ? 'Aporte anulado' : 'Egreso anulado'));
+      setModMov(null);
+      await cargar();
+    } catch (err) {
+      addNotificacion(err?.message || 'No se pudo guardar el cambio.');
+    } finally {
+      setSavingModMov(false);
+    }
   };
 
   const abrirAporte = fondo => {
@@ -6857,12 +6899,12 @@ function CajaChica() {
   const historialIngresos = historialFondo.filter(m => ['aporte', 'reposicion'].includes(m.tipo_movimiento));
   const historialEgresos = historialFondo.filter(m => m.tipo_movimiento === 'egreso');
   const totalHistorialIngresosPorMoneda = sumByCurrency(
-    historialIngresos,
+    historialIngresos.filter(m => !['anulado', 'anulada'].includes(String(m.estado || '').toLowerCase())),
     m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
     m => m.moneda || fondoSel?.moneda || 'PEN',
   );
   const totalHistorialEgresosPorMoneda = sumByCurrency(
-    historialEgresos,
+    historialEgresos.filter(m => !['anulado', 'anulada'].includes(String(m.estado || '').toLowerCase())),
     m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
     m => m.moneda || fondoSel?.moneda || 'PEN',
   );
@@ -7073,6 +7115,35 @@ function CajaChica() {
                   </div>
                 </div>
               )}
+              {modMov && (
+                <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                  <div style={{fontWeight:700,marginBottom:4}}>{modMov.accion === 'editar' ? 'Editar egreso' : (modMov.mov.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso')}</div>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:10}}>{String(modMov.mov.fecha || '').slice(0,10)} · {modMov.mov.concepto} · {moneyCurrency(Math.abs(Number(modMov.mov.monto || 0)), modMov.mov.moneda || fondoSel.moneda)}</div>
+                  {modMov.accion === 'editar' ? (
+                    <>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                        <label style={{gridColumn:'1 / -1'}}><div className="eyebrow">Concepto</div><input className="input" value={modMov.form.concepto} onChange={e=>setModMov(p=>({...p,form:{...p.form,concepto:e.target.value}}))}/></label>
+                        <label><div className="eyebrow">Categoría ER</div><select className="input" value={modMov.form.categoria} onChange={e=>setModMov(p=>({...p,form:{...p.form,categoria:e.target.value}}))}><option value="">Seleccionar…</option>{[...new Set([...(modMov.form.categoria ? [modMov.form.categoria] : []), ...erCatsCaja])].map(c => <option key={c} value={c}>{c}</option>)}</select></label>
+                        <label><div className="eyebrow">Centro de costo</div><select className="input" value={modMov.form.ceco_id} onChange={e=>setModMov(p=>({...p,form:{...p.form,ceco_id:e.target.value}}))}><option value="">Sin CECO</option>{(centrosCosto || []).filter(c => c.estado === 'activo' || c.id === modMov.form.ceco_id).map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></label>
+                        <label><div className="eyebrow">N° comprobante</div><input className="input" value={modMov.form.num_comprobante} onChange={e=>setModMov(p=>({...p,form:{...p.form,num_comprobante:e.target.value}}))}/></label>
+                        <label><div className="eyebrow">Fecha</div><input className="input" type="date" value={modMov.form.fecha} onChange={e=>setModMov(p=>({...p,form:{...p.form,fecha:e.target.value}}))}/></label>
+                      </div>
+                      <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:8}}>El monto no se edita: si está mal, anula el egreso y regístralo de nuevo.</div>
+                    </>
+                  ) : (
+                    <>
+                      <label><div className="eyebrow">Motivo de la anulación</div><input className="input" value={modMov.form.motivo} placeholder="Ej.: registrado por duplicado" onChange={e=>setModMov(p=>({...p,form:{...p.form,motivo:e.target.value}}))}/></label>
+                      <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:8}}>{modMov.mov.tipo_movimiento === 'aporte'
+                        ? (modMov.mov.tipo_origen === 'cuenta_bancaria' ? 'El monto sale del saldo del fondo y Tesorería registra el ingreso de reversión en la cuenta de origen.' : 'El monto sale del saldo del fondo.')
+                        : 'El monto vuelve al saldo del fondo y el gasto deja de contar en el Estado de Resultados.'}</div>
+                    </>
+                  )}
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:10}}>
+                    <button className="btn btn-secondary" style={{fontSize:12}} disabled={savingModMov} onClick={() => setModMov(null)}>Cancelar</button>
+                    <button className={`btn ${modMov.accion === 'editar' ? 'btn-primary' : 'btn-danger'}`} style={{fontSize:12}} disabled={savingModMov} onClick={guardarModMov}>{savingModMov ? 'Guardando…' : (modMov.accion === 'editar' ? 'Guardar cambios' : 'Anular')}</button>
+                  </div>
+                </div>
+              )}
               <div>
                 <div style={{fontWeight:700,marginBottom:8}}>Historial</div>
                 <div style={{display:'flex',gap:8,marginBottom:10}}>
@@ -7103,10 +7174,10 @@ function CajaChica() {
                 </div>
                 <div className="table-wrap" style={{border:'1px solid var(--border)',borderRadius:8}}>
                   <table className="tbl">
-                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
+                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th><th aria-label="Acciones"></th></tr></thead>
                     <tbody>{historialVisibles.length ? historialVisibles.map(m => (
-                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
-                    )) : <tr><td colSpan="6" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray" title={m.motivo_anulacion ? `Motivo: ${m.motivo_anulacion}` : (m.bloqueado_rendicion ? 'Incluido en una rendición: no se puede modificar' : undefined)}>{m.estado || 'registrado'}</span></td><td style={{whiteSpace:'nowrap'}}>{puedeEditarEgreso(m, fondoSel) && <button type="button" className="icon-btn" title="Editar egreso" aria-label="Editar egreso" onClick={() => abrirEditarEgreso(m)}>{I.edit}</button>}{puedeAnularMov(m, fondoSel) && <button type="button" className="icon-btn" title={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} aria-label={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} onClick={() => abrirAnularMov(m)}>{I.trash}</button>}</td></tr>
+                    )) : <tr><td colSpan="7" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
                 </div>
               </div>
