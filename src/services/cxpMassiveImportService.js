@@ -1,3 +1,4 @@
+import { solesPorUnidad } from './tipoCambioConversion.js';
 import * as XLSX from 'xlsx';
 import { comprasService } from './comprasService.js';
 import { getTipoCambioPorFecha } from './tipoCambioService.js';
@@ -538,7 +539,7 @@ export async function ejecutarImportacionCxpMasiva({
       if (row.moneda === 'USD') {
         const tc = await obtenerTipoCambio(row.fecha_emision, supabase);
         if (!tc?.usd || !Number.isFinite(Number(tc.usd))) throw new Error('No se encontró tipo de cambio USD vigente para la fecha de emisión.');
-        tipoCambio = Number(tc.usd);
+        tipoCambio = solesPorUnidad(tc, 'USD');
       }
       const tipoComprobante = esDividendo ? 'distribucion_utilidades' : row.tipo_cxp === 'Nota de débito' ? 'Nota de débito' : row.tipo_cxp;
       const { data, error } = await supabase.rpc('importar_cxp_masiva_fila_v2', {

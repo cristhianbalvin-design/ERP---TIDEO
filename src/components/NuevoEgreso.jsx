@@ -8,6 +8,7 @@ import { convertirEgresoCajaChica } from '../services/cajaChicaConversion.js';
 import { cambiosNoGastoEdicion, cxpPendiente } from '../services/egresoNoGastoEdicion.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
+import { solesPorUnidad } from '../services/tipoCambioConversion.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
 import { SociedadFormField, SociedadReadOnlyField } from './SociedadFormField.jsx';
 import { SearchSelect } from './SearchSelect.jsx';
@@ -1385,7 +1386,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         <button
           className="btn btn-primary"
           type="button"
-          onClick={() => {
+          disabled={guardando}
+          onClick={async () => {
             setErrorGuardado('');
             let ok = true;
             if (!form.centro_costo_id) { setErrCeco(true); ok = false; }
@@ -1401,7 +1403,18 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
             if (!categoriaEgresoValida(categoriaER)) { setErrorCategoriaER(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
-            if (ok) setPaso(3);
+            if (ok) {
+              setGuardando(true);
+              try {
+                const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
+                await prepararPagoEgreso(sb);
+                setPaso(3);
+              } catch (error) {
+                setErrorGuardado(error?.message || 'No se pudo preparar el pago.');
+              } finally {
+                setGuardando(false);
+              }
+            }
           }}
         >
           Revisar →
@@ -1510,6 +1523,24 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   };
 
   // ── Lógica de persistencia ────────────────────────────────────────────────
+  const prepararPagoEgreso = async sb => {
+    if (esEdicion || !form.ya_pagado || form.metodo_pago === 'Caja chica') return null;
+    const cuentaPago = form.metodo_pago === METODO_TRANSFERENCIA
+      ? cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id)
+      : null;
+    if (form.metodo_pago === METODO_TRANSFERENCIA && !cuentaPago) {
+      throw new Error('Cuenta bancaria requerida para registrar el pago.');
+    }
+    const fechaPago = form.fecha_pago || form.fecha;
+    const tcPago = await getTipoCambioPorFecha(fechaPago, sb).catch(() => tc);
+    const vinculacion = prepararVinculacionMovimientoCuenta(
+      { monto: parseFloat(form.monto) || 0, moneda: form.moneda },
+      cuentaPago || { moneda: form.moneda },
+      tcPago,
+    );
+    return { cuentaPago, fechaPago, vinculacion };
+  };
+
   const handleGuardar = async () => {
     setErrorGuardado('');
     if (!categoriaEgresoValida(categoriaER)) {
@@ -1556,8 +1587,18 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
     setGuardando(true);
     let gastoPersistidoSupabase = false;
+    let sb;
+    let pagoPreparado;
     try {
-      const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
+      sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
+      pagoPreparado = await prepararPagoEgreso(sb);
+    } catch (error) {
+      setErrorGuardado(error?.message || 'No se pudo preparar el pago.');
+      setPaso(2);
+      setGuardando(false);
+      return;
+    }
+    try {
       const sociedadOperacionId = sb
         ? (await validarSociedadActivaParaEscritura(
             sb,
@@ -1646,6 +1687,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       const tcVal     = form.moneda !== 'PEN' && tc
         ? (form.moneda === 'USD' ? tc.usd : tc.eur)
         : null;
+      const tcCxp = tcVal && Number(tcVal) > 0 ? solesPorUnidad(tc, form.moneda) : null;
       const proveedorSel = form.proveedor_id
         ? provsActivos.find(p => p.id === form.proveedor_id)
         : null;
@@ -1772,18 +1814,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
       // ── 2b. CxP: gasto pendiente ──────────────────────────────────────
       } else if (form.ya_pagado) {
-        const fechaPago = form.fecha_pago || form.fecha;
-        const cuentaPago = form.metodo_pago === METODO_TRANSFERENCIA
-          ? cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id)
-          : null;
-        if (form.metodo_pago === METODO_TRANSFERENCIA && !cuentaPago) {
-          throw new Error('Cuenta bancaria requerida para registrar el pago.');
-        }
-
+        const { fechaPago, cuentaPago, vinculacion } = pagoPreparado;
         const cxpId = `cxp_${Math.random().toString(36).slice(2, 14)}`;
         const pagoId = `cxpp_${Math.random().toString(36).slice(2, 14)}`;
         const movId = `tes_${Math.random().toString(36).slice(2, 14)}`;
-        const tcPago = await getTipoCambioPorFecha(fechaPago, sb).catch(() => tc);
         const cuentaNombre = cuentaPago
           ? (cuentaPago.alias || cuentaPago.nombre || cuentaPago.banco || cuentaPago.id)
           : null;
@@ -1799,7 +1833,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           monto_pagado:      monto,
           saldo:             0,
           moneda:            form.moneda,
-          ...(tcVal ? { tipo_cambio: tcVal, moneda_original: form.moneda, monto_original: monto } : {}),
+          ...(tcCxp ? { tipo_cambio: tcCxp, moneda_original: form.moneda, monto_original: monto } : {}),
           fecha_emision:     form.fecha,
           fecha_vencimiento: fechaPago,
           tipo_comprobante:  form.tipo_comprobante,
@@ -1850,7 +1884,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         };
         const movimiento = {
           ...movimientoBase,
-          ...prepararVinculacionMovimientoCuenta(movimientoBase, cuentaPago, tcPago),
+          ...vinculacion,
         };
 
         let saved = null;
@@ -1884,7 +1918,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           concepto:          form.concepto.trim(),
           monto_total:       monto,
           moneda:            form.moneda,
-          ...(tcVal ? { tipo_cambio: tcVal, moneda_original: form.moneda, monto_original: monto } : {}),
+          ...(tcCxp ? { tipo_cambio: tcCxp, moneda_original: form.moneda, monto_original: monto } : {}),
           fecha_emision:     form.fecha,
           fecha_vencimiento: form.fecha_vencimiento,
           tipo_comprobante:  form.tipo_comprobante,
