@@ -1,5 +1,6 @@
 import AriaFab from './AriaFab.jsx';
 import AriaLogo from './AriaLogo.jsx';
+import AriaTarjetaEgreso from './AriaTarjetaEgreso.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context.jsx';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
@@ -106,7 +107,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
       if (event.key !== 'Tab') return;
       const panel = panelRef.current;
       if (!panel) return;
-      const enfocables = [...panel.querySelectorAll('button:not(:disabled), textarea:not(:disabled), a[href]')]
+      const enfocables = [...panel.querySelectorAll('button:not(:disabled), textarea:not(:disabled), input:not(:disabled):not([type="file"]), a[href]')]
         .filter(elemento => elemento.getClientRects().length > 0 && window.getComputedStyle(elemento).visibility !== 'hidden');
       if (!enfocables.length) return;
       const primero = enfocables[0];
@@ -139,7 +140,7 @@ export function AsistenteErpPanel({ pantallaActiva }) {
     setError(null); setConsultando(true);
     try {
       const data = await consultarAsistenteErp({ empresaId: empresa.id, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
-      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [] }]);
+      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null }]);
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {
       setError({ status: cause.status || 0, mensaje: mensajeErrorAsistente(cause.status) });
@@ -160,14 +161,16 @@ export function AsistenteErpPanel({ pantallaActiva }) {
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
         <header className="dx-asis-head"><div className="dx-asis-ico" aria-hidden="true"><AriaLogo size={44} /></div>
-          <div><div className="dx-asis-eyebrow">OPERA · Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Aria</h2><div className="dx-asis-sub">Solo lectura · respeta tus permisos</div></div>
+          <div><div className="dx-asis-eyebrow">OPERA · Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Aria</h2><div className="dx-asis-sub">Respeta tus permisos · confirma antes de registrar</div></div>
           <button className="dx-asis-x" type="button" aria-label="Cerrar asistente" onClick={cerrar}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </header>
         {contexto?.tipo && contexto?.id && <div className="dx-asis-ctx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg><span>Viendo: <b>{tituloContexto}</b></span></div>}
         <div ref={mensajesRef} className="dx-asis-body" aria-live="polite" aria-relevant="additions text">
-          {!mensajes.length && <><div className="dx-asis-hello"><h3>{primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. Solo leo: no modifico nada.</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
+          {!mensajes.length && <><div className="dx-asis-hello"><h3>{primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
           {mensajes.map((mensaje, index) => <React.Fragment key={`${index}-${mensaje.role}`}>
             <div className={`dx-asis-message ${mensaje.role === 'user' ? 'me' : 'ai'}`}>{mensaje.role === 'assistant' && <span className="dx-asis-mini" aria-hidden="true"><AriaLogo size={24} /></span>}<div className={`dx-asis-msg ${mensaje.role === 'user' ? 'me' : 'ai'}`}><TextoSeguro texto={mensaje.content} /></div></div>
+            {mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresa.id} estadoInicial={mensaje.borradorEstado}
+              onCambio={info => setMensajes(prev => prev.map((item, posicion) => posicion === index ? { ...item, borradorEstado: info } : item))} />}
             {mensaje.role === 'assistant' && mensaje.herramientas?.length > 0 && <div className="dx-asis-tools">{[...new Set(mensaje.herramientas.map(etiquetaHerramienta))].map(etiqueta => <span className="dx-asis-pill cy" key={etiqueta}><i />{etiqueta}</span>)}</div>}
           </React.Fragment>)}
           {consultando && <div className="dx-asis-tools"><span className="dx-asis-dots" aria-hidden="true"><span/><span/><span/></span><span role="status">Aria está revisando…</span></div>}
