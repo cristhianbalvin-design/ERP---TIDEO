@@ -1,0 +1,14 @@
+clave: cxc
+tipo: pantalla
+pantalla: cxc
+catalogo: admin/cxc
+titulo: Cuentas por cobrar
+resumen: Controla lo que deben los clientes: cobros, gestiones de cobranza, mora, autodetracciones y carga masiva de saldos.
+componentes: src/pages_fin.jsx#CxC
+huella: 06993c9c6e
+paso: 1 | pantalla=cxc | permiso=ninguno | La lista muestra cada cuenta por cobrar con su saldo y vencimiento. Usa Cobrar para registrar un pago: elige el medio de pago e ingresa el número de operación o referencia bancaria.
+paso: 2 | pantalla=cxc | permiso=ninguno | Nueva gestión registra una acción de cobranza (llamada, correo, compromiso de pago). Según el resultado, la fecha de próxima acción es obligatoria.
+paso: 3 | pantalla=cxc | permiso=ninguno | Si el cliente no depositó la detracción, usa Registrar autodetracción con las cuentas y la constancia del depósito.
+paso: 4 | pantalla=cxc | permiso=cxc:editar | La mora se calcula con una tasa diaria. Puedes Condonar mora para que deje de calcularse (queda en el historial) o Restaurar tasa al valor estándar.
+paso: 5 | pantalla=cxc | permiso=cxc:anular | Revertir cobros deshace los cobros y conciliaciones de una cuenta; Anular factura y CxC relacionada anula ambas con confirmación.
+paso: 6 | pantalla=cxc | permiso=ninguno | Carga masiva importa saldos por cobrar desde una plantilla, y Exportar descarga la lista.

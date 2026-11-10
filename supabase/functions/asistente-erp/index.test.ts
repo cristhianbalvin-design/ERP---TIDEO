@@ -925,6 +925,24 @@ Deno.test("si el único reintento no llama herramientas, responde neutral y audi
   equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "guarda_sin_herramienta");
 });
 
+Deno.test("manual sin resultados registra la pregunta para soporte y lo indica a la IA", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_consultar_manual" ? { data: { respuesta: "sin resultados", fichas: [], truncado: false }, error: null }
+      : name === "aria_registrar_sin_respuesta" ? { data: true, error: null } : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "planner turnos", pantalla: "scheduler" }) } }] })
+      : completion({ role: "assistant", content: "Esto todavía no está en el manual de OPERA." }),
+  });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cómo armo los turnos en el planner?", contexto: { pantalla: "scheduler" } }))).status, 200);
+  const registro = x.calls.find(c => c.name === "aria_registrar_sin_respuesta")!;
+  equal(registro.args.p_empresa_id, EMPRESA);
+  equal(registro.args.p_pregunta, "¿Cómo armo los turnos en el planner?");
+  equal(registro.args.p_pantalla, "scheduler");
+  equal(registro.args.p_busqueda, "planner turnos");
+  assert(String(x.aiCalls[1].find((m: any) => m.role === "tool")?.content).includes('"soporte_notificado":true'));
+});
+
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
   const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
   const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;
@@ -934,6 +952,7 @@ Deno.test("descripciones de resúmenes y manual contienen reglas de selección y
   assert(mensual.includes("vencimientos por mes") && mensual.includes("fecha de emisión") && mensual.includes("36 meses"));
   assert(cxc.includes("pendiente") && cxc.includes("vencido"));
   assert(manual.includes("siempre e inmediatamente") && manual.includes("Buena práctica:") && manual.includes("Nunca la uses para consultar datos del ERP"));
+  assert(manual.includes("soporte_notificado") && manual.includes("Ya avisé al equipo de soporte"));
 });
 
 Deno.test("SYSTEM_PROMPT incluye reglas nuevas dentro del limite", () => {

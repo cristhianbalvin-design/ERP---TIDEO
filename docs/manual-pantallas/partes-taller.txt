@@ -1,0 +1,12 @@
+clave: partes_taller
+tipo: pantalla
+pantalla: partes
+catalogo: operaciones/taller
+titulo: Parte diario de taller
+resumen: Registra el trabajo diario del técnico sobre una OT: actividades, fotos, hallazgos y repuestos, y lo envía a revisión.
+componentes: operaciones-app/src/zahory-mock/pages/pages3.jsx#ParteTallerPage
+huella: a7974170a2
+paso: 1 | pantalla=partes | permiso=ninguno | Elige la OT (programada o en ejecución), el técnico y la fecha del parte.
+paso: 2 | pantalla=partes | permiso=ninguno | Agrega cada actividad realizada con su tiempo; puedes adjuntar fotos y usar Dictar por voz para describirla.
+paso: 3 | pantalla=partes | permiso=ninguno | Reportar hallazgo adicional registra un problema encontrado durante el trabajo. Agrega los repuestos usados o pide los que faltan; si el pedido falla, usa Reintentar pedido de repuestos.
+paso: 4 | pantalla=partes | permiso=ninguno | Guardar borrador conserva el parte para seguirlo luego. Enviar a revisión exige al menos una actividad y deja el parte en revisión del supervisor.

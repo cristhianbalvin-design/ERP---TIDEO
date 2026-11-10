@@ -21,5 +21,7 @@ jobs:
         run: npm run test:manual
       - name: Todas las pantallas del código están en el catálogo
         run: node scripts/manual/catalogo.mjs verificar
+      # Bloquea: si cambió el código de una pantalla con ficha, el PR no pasa hasta revisar la ficha
+      # y actualizar su huella (node scripts/generar-manual-pantallas.mjs --actualizar-huellas).
       - name: Fichas del manual al día con su código
-        run: node scripts/verificar-manual-pantallas.mjs --solo-avisar
+        run: node scripts/verificar-manual-pantallas.mjs

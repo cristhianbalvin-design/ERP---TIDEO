@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 4 (5 %) | 21 (27 %) | 1 | 54 |
-| Operaciones | 120 | 1 (1 %) | 26 (22 %) | 0 | 93 |
+| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 54 |
+| Operaciones | 120 | 8 (7 %) | 26 (22 %) | 0 | 88 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 206 | 5 (2 %) | 47 (23 %) | 1 | 156 |
+| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 151 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -25,9 +25,9 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 |---|---|---|---|---|---|---|
 | Administración | Activos Fijos (`activos_fijos`) | activa | — | — | — | — |
 | Administración | Caja Chica (`caja`) | activa | caja | proceso_caja_chica | 4 | preparar_egreso_caja_chica |
-| Administración | Cuentas por Cobrar (`cxc`) | activa | — | — | 4 | — |
-| Administración | Cuentas por Pagar (`cxp`) | activa | — | proceso_solpe_pago | 4 | — |
-| Administración | Facturación (`facturacion`) | activa | — | — | 4 | — |
+| Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | — | 4 | — |
+| Administración | Cuentas por Pagar (`cxp`) | activa | cxp | proceso_solpe_pago | 4 | — |
+| Administración | Facturación (`facturacion`) | activa | facturacion | — | 4 | — |
 | Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | — | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | — | — | — | — |
@@ -50,10 +50,10 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras | Compras (vista anterior) (`compras`) | legado | — | — | — | — |
 | Compras | Compras / Gastos (`compras_gastos`) | activa | compras_gastos | — | 4 | — |
 | Compras | Cotizaciones (`cot_compras`) | activa | — | — | 2 | — |
-| Compras | Ordenes de Compra (`ordenes_compra`) | activa | — | proceso_solpe_pago | 7 | — |
+| Compras | Ordenes de Compra (`ordenes_compra`) | activa | ordenes_compra | proceso_solpe_pago | 7 | — |
 | Compras | Ordenes de Servicio (`ordenes_servicio`) | activa | — | — | — | — |
-| Compras | Proveedores (`proveedores`) | activa | — | — | 3 | — |
-| Compras | Recepciones (`recepciones`) | activa | — | proceso_solpe_pago | 3 | — |
+| Compras | Proveedores (`proveedores`) | activa | proveedores | — | 3 | — |
+| Compras | Recepciones (`recepciones`) | activa | recepciones | proceso_solpe_pago | 3 | — |
 | Compras | Bandeja de Sourcing (`sourcing_bandeja`) | activa | — | proceso_solpe_pago | 7 | — |
 | Configuración | Maestros Base (`maestros`) | activa | — | — | — | — |
 | Configuración | Notificaciones (`notificaciones_config`) | activa | — | — | — | — |
@@ -78,7 +78,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Integraciones | API Keys (`api_keys`) | activa | — | — | — | — |
 | Logística | Almacenes (`inventario`) | activa | — | — | 8 | — |
 | Logística | Transporte y Guias (`remision`) | activa | — | — | 5 | — |
-| Logística | SOLPE Interna (`solpe`) | activa | — | proceso_solpe_pago | 3 | — |
+| Logística | SOLPE Interna (`solpe`) | activa | solpe | proceso_solpe_pago | 3 | — |
 | Operaciones | Backlog (`backlog`) | activa | — | — | — | — |
 | Operaciones | Cierre y Calidad (`cierre`) | activa | — | — | — | — |
 | Operaciones | IA Operativa (`ia_operativa`) | legado | — | — | — | — |
@@ -113,7 +113,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Configuración del WMS (`almacen-config`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Conteos cíclicos (`almacen-conteos`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Custodia de terceros (`almacen-custodia`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Despachos (`almacen-despachos`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Despachos (`almacen-despachos`) | activa | despachos_almacen | — | 8 | — |
 | Almacén & Repuestos | Devoluciones (`almacen-devoluciones`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Etiquetas (`almacen-etiquetas`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Gemelo digital (`almacen-gemelo`) | activa | — | — | 8 | — |
@@ -121,7 +121,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Inventario & Kardex (`almacen-inventario`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Minas y proyectos (`almacen-minas`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Valorizado y ABC (`almacen-reportes`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Reserva de Repuestos (`almacen-reservas`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Reserva de Repuestos (`almacen-reservas`) | activa | reserva_repuestos | — | 8 | — |
 | Almacén & Repuestos | Ubicaciones (`almacen-ubicaciones`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Vencimientos y lotes (`almacen-vencimientos`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
@@ -162,22 +162,22 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | HSE — SEGURIDAD | Registro de Incidentes (`registro-incidentes`) | maqueta | — | — | — | — |
 | Inicio | Dashboard Gerencial (`dashboard`) | activa | — | — | — | — |
 | Inicio | Mapa de Campo (`mapa-campo`) | maqueta | — | — | — | — |
-| Inicio | Mis OTs del día (`mis-ots-hoy`) | activa | — | — | — | — |
+| Inicio | Mis OTs del día (`mis-ots-hoy`) | activa | mis_ots_dia | — | — | — |
 | Operaciones | Documentos (`docs`) | maqueta | — | — | — | — |
 | Operaciones | Indicadores de confiabilidad (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
 | Inicio | Inicio operativo (Aria) (`inicio`) | activa | inicio_operaciones | — | — | — |
 | Operaciones | Proveedores (operaciones) (`proveedores`) | placeholder | — | — | — | — |
 | Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | — | — | — | — |
-| Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | — | — | — | — |
+| Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | nueva_ot | — | — | — |
 | Órdenes de Trabajo | Diagnóstico Técnico (`diagnostico-tecnico`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Nuevo reporte de mina (`nuevo-reporte`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Detalle de OT (`ot-detalle`) | maqueta | — | — | — | — |
-| Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | — | — | — | — |
+| Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | bandeja_ots | — | — | — |
 | Órdenes de Trabajo | Reportes Mina (`partes-mina`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Gestión de partes de taller (`partes-taller`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Recepción de Activos (`recepcion-activos`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Planner (`scheduler-despacho`) | activa | — | — | — | — |
-| Órdenes de Trabajo | Partes Taller (`taller`) | activa | — | — | — | — |
+| Órdenes de Trabajo | Partes Taller (`taller`) | activa | partes_taller | — | — | — |
 | Producción | Fabricación y Ensamble (`area-fabricacion`) | maqueta | — | — | — | — |
 | Producción | Ingeniería y Diseño (`area-ingenieria`) | maqueta | — | — | — | — |
 | Producción | Maestranza (`area-maestranza`) | maqueta | — | — | — | — |
@@ -224,7 +224,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Transporte Comercial | Maestro de Rutas (`transporte-tarifas`) | activa | — | — | — | — |
 | Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | activa | — | — | — | — |
 | Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | — | — | — | — |
-| Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | — | — | — | — |
+| Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | monitor_viajes | — | — | — |
 | Venta de Repuestos | Catálogo de venta (`catalogo`) | activa | — | — | — | — |
 | Venta de Repuestos | Catálogo de precios (`catalogo-precios`) | maqueta | — | — | — | — |
 | Venta de Repuestos | Dashboard de Repuestos (`dashboard-repuestos`) | maqueta | — | — | — | — |

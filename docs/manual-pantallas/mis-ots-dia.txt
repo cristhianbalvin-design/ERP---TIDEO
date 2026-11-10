@@ -1,0 +1,10 @@
+clave: mis_ots_dia
+tipo: pantalla
+pantalla: ot
+catalogo: operaciones/mis-ots-hoy
+titulo: Mis OTs del día
+resumen: Muestra al técnico las OT asignadas para hoy y le permite registrar su parte diario.
+componentes: operaciones-app/src/zahory-mock/pages/MisOTsPage.jsx#MisOTsPage
+huella: aa0aa52182
+paso: 1 | pantalla=ot | permiso=ninguno | Verás las OT que tienes asignadas para el día con su estado.
+paso: 2 | pantalla=ot | permiso=ninguno | Registrar parte abre el parte diario de esa OT. Registrar parte sin OT sirve para trabajo que todavía no tiene orden.

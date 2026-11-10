@@ -1,0 +1,14 @@
+clave: facturacion
+tipo: pantalla
+pantalla: facturacion
+catalogo: admin/facturacion
+titulo: Facturación
+resumen: Emite y consulta los comprobantes de venta, genera su cuenta por cobrar, registra cobros y autodetracciones, y emite notas de crédito o débito.
+componentes: src/pages_fin.jsx#Facturacion
+huella: e697a23316
+paso: 1 | pantalla=facturacion | permiso=facturacion:crear | Emite un comprobante desde una valorización, desde una venta o como comprobante directo eligiendo cliente y partidas. El número es obligatorio y se necesita al menos una partida; no se emite a un cliente con la cuenta bloqueada, y la pantalla pide confirmar un número repetido o un monto que excede el saldo de la OS.
+paso: 2 | pantalla=facturacion | permiso=ninguno | Desde el comprobante usa Generar CxC para crear la cuenta por cobrar; Ver CxC la abre si ya existe.
+paso: 3 | pantalla=facturacion | permiso=ninguno | Registrar cobro deja constancia del pago del cliente. Si el cliente no depositó la detracción, usa Registrar autodetracción con las cuentas y la constancia del depósito.
+paso: 4 | pantalla=facturacion | permiso=ninguno | Nota de Crédito y Nota de Débito emiten un ajuste vinculado al comprobante original. Una nota de crédito por devolución puede generar la cuenta por pagar al cliente si tienes permiso de cuentas por pagar.
+paso: 5 | pantalla=facturacion | permiso=facturacion:editar | Editar permite corregir datos del comprobante; Anular lo deja sin efecto con confirmación, y Restaurar lo devuelve a emitido.
+paso: 6 | pantalla=facturacion | permiso=ninguno | Ver OS y Ver valorización abren la orden de servicio o la valorización que originó la factura. Puedes adjuntar archivos al comprobante.
