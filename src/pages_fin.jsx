@@ -6620,6 +6620,18 @@ function CajaChica() {
     if (m.tipo_movimiento === 'aporte') return puedeGestionar;
     return false;
   };
+  const fechaCorta = f => { const [, mm, d] = String(f || '').slice(0, 10).split('-'); return d && mm ? `${d}/${mm}` : ''; };
+  const motivoBloqueoMov = m => {
+    const estado = String(m?.estado || '').toLowerCase();
+    if (['anulado', 'anulada'].includes(estado)) return m.motivo_anulacion ? `Anulado: ${m.motivo_anulacion}` : 'Anulado: no admite cambios';
+    if (m?.tipo_movimiento === 'reposicion') return 'Viene de una rendición aprobada; no se edita';
+    if (m?.tipo_movimiento === 'egreso' && m.bloqueado_rendicion) {
+      const r = m.rendicion_bloqueo;
+      const estadoR = String(r?.estado || '').toLowerCase();
+      return r ? `En rendición ${fechaCorta(r.periodo_inicio)}–${fechaCorta(r.periodo_fin)} (${estadoR}); no se edita` : 'Incluido en una rendición; no se edita';
+    }
+    return '';
+  };
   const abrirEditarEgreso = m => setModMov({
     accion: 'editar', mov: m,
     form: { concepto: m.concepto || '', categoria: m.categoria || '', ceco_id: m.ceco_id || '', num_comprobante: m.num_comprobante || '', fecha: String(m.fecha || '').slice(0, 10) },
@@ -7176,7 +7188,7 @@ function CajaChica() {
                   <table className="tbl">
                     <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
                     <tbody>{historialVisibles.length ? historialVisibles.map(m => (
-                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray" title={m.motivo_anulacion ? `Motivo: ${m.motivo_anulacion}` : (m.bloqueado_rendicion ? 'Incluido en una rendición: no se puede modificar' : undefined)}>{m.estado || 'registrado'}</span>{(puedeEditarEgreso(m, fondoSel) || puedeAnularMov(m, fondoSel)) && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>{puedeEditarEgreso(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px'}} title="Editar egreso" aria-label="Editar egreso" onClick={() => abrirEditarEgreso(m)}>{I.edit} Editar</button>}{puedeAnularMov(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px',color:'var(--danger)'}} title={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} aria-label={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} onClick={() => abrirAnularMov(m)}>{I.trash} Anular</button>}</div>}</td></tr>
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray" title={m.motivo_anulacion ? `Motivo: ${m.motivo_anulacion}` : (m.bloqueado_rendicion ? 'Incluido en una rendición: no se puede modificar' : undefined)}>{m.estado || 'registrado'}</span>{motivoBloqueoMov(m) && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,maxWidth:170,lineHeight:1.3}}>{motivoBloqueoMov(m)}</div>}{(puedeEditarEgreso(m, fondoSel) || puedeAnularMov(m, fondoSel)) && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>{puedeEditarEgreso(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px'}} title="Editar egreso" aria-label="Editar egreso" onClick={() => abrirEditarEgreso(m)}>{I.edit} Editar</button>}{puedeAnularMov(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px',color:'var(--danger)'}} title={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} aria-label={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} onClick={() => abrirAnularMov(m)}>{I.trash} Anular</button>}</div>}</td></tr>
                     )) : <tr><td colSpan="6" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
                 </div>
