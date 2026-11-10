@@ -1,0 +1,15 @@
+clave: como_usar_aria
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/inicio
+titulo: Cómo usar Aria
+resumen: Cómo preguntarle a Aria escribiendo o dictando, cómo escuchar sus respuestas y cuántas consultas puedes hacer al día.
+componentes: src/components/AsistenteErpPanel.jsx#AsistenteErpPanelBase, src/components/AriaMicrofono.jsx#AriaMicrofono, src/lib/ariaHabla.js
+huella: 9faf34ba6e c65836e99c c4d45aa981
+paso: 1 | pantalla=ninguna | permiso=ninguno | Abre Aria con el robot de la esquina inferior derecha, disponible en las pantallas de Administración y de Operaciones, o escribe en el cuadro Pregúntale a Aria del Inicio.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Escribe tu pregunta y pulsa Enviar. Aria responde solo con la información que tus permisos te dejan ver y te indica qué módulos revisó.
+paso: 3 | pantalla=ninguna | permiso=ninguno | Para dictar, toca el micrófono, habla y vuelve a tocarlo al terminar; puedes hablar hasta un minuto. La primera vez el navegador te pedirá permiso para usar el micrófono.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Lo que dictaste aparece escrito en el cuadro para que lo revises o corrijas antes de enviarlo; nada se envía solo.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Cuando preguntas por voz, Aria lee su respuesta en voz alta. Toca Detener voz para callarla.
+paso: 6 | pantalla=ninguna | permiso=ninguno | Puedes hacer 30 preguntas y 60 dictados al día; los contadores se renuevan a medianoche, hora de Lima.
+paso: 7 | pantalla=ninguna | permiso=ninguno | Aria puede preparar el registro de un gasto de caja chica, pero solo se guarda cuando tú lo confirmas en la tarjeta que te muestra.

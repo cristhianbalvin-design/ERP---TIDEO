@@ -8,6 +8,7 @@
     "build": "node scripts/build-deployment.mjs",
     "build:admin": "vite build",
     "test:access": "node --test src/access/roleAccess.test.js",
+    "test:aria-voz": "node --experimental-strip-types --test supabase/functions/aria-transcribir/handler.test.mjs src/lib/ariaHabla.test.mjs",
     "test:manual": "node --test scripts/manual-pantallas.test.mjs scripts/manual/catalogo.test.mjs",
     "verificar:catalogo": "node scripts/manual/catalogo.mjs verificar && node scripts/verificar-manual-pantallas.mjs",
     "preview": "vite preview",

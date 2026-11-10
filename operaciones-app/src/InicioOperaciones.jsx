@@ -4,11 +4,19 @@ import React from 'react';
 import { InicioBase, Icon } from '../../src/inicio/Inicio.jsx';
 import { fecha } from '../../src/inicio/datos.js';
 import robotAria from '../../src/assets/aria/b_base.webp?no-inline';
+import { useCompactWorkMode } from './useCompactWorkMode.js';
+import { openWorkNav } from './workMode.js';
 import './inicio_operaciones.css';
 
 const preguntas = ['¿Qué OT están atrasadas?', '¿Qué partes faltan revisar?',
   '¿Qué repuestos debo despachar?', '¿Qué viajes están pendientes?'];
 const accesos = [['scheduler-despacho', 'Planner'], ['crear-ot', 'Nueva OT'], ['ots', 'Bandeja de OT'], ['transporte-viajes', 'Monitor de viajes']];
+// En modo trabajo (celular y tablet) la cabecera se oculta: esta barra abre el menú en cajón.
+const BarraMenu = () => <div className="dx-opsini-bar">
+  <button type="button" className="dx-opsini-menu" aria-label="Abrir menú" onClick={openWorkNav}>☰</button>
+  <span>Inicio operativo</span>
+</div>;
+
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
 function Indicadores({ data }) {
@@ -52,14 +60,17 @@ function Lateral({ data, navigate }) {
 }
 
 export function InicioOperaciones({ sesion, onNavigate }) {
+  // En celular y tablet el menú pasa a un cajón ☰, como en las demás pantallas de trabajo.
+  useCompactWorkMode(true);
   const usuario = sesion?.usuario;
   const authUser = usuario ? { id: usuario.id, nombre: usuario.user_metadata?.nombre || usuario.user_metadata?.full_name || '' } : null;
   const sociedadId = sesion?.vistaConsolidada ? null : (sesion?.sociedadId || null);
   if (sesion?.estado !== 'listo' || !sesion?.empresaId) {
-    return <div className="ops-inicio-aria"><div className="dxi-empty" role="status">
+    return <div className="ops-inicio-aria"><BarraMenu /><div className="dxi-empty" role="status">
       {sesion?.cargando || sesion?.estado === 'cargando' ? 'Cargando tu inicio…' : 'Selecciona o solicita acceso a una empresa para ver tu inicio.'}</div></div>;
   }
   return <div className="ops-inicio-aria" style={{ '--ops-aria-robot': `url(${robotAria})` }}>
+    <BarraMenu />
     <InicioBase empresaId={sesion.empresaId} sociedadId={sociedadId} authUser={authUser} navigate={onNavigate}
       rpc="inicio_operaciones_pendientes" preguntas={preguntas} Indicadores={Indicadores} Lateral={Lateral} />
   </div>;

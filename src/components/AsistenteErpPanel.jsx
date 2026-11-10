@@ -1,6 +1,8 @@
 import AriaFab from './AriaFab.jsx';
 import AriaLogo from './AriaLogo.jsx';
 import AriaTarjetaEgreso from './AriaTarjetaEgreso.jsx';
+import AriaMicrofono, { MAX_SEGUNDOS_DICTADO } from './AriaMicrofono.jsx';
+import { hablar } from '../lib/ariaHabla.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
@@ -72,6 +74,11 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
   const [error, setError] = useState(null);
   const [consultando, setConsultando] = useState(false);
   const [cuotaRestante, setCuotaRestante] = useState(null);
+  const [voz, setVoz] = useState({ estado: 'listo', segundos: 0 });
+  const [avisoVoz, setAvisoVoz] = useState(null);
+  const [hablando, setHablando] = useState(false);
+  const porVoz = useRef(false);
+  const detenerLectura = useRef(null);
   const botonRef = useRef(null);
   const campoRef = useRef(null);
   const panelRef = useRef(null);
@@ -125,19 +132,40 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [abierto]);
 
-  const cerrar = () => { setAbierto(false); requestAnimationFrame(() => botonRef.current?.focus()); };
-  const nuevaConversacion = () => { setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; requestAnimationFrame(() => campoRef.current?.focus()); };
+  // Si la pregunta se dictó, Aria lee la respuesta en voz alta; la persona puede detenerla.
+  const callar = () => { detenerLectura.current?.(); detenerLectura.current = null; setHablando(false); };
+  const leerEnVozAlta = texto => {
+    callar();
+    setHablando(true);
+    detenerLectura.current = hablar(texto, { onFin: () => setHablando(false) });
+  };
+  useEffect(() => () => detenerLectura.current?.(), []);
+  const recibirDictado = texto => {
+    setPregunta(actual => (actual.trim() ? `${actual.trim()} ${texto}` : texto).slice(0, 1000));
+    porVoz.current = true;
+    requestAnimationFrame(() => campoRef.current?.focus());
+  };
+  const cambioVoz = (estado, segundos) => {
+    setVoz({ estado, segundos });
+    if (estado === 'pidiendo') callar();
+  };
+  const cerrar = () => { callar(); setAbierto(false); requestAnimationFrame(() => botonRef.current?.focus()); };
+  const nuevaConversacion = () => { callar(); porVoz.current = false; setAvisoVoz(null); setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; requestAnimationFrame(() => campoRef.current?.focus()); };
   const enviar = async (texto = pregunta, reintento = false) => {
     const contenido = String(texto || '').trim().slice(0, 1000);
     if (!contenido || consultando || agotada) return;
     const base = reintento ? mensajes : [...mensajes, { role: 'user', content: contenido }];
     const historial = (reintento ? mensajes.slice(0, -1) : mensajes).slice(-10).map(m => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
-    ultimaConsulta.current = { contenido, base };
-    if (!reintento) { setMensajes(base); setPregunta(''); }
+    const leerRespuesta = reintento ? Boolean(ultimaConsulta.current?.porVoz) : porVoz.current;
+    porVoz.current = false;
+    ultimaConsulta.current = { contenido, base, porVoz: leerRespuesta };
+    if (!reintento) { setMensajes(base); setPregunta(''); setAvisoVoz(null); }
+    callar();
     setError(null); setConsultando(true);
     try {
       const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
       setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null }]);
+      if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {
       setError({ status: cause.status || 0, mensaje: mensajeErrorAsistente(cause.status) });
@@ -174,8 +202,14 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
           {error && <div className="dx-asis-err" role="alert">{error.mensaje}{error.status !== 429 && <button type="button" onClick={() => ultimaConsulta.current && enviar(ultimaConsulta.current.contenido, true)}>Reintentar</button>}</div>}
           {agotada && <div className="dx-asis-quota" role="status"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Hoy ya conversamos mucho: llegaste al límite de {LIMITE_DIARIO} preguntas. Mañana a las 00:00 (hora de Lima) volvemos a empezar.</span></div>}
         </div>
-        <footer className="dx-asis-foot"><form className="dx-asis-form" onSubmit={enviarForm}><label className="dx-asis-label" htmlFor="dx-asis-question">Tu pregunta</label><textarea id="dx-asis-question" ref={campoRef} className="dx-asis-in" rows="1" placeholder={agotada ? 'Límite diario alcanzado' : 'Pregúntale a Aria…'} maxLength="1000" value={pregunta} disabled={agotada || consultando} onChange={event => setPregunta(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); enviar(); } }} />
-          <button className="dx-asis-send" type="submit" aria-label="Enviar pregunta" disabled={!pregunta.trim() || agotada || consultando}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
+        <footer className="dx-asis-foot">{(voz.estado === 'grabando' || voz.estado === 'transcribiendo' || hablando || avisoVoz) && <div className={`dx-asis-voz${voz.estado === 'grabando' ? ' is-rec' : ''}`} role="status">
+          {voz.estado === 'grabando' ? <><i aria-hidden="true" />Te escucho… {Math.floor(voz.segundos / 60)}:{String(voz.segundos % 60).padStart(2, '0')} de {Math.floor(MAX_SEGUNDOS_DICTADO / 60)}:00 · toca ■ al terminar</>
+            : voz.estado === 'transcribiendo' ? <><span className="dx-asis-dots" aria-hidden="true"><span/><span/><span/></span>Escribiendo lo que dijiste…</>
+            : hablando ? <><span>Aria está leyendo su respuesta</span><button type="button" onClick={callar}>Detener voz</button></>
+            : <><span>{avisoVoz}</span><button type="button" aria-label="Cerrar aviso" onClick={() => setAvisoVoz(null)}>×</button></>}
+        </div>}<form className="dx-asis-form" onSubmit={enviarForm}><label className="dx-asis-label" htmlFor="dx-asis-question">Tu pregunta</label><textarea id="dx-asis-question" ref={campoRef} className="dx-asis-in" rows="1" placeholder={agotada ? 'Límite diario alcanzado' : 'Pregúntale a Aria…'} maxLength="1000" value={pregunta} disabled={agotada || consultando} onChange={event => { setPregunta(event.target.value); if (!event.target.value.trim()) porVoz.current = false; }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); enviar(); } }} />
+          <AriaMicrofono empresaId={empresaId} deshabilitado={agotada || consultando} onTexto={recibirDictado} onAviso={setAvisoVoz} onEstado={cambioVoz} />
+          <button className="dx-asis-send" type="submit" aria-label="Enviar pregunta" disabled={!pregunta.trim() || agotada || consultando || voz.estado === 'grabando' || voz.estado === 'transcribiendo'}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
           <div className="dx-asis-meta">{mensajes.length ? <button type="button" onClick={nuevaConversacion}>Nueva conversación</button> : <span className="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span>}{cuotaRestante !== null && <span>{Math.max(0, LIMITE_DIARIO - cuotaRestante)} de {LIMITE_DIARIO} hoy</span>}</div>
         </footer>
       </section>

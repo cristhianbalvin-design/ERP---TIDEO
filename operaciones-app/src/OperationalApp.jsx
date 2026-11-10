@@ -163,6 +163,12 @@ export function OperationalApp() {
     window.addEventListener('dx-work-mode', onWorkMode);
     window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
     media.addEventListener?.('change', onCompact);
+    // La pantalla inicial activa el modo trabajo en su efecto, que corre antes que este: se lee lo ya fijado.
+    const dataset = document.documentElement?.dataset || {};
+    if (dataset.dxWorkMode === 'true' || dataset.dxDiagnosticoWorkMode === 'true') {
+      setWorkModeActive(true);
+      setWorkBackLabel(dataset.dxWorkBack ?? DEFAULT_WORK_BACK_LABEL);
+    }
     return () => { window.removeEventListener('dx-work-mode', onWorkMode); window.removeEventListener('dx-diagnostico-work-mode', onWorkMode); media.removeEventListener?.('change', onCompact); };
   }, []);
   const workCompact = workMode && compact;

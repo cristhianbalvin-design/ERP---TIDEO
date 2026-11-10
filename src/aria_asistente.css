@@ -244,3 +244,18 @@
 body:has(.dx-asis-fab[aria-expanded="true"]) .dxi-root .dxi-fab { visibility:hidden; pointer-events:none; }
 @media (max-width:760px) { .dx-asis .dx-asis-fab { bottom:calc(74px + env(safe-area-inset-bottom, 0px)); } }
 @media (prefers-reduced-motion:reduce) { .dxi-av, .dxi-av *, .dxi-fab, .dxi-fab .dxi-tp { animation:none !important; transition:none !important; } }
+/* Dictado por voz y lectura en voz alta */
+.dx-asis-mic { width:44px; height:44px; flex:none; display:grid; place-items:center; border:1px solid var(--dx-asis-field); border-radius:10px; background:var(--dx-asis-card); color:var(--dx-asis-cyan-text); cursor:pointer; }
+.dx-asis-mic:hover:not(:disabled) { border-color:var(--dx-asis-cyan); }
+.dx-asis-mic:focus-visible,.dx-asis-voz button:focus-visible { outline:2px solid var(--dx-asis-cyan); outline-offset:2px; }
+.dx-asis-mic:disabled { opacity:.45; cursor:not-allowed; }
+.dx-asis-mic.is-busy { opacity:.7; cursor:progress; }
+.dx-asis-mic.is-rec { border-color:var(--dx-asis-negative); background:var(--dx-asis-negative); color:#fff; animation:dx-asis-rec 1.4s ease-in-out infinite; }
+@keyframes dx-asis-rec { 0%,100% { box-shadow:0 0 0 0 rgba(180,35,24,.35); } 50% { box-shadow:0 0 0 6px rgba(180,35,24,0); } }
+.dx-asis-voz { display:flex; align-items:center; gap:8px; min-height:36px; margin-bottom:8px; padding:6px 10px; border-radius:10px; background:var(--dx-asis-cyan-bg); color:var(--dx-asis-cyan-text); font-size:12.5px; line-height:1.35; }
+.dx-asis-voz > span:first-child { flex:1; min-width:0; }
+.dx-asis-voz.is-rec { background:var(--dx-asis-error-bg); color:var(--dx-asis-error); }
+.dx-asis-voz i { width:8px; height:8px; flex:none; border-radius:50%; background:var(--dx-asis-negative); animation:dx-asis-blink 1s step-end infinite; }
+@keyframes dx-asis-blink { 50% { opacity:.2; } }
+.dx-asis-voz button { min-height:32px; margin-left:auto; padding:0 8px; border:0; background:none; color:inherit; font:inherit; font-weight:600; text-decoration:underline; cursor:pointer; }
+@media (prefers-reduced-motion: reduce) { .dx-asis-mic.is-rec,.dx-asis-voz i { animation:none; } }
