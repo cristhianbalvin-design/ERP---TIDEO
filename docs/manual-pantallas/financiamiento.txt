@@ -1,0 +1,14 @@
+clave: financiamiento
+tipo: pantalla
+pantalla: financiamiento
+catalogo: admin/financiamiento
+titulo: Financiamiento y Deuda
+resumen: Registra los préstamos, leasing y líneas de crédito de la empresa con su tabla de amortización, sus pagos y el reporte de deuda por moneda.
+componentes: src/pages_fin_deuda.jsx#FinanciamientoDeuda
+huella: de27070f50
+paso: 1 | pantalla=financiamiento | permiso=ninguno | Revisa la deuda vigente, las cuotas e intereses del mes y el capital pendiente en los indicadores; los importes se muestran por moneda. Usa las pestañas Todos los préstamos, Vigentes, Cancelados y Reporte de deuda.
+paso: 2 | pantalla=financiamiento | permiso=financiamiento:crear | Usa Nuevo financiamiento para registrar un préstamo con su entidad, monto, moneda, tasa, plazo, meses de gracia, día de pago y tipo de cuota; la vista previa muestra la cuota estimada y al guardar se genera la tabla de amortización.
+paso: 3 | pantalla=financiamiento | permiso=ninguno | Usa Ver en un préstamo para abrir su resumen, la tabla de amortización, los pagos realizados y los documentos.
+paso: 4 | pantalla=financiamiento | permiso=financiamiento:editar | Desde el detalle usa Registrar pago / abono para pagar una cuota, abonar a capital o cancelar el saldo; el pago genera el egreso en Tesorería y el gasto de intereses.
+paso: 5 | pantalla=financiamiento | permiso=financiamiento:editar | Usa Editar en la fila del préstamo para corregir cualquiera de sus datos. Las cuotas pagadas no cambian y las pendientes se recalculan sobre el saldo que queda; si ya tiene pagos, la moneda no se puede cambiar.
+paso: 6 | pantalla=financiamiento | permiso=financiamiento:anular | Usa Eliminar en la fila del préstamo. Tras la primera confirmación, una segunda alerta detalla todo lo que se borrará: cuotas, pagos, egresos de Tesorería por cuenta (cuyo saldo subirá) y gastos de intereses. Marca que lo entiendes y confirma; la acción no se puede deshacer.

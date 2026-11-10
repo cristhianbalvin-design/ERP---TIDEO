@@ -10,8 +10,12 @@ import {
   buildFinanciamiento,
   buildGastoIntereses,
   buildPagoFinanciamiento,
+  construirEdicionFinanciamiento,
   crearFinanciamientoConAmortizacion,
   createFinanciamientosDataSource,
+  editarFinanciamientoRpc,
+  eliminarFinanciamientoRpc,
+  impactoLocalEliminarFinanciamiento,
   generarAmortizacion as generarAmortizacionService,
   isCapitalPayment,
   nextCuota,
@@ -31,19 +35,24 @@ function moneyByCurrency(totals) {
   return keys.length ? keys.map(m => fmtMoney(m, totals[m])).join(' · ') : fmtMoney('PEN', 0);
 }
 
-function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitting, error }) {
-  const tabla = generarAmortizacionService({ monto:form.monto_original, tasaAnual:form.tasa_anual, plazoMeses:form.plazo_meses, mesesGracia:form.meses_gracia, fechaDesembolso:form.fecha_desembolso, diaPago:form.dia_pago, tipoCuota:form.tipo_cuota });
+function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitting, error, edicion = null }) {
+  const calculoEdicion = edicion ? construirEdicionFinanciamiento(edicion, form) : null;
+  const tabla = calculoEdicion
+    ? (calculoEdicion.tabla || []).filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada')
+    : generarAmortizacionService({ monto:form.monto_original, tasaAnual:form.tasa_anual, plazoMeses:form.plazo_meses, mesesGracia:form.meses_gracia, fechaDesembolso:form.fecha_desembolso, diaPago:form.dia_pago, tipoCuota:form.tipo_cuota });
+  const monedaBloqueada = Boolean(calculoEdicion?.tienePagos || (edicion && ((edicion.pagos_realizados || []).length || (edicion.tabla_amortizacion || []).some(c => c.estado === 'pagada'))));
   const set = (k, v) => setForm(prev => ({ ...prev, [k]:v }));
   return (
     <>
       <div className="side-panel-backdrop" onClick={onClose}/>
       <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
-        <div className="side-panel-head"><div><div className="eyebrow">Nuevo financiamiento</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Los campos * son obligatorios</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="side-panel-head"><div><div className="eyebrow">{edicion ? `Editar financiamiento · ${edicion.codigo}` : 'Nuevo financiamiento'}</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{edicion ? edicion.entidad : 'Los campos * son obligatorios'}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
         <form className="side-panel-body" onSubmit={onSubmit}>
+          {edicion && monedaBloqueada && <div style={{padding:'10px 12px', borderRadius:8, background:'rgba(245,158,11,0.10)', border:'1px solid rgba(245,158,11,0.35)', fontSize:13, marginBottom:16}}>Este préstamo tiene {calculoEdicion?.cuotasPagadas || 0} cuota(s) pagada(s). Las cuotas pagadas no cambian; las pendientes se recalculan sobre el saldo que queda tras el capital ya pagado. La moneda no se puede cambiar.</div>}
           <div className="grid-2" style={{gap:16}}>
             <div className="input-group"><label>Tipo *</label><select className="select" value={form.tipo} onChange={e=>set('tipo', e.target.value)}><option value="bancario">Prestamo bancario</option><option value="tercero">Prestamo de tercero</option><option value="leasing">Leasing</option><option value="linea_credito">Linea de credito</option><option value="otro">Otro</option></select></div>
             <div className="input-group"><label>Entidad *</label><input className="input" value={form.entidad} onChange={e=>set('entidad', e.target.value)} required/></div>
-            <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e=>set('moneda', e.target.value)}><option>PEN</option><option>USD</option></select></div>
+            <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e=>set('moneda', e.target.value)} disabled={monedaBloqueada} title={monedaBloqueada ? 'Tiene pagos registrados en esta moneda' : undefined}><option>PEN</option><option>USD</option></select></div>
             <div className="input-group"><label>Monto recibido *</label><input className="input" type="number" value={form.monto_original} onChange={e=>set('monto_original', e.target.value)} required/></div>
             <SociedadFormField value={form.sociedad_id} onChange={sociedad_id=>set('sociedad_id', sociedad_id)} style={{gridColumn:'1 / -1'}} />
             <div className="input-group"><label>Fecha desembolso</label><input className="input" type="date" value={form.fecha_desembolso} onChange={e=>set('fecha_desembolso', e.target.value)}/></div>
@@ -56,9 +65,9 @@ function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitti
             <div className="input-group"><label>Banco receptor</label><input className="input" value={form.cuenta_bancaria_destino} onChange={e=>set('cuenta_bancaria_destino', e.target.value)}/></div>
             <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Proposito</label><textarea className="input" rows="2" value={form.proposito} onChange={e=>set('proposito', e.target.value)}/></div>
           </div>
-          <div className="card mt-6" style={{padding:16}}><strong>Vista previa</strong><div className="mt-4">Cuota estimada: <strong>{fmtMoney(form.moneda, tabla[0]?.total || 0)}</strong></div><div>Total a pagar: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.total,0))}</strong></div><div>Total intereses: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.interes,0))}</strong></div></div>
+          <div className="card mt-6" style={{padding:16}}><strong>Vista previa</strong>{calculoEdicion?.error && <div className="mt-4" style={{color:'var(--red, #dc2626)'}}>{calculoEdicion.error}</div>}{calculoEdicion && !calculoEdicion.error && <><div className="mt-4">Capital ya pagado: <strong>{fmtMoney(form.moneda, calculoEdicion.capitalPagado)}</strong></div><div>Nuevo saldo pendiente: <strong>{fmtMoney(form.moneda, calculoEdicion.nuevoSaldo)}</strong></div><div>Cuotas por pagar: <strong>{tabla.length}</strong></div></>}<div className={calculoEdicion ? '' : 'mt-4'}>{calculoEdicion ? 'Próxima cuota' : 'Cuota estimada'}: <strong>{fmtMoney(form.moneda, tabla[0]?.total || 0)}</strong></div><div>{calculoEdicion ? 'Total por pagar' : 'Total a pagar'}: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.total,0))}</strong></div><div>Total intereses: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.interes,0))}</strong></div></div>
           {error && <div className="mt-6" style={{color:'var(--red, #dc2626)'}}>{error}</div>}
-          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar y generar tabla'}</button></div>
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : (edicion ? 'Guardar cambios' : 'Guardar y generar tabla')}</button></div>
         </form>
       </div>
     </>
@@ -94,8 +103,56 @@ function PagoModal({ data, onClose, onConfirm, isSubmitting, error }) {
   );
 }
 
+function EliminarFinanciamientoModal({ data, onClose, onContinuar, onConfirmar }) {
+  const { financiamiento, paso, impacto, cargando, error } = data;
+  const [entendido, setEntendido] = useState(false);
+  const m = impacto?.moneda || financiamiento.moneda || 'PEN';
+  const money = v => fmtMoney(m, v);
+  const conMovimientos = (impacto?.pagos || 0) + (impacto?.movimientos || 0) + (impacto?.gastos || 0) > 0;
+  return (
+    <div className="modal-backdrop" onClick={cargando ? undefined : onClose}>
+      <div className="modal" role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()} style={{width:'min(560px, 94vw)'}}>
+        <div className="modal-head"><div><div className="eyebrow" style={{color:'var(--red, #dc2626)'}}>{paso === 1 ? 'Eliminar financiamiento' : 'Confirmación final · acción irreversible'}</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>{financiamiento.codigo} · {financiamiento.entidad}</div></div><button className="btn btn-ghost btn-sm" onClick={onClose} disabled={cargando} aria-label="Cerrar">{I.x}</button></div>
+        <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:12, overflowY:'auto'}}>
+          {paso === 1 && <p style={{margin:0}}>¿Seguro que quieres eliminar el financiamiento <strong>{financiamiento.codigo}</strong> de <strong>{financiamiento.entidad}</strong> por <strong>{finMoney(financiamiento, financiamiento.monto_original)}</strong>? En el siguiente paso verás todo lo que se borrará junto con él.</p>}
+          {paso === 2 && cargando && !impacto && <p className="text-muted" style={{margin:0}}>Calculando el impacto de la eliminación...</p>}
+          {paso === 2 && impacto && <>
+            <p style={{margin:0}}>Al confirmar se borrará <strong>de forma permanente</strong> lo siguiente:</p>
+            <ul style={{margin:0, paddingLeft:20, display:'flex', flexDirection:'column', gap:6}}>
+              <li>El préstamo <strong>{impacto.codigo}</strong> por {money(impacto.monto_original)} con saldo pendiente de {money(impacto.saldo_pendiente)}.</li>
+              <li>Su tabla de amortización: <strong>{impacto.cuotas}</strong> cuota(s), de las cuales {impacto.cuotas_pagadas} figuran como pagadas.</li>
+              <li><strong>{impacto.pagos}</strong> pago(s) registrado(s) por {money(impacto.pagos_total)} (capital {money(impacto.pagos_capital)} · intereses {money(impacto.pagos_interes)}).</li>
+              <li><strong>{impacto.movimientos}</strong> egreso(s) de Tesorería por {money(impacto.movimientos_total)}. Al desaparecer, el saldo de estas cuentas <strong>subirá</strong> en ese importe:
+                {(impacto.movimientos_por_cuenta || []).length > 0 && <ul style={{marginTop:4, paddingLeft:18}}>{impacto.movimientos_por_cuenta.map(c => <li key={c.cuenta + c.moneda}>{c.cuenta}: +{fmtMoney(c.moneda, c.total)} ({c.cantidad} mov.)</li>)}</ul>}
+              </li>
+              <li><strong>{impacto.gastos}</strong> gasto(s) de intereses por {money(impacto.gastos_total)}; dejarán de aparecer en Compras/Gastos y en el Estado de Resultados.</li>
+            </ul>
+            {conMovimientos && <div style={{padding:'10px 12px', borderRadius:8, background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.35)', fontSize:13}}>Si estos pagos ocurrieron realmente en el banco, eliminarlos dejará los saldos del ERP distintos a los del banco. Hazlo solo si el préstamo se registró por error.</div>}
+            <label className="row" style={{gap:8, alignItems:'flex-start', cursor:'pointer'}}><input type="checkbox" checked={entendido} onChange={e => setEntendido(e.target.checked)} style={{marginTop:3}}/><span>Entiendo lo que se eliminará y que no se puede deshacer.</span></label>
+          </>}
+          {error && <div style={{color:'var(--red, #dc2626)'}}>{error}</div>}
+        </div>
+        <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8}}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={cargando}>Cancelar</button>
+          {paso === 1
+            ? <button className="btn btn-danger" onClick={onContinuar} disabled={cargando}>Continuar</button>
+            : <button className="btn btn-danger" onClick={onConfirmar} disabled={cargando || !impacto || !entendido}>{cargando && impacto ? 'Eliminando...' : 'Eliminar definitivamente'}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FinanciamientoDeuda() {
-  const { financiamientos, setFinanciamientos, setComprasGastos, setMovimientosTesoreria, empresa, activeParams, navigate, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { financiamientos, setFinanciamientos, comprasGastos = [], setComprasGastos, movimientosTesoreria = [], setMovimientosTesoreria, empresa, role, activeParams, navigate, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  // Misma regla que usuario_puede(empresa, 'financiamiento', 'editar' | 'eliminar') en el servidor
+  // ('eliminar' usa el permiso de anular de la pantalla).
+  const tienePermiso = accion => Boolean(role?.es_admin_empresa || role?.es_superadmin || role?.permisos?.todo || role?.permisos?.plataforma
+    || role?.permisos?.[accion] === true || role?.permisos?.[accion]?.includes?.('financiamiento'));
+  const puedeEditar = tienePermiso('editar');
+  const puedeEliminar = tienePermiso('anular');
+  const [edicionOpen, setEdicionOpen] = useState(null);
+  const [eliminarOpen, setEliminarOpen] = useState(null);
   const modoVistaSociedad = resolverFiltroSociedadesVista({ multisociedadHabilitado: empresa?.multisociedad_habilitado, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles });
   const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear un financiamiento.';
   const [tab, setTab] = useState('todos');
@@ -106,7 +163,8 @@ export function FinanciamientoDeuda() {
   const [errorNuevoFinanciamiento, setErrorNuevoFinanciamiento] = useState('');
   const [guardandoPago, setGuardandoPago] = useState(false);
   const [errorPago, setErrorPago] = useState('');
-  const [form, setForm] = useState({ tipo:'bancario', entidad:'', tipo_entidad:'banco', contacto_nombre:'', contacto_telefono:'', contacto_email:'', monto_original:50000, moneda:'PEN', sociedad_id:'', fecha_desembolso:'2026-04-01', tasa_anual:12, tipo_tasa:'TEA', plazo_meses:24, meses_gracia:0, dia_pago:5, tipo_cuota:'frances', centro_costo:'CC-OPS', proposito:'', cuenta_bancaria_destino:'BCP Cta. cte.', notas:'' });
+  const formInicial = { tipo:'bancario', entidad:'', tipo_entidad:'banco', contacto_nombre:'', contacto_telefono:'', contacto_email:'', monto_original:50000, moneda:'PEN', sociedad_id:'', fecha_desembolso:'2026-04-01', tasa_anual:12, tipo_tasa:'TEA', plazo_meses:24, meses_gracia:0, dia_pago:5, tipo_cuota:'frances', centro_costo:'CC-OPS', proposito:'', cuenta_bancaria_destino:'BCP Cta. cte.', notas:'' };
+  const [form, setForm] = useState(formInicial);
   const detalle = activeParams?.detail ? financiamientos.find(f => f.id === activeParams.detail) : null;
   const dataSource = createFinanciamientosDataSource({
     empresa,
@@ -154,6 +212,95 @@ export function FinanciamientoDeuda() {
       setErrorNuevoFinanciamiento(error?.message || 'No se pudo guardar el financiamiento.');
     } finally {
       setGuardandoFinanciamiento(false);
+    }
+  };
+
+  const abrirEdicion = financiamiento => {
+    setErrorNuevoFinanciamiento('');
+    setForm({
+      ...formInicial,
+      tipo: financiamiento.tipo || 'bancario',
+      entidad: financiamiento.entidad || '',
+      contacto_nombre: financiamiento.contacto_nombre || '',
+      monto_original: financiamiento.monto_original ?? 0,
+      moneda: financiamiento.moneda || 'PEN',
+      sociedad_id: financiamiento.sociedad_id || '',
+      fecha_desembolso: financiamiento.fecha_desembolso || '',
+      tasa_anual: financiamiento.tasa_anual ?? 0,
+      plazo_meses: financiamiento.plazo_meses ?? 1,
+      meses_gracia: financiamiento.meses_gracia ?? 0,
+      dia_pago: financiamiento.dia_pago ?? 5,
+      tipo_cuota: financiamiento.tipo_cuota || 'frances',
+      proposito: financiamiento.proposito || '',
+      cuenta_bancaria_destino: financiamiento.cuenta_bancaria_destino || '',
+      notas: financiamiento.notas || '',
+    });
+    setEdicionOpen(financiamiento);
+  };
+
+  const guardarEdicion = async e => {
+    e.preventDefault();
+    const financiamiento = edicionOpen;
+    const formEl = e.target;
+    if (!formEl.checkValidity()) {
+      formEl.reportValidity();
+      setErrorNuevoFinanciamiento('Completa los campos obligatorios (*) antes de guardar.');
+      return;
+    }
+    if (empresa?.multisociedad_habilitado && !form.sociedad_id) {
+      setErrorNuevoFinanciamiento('Selecciona la sociedad que contrata el financiamiento.');
+      return;
+    }
+    const calculo = construirEdicionFinanciamiento(financiamiento, form);
+    if (calculo.error) { setErrorNuevoFinanciamiento(calculo.error); return; }
+    const datos = { ...calculo.datos, sociedad_id: empresa?.multisociedad_habilitado ? (form.sociedad_id || null) : (financiamiento.sociedad_id ?? null) };
+    setErrorNuevoFinanciamiento('');
+    setGuardandoFinanciamiento(true);
+    try {
+      const actualizado = dataSource.mode === 'supabase'
+        ? { ...financiamiento, ...(await editarFinanciamientoRpc({ empresa, id: financiamiento.id, datos, cuotas: calculo.tabla })), pagos_realizados: financiamiento.pagos_realizados || [] }
+        : { ...financiamiento, ...datos, tabla_amortizacion: calculo.tabla };
+      setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? actualizado : f));
+      if ((actualizado.sociedad_id || null) !== (financiamiento.sociedad_id || null)) {
+        setComprasGastos(prev => prev.map(g => g.financiamiento_id === financiamiento.id ? { ...g, sociedad_id: actualizado.sociedad_id || null } : g));
+      }
+      setEdicionOpen(null);
+      addNotificacion(`Financiamiento ${financiamiento.codigo} actualizado.`);
+    } catch (error) {
+      setErrorNuevoFinanciamiento(error?.message || 'No se pudo guardar los cambios del financiamiento.');
+    } finally {
+      setGuardandoFinanciamiento(false);
+    }
+  };
+
+  const continuarEliminar = async () => {
+    const financiamiento = eliminarOpen.financiamiento;
+    if (dataSource.mode !== 'supabase') {
+      setEliminarOpen(v => ({ ...v, paso: 2, impacto: impactoLocalEliminarFinanciamiento(financiamiento, movimientosTesoreria, comprasGastos), error: '' }));
+      return;
+    }
+    setEliminarOpen(v => ({ ...v, paso: 2, cargando: true, error: '' }));
+    try {
+      const impacto = await eliminarFinanciamientoRpc({ empresa, id: financiamiento.id, ejecutar: false });
+      setEliminarOpen(v => v && ({ ...v, impacto, cargando: false }));
+    } catch (error) {
+      setEliminarOpen(v => v && ({ ...v, cargando: false, error: error?.message || 'No se pudo calcular el impacto de la eliminación.' }));
+    }
+  };
+
+  const confirmarEliminar = async () => {
+    const financiamiento = eliminarOpen.financiamiento;
+    setEliminarOpen(v => ({ ...v, cargando: true, error: '' }));
+    try {
+      if (dataSource.mode === 'supabase') await eliminarFinanciamientoRpc({ empresa, id: financiamiento.id, ejecutar: true });
+      setFinanciamientos(prev => prev.filter(f => f.id !== financiamiento.id));
+      setMovimientosTesoreria(prev => prev.filter(m => !(m.vinculo_tipo === 'financiamiento' && m.vinculo_id === financiamiento.id)));
+      setComprasGastos(prev => prev.filter(g => g.financiamiento_id !== financiamiento.id));
+      setEliminarOpen(null);
+      if (activeParams?.detail === financiamiento.id) navigate('financiamiento');
+      addNotificacion(`Financiamiento ${financiamiento.codigo} eliminado junto con sus cuotas, pagos y movimientos vinculados.`);
+    } catch (error) {
+      setEliminarOpen(v => v && ({ ...v, cargando: false, error: error?.message || 'No se pudo eliminar el financiamiento.' }));
     }
   };
 
@@ -248,13 +395,15 @@ export function FinanciamientoDeuda() {
 
   return (
     <>
-      <div className="page-header"><div><h1 className="page-title">Financiamiento y Deuda</h1><div className="page-sub">Prestamos recibidos por la empresa, lineas de credito y obligaciones financieras</div></div><button className="btn btn-primary" data-local-form="true" disabled={!modoVistaSociedad.permiteEscritura} title={!modoVistaSociedad.permiteEscritura ? mensajeSeleccionSociedad : 'Nuevo financiamiento'} onClick={()=>{ if (modoVistaSociedad.permiteEscritura) setNuevoOpen(true); }}>{I.plus} Nuevo financiamiento</button></div>
+      <div className="page-header"><div><h1 className="page-title">Financiamiento y Deuda</h1><div className="page-sub">Prestamos recibidos por la empresa, lineas de credito y obligaciones financieras</div></div><button className="btn btn-primary" data-local-form="true" disabled={!modoVistaSociedad.permiteEscritura} title={!modoVistaSociedad.permiteEscritura ? mensajeSeleccionSociedad : 'Nuevo financiamiento'} onClick={()=>{ if (modoVistaSociedad.permiteEscritura) { setForm(formInicial); setNuevoOpen(true); } }}>{I.plus} Nuevo financiamiento</button></div>
       {!modoVistaSociedad.permiteEscritura && <div className="alert alert-warning" style={{marginBottom:16}}>{mensajeSeleccionSociedad}</div>}
       <div style={{ background:'rgba(26,43,74,0.08)', borderLeft:'3px solid var(--orange)', borderRadius:'6px', padding:'10px 16px', marginBottom:'20px', fontSize:'13px', color:'var(--slate)' }}>Los prestamos registrados aqui son <strong>obligaciones de la empresa</strong>. Los importes se muestran por moneda; no se mezclan PEN y USD sin tipo de cambio.</div>
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}><div className="kpi-card"><div className="kpi-label">Deuda total vigente</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(deudaTotalPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Cuotas este mes</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(cuotasMesPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Intereses este mes</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(interesesMesPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Capital pendiente</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(deudaTotalPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Prestamos activos</div><div className="kpi-value" style={{fontSize:22}}>{activos.length}</div></div></div>
       <div className="tabs"><div className={'tab '+(tab==='todos'?'active':'')} onClick={()=>setTab('todos')}>Todos los prestamos</div><div className={'tab '+(tab==='vigentes'?'active':'')} onClick={()=>setTab('vigentes')}>Vigentes</div><div className={'tab '+(tab==='cancelados'?'active':'')} onClick={()=>setTab('cancelados')}>Cancelados</div><div className={'tab '+(tab==='reporte'?'active':'')} onClick={()=>setTab('reporte')}>Reporte de deuda</div></div>
-      {tab === 'reporte' ? <div className="card"><div className="card-head"><h3>Reporte de deuda financiera</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar reporte Excel</button></div><div className="card-body"><div className="grid-2" style={{gap:20}}><div style={{padding:16, border:'1px solid var(--border)', borderRadius:8}}><h3 style={{marginTop:0}}>Resumen ejecutivo por moneda</h3><p>Deuda total vigente: <strong>{moneyByCurrency(deudaTotalPorMoneda)}</strong></p><p>Cuotas del mes: <strong>{moneyByCurrency(cuotasMesPorMoneda)}</strong></p><p>Intereses del mes: <strong>{moneyByCurrency(interesesMesPorMoneda)}</strong></p><p>Intereses acumulados 2026: <strong>{moneyByCurrency(interesesPagadosPorMoneda)}</strong></p></div><div style={{padding:16, border:'1px solid var(--border)', borderRadius:8}}><h3 style={{marginTop:0}}>Deuda por tipo de acreedor</h3>{porTipo.map(x => <div key={x.tipo} style={{marginBottom:10}}><div className="row" style={{justifyContent:'space-between'}}><span>{tipoLabel[x.tipo]}</span><strong>{moneyByCurrency(x.totals)}</strong></div>{Object.entries(x.totals).map(([m]) => <div key={m} className="text-muted" style={{fontSize:12}}>{m}: {x.pct[m]}% de la deuda en {m}</div>)}</div>)}</div></div><div className="mt-6"><h3>Calendario de pagos - proximos 12 meses</h3>{meses.map(m => <div key={m.label} className="row" style={{gap:12, margin:'8px 0'}}><span style={{width:90}}>{m.label}</span><strong style={{width:190}}>{moneyByCurrency(m.totals)}</strong><div className="bar" style={{flex:1}}><div style={{width:(m.visual/maxMes*100)+'%', background:'var(--orange)'}}/></div></div>)}<div className="mt-4"><strong>Total comprometido 12 meses: {moneyByCurrency(meses.reduce((acc,m)=>{Object.entries(m.totals).forEach(([moneda,total])=>{acc[moneda]=(acc[moneda]||0)+total;});return acc;},{}))}</strong></div></div><div className="grid-2 mt-6">{activos.map(f => <div key={f.id} style={{border:'1px solid var(--border)', borderRadius:8, padding:14}}><div className="row" style={{justifyContent:'space-between'}}><strong>{f.entidad}</strong><span>{finMoney(f, f.saldo_pendiente)}</span></div><div className="text-muted" style={{fontSize:12}}>Moneda: {f.moneda || 'PEN'} · Interes mes: {finMoney(f, nextCuota(f)?.interes || 0)}</div><div className="bar mt-4"><div style={{width:Math.min(100,(f.cuotas_pagadas || 0)/(f.plazo_meses || 1)*100)+'%', background:'var(--green)'}}/></div></div>)}</div></div></div> : <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>ID</th><th>Entidad prestamista</th><th>Moneda</th><th>Tipo</th><th>Monto original</th><th>Tasa</th><th>Plazo</th><th>Saldo pendiente</th><th>Prox. cuota</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{visibles.map(f => { const c=nextCuota(f); return <tr key={f.id}><td className="mono">{f.codigo}</td><td><strong>{f.entidad}</strong></td><td>{f.moneda || 'PEN'}</td><td>{tipoLabel[f.tipo]}</td><td className="num">{finMoney(f, f.monto_original)}</td><td>{f.tasa_anual}% anual</td><td>{f.plazo_meses ? `${f.plazo_meses} meses` : 'Revolvente'}</td><td className="num"><strong>{finMoney(f, f.saldo_pendiente)}</strong></td><td>{c ? `${finMoney(f, c.total)} · ${fmtDate(c.fecha)}` : '-'}</td><td><span className={'badge '+badgeEstado(f.estado)}>{f.estado}</span></td><td><button className="btn btn-sm btn-ghost" onClick={()=>{setDetalleTab('resumen'); navigate('financiamiento',{detail:f.id});}}>{I.eye} Ver</button></td></tr>;})}</tbody></table></div></div>}
+      {tab === 'reporte' ? <div className="card"><div className="card-head"><h3>Reporte de deuda financiera</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar reporte Excel</button></div><div className="card-body"><div className="grid-2" style={{gap:20}}><div style={{padding:16, border:'1px solid var(--border)', borderRadius:8}}><h3 style={{marginTop:0}}>Resumen ejecutivo por moneda</h3><p>Deuda total vigente: <strong>{moneyByCurrency(deudaTotalPorMoneda)}</strong></p><p>Cuotas del mes: <strong>{moneyByCurrency(cuotasMesPorMoneda)}</strong></p><p>Intereses del mes: <strong>{moneyByCurrency(interesesMesPorMoneda)}</strong></p><p>Intereses acumulados 2026: <strong>{moneyByCurrency(interesesPagadosPorMoneda)}</strong></p></div><div style={{padding:16, border:'1px solid var(--border)', borderRadius:8}}><h3 style={{marginTop:0}}>Deuda por tipo de acreedor</h3>{porTipo.map(x => <div key={x.tipo} style={{marginBottom:10}}><div className="row" style={{justifyContent:'space-between'}}><span>{tipoLabel[x.tipo]}</span><strong>{moneyByCurrency(x.totals)}</strong></div>{Object.entries(x.totals).map(([m]) => <div key={m} className="text-muted" style={{fontSize:12}}>{m}: {x.pct[m]}% de la deuda en {m}</div>)}</div>)}</div></div><div className="mt-6"><h3>Calendario de pagos - proximos 12 meses</h3>{meses.map(m => <div key={m.label} className="row" style={{gap:12, margin:'8px 0'}}><span style={{width:90}}>{m.label}</span><strong style={{width:190}}>{moneyByCurrency(m.totals)}</strong><div className="bar" style={{flex:1}}><div style={{width:(m.visual/maxMes*100)+'%', background:'var(--orange)'}}/></div></div>)}<div className="mt-4"><strong>Total comprometido 12 meses: {moneyByCurrency(meses.reduce((acc,m)=>{Object.entries(m.totals).forEach(([moneda,total])=>{acc[moneda]=(acc[moneda]||0)+total;});return acc;},{}))}</strong></div></div><div className="grid-2 mt-6">{activos.map(f => <div key={f.id} style={{border:'1px solid var(--border)', borderRadius:8, padding:14}}><div className="row" style={{justifyContent:'space-between'}}><strong>{f.entidad}</strong><span>{finMoney(f, f.saldo_pendiente)}</span></div><div className="text-muted" style={{fontSize:12}}>Moneda: {f.moneda || 'PEN'} · Interes mes: {finMoney(f, nextCuota(f)?.interes || 0)}</div><div className="bar mt-4"><div style={{width:Math.min(100,(f.cuotas_pagadas || 0)/(f.plazo_meses || 1)*100)+'%', background:'var(--green)'}}/></div></div>)}</div></div></div> : <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>ID</th><th>Entidad prestamista</th><th>Moneda</th><th>Tipo</th><th>Monto original</th><th>Tasa</th><th>Plazo</th><th>Saldo pendiente</th><th>Prox. cuota</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead><tbody>{visibles.map(f => { const c=nextCuota(f); return <tr key={f.id}><td className="mono">{f.codigo}</td><td><strong>{f.entidad}</strong></td><td>{f.moneda || 'PEN'}</td><td>{tipoLabel[f.tipo]}</td><td className="num">{finMoney(f, f.monto_original)}</td><td>{f.tasa_anual}% anual</td><td>{f.plazo_meses ? `${f.plazo_meses} meses` : 'Revolvente'}</td><td className="num"><strong>{finMoney(f, f.saldo_pendiente)}</strong></td><td>{c ? `${finMoney(f, c.total)} · ${fmtDate(c.fecha)}` : '-'}</td><td><span className={'badge '+badgeEstado(f.estado)}>{f.estado}</span></td><td style={{textAlign:'right'}}><div style={{display:'inline-flex', alignItems:'center', justifyContent:'flex-end', gap:4, whiteSpace:'nowrap'}}><button className="btn btn-sm btn-ghost" title="Ver detalle" onClick={()=>{setDetalleTab('resumen'); navigate('financiamiento',{detail:f.id});}}>{I.eye} Ver</button><button className="btn btn-sm btn-ghost" data-local-form="true" disabled={!puedeEditar} title={puedeEditar ? 'Editar financiamiento' : 'No tienes permiso para editar financiamientos'} onClick={()=>abrirEdicion(f)}>{I.edit} Editar</button><button className="btn btn-sm btn-ghost" data-local-form="true" disabled={!puedeEliminar} title={puedeEliminar ? 'Eliminar financiamiento' : 'No tienes permiso para eliminar financiamientos'} style={{color:'var(--red, #dc2626)'}} onClick={()=>setEliminarOpen({ financiamiento:f, paso:1 })}>{I.trash} Eliminar</button></div></td></tr>;})}</tbody></table></div></div>}
       {nuevoOpen && <NuevoFinanciamientoPanel form={form} setForm={setForm} onClose={()=>{ setNuevoOpen(false); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarFinanciamiento} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
+      {edicionOpen && <NuevoFinanciamientoPanel edicion={edicionOpen} form={form} setForm={setForm} onClose={()=>{ setEdicionOpen(null); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarEdicion} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
+      {eliminarOpen && <EliminarFinanciamientoModal data={eliminarOpen} onClose={()=>setEliminarOpen(null)} onContinuar={continuarEliminar} onConfirmar={confirmarEliminar}/>}
     </>
   );
 }
