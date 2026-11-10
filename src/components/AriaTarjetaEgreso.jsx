@@ -93,7 +93,7 @@ export default function AriaTarjetaEgreso({ borrador, empresaId, estadoInicial, 
       <div className="dx-asis-draft-actions">
         <button type="button" className="dx-asis-draft-btn" disabled={ocupado} onClick={cancelar}>Cancelar</button>
         <button type="button" className="dx-asis-draft-btn primary" disabled={ocupado} onClick={confirmar}>
-          {estado === 'subiendo' ? 'Subiendo foto…' : estado === 'confirmando' ? 'Registrando…' : 'Confirmar y registrar'}
+          {estado === 'subiendo' ? 'Subiendo foto…' : estado === 'confirmando' ? 'Registrando…' : 'Confirmar'}
         </button>
       </div>
       <div className="dx-asis-draft-note">Nada se graba hasta que pulses Confirmar. El borrador vence a los 30 minutos.</div>
