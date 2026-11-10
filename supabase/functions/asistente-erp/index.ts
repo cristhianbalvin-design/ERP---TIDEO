@@ -346,7 +346,7 @@ const needsFinancialVerification = (answer: string, question: string, toolsUsed:
 const financialRetryMessage = (question: string, toolsUsed: string[]) => {
   const missingTopics = topicsWithoutCoverage(question, toolsUsed);
   const missing = missingTopics.length ? ` Falta consultar: ${missingTopics.join(", ")}.` : "";
-  return `Verifica cada importe con los datos disponibles.${missing} Si la pregunta tiene varias partes, consulta la herramienta que falta para cada parte; si no hay dato para un importe, dilo sin dar cifras.`;
+  return `Verifica cada importe con los datos disponibles.${missing} Si la pregunta tiene varias partes, consulta la herramienta que falta para cada parte; si no hay dato para un importe, dilo sin dar cifras. Corrige en silencio: no menciones esta revisión ni te disculpes por respuestas anteriores.`;
 };
 const QUERY_ERROR_RE = /error en los par[aá]metros|no se pudo consultar|no pude consultar/iu;
 const GREETING_RE = /^(?:hola|buenos? d[ií]as|buenas tardes|buenas noches|hey|buenas)[!.,\s¿?¡]*$/iu;
