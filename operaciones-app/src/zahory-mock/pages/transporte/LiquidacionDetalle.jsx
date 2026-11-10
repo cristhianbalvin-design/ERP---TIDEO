@@ -163,6 +163,7 @@ function TarjetaViaje({ linea, liq, editable, perm, onDlg, onNav, onQuitar, busy
   const costos = (linea.cargos || []).filter(c => c.tipo === 'costo');
   const tercero = v.transportista?.tipo_operador && v.transportista.tipo_operador !== 'propio';
   const ren = linea.rendicion;
+  const observados = linea.gastos.filter(g => g.estado === 'observado').length;
   const margenPct = Number(linea.ingreso) ? (Number(linea.margen) / Number(linea.ingreso)) * 100 : 0;
   return <article className="dx-tmsliq-vcard">
     <div className="dx-tmsliq-vh"><b>{v.codigo}</b>{v.os && <span className="dx-ui-pill is-violet">{v.os.numero}</span>}
@@ -192,7 +193,7 @@ function TarjetaViaje({ linea, liq, editable, perm, onDlg, onNav, onQuitar, busy
         <div className="dx-tmsliq-ln is-tot"><b>Ingreso sin IGV</b><span>{formatearImporte(linea.ingreso, moneda)}</span></div></div>
       <div className="dx-tmsliq-col"><h4>Costo del viaje</h4>
         <div className="dx-tmsliq-ln"><b>Gastos del conductor</b><span>{formatearImporte(linea.costo_gastos, moneda)}</span>
-          <small>{linea.gastos.length ? `${etiquetaContador(linea.gastos.length, 'gasto')}` : 'Sin gastos registrados'}
+          <small>{linea.gastos.length ? `${etiquetaContador(linea.gastos.length - observados, 'gasto')}${observados ? ` · ${etiquetaContador(observados, 'observado')}` : ''}` : 'Sin gastos registrados'}
             {ren && <> · <button type="button" className="dx-btn link" onClick={() => onNav?.('transporte-liquidacion', { rendicion: v.id })}>{ren.numero}</button>
               {' '}<span className={`dx-ui-pill dx-tmsliq-tag ${ren.estado === 'aprobada' ? 'is-green' : linea.gastos_pendientes ? 'is-amber' : 'is-gray'}`}>
                 {ren.estado === 'aprobada' ? 'Aprobada' : linea.gastos_pendientes ? `${linea.gastos_pendientes} por revisar` : 'Abierta'}</span></>}</small></div>
@@ -316,7 +317,10 @@ export function LiquidacionDetalle({ id, empresaId, perm, onNav, sesion }) {
           <div><small>Cliente</small><b>{liq.cuenta?.razon_social || nombreCuenta(liq.cuenta)}</b></div>
           <div><small>RUC</small><b>{liq.cuenta?.ruc || 'Sin dato'}</b></div>
           <div><small>Creada</small><b>{fechaDMY(liq.created_at)}</b></div>
-          <div><small>Venta</small><b>{liq.venta_id ? 'Creada en Ventas' : 'Aún no'}</b></div></div>
+          <div><small>Venta</small><b>{liq.venta_id ? 'Creada en Ventas' : 'Aún no'}</b></div>
+          {liq.conformidad && <div className="dx-tmsliq-meta-full"><small>Respuesta del cliente</small>
+            <b>{liq.conformidad.resultado === 'conforme' ? 'Conforme' : 'Observada'} · {liq.conformidad.nombre}{liq.conformidad.cargo ? `, ${liq.conformidad.cargo}` : ''} · {fechaDMY(liq.conformidad.fecha)}{liq.conformidad.medio ? ` · ${liq.conformidad.medio}` : ''}</b>
+            {/^https?:\/\//i.test(liq.conformidad.respaldo_url || '') && <a href={liq.conformidad.respaldo_url} target="_blank" rel="noreferrer">Ver respaldo</a>}</div>}</div>
       </aside>
     </div>
 

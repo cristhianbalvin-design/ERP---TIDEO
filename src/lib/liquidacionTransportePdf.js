@@ -40,21 +40,27 @@ export function generarPrefacturaPdf({ liquidacion, empresa }) {
   doc.text(`Cliente: ${cliente}${liquidacion.cuenta?.ruc ? ` · RUC ${liquidacion.cuenta.ruc}` : ''}`, 14, 34);
   doc.text(`Período: ${fecha(liquidacion.periodo_desde)} al ${fecha(liquidacion.periodo_hasta)}`, 14, 39);
 
-  const col = { viaje: 14, ruta: 44, flete: 128, rec: 158, imp: ancho - 14 };
+  // Bordes derechos de las columnas de importes (alineadas a la derecha) y ancho útil de la ruta.
+  const col = { viaje: 14, ruta: 44, flete: 142, rec: 170, imp: ancho - 14 };
+  const anchoRuta = col.flete - 24 - col.ruta;
   let y = 48;
   const cabecera = () => {
     doc.setFillColor(248, 249, 250).rect(14, y - 4.5, ancho - 28, 7, 'F');
     doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...GRIS);
     doc.text('Viaje', col.viaje + 1, y); doc.text('Ruta y carga', col.ruta, y);
-    doc.text('Flete', col.flete + 26, y, { align: 'right' }); doc.text('Recargos', col.rec + 22, y, { align: 'right' });
+    doc.text('Flete', col.flete, y, { align: 'right' }); doc.text('Recargos', col.rec, y, { align: 'right' });
     doc.text('Importe', col.imp, y, { align: 'right' });
     y += 6;
   };
   cabecera();
   liquidacion.lineas.forEach(linea => {
     const v = linea.viaje || {};
-    const ruta = doc.splitTextToSize(`${v.origen_nombre || ''} a ${v.destino_nombre || ''}`, col.flete - col.ruta - 4);
-    const carga = doc.splitTextToSize(v.carga_descripcion || '', col.flete - col.ruta - 4);
+    // Se mide cada texto con la letra con la que se dibuja; si no, las líneas largas invaden la columna del flete.
+    doc.setFont('helvetica', 'normal').setFontSize(9);
+    const ruta = doc.splitTextToSize(`${v.origen_nombre || ''} a ${v.destino_nombre || ''}`, anchoRuta);
+    doc.setFontSize(8);
+    const carga = doc.splitTextToSize(v.carga_descripcion || '', anchoRuta);
+    doc.setFontSize(7.5);
     const detalle = doc.splitTextToSize(recargosTexto(linea, moneda), ancho - 28 - (col.ruta - 14));
     const alto_ = Math.max(ruta.length + carga.length, 2) * 4 + (detalle.length ? detalle.length * 3.6 + 1 : 0) + 3;
     if (y + alto_ > alto - 60) { doc.addPage(); y = 20; cabecera(); }
@@ -63,8 +69,8 @@ export function generarPrefacturaPdf({ liquidacion, empresa }) {
     doc.setFontSize(9).setTextColor(40, 40, 40).text(ruta, col.ruta, y);
     doc.setFontSize(8).setTextColor(...GRIS).text(carga, col.ruta, y + ruta.length * 4);
     doc.setFontSize(9).setTextColor(40, 40, 40);
-    doc.text(dinero(linea.flete, moneda), col.flete + 26, y, { align: 'right' });
-    doc.text(dinero(Number(linea.ingreso) - Number(linea.flete), moneda), col.rec + 22, y, { align: 'right' });
+    doc.text(dinero(linea.flete, moneda), col.flete, y, { align: 'right' });
+    doc.text(dinero(Number(linea.ingreso) - Number(linea.flete), moneda), col.rec, y, { align: 'right' });
     doc.setFont('helvetica', 'bold').text(dinero(linea.ingreso, moneda), col.imp, y, { align: 'right' });
     let yy = y + Math.max(ruta.length + carga.length, 2) * 4;
     if (detalle.length) { doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...GRIS).text(detalle, col.ruta, yy); yy += detalle.length * 3.6; }

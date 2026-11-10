@@ -31,7 +31,7 @@ export function DialogoLiq({ title, subtitle, busy, onClose, error, footer, chil
   useEffect(() => {
     const prev = document.activeElement;
     const nodo = ref.current;
-    nodo?.querySelector('input:not([type=hidden]),select,textarea,button')?.focus();
+    (nodo?.querySelector('.dx-tmsliq-dlg-b :is(input:not([type=hidden]),select,textarea)') || nodo?.querySelector('footer button'))?.focus();
     const key = event => { if (event.key === 'Escape' && !busy) onClose?.(); };
     window.addEventListener('keydown', key);
     return () => { window.removeEventListener('keydown', key); prev?.focus?.(); };
@@ -41,7 +41,8 @@ export function DialogoLiq({ title, subtitle, busy, onClose, error, footer, chil
       <header><div><h2 id="tmsliq-dlg-t">{title}</h2>{subtitle && <p>{subtitle}</p>}</div>
         <button type="button" className="dx-btn icon" aria-label="Cerrar" onClick={onClose} disabled={busy}>×</button></header>
       <div className="dx-tmsliq-dlg-b">{children}</div>
-      <footer>{error && <div className="dx-tmsliq-err" role="alert">{error}</div>}{footer}</footer>
+      {/* Tras pulsar una acción del pie, si la validación marcó campos, el foco va al primero inválido. */}
+      <footer onClickCapture={() => setTimeout(() => ref.current?.querySelector('.dx-tmsliq-dlg-b [aria-invalid="true"]')?.focus(), 0)}>{error &&<div className="dx-tmsliq-err" role="alert">{error}</div>}{footer}</footer>
     </section>
   </div>;
 }
