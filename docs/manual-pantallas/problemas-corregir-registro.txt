@@ -5,7 +5,7 @@ catalogo: admin/facturacion, admin/cxc
 titulo: Me equivoqué al registrar algo: cómo corregir o anular cada documento
 resumen: Guía rápida de qué se puede editar, qué se anula y qué no se puede deshacer, documento por documento.
 componentes: src/pages_fin.jsx#Facturacion, src/pages_fin.jsx#CxC
-huella: e697a23316 06993c9c6e
+huella: cb6e3aaada 06993c9c6e
 paso: 1 | pantalla=ninguna | permiso=ninguno | Regla general: mientras un documento está en borrador se puede editar con libertad. Una vez emitido, aprobado o con movimientos de dinero, normalmente ya no se edita: se anula con un motivo y se registra de nuevo. Anular conserva el historial; eliminar borra el registro y suele estar permitido solo cuando el documento aún no generó nada.
 paso: 2 | pantalla=ninguna | permiso=ninguno | Egreso de caja chica: en el fondo, Historial › Egresos, usa Editar para cambiar concepto, categoría, centro de costo, número de comprobante y fecha. El monto no se edita: si está mal, anula el egreso con su motivo y regístralo otra vez. El egreso anulado devuelve su monto al saldo.
 paso: 3 | pantalla=ninguna | permiso=ninguno | Gasto en Compras / Gastos: ábrelo y usa Editar. No se puede editar ahí si ya tiene una cuenta por pagar generada, si viene de nómina, si está en Caja Chica o si se capitalizó como activo fijo; la pantalla indica dónde corregirlo.

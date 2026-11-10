@@ -4499,7 +4499,6 @@ function FacturacionLegacy() {
   );
 }
 
-const TIPO_DOC_LABELS = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de Crédito', nota_debito: 'Nota de Débito' };
 const CONDICION_PAGO_OPTIONS = [
   { value:'contado', label:'Contado' },
   { value:'anticipado', label:'Anticipado' },
@@ -4509,23 +4508,6 @@ const CONDICION_PAGO_OPTIONS = [
   { value:'60 días', label:'60 días' },
   { value:'90 días', label:'90 días' },
 ];
-const CONDICION_LABELS = {
-  contado:'Contado',
-  anticipado:'Anticipado',
-  '15 días':'15 días',
-  '30 días':'30 días',
-  '45 días':'45 días',
-  '60 días':'60 días',
-  '90 días':'90 días',
-  '0':'Contado',
-  '15':'15 días',
-  '30':'30 días',
-  '45':'45 días',
-  '60':'60 días',
-  '90':'90 días',
-};
-const FAC_BADGE_CLASS = { emitida:'badge-cyan', cobro_parcial:'badge-orange', cobrada:'badge-green', vencida:'badge-red', anulada:'badge-gray' };
-const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobrada:'Cobrada', vencida:'Vencida', anulada:'Anulada' };
 const TIPOS_DOCUMENTO_BASE = ['factura', 'boleta'];
 const impactoIngresoDocumento = factura => {
   const total = Number(factura?.total || factura?.monto || 0);

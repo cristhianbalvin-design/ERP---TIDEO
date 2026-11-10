@@ -63,7 +63,7 @@ function Dialogo({ titulo, descripcion, onClose, onSubmit, saving, error, accion
   );
 }
 
-function usarEnvio(validar, guardar, onClose) {
+function useEnvio(validar, guardar, onClose) {
   const [errores, setErrores] = useState({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -96,7 +96,7 @@ export function ModalRegistrarCobro({ factura, cxc, hoy, onClose, onGuardar }) {
   const [referencia, setReferencia] = useState('');
   const saldo = Number(cxc?.saldo ?? cxc?.monto_total ?? 0);
   const moneda = factura.moneda || 'PEN';
-  const { errores, error, saving, enviar } = usarEnvio(() => {
+  const { errores, error, saving, enviar } = useEnvio(() => {
     const resultado = {};
     if (!Number.isFinite(Number(monto)) || Number(monto) <= 0) {
       resultado['cobro-monto'] = 'Ingresa un monto mayor a cero.';
@@ -128,7 +128,7 @@ export function ModalRegistrarCobro({ factura, cxc, hoy, onClose, onGuardar }) {
 
 export function ModalAnularComprobante({ onClose, onGuardar }) {
   const [motivo, setMotivo] = useState('');
-  const { errores, error, saving, enviar } = usarEnvio(() => (
+  const { errores, error, saving, enviar } = useEnvio(() => (
     motivo.trim() ? {} : { 'anular-motivo': 'El motivo es obligatorio.' }
   ), () => onGuardar(motivo.trim()), onClose);
   return (
@@ -163,7 +163,7 @@ export function ModalEditarComprobante({ factura, hoy, calcularVencimiento, onCl
   const cambiarItem = (id, cambios) => setItems((prev) => prev.map((item) => (
     item.id === id ? { ...item, ...cambios } : item
   )));
-  const { errores, error, saving, enviar } = usarEnvio(() => {
+  const { errores, error, saving, enviar } = useEnvio(() => {
     const resultado = {};
     if (!form.numero.trim()) resultado['editar-numero'] = 'El número de factura es obligatorio.';
     if (directa && items.every((item) => !item.descripcion && !item.precio_unitario)) {
