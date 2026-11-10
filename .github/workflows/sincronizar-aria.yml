@@ -1,0 +1,53 @@
+# Aplica en Supabase (proyecto "ERP - Tideo") las sincronizaciones del catálogo de pantallas y del manual
+# de Aria cada vez que cambian en main. Nadie las pega a mano: el contenido sale tal cual del commit.
+# Seguridad: usa el rol aria_sincronizador (migración 679), que solo escribe en esas tablas; cada archivo
+# abre con aria_sincronizacion_autorizar (la base rechaza revisiones viejas o alteradas), verifica sus
+# conteos y, si algo falla, se revierte entero y este workflow queda en rojo.
+name: Sincronizar catálogo y manual de Aria
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - catalogo/_sincronizar.sql
+      - docs/manual-pantallas/_sincronizar.sql
+      - .github/workflows/sincronizar-aria.yml
+  workflow_dispatch:
+
+concurrency:
+  group: sincronizar-aria
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cliente de PostgreSQL
+        run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - name: Conexión configurada
+        env:
+          ERP_DB_URL: ${{ secrets.ERP_DB_URL }}
+        run: |
+          if [ -z "$ERP_DB_URL" ]; then
+            echo "::error::Falta el secreto ERP_DB_URL (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - name: Catálogo de pantallas y cobertura
+        env:
+          PGCONNECT_TIMEOUT: "20"
+          ERP_DB_URL: ${{ secrets.ERP_DB_URL }}
+        run: psql "$ERP_DB_URL" -v ON_ERROR_STOP=1 -q -f catalogo/_sincronizar.sql
+      - name: Fichas del manual de Aria
+        env:
+          PGCONNECT_TIMEOUT: "20"
+          ERP_DB_URL: ${{ secrets.ERP_DB_URL }}
+        run: psql "$ERP_DB_URL" -v ON_ERROR_STOP=1 -q -f docs/manual-pantallas/_sincronizar.sql
+      - name: Revisión aplicada
+        env:
+          ERP_DB_URL: ${{ secrets.ERP_DB_URL }}
+        run: psql "$ERP_DB_URL" -v ON_ERROR_STOP=1 -A -c "SELECT objeto, revision, huella, aplicado_en FROM public.aria_sincronizacion_revision ORDER BY objeto"
