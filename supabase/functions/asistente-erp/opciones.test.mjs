@@ -12,11 +12,15 @@ test('fondos: un botón por fondo con responsable y saldo', () => {
   assert.equal(o.items[1].detalle, 'US$ 1,250.50');
 });
 
-test('categoría: primero los tipos parecidos y luego las categorías', () => {
+test('categoría: primero las categorías y luego hasta 6 tipos parecidos', () => {
   const o = opcionesDeEgreso({ estado: 'faltan_datos', faltan: ['categoria'], opciones: {
     tipos_parecidos: [{ tipo: 'EPP y guantes', categoria: 'SSOMA operativo' }], categorias: ['Costos indirectos de taller', 'SSOMA operativo'] } });
-  assert.equal(o.titulo, 'Elige el tipo de gasto o la categoría');
-  assert.deepEqual(o.items.map(i => i.valor), ['Tipo de gasto: EPP y guantes', 'Categoría: Costos indirectos de taller', 'Categoría: SSOMA operativo']);
+  assert.equal(o.titulo, 'Elige la categoría o un tipo de gasto');
+  assert.deepEqual(o.items.map(i => i.valor), ['Categoría: Costos indirectos de taller', 'Categoría: SSOMA operativo', 'Tipo de gasto: EPP y guantes']);
+  const muchos = opcionesDeEgreso({ estado: 'faltan_datos', faltan: ['categoria'], opciones: {
+    tipos_parecidos: Array.from({ length: 15 }, (_, i) => ({ tipo: `T${i}`, categoria: 'Materiales' })), categorias: Array.from({ length: 13 }, (_, i) => `C${i}`) } });
+  assert.equal(muchos.items.length, 19);
+  assert.equal(muchos.items[12].etiqueta, 'C12');
 });
 
 test('ceco con código y nombre; sin datos útiles no hay botones', () => {

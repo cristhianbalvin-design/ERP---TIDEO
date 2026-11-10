@@ -21,7 +21,8 @@ export function opcionesDeEgreso(datos: Record<string, unknown> | null): Opcione
     const o = datos.opciones as Record<string, unknown>;
     const tipos = Array.isArray(o.tipos_parecidos) ? o.tipos_parecidos.map((t: Record<string, unknown>) => ({ etiqueta: texto(t.tipo), detalle: texto(t.categoria) || undefined, valor: `Tipo de gasto: ${texto(t.tipo)}` })) : [];
     const categorias = Array.isArray(o.categorias) ? o.categorias.map((c: unknown) => ({ etiqueta: texto(c), valor: `Categoría: ${texto(c)}` })) : [];
-    return { campo: "categoria", titulo: tipos.length ? "Elige el tipo de gasto o la categoría" : "Elige la categoría del Estado de Resultados", items: recortar([...tipos, ...categorias]) };
+    // Primero todas las categorías (son pocas y siempre válidas); después, como ayuda, hasta 6 tipos de gasto parecidos.
+    return { campo: "categoria", titulo: tipos.length ? "Elige la categoría o un tipo de gasto" : "Elige la categoría del Estado de Resultados", items: recortar([...categorias, ...tipos.slice(0, 6)]) };
   }
   if (falta === "ceco" && Array.isArray(datos.cecos) && datos.cecos.length) {
     return { campo: "ceco", titulo: "Elige el centro de costo", items: recortar(datos.cecos.map((c: Record<string, unknown>) => ({
