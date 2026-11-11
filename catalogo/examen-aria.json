@@ -1,0 +1,831 @@
+{
+ "descripcion": "Examen de recuperación del manual de Aria: para cada pregunta de negocio, la búsqueda del manual debe traer al menos una de las fichas esperadas. Se ejecuta con scripts/manual/examen-aria.sql.",
+ "casos": [
+  {
+   "id": 1,
+   "perfil": "novato",
+   "pregunta": "¿Qué es OPERA y para qué sirve cada aplicación?",
+   "fichas": [
+    "concepto_que_es_opera"
+   ]
+  },
+  {
+   "id": 2,
+   "perfil": "novato",
+   "pregunta": "¿Por dónde empiezo si recién me dieron mi usuario?",
+   "fichas": [
+    "concepto_que_es_opera",
+    "concepto_acceso_usuario"
+   ]
+  },
+  {
+   "id": 3,
+   "perfil": "novato",
+   "pregunta": "¿Cómo cambio mi contraseña?",
+   "fichas": [
+    "concepto_acceso_usuario"
+   ]
+  },
+  {
+   "id": 4,
+   "perfil": "novato",
+   "pregunta": "¿Cómo cambio de sociedad?",
+   "fichas": [
+    "concepto_acceso_usuario"
+   ]
+  },
+  {
+   "id": 5,
+   "perfil": "novato",
+   "pregunta": "¿Cómo uso a Aria y cuántas preguntas tengo?",
+   "fichas": [
+    "como_usar_aria"
+   ]
+  },
+  {
+   "id": 6,
+   "perfil": "novato",
+   "pregunta": "¿Qué es un CECO y para qué lo pide el sistema?",
+   "fichas": [
+    "concepto_ceco_cebe"
+   ]
+  },
+  {
+   "id": 7,
+   "perfil": "novato",
+   "pregunta": "¿Qué es una SOLPE?",
+   "fichas": [
+    "concepto_documentos_compra",
+    "solpe",
+    "proceso_solpe_pago"
+   ]
+  },
+  {
+   "id": 8,
+   "perfil": "novato",
+   "pregunta": "¿Qué diferencia hay entre OS Cliente, OT y OF?",
+   "fichas": [
+    "concepto_documentos_venta"
+   ]
+  },
+  {
+   "id": 9,
+   "perfil": "novato",
+   "pregunta": "¿Qué es una valorización?",
+   "fichas": [
+    "concepto_documentos_venta",
+    "valorizacion"
+   ]
+  },
+  {
+   "id": 10,
+   "perfil": "novato",
+   "pregunta": "¿Qué es una detracción y cuándo aplica?",
+   "fichas": [
+    "concepto_detraccion"
+   ]
+  },
+  {
+   "id": 11,
+   "perfil": "novato",
+   "pregunta": "¿Qué es una rendición de caja chica?",
+   "fichas": [
+    "caja",
+    "proceso_caja_chica"
+   ]
+  },
+  {
+   "id": 12,
+   "perfil": "novato",
+   "pregunta": "¿Qué es la Hoja de Costeo?",
+   "fichas": [
+    "concepto_costeo",
+    "hoja_costeo",
+    "hoja_costeo_lista"
+   ]
+  },
+  {
+   "id": 13,
+   "perfil": "novato",
+   "pregunta": "¿Qué es el kardex?",
+   "fichas": [
+    "concepto_almacen",
+    "inventario_kardex"
+   ]
+  },
+  {
+   "id": 14,
+   "perfil": "novato",
+   "pregunta": "¿Qué diferencia hay entre Ventas y Facturación?",
+   "fichas": [
+    "concepto_documentos_venta"
+   ]
+  },
+  {
+   "id": 15,
+   "perfil": "novato",
+   "pregunta": "¿Cómo registro un cliente nuevo?",
+   "fichas": [
+    "cuentas",
+    "proceso_lead_cotizacion"
+   ]
+  },
+  {
+   "id": 16,
+   "perfil": "novato",
+   "pregunta": "¿Cómo hago una cotización?",
+   "fichas": [
+    "cotizaciones",
+    "proceso_lead_cotizacion"
+   ]
+  },
+  {
+   "id": 17,
+   "perfil": "novato",
+   "pregunta": "¿Cómo registro un gasto?",
+   "fichas": [
+    "compras_gastos",
+    "caja",
+    "concepto_documentos_compra"
+   ]
+  },
+  {
+   "id": 18,
+   "perfil": "novato",
+   "pregunta": "¿Cómo pido un material?",
+   "fichas": [
+    "solpe",
+    "proceso_solpe_pago",
+    "concepto_documentos_compra"
+   ]
+  },
+  {
+   "id": 19,
+   "perfil": "novato",
+   "pregunta": "¿Cómo marco mi asistencia?",
+   "fichas": [
+    "movil_asistencia",
+    "proceso_asistencia",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 20,
+   "perfil": "novato",
+   "pregunta": "¿Dónde veo mi boleta de pago?",
+   "fichas": [
+    "mi_portal",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 21,
+   "perfil": "novato",
+   "pregunta": "¿Cómo pido vacaciones?",
+   "fichas": [
+    "mi_portal",
+    "solicitudes_rrhh",
+    "proceso_asistencia"
+   ]
+  },
+  {
+   "id": 22,
+   "perfil": "novato",
+   "pregunta": "Me equivoqué al registrar algo, ¿cómo lo corrijo?",
+   "fichas": [
+    "problemas_corregir_registro"
+   ]
+  },
+  {
+   "id": 23,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo convierto un lead en cliente y en oportunidad?",
+   "fichas": [
+    "leads",
+    "proceso_lead_cotizacion"
+   ]
+  },
+  {
+   "id": 24,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo pido una comisión especial para una venta?",
+   "fichas": [
+    "pipeline",
+    "proceso_lead_cotizacion",
+    "movil_vendedor"
+   ]
+  },
+  {
+   "id": 25,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo envío la cotización al cliente para que la apruebe?",
+   "fichas": [
+    "cotizaciones",
+    "proceso_lead_cotizacion"
+   ]
+  },
+  {
+   "id": 26,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo creo la orden de servicio de una cotización aprobada?",
+   "fichas": [
+    "cotizaciones",
+    "proceso_cotizacion_cobro",
+    "os_cliente"
+   ]
+  },
+  {
+   "id": 27,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo configuro un servicio que se cobra todos los meses?",
+   "fichas": [
+    "os_cliente",
+    "proceso_cotizacion_cobro",
+    "concepto_documentos_venta",
+    "servicios"
+   ]
+  },
+  {
+   "id": 28,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo facturo una valorización?",
+   "fichas": [
+    "facturacion",
+    "valorizacion",
+    "proceso_cotizacion_cobro"
+   ]
+  },
+  {
+   "id": 29,
+   "perfil": "oficina",
+   "pregunta": "¿Por dónde subo masivamente las facturas de mis clientes?",
+   "fichas": [
+    "facturacion",
+    "cxc"
+   ]
+  },
+  {
+   "id": 30,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo emito una nota de crédito?",
+   "fichas": [
+    "facturacion"
+   ]
+  },
+  {
+   "id": 31,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo registro que el cliente me pagó?",
+   "fichas": [
+    "cxc",
+    "facturacion",
+    "proceso_cotizacion_cobro"
+   ]
+  },
+  {
+   "id": 32,
+   "perfil": "oficina",
+   "pregunta": "El cliente pagó con detracción, ¿cómo lo registro?",
+   "fichas": [
+    "concepto_detraccion",
+    "cxc"
+   ]
+  },
+  {
+   "id": 33,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo condono la mora de un cliente?",
+   "fichas": [
+    "cxc"
+   ]
+  },
+  {
+   "id": 34,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo concilio un cobro con el banco?",
+   "fichas": [
+    "tesoreria",
+    "proceso_cotizacion_cobro",
+    "problemas_saldo_banco"
+   ]
+  },
+  {
+   "id": 35,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo apruebo una SOLPE y la paso a orden de compra?",
+   "fichas": [
+    "solpe",
+    "proceso_solpe_pago"
+   ]
+  },
+  {
+   "id": 36,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo compro un mismo pedido a dos proveedores?",
+   "fichas": [
+    "concepto_documentos_compra",
+    "proceso_solpe_pago",
+    "solpe"
+   ]
+  },
+  {
+   "id": 37,
+   "perfil": "oficina",
+   "pregunta": "Llegó la mercadería pero no la factura, ¿qué hago?",
+   "fichas": [
+    "recepciones",
+    "concepto_documentos_compra",
+    "proceso_solpe_pago"
+   ]
+  },
+  {
+   "id": 38,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo registro un anticipo al proveedor?",
+   "fichas": [
+    "ordenes_compra"
+   ]
+  },
+  {
+   "id": 39,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo pago una factura con detracción?",
+   "fichas": [
+    "cxp",
+    "concepto_detraccion"
+   ]
+  },
+  {
+   "id": 40,
+   "perfil": "oficina",
+   "pregunta": "El proveedor no completó el pedido, ¿cómo libero lo que falta?",
+   "fichas": [
+    "ordenes_compra",
+    "concepto_documentos_compra"
+   ]
+  },
+  {
+   "id": 41,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo devuelvo mercadería a un proveedor?",
+   "fichas": [
+    "recepciones"
+   ]
+  },
+  {
+   "id": 42,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo importo el extracto del banco?",
+   "fichas": [
+    "tesoreria",
+    "problemas_saldo_banco"
+   ]
+  },
+  {
+   "id": 43,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo paso plata de una cuenta a otra?",
+   "fichas": [
+    "tesoreria",
+    "problemas_saldo_banco"
+   ]
+  },
+  {
+   "id": 44,
+   "perfil": "oficina",
+   "pregunta": "No me cuadra el saldo del banco con el sistema, ¿qué reviso?",
+   "fichas": [
+    "problemas_saldo_banco"
+   ]
+  },
+  {
+   "id": 45,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo abro un fondo de caja chica?",
+   "fichas": [
+    "caja",
+    "proceso_caja_chica"
+   ]
+  },
+  {
+   "id": 46,
+   "perfil": "oficina",
+   "pregunta": "¿Por qué no puedo cerrar la caja chica?",
+   "fichas": [
+    "caja",
+    "proceso_caja_chica"
+   ]
+  },
+  {
+   "id": 47,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo corrijo un egreso de caja chica mal registrado?",
+   "fichas": [
+    "caja",
+    "problemas_corregir_registro"
+   ]
+  },
+  {
+   "id": 48,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo registro a un trabajador nuevo con su contrato?",
+   "fichas": [
+    "rrhh_admin",
+    "rrhh_operativo",
+    "proceso_planilla",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 49,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo renuevo un contrato y lo mando a firmar?",
+   "fichas": [
+    "rrhh_admin",
+    "rrhh_operativo"
+   ]
+  },
+  {
+   "id": 50,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo corrijo una marcación de asistencia?",
+   "fichas": [
+    "asistencia",
+    "proceso_asistencia",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 51,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo proceso la planilla del mes?",
+   "fichas": [
+    "nomina",
+    "proceso_planilla",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 52,
+   "perfil": "oficina",
+   "pregunta": "¿Por qué no puedo cerrar el período de nómina?",
+   "fichas": [
+    "nomina",
+    "proceso_planilla"
+   ]
+  },
+  {
+   "id": 53,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo registro un préstamo a un trabajador?",
+   "fichas": [
+    "prestamos_personal"
+   ]
+  },
+  {
+   "id": 54,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo calculo la liquidación de alguien que cesa?",
+   "fichas": [
+    "liquidaciones_cese",
+    "proceso_planilla",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 55,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo apruebo vacaciones y las paso a la asistencia?",
+   "fichas": [
+    "solicitudes_rrhh",
+    "proceso_asistencia",
+    "concepto_personal_planilla"
+   ]
+  },
+  {
+   "id": 56,
+   "perfil": "taller",
+   "pregunta": "Llegó un equipo del cliente, ¿cómo lo ingreso?",
+   "fichas": [
+    "recepcion_activos",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 57,
+   "perfil": "taller",
+   "pregunta": "¿Cómo hago el diagnóstico y el informe para el cliente?",
+   "fichas": [
+    "diagnostico_tecnico",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 58,
+   "perfil": "taller",
+   "pregunta": "¿Cómo creo la OT de un equipo?",
+   "fichas": [
+    "nueva_ot",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 59,
+   "perfil": "taller",
+   "pregunta": "¿Por qué no puedo iniciar la OT?",
+   "fichas": [
+    "bandeja_ots",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 60,
+   "perfil": "taller",
+   "pregunta": "¿Cómo registro mi parte diario con fotos?",
+   "fichas": [
+    "partes_taller",
+    "movil_tecnico",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 61,
+   "perfil": "taller",
+   "pregunta": "Me faltó un repuesto, ¿cómo lo pido desde el parte?",
+   "fichas": [
+    "partes_taller",
+    "reserva_repuestos"
+   ]
+  },
+  {
+   "id": 62,
+   "perfil": "taller",
+   "pregunta": "¿Cómo apruebo los partes de mis técnicos?",
+   "fichas": [
+    "partes",
+    "movil_supervisor",
+    "ot_admin",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 63,
+   "perfil": "taller",
+   "pregunta": "¿Por qué no puedo cerrar la OT con el acta?",
+   "fichas": [
+    "cierre_conformidad",
+    "proceso_recepcion_entrega"
+   ]
+  },
+  {
+   "id": 64,
+   "perfil": "taller",
+   "pregunta": "El cliente no quiere firmar el acta, ¿qué hago?",
+   "fichas": [
+    "cierre_conformidad"
+   ]
+  },
+  {
+   "id": 65,
+   "perfil": "taller",
+   "pregunta": "¿Cómo programo una OT en el planner?",
+   "fichas": [
+    "planner_taller",
+    "planner"
+   ]
+  },
+  {
+   "id": 66,
+   "perfil": "taller",
+   "pregunta": "¿Cómo creo una orden de fabricación?",
+   "fichas": [
+    "nueva_of",
+    "proceso_fabricacion_of",
+    "ordenes_fabricacion"
+   ]
+  },
+  {
+   "id": 67,
+   "perfil": "taller",
+   "pregunta": "¿Cómo armo la ruta y los materiales de una OF?",
+   "fichas": [
+    "detalle_of",
+    "proceso_fabricacion_of"
+   ]
+  },
+  {
+   "id": 68,
+   "perfil": "taller",
+   "pregunta": "Usé un material que no estaba previsto en la OF, ¿cómo lo registro?",
+   "fichas": [
+    "detalle_of",
+    "proceso_fabricacion_of"
+   ]
+  },
+  {
+   "id": 69,
+   "perfil": "taller",
+   "pregunta": "¿Cómo recibo una compra en el almacén?",
+   "fichas": [
+    "recepcion_oc_almacen",
+    "recepciones",
+    "proceso_almacen"
+   ]
+  },
+  {
+   "id": 70,
+   "perfil": "taller",
+   "pregunta": "¿Cómo despacho los repuestos de una OT?",
+   "fichas": [
+    "reserva_repuestos",
+    "despachos_almacen",
+    "proceso_almacen"
+   ]
+  },
+  {
+   "id": 71,
+   "perfil": "taller",
+   "pregunta": "¿Cómo hago un conteo de inventario?",
+   "fichas": [
+    "conteos_ciclicos",
+    "proceso_almacen",
+    "inventario_admin",
+    "concepto_almacen"
+   ]
+  },
+  {
+   "id": 72,
+   "perfil": "taller",
+   "pregunta": "El conteo no cuadra, ¿quién aprueba el ajuste?",
+   "fichas": [
+    "conteos_ciclicos",
+    "concepto_almacen",
+    "proceso_almacen"
+   ]
+  },
+  {
+   "id": 73,
+   "perfil": "taller",
+   "pregunta": "¿Cómo presto una herramienta?",
+   "fichas": [
+    "prestamo_herramientas"
+   ]
+  },
+  {
+   "id": 74,
+   "perfil": "taller",
+   "pregunta": "¿Cómo registro mercadería de un tercero en custodia?",
+   "fichas": [
+    "custodia_terceros"
+   ]
+  },
+  {
+   "id": 75,
+   "perfil": "taller",
+   "pregunta": "¿Qué materiales están bajo el mínimo y cómo los repongo?",
+   "fichas": [
+    "stock_minimos",
+    "concepto_almacen",
+    "proceso_almacen"
+   ]
+  },
+  {
+   "id": 76,
+   "perfil": "taller",
+   "pregunta": "¿Cómo registro un contrato de alquiler?",
+   "fichas": [
+    "contratos_rental",
+    "proceso_alquiler_flota"
+   ]
+  },
+  {
+   "id": 77,
+   "perfil": "taller",
+   "pregunta": "¿Cómo entrego un equipo alquilado con su acta?",
+   "fichas": [
+    "actas_despachos",
+    "proceso_alquiler_flota",
+    "panel_flota"
+   ]
+  },
+  {
+   "id": 78,
+   "perfil": "taller",
+   "pregunta": "¿Cómo registro las horas del equipo cada día?",
+   "fichas": [
+    "liquidacion_dmr",
+    "proceso_alquiler_flota"
+   ]
+  },
+  {
+   "id": 79,
+   "perfil": "taller",
+   "pregunta": "¿Cómo liquido el alquiler del mes?",
+   "fichas": [
+    "liquidacion_dmr",
+    "proceso_alquiler_flota"
+   ]
+  },
+  {
+   "id": 80,
+   "perfil": "taller",
+   "pregunta": "¿Cómo programo un viaje y le asigno unidad?",
+   "fichas": [
+    "orden_viaje",
+    "detalle_viaje",
+    "proceso_viaje_transporte",
+    "monitor_viajes",
+    "hoja_ruta"
+   ]
+  },
+  {
+   "id": 81,
+   "perfil": "taller",
+   "pregunta": "Soy conductor, ¿cómo registro mi viaje en el celular?",
+   "fichas": [
+    "movil_logistica",
+    "proceso_viaje_transporte"
+   ]
+  },
+  {
+   "id": 82,
+   "perfil": "taller",
+   "pregunta": "Tuve un incidente en la ruta, ¿cómo lo reporto?",
+   "fichas": [
+    "movil_logistica"
+   ]
+  },
+  {
+   "id": 83,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo le doy acceso a alguien a una pantalla?",
+   "fichas": [
+    "roles",
+    "usuarios",
+    "concepto_acceso_usuario",
+    "proceso_configuracion_inicial"
+   ]
+  },
+  {
+   "id": 84,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo creo un rol nuevo copiando otro?",
+   "fichas": [
+    "roles"
+   ]
+  },
+  {
+   "id": 85,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo reasigno una OT a otro técnico?",
+   "fichas": [
+    "ot_admin",
+    "planner",
+    "planner_taller"
+   ]
+  },
+  {
+   "id": 86,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo corrijo un parte que ya aprobé?",
+   "fichas": [
+    "partes",
+    "problemas_corregir_registro",
+    "ot_admin"
+   ]
+  },
+  {
+   "id": 87,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo configuro los avisos automáticos por correo?",
+   "fichas": [
+    "notificaciones_config"
+   ]
+  },
+  {
+   "id": 88,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo armo la evaluación de desempeño de mi equipo?",
+   "fichas": [
+    "evaluaciones_desempeno"
+   ]
+  },
+  {
+   "id": 89,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo va la implementación del sistema en mi empresa?",
+   "fichas": [
+    "salud_implementacion_tenant"
+   ]
+  },
+  {
+   "id": 90,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo se calcula el precio de un trabajo y el margen?",
+   "fichas": [
+    "concepto_costeo",
+    "hoja_costeo"
+   ]
+  }
+ ]
+}

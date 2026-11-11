@@ -9,3 +9,9 @@ huella: 42c87dc48a
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Asignar y despachar define la unidad y el conductor y da la salida del viaje.
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Cambiar asignación reemplaza la unidad o el conductor, y Reprogramar cambia la fecha.
 paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Desde el detalle puedes ir a la Hoja de Ruta o volver al Monitor de Viajes.
+paso: 4 | pantalla=transporte_comercial | permiso=ninguno | Para qué sirve: desde el detalle se asigna quién hace el viaje y se le da la salida. Solo se puede asignar y despachar un viaje que está programado.
+paso: 5 | pantalla=transporte_comercial | permiso=ninguno | Al asignar, el sistema bloquea una unidad o un conductor que esté inactivo, que pertenezca a otro transportista, que ya esté en otro viaje en curso o que tenga el certificado MTC o el brevete vencido.
+paso: 6 | pantalla=transporte_comercial | permiso=ninguno | En otros casos deja continuar pero pide escribir un motivo de excepción: cuando la unidad no tiene registrada su capacidad o esta no alcanza para la carga, o cuando el MTC o el brevete no tienen fecha de vigencia registrada. En ese caso el botón dice Despachar con excepción.
+paso: 7 | pantalla=transporte_comercial | permiso=ninguno | Guardar asignación deja la unidad y el conductor definidos sin dar la salida, y queda anotado en la bitácora del viaje. Agregar nota suma una nota a la bitácora sin cambiar el estado. Cancelar viaje pide confirmación.
+paso: 8 | pantalla=transporte_comercial | permiso=ninguno | El sistema no recibe GPS de las unidades: la posición y la hora de llegada que muestra un viaje en ruta son estimadas por el tiempo transcurrido desde la salida. Un incidente deja el viaje en estado con incidente.
+paso: 9 | pantalla=transporte_comercial | permiso=ninguno | Si no puedes despachar, lo más frecuente es un brevete o un MTC vencido: actualiza su vigencia en Transporte › Flota.
