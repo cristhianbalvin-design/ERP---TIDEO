@@ -928,6 +928,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         if (!commitLabel) return null;
         return (
           <div
+            className="dx-header-commit"
             title={typeof __COMMIT_MSG__ !== 'undefined' ? __COMMIT_MSG__ : ''}
             style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.01em', cursor: 'default', whiteSpace: 'nowrap', userSelect: 'none' }}
           >
