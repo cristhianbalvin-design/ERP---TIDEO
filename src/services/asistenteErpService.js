@@ -15,7 +15,7 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
   };
   if (sociedadId) body.sociedad_id = sociedadId;
   // Con conversación guardada, la Edge lee el historial de la base; el del navegador queda solo como respaldo.
-  if (conversacionId) body.conversacion_id = conversacionId;
+  body.conversacion_id = conversacionId || null;
   if ((contexto?.tipo && contexto?.id) || esPantallaValida(contexto?.pantalla)) body.contexto = {
     ...(contexto?.tipo && contexto?.id ? { modulo: contexto.modulo, tipo: contexto.tipo, id: contexto.id } : {}),
     ...(esPantallaValida(contexto?.pantalla) ? { pantalla: contexto.pantalla } : {}),

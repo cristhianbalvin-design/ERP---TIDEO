@@ -545,8 +545,10 @@ export function createHandler(deps: HandlerDeps) {
       if (!leido) return;
       await safely(() => supabase.rpc("aria_conversacion_guardar_resumen", { p_conversacion_id: id, p_titulo: leido.titulo, p_resumen: leido.resumen, p_hasta: tarea.hasta ?? 0 }));
     };
+    // Solo guarda cuando el panel trae el campo conversacion_id (null = conversación nueva): un panel anterior no lo envía.
+    const usaMemoria = Object.prototype.hasOwnProperty.call(body, "conversacion_id");
     const reply200 = async (payload: Record<string, unknown>) => {
-      if (!evalModel) {
+      if (!evalModel && usaMemoria) {
         const registro = await safely(() => supabase.rpc("aria_conversacion_registrar", {
           p_empresa_id: body.empresa_id, p_conversacion_id: conversacionId, p_pregunta: body.pregunta, p_respuesta: String(payload.respuesta ?? ""),
           p_extra: extraDelTurno(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : [], payload.opciones ?? null, payload.borrador ?? null),

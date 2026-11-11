@@ -1804,13 +1804,20 @@ Deno.test("memoria: con conversacion_id el historial sale de la base, se guarda 
 Deno.test("memoria: sin conversacion_id usa el historial del navegador y crea una conversación nueva", async () => {
   const nueva = "55555555-5555-4555-8555-555555555555";
   const x = setupMemoria(name => name === "aria_conversacion_registrar" ? { data: { conversacion_id: nueva, mensajes: 2, tarea: null }, error: null } : { data: null, error: null }, ["Hola, ¿en qué te ayudo?"]);
-  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", historial: [{ role: "user", content: "antes" }] }));
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", conversacion_id: null, historial: [{ role: "user", content: "antes" }] }));
   const body = await res.json();
   equal(body.conversacion_id, nueva);
   equal(x.calls.find(c => c.name === "aria_conversacion_registrar")!.args.p_conversacion_id, null);
   assert(x.aiCalls[0].some((m: any) => m.content === "antes"));
   equal(x.calls.some(c => c.name === "aria_conversacion_contexto"), false);
   equal(x.tareas.length, 0);
+});
+
+Deno.test("memoria: un panel anterior (sin el campo conversacion_id) no guarda la conversación", async () => {
+  const x = setupMemoria(() => ({ data: { conversacion_id: "77777777-7777-4777-8777-777777777777", tarea: null }, error: null }), ["Hola."]);
+  const body = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola" }))).json();
+  equal(body.conversacion_id, undefined);
+  equal(x.calls.some(c => c.name === "aria_conversacion_registrar"), false);
 });
 
 Deno.test("memoria: conversacion_id inválido se rechaza y una conversación ajena se trata como nueva", async () => {
