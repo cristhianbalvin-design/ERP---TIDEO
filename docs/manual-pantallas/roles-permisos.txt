@@ -3,7 +3,7 @@ tipo: pantalla
 pantalla: roles
 catalogo: admin/roles
 titulo: Roles y Permisos
-resumen: Definición de roles y de lo que cada uno puede ver y hacer.
+resumen: Definición de roles y de lo que cada uno puede ver y hacer: aquí se da o se quita a alguien el acceso a una pantalla.
 componentes: src/pages_admin.jsx#Roles
 huella: 0186d2d3a6
 paso: 1 | pantalla=roles | permiso=ninguno | Crea un rol con Nuevo rol, o parte de uno existente con Clonar rol.

@@ -3,10 +3,15 @@ tipo: pantalla
 pantalla: of
 catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
-resumen: Ruta de tareas, materiales y aprobación de una orden de fabricación.
+resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado y aprobación.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
 huella: 3f49007a28
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
 paso: 4 | pantalla=of | permiso=ninguno | Aprobar OF aprueba la orden.
+paso: 5 | pantalla=of | permiso=ninguno | Estados de la OF: Borrador e Ingeniería son editables; al aprobar pasa a Aprobada y la ruta queda fija. Una OF anulada ya no admite cambios. La línea de tiempo de la cabecera muestra en qué estado va.
+paso: 6 | pantalla=of | permiso=ninguno | La ruta se ordena como Trabajo › Actividad › Tarea. Cada tarea lleva cargo, horas estimadas y, si corresponde, el equipo con que se hace. La bahía no se escribe: sale del equipo elegido, y si la tarea no tiene equipo la ubica el Planner (se lee «La asigna el Planner»).
+paso: 7 | pantalla=of | permiso=ninguno | Si la OF nació de una OS con Hoja de Costeo llega precargada con las tareas y materiales de la hoja, y toma su moneda; revísala antes de aprobar. Si se creó como OF adicional llega vacía y se arma a mano.
+paso: 8 | pantalla=of | permiso=ninguno | Después de aprobar solo se puede agregar un Material no planificado, y exige escribir el motivo; ese motivo queda visible en la lista de materiales. Para cambiar la ruta de una OF aprobada no hay botón: hay que pedirlo a quien administra el sistema.
+paso: 9 | pantalla=of | permiso=ninguno | Si no ves Aprobar OF es porque tu rol no tiene el permiso de aprobar Órdenes de Fabricación o porque la OF ya no está en Borrador o Ingeniería. Si no ves Agregar tarea, tu rol no puede editar OF.

@@ -3,7 +3,7 @@ tipo: pantalla
 pantalla: solpe
 catalogo: admin/solpe
 titulo: SOLPE Interna
-resumen: Registra los pedidos internos de materiales o servicios, los envía a atención y los deriva a Compras para generar la orden de compra.
+resumen: Cómo pedir un material o un servicio que necesitas. Registra los pedidos internos de materiales o servicios, los envía a atención y los deriva a Compras para generar la orden de compra.
 componentes: src/pages_ops.jsx#SOLPE
 huella: e43d59cb5b
 paso: 1 | pantalla=solpe | permiso=ninguno | Usa Nueva SOLPE para crear un pedido. Completa el tipo, el área solicitante, la urgencia, el centro de costo (CECO), la descripción de la necesidad y, si aplica, la OT asociada.

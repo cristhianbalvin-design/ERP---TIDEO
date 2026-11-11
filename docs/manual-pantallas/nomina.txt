@@ -3,7 +3,7 @@ tipo: pantalla
 pantalla: nomina
 catalogo: admin/nomina
 titulo: Nomina
-resumen: Cálculo, revisión y cierre de la planilla de cada período.
+resumen: Cálculo, revisión y cierre de la planilla de cada período: cómo procesar la planilla del mes o de la quincena.
 componentes: src/pages_ops.jsx#Nomina
 huella: 21d2972451
 paso: 1 | pantalla=nomina | permiso=ninguno | Crea el período con Nuevo período y calcula la planilla con Procesar. Si pagas por quincenas, debes procesar la primera quincena antes de la segunda.

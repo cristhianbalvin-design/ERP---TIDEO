@@ -10,3 +10,7 @@ paso: 1 | pantalla=actas_despachos | permiso=ninguno | Emite un acta con Crear a
 paso: 2 | pantalla=actas_despachos | permiso=ninguno | Marca cada punto como Conforme u Observado y avanza con Avanzar.
 paso: 3 | pantalla=actas_despachos | permiso=ninguno | Guardar borrador conserva el acta para seguirla con Continuar acta. Confirmar acta la cierra.
 paso: 4 | pantalla=actas_despachos | permiso=ninguno | Anular acta deja sin efecto un acta emitida.
+paso: 5 | pantalla=actas_despachos | permiso=ninguno | Para qué sirve: el acta deja constancia, con checklist, fotos y firmas, del estado en que un equipo alquilado se entrega al cliente o se recibe de vuelta. Es la evidencia ante un reclamo por daños.
+paso: 6 | pantalla=actas_despachos | permiso=ninguno | El acta avanza por pasos. En el checklist cada punto se marca Conforme u Observado; si lo marcas Observado debes describir la observación. Puedes agregar puntos propios y fotos, y con Guardar borrador sigues después.
+paso: 7 | pantalla=actas_despachos | permiso=ninguno | No se puede despachar un equipo con certificaciones obligatorias vencidas: la pantalla pide renovarlas primero en Certificaciones del Activo.
+paso: 8 | pantalla=actas_despachos | permiso=ninguno | Confirmar acta la cierra con sus firmas; Volver a firmar permite rehacer una firma antes de confirmar. Anular acta deja sin efecto un acta ya emitida.

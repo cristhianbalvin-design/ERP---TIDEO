@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/transporte/LugaresPage.jsx#Lu
 huella: ca6f642574
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Nuevo lugar registra un punto de carga o de entrega.
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Un lugar que ya no se usa se inactiva.
+paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Para qué sirve: los lugares son los puntos de carga y de entrega que usan las rutas y las paradas de los viajes: almacenes, plantas, obras, minas, puertos o locales de clientes. Un lugar puede ser general o pertenecer a un cliente.
+paso: 4 | pantalla=transporte_comercial | permiso=ninguno | La ubicación es obligatoria para guardar: se marca con un clic en el mapa o pegando un enlace de Google Maps. También se registran el contacto, el horario de atención, los requisitos de ingreso y las restricciones, que después ve quien programa y quien conduce.
+paso: 5 | pantalla=transporte_comercial | permiso=ninguno | El lugar muestra en Usado en las rutas que lo emplean. No se puede repetir el nombre de un lugar. Un lugar que ya no se usa se inactiva.
