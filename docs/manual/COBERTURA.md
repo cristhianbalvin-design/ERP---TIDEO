@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 54 |
+| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 51 |
 | Operaciones | 120 | 8 (7 %) | 26 (22 %) | 0 | 88 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 151 |
+| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 148 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -25,27 +25,27 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 |---|---|---|---|---|---|---|
 | Administración | Activos Fijos (`activos_fijos`) | activa | — | — | — | — |
 | Administración | Caja Chica (`caja`) | activa | caja | proceso_caja_chica | 4 | preparar_egreso_caja_chica |
-| Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | — | 4 | — |
+| Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | proceso_cotizacion_cobro | 4 | — |
 | Administración | Cuentas por Pagar (`cxp`) | activa | cxp | proceso_solpe_pago | 4 | — |
-| Administración | Facturación (`facturacion`) | activa | facturacion | — | 4 | — |
+| Administración | Facturación (`facturacion`) | activa | facturacion | proceso_cotizacion_cobro | 4 | — |
 | Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | — | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | — | — | — | — |
 | Administración | Estado Resultados (`resultados`) | activa | — | — | — | — |
-| Administración | Tesoreria / Match (`tesoreria`) | activa | tesoreria | proceso_solpe_pago | 3 | — |
+| Administración | Tesoreria / Match (`tesoreria`) | activa | tesoreria | proceso_cotizacion_cobro, proceso_solpe_pago | 3 | — |
 | Administración | Valorizaciones (`valorizacion`) | activa | — | — | — | — |
 | Administración | Ventas (`ventas`) | activa | — | — | — | — |
 | Comercial | Agenda Comercial (`agenda_comercial`) | activa | — | — | — | — |
-| Comercial | Variables de Costeo (`costeo_variables`) | activa | — | — | — | — |
-| Comercial | Cotizaciones (`cotizaciones`) | activa | — | — | 3 | — |
+| Comercial | Variables de Costeo (`costeo_variables`) | activa | — | proceso_lead_cotizacion | — | — |
+| Comercial | Cotizaciones (`cotizaciones`) | activa | — | proceso_cotizacion_cobro, proceso_lead_cotizacion | 3 | — |
 | Comercial | Cuentas y Contactos (`cuentas`) | activa | — | — | 3 | — |
-| Comercial | Equipos de Clientes (`equipos_clientes`) | activa | — | — | 4 | — |
-| Comercial | Hoja de Costeo (`hoja_costeo`) | activa | — | — | — | — |
-| Comercial | Hoja de Costeo — asistente de costeo (`hoja_costeo_wizard`) | activa | — | — | — | — |
+| Comercial | Equipos de Clientes (`equipos_clientes`) | activa | — | proceso_cotizacion_cobro | 4 | — |
+| Comercial | Hoja de Costeo (`hoja_costeo`) | activa | — | proceso_lead_cotizacion | — | — |
+| Comercial | Hoja de Costeo — asistente de costeo (`hoja_costeo_wizard`) | activa | — | proceso_lead_cotizacion | — | — |
 | Comercial | IA Comercial (`ia_comercial`) | legado | — | — | — | — |
-| Comercial | OS Cliente (`os_cliente`) | activa | — | — | 4 | — |
-| Comercial | Panel de Producción (`panel_produccion`) | activa | — | — | 4 | — |
-| Comercial | Pipeline (`pipeline`) | activa | — | — | 3 | — |
+| Comercial | OS Cliente (`os_cliente`) | activa | — | proceso_cotizacion_cobro | 4 | — |
+| Comercial | Panel de Producción (`panel_produccion`) | activa | — | proceso_cotizacion_cobro | 4 | — |
+| Comercial | Pipeline (`pipeline`) | activa | — | proceso_lead_cotizacion | 3 | — |
 | Comercial | Recetas de actividad (`recetas_actividad`) | activa | — | — | — | — |
 | Compras | Compras (vista anterior) (`compras`) | legado | — | — | — | — |
 | Compras | Compras / Gastos (`compras_gastos`) | activa | compras_gastos | — | 4 | — |
@@ -65,7 +65,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Configuración | Tarifarios (`tarifarios`) | maqueta | — | — | — | — |
 | Configuración | Usuarios (`usuarios`) | activa | — | — | — | — |
 | CRM & Marketing | Actividades (`actividades`) | activa | — | — | — | — |
-| CRM & Marketing | Leads y Scoring (`leads`) | activa | — | — | 3 | — |
+| CRM & Marketing | Leads y Scoring (`leads`) | activa | — | proceso_lead_cotizacion | 3 | — |
 | CRM & Marketing | Marketing Automation (`marketing`) | activa | — | — | — | — |
 | Customer Success | BI Customer Success (`bi_cs`) | activa | — | — | — | — |
 | Customer Success | Fidelizacion y NPS (`cs_fidelizacion`) | activa | — | — | — | — |
