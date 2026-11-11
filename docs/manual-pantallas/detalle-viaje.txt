@@ -1,0 +1,11 @@
+clave: detalle_viaje
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-viaje
+titulo: Detalle de viaje
+resumen: Asignación, despacho y reprogramación de un viaje.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/ViajeDetallePage.jsx#ViajeDetallePage
+huella: 42c87dc48a
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Asignar y despachar define la unidad y el conductor y da la salida del viaje.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Cambiar asignación reemplaza la unidad o el conductor, y Reprogramar cambia la fecha.
+paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Desde el detalle puedes ir a la Hoja de Ruta o volver al Monitor de Viajes.

@@ -1,0 +1,12 @@
+clave: liquidaciones_cese
+tipo: pantalla
+pantalla: liquidaciones_cese
+catalogo: admin/liquidaciones_cese
+titulo: Liquidación por Cese
+resumen: Cálculo y confirmación de la liquidación de un trabajador que cesa.
+componentes: src/pages_liquidaciones.jsx#LiquidacionesCese
+huella: 8409cfda1b
+paso: 1 | pantalla=liquidaciones_cese | permiso=ninguno | Inicia con Nueva liquidación: elige al colaborador, el tipo de cese y la fecha de cese, que no puede ser anterior a su fecha de ingreso. El colaborador debe tener fecha de ingreso en su ficha.
+paso: 2 | pantalla=liquidaciones_cese | permiso=ninguno | Si el cese es por falta grave debes indicar el motivo específico. Recalcular vuelve a calcular los importes.
+paso: 3 | pantalla=liquidaciones_cese | permiso=ninguno | Para confirmar marca la casilla de confirmación y usa Confirmar liquidación: se genera la cuenta por pagar y se bloquea el acceso del trabajador al sistema. Ver CxP generada abre esa cuenta.
+paso: 4 | pantalla=liquidaciones_cese | permiso=ninguno | Anular deja sin efecto una liquidación; el motivo es obligatorio.

@@ -1,0 +1,13 @@
+clave: pipeline
+tipo: pantalla
+pantalla: pipeline
+catalogo: admin/pipeline
+titulo: Pipeline
+resumen: Seguimiento de las oportunidades de venta por etapa, con su cotización, su acuerdo de comisión y su cierre.
+componentes: src/pages_core.jsx#Pipeline
+huella: bcfa0a720d
+paso: 1 | pantalla=pipeline | permiso=ninguno | Crea una oportunidad con Nueva oportunidad y síguela en Kanban o en Lista. El Historial de movimientos muestra por qué etapas pasó.
+paso: 2 | pantalla=pipeline | permiso=ninguno | Desde la oportunidad usa Nueva Cotización para cotizar. Si necesita costeo, la Hoja de Costeo se crea desde aquí y exige tener elegida una sociedad concreta en el selector superior.
+paso: 3 | pantalla=pipeline | permiso=ninguno | Agendar programa una actividad con el cliente y Actividades muestra las registradas.
+paso: 4 | pantalla=pipeline | permiso=ninguno | El vendedor fija su comisión con Proponer acuerdo. Si cambia el porcentaje base o agrega una bonificación debe usar Enviar a aprobación; el Gerente Comercial lo aprueba o lo rechaza con un motivo, y el vendedor puede retirarlo con Retirar solicitud.
+paso: 5 | pantalla=pipeline | permiso=ninguno | Cierra la oportunidad con Ganar o con Perder, que pide confirmar la pérdida. Una oportunidad ganada sigue con Crear OS Cliente.

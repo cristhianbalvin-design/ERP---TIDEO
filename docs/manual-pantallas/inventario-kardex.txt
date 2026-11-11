@@ -1,0 +1,12 @@
+clave: inventario_kardex
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-inventario
+titulo: Inventario & Kardex
+resumen: Existencias por material y sus movimientos.
+componentes: operaciones-app/src/zahory-mock/pages/InventarioKardexPage.jsx#InventarioKardexPage
+huella: 8dad26c438
+paso: 1 | pantalla=inventario | permiso=ninguno | La pestaña Stock muestra las existencias y Kardex los movimientos de cada material.
+paso: 2 | pantalla=inventario | permiso=ninguno | Registrar entrada y Registrar salida registran movimientos manuales; Mover traslada stock y Ajustar stock corrige una diferencia.
+paso: 3 | pantalla=inventario | permiso=ninguno | Liberar devuelve stock reservado al disponible.
+paso: 4 | pantalla=inventario | permiso=ninguno | Antes de registrar un movimiento debes elegir una sociedad concreta.

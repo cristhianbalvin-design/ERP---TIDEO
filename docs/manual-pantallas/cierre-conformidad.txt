@@ -1,0 +1,13 @@
+clave: cierre_conformidad
+tipo: pantalla
+pantalla: ot
+catalogo: operaciones/cierre-conformidad
+titulo: Cierre & Conformidad
+resumen: Cierre de las órdenes de trabajo con el acta de conformidad firmada por el técnico y el cliente.
+componentes: operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx#CierreConformidadPage
+huella: b188e26ea6
+paso: 1 | pantalla=ot | permiso=ninguno | La lista muestra las OT por cerrar y si están listas para acta; busca por OT, servicio o cliente.
+paso: 2 | pantalla=ot | permiso=ninguno | Una OT solo admite acta si tiene técnico responsable, al menos un parte aprobado y ningún parte pendiente de aprobar.
+paso: 3 | pantalla=ot | permiso=ninguno | El acta recorre seis pasos: Resumen, Fotos, Conformidad, Firma técnico, Firma cliente y Revisión. En el resumen la descripción del trabajo realizado es obligatoria.
+paso: 4 | pantalla=ot | permiso=ninguno | En Conformidad eliges el resultado: conforme, con observaciones o pendiente de firma. Si queda pendiente debes indicar por qué el cliente no firma y un correo para enviarle el enlace.
+paso: 5 | pantalla=ot | permiso=ninguno | Para la firma del cliente se piden su nombre completo, su documento y un correo para recibir el acta.

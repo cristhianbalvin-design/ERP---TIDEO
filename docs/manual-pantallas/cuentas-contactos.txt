@@ -1,0 +1,12 @@
+clave: cuentas
+tipo: pantalla
+pantalla: cuentas
+catalogo: admin/cuentas
+titulo: Cuentas y Contactos
+resumen: Ficha de cada cliente: datos, contactos, precios acordados y condiciones comerciales.
+componentes: src/pages_ops.jsx#Cuentas
+huella: 4c81d6e303
+paso: 1 | pantalla=cuentas | permiso=ninguno | Crea un cliente con Nueva cuenta. Editar cuenta cambia sus datos y Eliminar cuenta lo borra con confirmación.
+paso: 2 | pantalla=cuentas | permiso=ninguno | Agrega a las personas del cliente con Nuevo contacto y marca al Principal.
+paso: 3 | pantalla=cuentas | permiso=ninguno | Agregar precio registra un precio acordado con ese cliente, y Guardar condiciones conserva sus condiciones comerciales.
+paso: 4 | pantalla=cuentas | permiso=ninguno | Para cargar muchas cuentas descarga la plantilla y usa Importar Excel.

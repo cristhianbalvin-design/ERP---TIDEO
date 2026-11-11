@@ -1,0 +1,14 @@
+clave: asistencia
+tipo: pantalla
+pantalla: asistencia
+catalogo: admin/asistencia
+titulo: Control de Asistencia
+resumen: Marcaciones, geocercas, ajustes y reportes de asistencia del personal.
+componentes: src/pages_ops.jsx#ControlAsistencia
+huella: ce8d288576
+paso: 1 | pantalla=asistencia | permiso=ninguno | Cada trabajador necesita un turno asignado antes de marcar asistencia; se le asigna desde su ficha en Personal.
+paso: 2 | pantalla=asistencia | permiso=ninguno | Las marcaciones llegan del Reloj Control (Móvil). También puedes registrarlas a mano, con Registro masivo o con Importar marcaciones desde un archivo, que muestra una vista previa antes de Confirmar importacion.
+paso: 3 | pantalla=asistencia | permiso=ninguno | Las geocercas definen dónde se puede marcar: se crean con nombre, latitud y longitud, o dibujando en el mapa un polígono de al menos tres vértices.
+paso: 4 | pantalla=asistencia | permiso=ninguno | Para corregir una marcación se pide un ajuste con su motivo, que es obligatorio; quien aprueba usa Aprobar o Rechazar. Registrar una falta también exige motivo.
+paso: 5 | pantalla=asistencia | permiso=ninguno | En operaciones mineras, el ciclo de cada trabajador se registra con Guardar Ciclo, que genera sus registros diarios.
+paso: 6 | pantalla=asistencia | permiso=ninguno | Reporte mensual resume el mes y Exportar Excel descarga los registros.

@@ -1,0 +1,11 @@
+clave: prestamos_personal
+tipo: pantalla
+pantalla: prestamos_personal
+catalogo: admin/prestamos_personal
+titulo: Prestamos al Personal
+resumen: Préstamos otorgados a trabajadores y el pago de sus cuotas.
+componentes: src/pages_fin.jsx#PrestamosPersonal
+huella: 5ed0bafa41
+paso: 1 | pantalla=prestamos_personal | permiso=ninguno | Registra un préstamo con Nuevo Préstamo.
+paso: 2 | pantalla=prestamos_personal | permiso=ninguno | Pagar cuota registra el pago manual de una cuota y pide confirmación.
+paso: 3 | pantalla=prestamos_personal | permiso=ninguno | Ver abre el detalle del préstamo. Cancelar el préstamo no se puede deshacer.

@@ -1,0 +1,12 @@
+clave: solicitudes_rrhh
+tipo: pantalla
+pantalla: solicitudes_rrhh
+catalogo: admin/solicitudes_rrhh
+titulo: Solicitudes
+resumen: Solicitudes de vacaciones, descansos y permisos del personal, y su aprobación.
+componentes: src/pages_ops.jsx#SolicitudesRrhh
+huella: fe86ec31ab
+paso: 1 | pantalla=solicitudes_rrhh | permiso=ninguno | Pide vacaciones o un permiso con Nueva solicitud. Si no alcanza el saldo de vacaciones, la pantalla lo avisa con los días disponibles.
+paso: 2 | pantalla=solicitudes_rrhh | permiso=ninguno | Quien aprueba usa Aprobar o Rechazar; el motivo es obligatorio al rechazar. Anular deja sin efecto una solicitud.
+paso: 3 | pantalla=solicitudes_rrhh | permiso=ninguno | Aplicar a asistencia crea los registros de asistencia de la solicitud aprobada; si ya existen registros en esas fechas, pide confirmar antes de reemplazarlos.
+paso: 4 | pantalla=solicitudes_rrhh | permiso=ninguno | PDF descarga la solicitud e Historial muestra las anteriores.

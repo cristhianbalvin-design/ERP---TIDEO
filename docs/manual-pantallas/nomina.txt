@@ -1,0 +1,12 @@
+clave: nomina
+tipo: pantalla
+pantalla: nomina
+catalogo: admin/nomina
+titulo: Nomina
+resumen: Cálculo, revisión y cierre de la planilla de cada período.
+componentes: src/pages_ops.jsx#Nomina
+huella: 21d2972451
+paso: 1 | pantalla=nomina | permiso=ninguno | Crea el período con Nuevo período y calcula la planilla con Procesar. Si pagas por quincenas, debes procesar la primera quincena antes de la segunda.
+paso: 2 | pantalla=nomina | permiso=ninguno | Nuevo ingreso y Nuevo descuento registran conceptos extraordinarios con su descripción y su monto.
+paso: 3 | pantalla=nomina | permiso=ninguno | Boleta abre la boleta de un trabajador y Descargar boleta PDF la descarga. Descargar Excel PLAME genera el archivo del período.
+paso: 4 | pantalla=nomina | permiso=ninguno | Cierra el período con Confirmar cierre: debe estar procesado y, cuando corresponde gratificación, antes hay que confirmar la gratificación real. Al cerrar se generan los egresos de la planilla.

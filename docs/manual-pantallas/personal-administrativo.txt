@@ -1,0 +1,13 @@
+clave: rrhh_admin
+tipo: pantalla
+pantalla: rrhh_admin
+catalogo: admin/rrhh_admin
+titulo: Personal Administrativo
+resumen: Ficha del personal administrativo: datos, contratos, jornada, documentos y amonestaciones.
+componentes: src/pages_admin.jsx#RRHHAdmin
+huella: 2883372074
+paso: 1 | pantalla=rrhh_admin | permiso=ninguno | Registra a un trabajador con Nuevo colaborador; Importar Excel carga varios a la vez con la plantilla. Al crearlo, la pantalla recuerda subir el contrato firmado para activar las alertas de vencimiento.
+paso: 2 | pantalla=rrhh_admin | permiso=ninguno | Nuevo contrato registra su contrato y Renovar lo renueva. El contrato se puede enviar con Enviar a firma del trabajador y firmar con Firmar como empresa.
+paso: 3 | pantalla=rrhh_admin | permiso=ninguno | Asignar jornada define su horario y Asignar cargo su puesto. Agregar cuenta registra sus datos bancarios.
+paso: 4 | pantalla=rrhh_admin | permiso=ninguno | Sube sus documentos en la ficha; Archivar documento lo conserva pero deja de estar vigente. Configurar requisitos define qué documentos se exigen.
+paso: 5 | pantalla=rrhh_admin | permiso=ninguno | Registrar amonestación deja constancia de una sanción; si el trabajador no tiene usuario de sistema, se le notifica por medios físicos y se adjunta el cargo firmado.

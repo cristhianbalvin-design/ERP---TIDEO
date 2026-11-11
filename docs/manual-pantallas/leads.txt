@@ -1,0 +1,12 @@
+clave: leads
+tipo: pantalla
+pantalla: leads
+catalogo: admin/leads
+titulo: Leads y Scoring
+resumen: Registro y seguimiento de prospectos hasta convertirlos en clientes o descartarlos.
+componentes: src/pages_core.jsx#Leads
+huella: 5cd977019c
+paso: 1 | pantalla=leads | permiso=ninguno | Registra un prospecto con Nuevo lead. Puedes verlos en Lista o en Kanban y acotar con Filtros.
+paso: 2 | pantalla=leads | permiso=ninguno | Registrar Actividad deja constancia de cada contacto con el prospecto.
+paso: 3 | pantalla=leads | permiso=ninguno | Cuando el prospecto califica usa Convertir: el paso Convertir y crear cuenta crea su cuenta de cliente.
+paso: 4 | pantalla=leads | permiso=ninguno | Descartar saca al lead del seguimiento y Reactivar lo devuelve. Eliminar lo borra de forma definitiva y pide confirmación.

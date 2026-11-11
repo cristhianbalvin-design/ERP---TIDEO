@@ -1,0 +1,10 @@
+clave: panel_flota
+tipo: pantalla
+pantalla: flota_panel
+catalogo: operaciones/flota
+titulo: Panel de Flota
+resumen: Equipos de la flota, su estado y su despacho o recepción.
+componentes: operaciones-app/src/zahory-mock/pages/flota/FlotaPanelPage.jsx#FlotaPanelPage
+huella: a4bc77e2dd
+paso: 1 | pantalla=flota_panel | permiso=ninguno | Registrar equipo da de alta un equipo de la flota.
+paso: 2 | pantalla=flota_panel | permiso=ninguno | Despachar equipo inicia la entrega de un equipo y Recibir equipo su devolución; ambos requieren acceso a Actas & Despachos.

@@ -1,0 +1,10 @@
+clave: recepcion_oc_almacen
+tipo: pantalla
+pantalla: recepciones
+catalogo: operaciones/compras-recepciones
+titulo: Recepciones (Operaciones)
+resumen: Ingreso al almacén de lo comprado con una orden de compra.
+componentes: operaciones-app/src/zahory-mock/pages/RecepcionOCPage.jsx#RecepcionOCPage
+huella: 84d78fcc4a
+paso: 1 | pantalla=recepciones | permiso=ninguno | Elige la orden de compra que llegó e indica lo recibido.
+paso: 2 | pantalla=recepciones | permiso=ninguno | Registrar recepción ingresa el material al almacén y genera sus movimientos en el kardex.

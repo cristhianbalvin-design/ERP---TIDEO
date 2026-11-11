@@ -1,0 +1,13 @@
+clave: cotizaciones
+tipo: pantalla
+pantalla: cotizaciones
+catalogo: admin/cotizaciones
+titulo: Cotizaciones
+resumen: Elaboración, envío y aprobación de cotizaciones, y su paso a orden de servicio.
+componentes: src/pages_extra.jsx#Cotizaciones
+huella: 2e3ef06c5d
+paso: 1 | pantalla=cotizaciones | permiso=ninguno | Crea una cotización con Nueva cotización: elige la cuenta, agrega las partidas con Agregar partida e indica la condición de pago. Puedes dividir el pago en hitos con Agregar hito.
+paso: 2 | pantalla=cotizaciones | permiso=ninguno | Si sales con cambios sin guardar, la pantalla pregunta si quieres Salir sin guardar o Seguir editando.
+paso: 3 | pantalla=cotizaciones | permiso=ninguno | Envía la cotización con PDF o con Copiar enlace. Página de firmas muestra la hoja de firmas del documento.
+paso: 4 | pantalla=cotizaciones | permiso=ninguno | Cuando el cliente acepta usa Confirmar aprobación e indica el canal de aprobación; puedes adjuntar el sustento.
+paso: 5 | pantalla=cotizaciones | permiso=ninguno | Con la cotización aprobada usa Crear OS Cliente, como Crear nueva OS o Agregar a OS existente. El indicador Por convertir filtra las aprobadas que aún no tienen OS.

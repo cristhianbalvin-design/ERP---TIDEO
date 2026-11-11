@@ -1,0 +1,13 @@
+clave: os_cliente
+tipo: pantalla
+pantalla: os_cliente
+catalogo: admin/os_cliente
+titulo: OS Cliente
+resumen: Órdenes de servicio del cliente: alcance aprobado, órdenes de trabajo, valorizaciones y cierre.
+componentes: src/pages_core.jsx#OSCliente
+huella: 90315ca39a
+paso: 1 | pantalla=os_cliente | permiso=ninguno | Crea una orden con Nueva OS. Vincular cotización la relaciona con una cotización aprobada e Importar desde cotización trae sus partidas.
+paso: 2 | pantalla=os_cliente | permiso=ninguno | Crea el trabajo con Crear OT, o con Crear OF si es fabricación. La OS debe tener CEBE asignado, y cada OT un servicio y un centro de costo.
+paso: 3 | pantalla=os_cliente | permiso=ninguno | Registra lo facturable con Nueva valorización. Agregar hito define los hitos de pago de la orden.
+paso: 4 | pantalla=os_cliente | permiso=ninguno | Para un servicio recurrente elige el cobro mensual e indica la tarifa mensual sin IGV y la fecha de inicio: la primera OT la creas tú y luego se crea sola el día 1 de cada mes. El filtro Cobro mensual muestra solo estas órdenes.
+paso: 5 | pantalla=os_cliente | permiso=ninguno | Pausar OS detiene la orden y Reactivar OS la retoma. Cerrar OS la termina y Anular OS la deja sin efecto. Abrir en Operaciones lleva a la orden de trabajo en la aplicación de Operaciones.

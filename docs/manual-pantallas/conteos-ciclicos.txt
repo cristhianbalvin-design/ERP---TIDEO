@@ -1,0 +1,12 @@
+clave: conteos_ciclicos
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-conteos
+titulo: Conteos cíclicos
+resumen: Conteo físico del almacén y ajuste de las diferencias.
+componentes: operaciones-app/src/zahory-mock/pages/wms/ConteosPage.jsx#ConteosPage
+huella: f926063c1c
+paso: 1 | pantalla=inventario | permiso=ninguno | Inicia con Nuevo conteo y elige el almacén a contar; Crear conteo genera sus líneas.
+paso: 2 | pantalla=inventario | permiso=ninguno | Registra lo contado y usa Guardar avance para continuar después. Un código que no pertenece al conteo se rechaza.
+paso: 3 | pantalla=inventario | permiso=ninguno | Cerrar conteo exige contar todas las líneas y registra los ajustes en el kardex.
+paso: 4 | pantalla=inventario | permiso=ninguno | Si las diferencias superan el umbral, el conteo queda por aprobar por otra persona, que usa Aprobar ajustes o Devolver a recontar.

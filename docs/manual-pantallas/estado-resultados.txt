@@ -1,0 +1,11 @@
+clave: resultados
+tipo: pantalla
+pantalla: resultados
+catalogo: admin/resultados
+titulo: Estado Resultados
+resumen: Estado de Resultados del período, con el detalle de cada línea.
+componentes: src/pages_fin.jsx#Resultados
+huella: 07b83d2f9d
+paso: 1 | pantalla=resultados | permiso=ninguno | Elige el período y revisa el resultado por línea.
+paso: 2 | pantalla=resultados | permiso=ninguno | Abre una línea para ver el detalle de sus gastos y ciérralo con Cerrar detalle.
+paso: 3 | pantalla=resultados | permiso=ninguno | PDF descarga el reporte.

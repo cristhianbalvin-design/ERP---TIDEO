@@ -1,0 +1,11 @@
+clave: turnos
+tipo: pantalla
+pantalla: turnos
+catalogo: admin/turnos
+titulo: Turnos y Horarios
+resumen: Definición de los turnos de trabajo que se asignan al personal.
+componentes: src/pages_turnos.jsx#TurnosHorarios
+huella: 0f9bfb4e97
+paso: 1 | pantalla=turnos | permiso=ninguno | Crea un horario con Nuevo turno. Copiar el primer día a todos repite el horario del primer día en el resto de la semana.
+paso: 2 | pantalla=turnos | permiso=ninguno | Editar turno cambia sus horas.
+paso: 3 | pantalla=turnos | permiso=ninguno | Un turno que ya usan trabajadores o que tiene asistencias en el historial no se puede eliminar: edítalo y cambia su estado a Inactivo.

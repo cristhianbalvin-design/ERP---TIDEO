@@ -1,0 +1,12 @@
+clave: maestros
+tipo: pantalla
+pantalla: maestros
+catalogo: admin/maestros
+titulo: Maestros Base
+resumen: Datos comunes de la empresa: centros de costo y de beneficio, materiales, familias y otros catálogos.
+componentes: src/pages_admin.jsx#Maestros
+huella: 50855bc116
+paso: 1 | pantalla=maestros | permiso=ninguno | Aquí se mantienen los centros de costo (Agregar CECO), los centros de beneficio (Agregar CEBE), los materiales y sus familias.
+paso: 2 | pantalla=maestros | permiso=ninguno | Para cargas grandes usa Descargar plantilla e Importar Excel; la pantalla muestra una vista previa antes de confirmar la importación.
+paso: 3 | pantalla=maestros | permiso=ninguno | Un registro en uso no se borra: se desactiva. Si un CECO tiene órdenes de trabajo activas, la pantalla avisa que seguirán vinculadas aunque ya no aparezca para nuevas asignaciones.
+paso: 4 | pantalla=maestros | permiso=ninguno | Fusionar une dos registros duplicados en uno solo.

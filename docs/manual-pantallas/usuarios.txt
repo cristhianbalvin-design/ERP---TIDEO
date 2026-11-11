@@ -1,0 +1,12 @@
+clave: usuarios
+tipo: pantalla
+pantalla: usuarios
+catalogo: admin/usuarios
+titulo: Usuarios
+resumen: Alta de usuarios, su posición, sus sociedades y su contraseña.
+componentes: src/pages_admin.jsx#Usuarios
+huella: e59ec721a1
+paso: 1 | pantalla=usuarios | permiso=ninguno | Crea a una persona con Nuevo usuario y elige su posición en el organigrama, que debe tener un rol de sistema configurado.
+paso: 2 | pantalla=usuarios | permiso=ninguno | Si su acceso es solo a algunas sociedades, selecciona al menos una. Agregar asignacion suma otra posición o sociedad.
+paso: 3 | pantalla=usuarios | permiso=ninguno | Definir contrasena temporal asigna una clave provisional; la persona deberá cambiarla en su próximo inicio de sesión.
+paso: 4 | pantalla=usuarios | permiso=ninguno | Desde el usuario puedes crear su ficha con Crear ficha en Personal Administrativo o Crear ficha en Personal Operativo.

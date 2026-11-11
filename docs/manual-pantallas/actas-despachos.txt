@@ -1,0 +1,12 @@
+clave: actas_despachos
+tipo: pantalla
+pantalla: actas_despachos
+catalogo: operaciones/checkout
+titulo: Actas & Despachos
+resumen: Actas de entrega y de recepción de los equipos alquilados.
+componentes: operaciones-app/src/zahory-mock/pages/flota/ActasDespachosPage.jsx#ActasDespachosPage
+huella: b079728c36
+paso: 1 | pantalla=actas_despachos | permiso=ninguno | Emite un acta con Crear acta. Cargar checklist sugerido trae una lista base de puntos a revisar.
+paso: 2 | pantalla=actas_despachos | permiso=ninguno | Marca cada punto como Conforme u Observado y avanza con Avanzar.
+paso: 3 | pantalla=actas_despachos | permiso=ninguno | Guardar borrador conserva el acta para seguirla con Continuar acta. Confirmar acta la cierra.
+paso: 4 | pantalla=actas_despachos | permiso=ninguno | Anular acta deja sin efecto un acta emitida.
