@@ -12,8 +12,8 @@ export function sistemaResumen(resumen: unknown): string | null {
 
 const SISTEMA_ARCHIVISTA = "Archivas conversaciones de Aria, el asistente del ERP OPERA. Devuelve solo un JSON con dos claves: " +
   "\"titulo\" (máximo 6 palabras en español que nombren el tema, sin comillas ni punto final, p. ej. Egreso de guantes para taller) y " +
-  "\"resumen\" (máximo 120 palabras: temas consultados, decisiones, pendientes como un borrador sin confirmar, y datos que dio la persona; " +
-  "si hay resumen previo, intégralo; las cifras solo como referencia de lo que se vio). No agregues nada fuera del JSON.";
+  "\"resumen\" (máximo 120 palabras de toda la conversación hasta ahora: temas consultados, decisiones, pendientes como un borrador sin confirmar, y datos que dio la persona; " +
+  "integra el resumen previo con los mensajes nuevos; las cifras solo como referencia de lo que se vio). No agregues nada fuera del JSON.";
 
 // Mensajes para pedir al modelo el título y el resumen. Si solo falta el título, basta con los mensajes recientes.
 export function promptResumen(tarea: TareaResumen): Array<Record<string, unknown>> {
@@ -21,7 +21,7 @@ export function promptResumen(tarea: TareaResumen): Array<Record<string, unknown
   const partes: string[] = [];
   if (tarea.resumen_previo) partes.push(`Resumen previo:\n${tarea.resumen_previo}`);
   if (tarea.por_resumir?.length) partes.push(`Mensajes a incorporar al resumen:\n${tarea.por_resumir.map(linea).join("\n")}`);
-  if (tarea.recientes?.length) partes.push(`Mensajes más recientes (para el título):\n${tarea.recientes.map(linea).join("\n")}`);
+  if (tarea.recientes?.length) partes.push(`Mensajes más recientes:\n${tarea.recientes.map(linea).join("\n")}`);
   return [{ role: "system", content: SISTEMA_ARCHIVISTA }, { role: "user", content: partes.join("\n\n") || "Sin mensajes." }];
 }
 
