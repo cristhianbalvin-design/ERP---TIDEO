@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 73 (95 %) | 30 (39 %) | 1 | 3 |
-| Operaciones | 120 | 49 (41 %) | 43 (36 %) | 0 | 58 |
+| Operaciones | 120 | 49 (41 %) | 46 (38 %) | 0 | 58 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 131 (64 %) | 73 (35 %) | 1 | 61 |
+| **Total** | 206 | 131 (64 %) | 76 (37 %) | 1 | 61 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -27,7 +27,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Administración | Caja Chica (`caja`) | activa | caja | proceso_caja_chica | 4 | preparar_egreso_caja_chica |
 | Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | concepto_detraccion, problemas_corregir_registro, proceso_cierre_mes, proceso_cotizacion_cobro | 4 | — |
 | Administración | Cuentas por Pagar (`cxp`) | activa | cxp | concepto_detraccion, proceso_cierre_mes, proceso_solpe_pago | 4 | — |
-| Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_cotizacion_cobro | 4 | — |
+| Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_cotizacion_cobro | 5 | — |
 | Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | 1 | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | presupuestos | proceso_cierre_mes | — | — |
@@ -99,8 +99,8 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | RRHH | Nomina (`nomina`) | activa | nomina | concepto_personal_planilla, proceso_cierre_mes, proceso_planilla | 1 | — |
 | RRHH | Prestamos al Personal (`prestamos_personal`) | activa | prestamos_personal | — | — | — |
 | RRHH | Reclutamiento (`reclutamiento`) | activa | reclutamiento | proceso_planilla | — | — |
-| RRHH | Personal Administrativo (`rrhh_admin`) | activa | rrhh_admin | proceso_planilla | 1 | — |
-| RRHH | Personal Operativo (`rrhh_operativo`) | activa | rrhh_operativo | proceso_planilla | 1 | — |
+| RRHH | Personal Administrativo (`rrhh_admin`) | activa | rrhh_admin | proceso_planilla | 2 | — |
+| RRHH | Personal Operativo (`rrhh_operativo`) | activa | rrhh_operativo | proceso_planilla | 2 | — |
 | RRHH | Solicitudes (`solicitudes_rrhh`) | activa | solicitudes_rrhh | proceso_asistencia | 1 | — |
 | RRHH | Tareo Administrativo (`tareo_admin`) | activa | tareo_admin | — | — | — |
 | RRHH | Turnos y Horarios (`turnos`) | activa | turnos | proceso_asistencia | — | — |
@@ -127,7 +127,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
 | Clientes & Activos | Clientes & Contratos (`clientes`) | maqueta | — | — | 3 | — |
 | Clientes & Activos | Equipos & Activos (`equipos`) | maqueta | — | — | — | — |
-| Clientes & Activos | Proyectos & Tarifas (`proyectos`) | activa | proyectos_tarifas | — | — | — |
+| Clientes & Activos | Proyectos & Tarifas (`proyectos`) | activa | proyectos_tarifas | — | 1 | — |
 | Compras & Importación | Cotizaciones Compra (`compras-cotizaciones`) | puente | — | — | 2 | — |
 | Compras & Importación | Importaciones & DUA (`compras-importaciones`) | placeholder | — | — | — | — |
 | Compras & Importación | Órdenes de Compra (`compras-oc`) | puente | — | — | 7 | — |
@@ -140,14 +140,14 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Confiabilidad | Análisis SOS (`sos-telemetria`) | maqueta | — | — | — | — |
 | Configuración | Parámetros Globales (`configuracion`) | maqueta | — | — | — | — |
 | Configuración | Usuarios & Roles (`usuarios`) | puente | — | — | — | — |
-| Finanzas & Facturación | Consolidado Facturación (`consolidado`) | maqueta | — | — | 4 | — |
+| Finanzas & Facturación | Consolidado Facturación (`consolidado`) | maqueta | — | — | 5 | — |
 | Finanzas & Facturación | Cuentas por Cobrar (`finanzas-cxc`) | puente | — | — | 4 | — |
 | Finanzas & Facturación | Cuentas por Pagar (`finanzas-cxp`) | puente | — | — | 4 | — |
 | Finanzas & Facturación | Tesorería (`finanzas-tesoreria`) | puente | — | — | 3 | — |
 | Finanzas & Facturación | Costos & Rentabilidad (`ots-costos`) | maqueta | — | — | — | — |
-| Flota & Alquileres | Certificaciones del Activo (`certificaciones-activo`) | activa | certificaciones_activo | — | — | — |
+| Flota & Alquileres | Certificaciones del Activo (`certificaciones-activo`) | activa | certificaciones_activo | — | 1 | — |
 | Flota & Alquileres | Actas & Despachos (`checkout`) | activa | actas_despachos | proceso_alquiler_flota | — | — |
-| Flota & Alquileres | Contratos Rental (`contratos-rental`) | activa | contratos_rental | proceso_alquiler_flota | — | — |
+| Flota & Alquileres | Contratos Rental (`contratos-rental`) | activa | contratos_rental | proceso_alquiler_flota | 1 | — |
 | Flota & Alquileres | Dashboard de Flota y Alquileres (`dashboard-rental`) | maqueta | — | — | — | — |
 | Flota & Alquileres | Panel de Flota (`flota`) | activa | panel_flota | proceso_alquiler_flota | — | — |
 | Flota & Alquileres | Gestión de Garantías (`gestion-garantias`) | activa | gestion_garantias | — | — | — |

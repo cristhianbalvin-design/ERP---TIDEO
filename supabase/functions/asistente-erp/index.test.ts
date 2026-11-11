@@ -1087,6 +1087,22 @@ Deno.test("herramientas de operación y personal mapean sus parámetros a los RP
   equal(estado.args.p_numero, "OT-26-0741");
 });
 
+Deno.test("herramientas de vencimientos y clientes mapean sus parámetros a los RPC", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: () => ({ data: { respuesta: "ok" }, error: null }),
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [
+        { id: "a", type: "function", function: { name: "asistente_vencimientos", arguments: JSON.stringify({ dias: 60 }) } },
+        { id: "b", type: "function", function: { name: "asistente_clientes_facturacion", arguments: JSON.stringify({ dias_sin_compra: 120, limite: 5 }) } }] })
+      : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Qué contratos vencen pronto y qué clientes dejaron de comprar?" }))).status, 200);
+  const venc = x.calls.find(c => c.name === "asistente_vencimientos")!;
+  equal(venc.args.p_empresa_id, EMPRESA); equal(venc.args.p_dias, 60);
+  const cli = x.calls.find(c => c.name === "asistente_clientes_facturacion")!;
+  equal(cli.args.p_dias_sin_compra, 120); equal(cli.args.p_limite, 5);
+});
+
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
   const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
   const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;

@@ -35,7 +35,7 @@ function etiquetaHerramienta(tool) {
     [['buscar_conversaciones'], 'Revisé tus conversaciones'],
     [['recuerdo_guardar'], 'Guardé un recuerdo'],
     [['resumen_operaciones', 'buscar_ots', 'estado_ot'], 'Revisé Operaciones'], [['resumen_personal'], 'Revisé Personal'], [['resumen_planilla'], 'Revisé Planilla'],
-    [['resumen_financiamiento'], 'Revisé Financiamiento'], [['resumen_comisiones'], 'Revisé Comisiones'], [['resumen_transporte'], 'Revisé Transporte'],
+    [['resumen_financiamiento'], 'Revisé Financiamiento'], [['resumen_comisiones'], 'Revisé Comisiones'], [['resumen_transporte'], 'Revisé Transporte'], [['vencimientos'], 'Revisé vencimientos'], [['clientes_facturacion'], 'Revisé clientes'],
     [['resumen_mensual'], 'Calculé el resumen mensual'],
     [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
