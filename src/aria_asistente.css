@@ -275,6 +275,7 @@ body:has(.dx-asis-fab[aria-expanded="true"]) .dxi-root .dxi-fab { visibility:hid
 .dx-asis-ir-b:hover { filter:brightness(.97); }
 .dx-asis-ir-b:focus-visible { outline:2px solid var(--dx-asis-cyan); outline-offset:2px; }
 .dx-asis-ir small { font-size:11.5px; color:var(--dx-asis-muted); }
+.dx-asis-sub { margin-top:8px; font-weight:700; }
 /* Botón "Ampliar con modo experto": respuesta más profunda con cuota diaria propia */
 .dx-asis-exp { margin:6px 0 4px 32px; display:grid; gap:4px; justify-items:start; }
 .dx-asis-exp-b { display:inline-flex; align-items:center; gap:8px; min-height:40px; max-width:100%; padding:8px 14px; border:1px solid var(--dx-asis-vio); border-radius:10px; background:var(--dx-asis-vio-bg); color:var(--dx-asis-vio); font:inherit; font-size:13px; font-weight:600; text-align:left; cursor:pointer; }
