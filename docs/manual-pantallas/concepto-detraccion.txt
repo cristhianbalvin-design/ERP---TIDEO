@@ -1,0 +1,13 @@
+clave: concepto_detraccion
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/cxc, admin/cxp
+titulo: Qué es la detracción (SPOT) y cómo se registra
+resumen: Explica la detracción al vender y al comprar, la autodetracción y la cuenta del Banco de la Nación.
+componentes: src/pages_fin.jsx#CxC
+huella: 06993c9c6e
+paso: 1 | pantalla=ninguna | permiso=ninguno | La detracción (SPOT) es una parte del importe de una factura que no se paga al proveedor sino que se deposita en su cuenta del Banco de la Nación. Aplica a determinados bienes y servicios según las reglas de SUNAT. El resultado práctico: el que paga hace dos pagos, el neto al proveedor y la detracción al Banco de la Nación.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Cuando tú compras: en Cuentas por Pagar registra la obligación con Aplicar detracción y paga al proveedor exactamente el neto; el depósito al Banco de la Nación se registra aparte con su constancia. El proveedor debe tener registrada en su ficha su cuenta del Banco de la Nación, que debe estar en soles.
+paso: 3 | pantalla=ninguna | permiso=ninguno | Cuando tú vendes: el cliente te paga el neto y deposita la detracción en tu cuenta del Banco de la Nación. Registra el cobro normal por el neto en Cuentas por Cobrar o en Facturación.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Si el cliente no depositó la detracción y te pagó el total, te toca hacer el depósito a ti: usa Registrar autodetracción, selecciona las cuentas e ingresa el número y la fecha de la constancia del depósito.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Las cuentas de detracciones no se usan para transferencias entre cuentas propias en Tesorería.

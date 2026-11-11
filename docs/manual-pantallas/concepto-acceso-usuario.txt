@@ -1,0 +1,12 @@
+clave: concepto_acceso_usuario
+tipo: proceso
+pantalla: ninguna
+titulo: Tu usuario, tu contraseña, tu rol y la sociedad activa
+resumen: Cómo entrar, cambiar o recuperar la contraseña, por qué ves unas pantallas y otras no, y cómo cambiar de sociedad.
+componentes: src/AuthGate.jsx, src/shell.jsx#SociedadSelector
+huella: dd5fb2e78e cb9cdeb2fa
+paso: 1 | pantalla=ninguna | permiso=ninguno | Tu usuario lo crea el administrador de tu empresa en Configuración › Usuarios. Si te dio una contraseña temporal, al entrar por primera vez el sistema te obliga a crear una nueva: debe tener al menos 6 caracteres y debes escribirla dos veces igual.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Si olvidaste tu contraseña, en la pantalla de ingreso usa Olvide mi contrasena: el sistema envía a tu correo un enlace para crear una nueva. Si no llega, revisa la carpeta de correo no deseado o pide al administrador que te defina una contraseña temporal desde Usuarios.
+paso: 3 | pantalla=ninguna | permiso=ninguno | Lo que puedes ver y hacer depende de tu rol. Cada rol define, pantalla por pantalla, si puedes ver, crear, editar, anular, aprobar y exportar. Por eso un botón puede no aparecerte o aparecer deshabilitado: no es una falla. Pregúntale a Aria "¿por qué no puedo…?" y te dirá si es por tu rol; el cambio lo hace el administrador de la empresa en Configuración › Roles y Permisos.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Si tu empresa trabaja con varias sociedades (razones sociales), arriba aparece el selector de sociedad. Elige la sociedad con la que vas a trabajar: lo que registres queda en esa sociedad. La opción GRUPO — Vista consolidada muestra todo junto y sirve para consultar; para registrar documentos, movimientos de almacén o iniciar órdenes de trabajo el sistema te pide elegir antes una sociedad concreta.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Tu acceso puede estar limitado a algunas sociedades: lo define el administrador al crear tu usuario. Si no ves una sociedad en el selector, pídele que te la asigne.

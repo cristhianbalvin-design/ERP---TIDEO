@@ -1,0 +1,14 @@
+clave: concepto_almacen
+tipo: proceso
+pantalla: ninguna
+catalogo: operaciones/almacen-inventario
+titulo: Conceptos de almacén: stock, reserva, kardex, ubicación y conteo
+resumen: Explica los términos del almacén y cómo se relacionan con las compras y las órdenes de trabajo.
+componentes: operaciones-app/src/zahory-mock/pages/InventarioKardexPage.jsx#InventarioKardexPage
+huella: 8dad26c438
+paso: 1 | pantalla=ninguna | permiso=ninguno | El stock es lo que hay de cada material. Se divide en disponible, que se puede usar o vender, y reservado, que ya está apartado para una orden de trabajo o un pedido y no debe tocarse para otra cosa.
+paso: 2 | pantalla=ninguna | permiso=ninguno | El kardex es el historial de movimientos de un material: cada entrada, salida, traslado y ajuste, con su fecha y su origen. Si el stock no coincide con lo que esperas, el kardex dice qué movimiento lo cambió.
+paso: 3 | pantalla=ninguna | permiso=ninguno | El stock entra con la recepción de una compra y sale con el despacho a una orden de trabajo, a una venta o a un retiro. Cuando una OT necesita repuestos, primero se reservan y luego se despachan al taller; si no se usan, la reserva se libera y vuelven a disponible.
+paso: 4 | pantalla=ninguna | permiso=ninguno | La ubicación es el lugar físico dentro del almacén (estante, posición). Mover traslada stock entre ubicaciones. Un almacén puede ser central o periférico, por ejemplo el de una mina.
+paso: 5 | pantalla=ninguna | permiso=ninguno | El conteo cíclico compara lo que dice el sistema con lo que hay físicamente. Las diferencias se vuelven ajustes en el kardex; si superan el umbral que configuró la empresa, otra persona debe aprobarlos.
+paso: 6 | pantalla=ninguna | permiso=ninguno | El stock mínimo es la cantidad por debajo de la cual hay que reponer. La pantalla Stock mínimos & reposición lista los materiales bajo su mínimo y genera la SOLPE para comprarlos.

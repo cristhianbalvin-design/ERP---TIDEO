@@ -1,0 +1,13 @@
+clave: concepto_costeo
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/hoja_costeo_wizard, admin/costeo_variables
+titulo: Cómo se calcula el precio de un trabajo: Hoja de Costeo, margen y costo real
+resumen: Explica la Hoja de Costeo, las variables que usa, el margen y la comparación entre lo estimado y lo real.
+componentes: src/pages_hoja_costeo_wizard.jsx#HojaCosteoWizard, src/pages_costeo_variables.jsx#CosteoVariables
+huella: c181c07274 f42c3b0172
+paso: 1 | pantalla=ninguna | permiso=ninguno | La Hoja de Costeo calcula cuánto le cuesta a la empresa hacer un trabajo antes de cotizarlo, para ponerle un precio que deje ganancia. Suma mano de obra (horas por el costo hora de cada cargo), materiales, depreciación de los equipos que se usan y un porcentaje de gasto administrativo, y sobre eso aplica el margen.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Los valores base se mantienen en Variables de Costeo: el costo hora por cargo, la depreciación de activos y el gasto administrativo. Si un cargo no tiene costo por hora, la hoja lo avisa: hay que completarlo ahí para que el cálculo sea correcto.
+paso: 3 | pantalla=ninguna | permiso=ninguno | El porcentaje de gasto administrativo más el de margen debe ser menor a 100 %. La hoja se envía a revisión y solo después se puede aprobar; con la hoja aprobada se genera la cotización.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Si el trabajo viene de un diagnóstico técnico del taller, la hoja se arma a partir de los trabajos y actividades del diagnóstico, y las recetas de actividad definen qué tareas lleva cada actividad.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Cuando el trabajo se ejecuta, la orden de trabajo acumula su costo real: horas de los partes diarios, repuestos despachados, servicios de terceros y gastos logísticos. Comparar el costo real con el estimado de la hoja muestra si el trabajo dejó el margen esperado o tuvo sobrecosto.

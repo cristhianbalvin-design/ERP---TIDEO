@@ -1,0 +1,13 @@
+clave: concepto_documentos_compra
+tipo: proceso
+pantalla: ninguna
+titulo: Los documentos de una compra: SOLPE, orden de compra, recepción, factura y pago
+resumen: Explica qué es cada documento del ciclo de compra, quién interviene y las otras formas de registrar un gasto.
+componentes: src/pages_ops.jsx#OrdenesServicio, src/pages_ops.jsx#CotizacionesCompras
+huella: 0144236b2a 1618a00848
+paso: 1 | pantalla=ninguna | permiso=ninguno | La SOLPE (solicitud de pedido) es el pedido interno: alguien de un área dice qué necesita, para qué CECO y con qué urgencia. Nace en borrador, se envía y alguien la atiende y la aprueba. Una SOLPE no es una compra todavía: es la necesidad.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Con la SOLPE aprobada, Compras decide a quién comprar en la Bandeja de Sourcing: se elige proveedor por cada línea, de modo que un mismo pedido puede repartirse entre varios proveedores y se genera una orden de compra por proveedor. Si hace falta comparar precios, antes se abre un proceso de cotización con proveedores.
+paso: 3 | pantalla=ninguna | permiso=ninguno | La OC (orden de compra) es el compromiso con el proveedor: ítems, cantidades, precios y CECO. Se guarda en borrador, se emite y se puede marcar como confirmada cuando el proveedor la acepta. Permite registrar anticipos y el tránsito de la mercadería.
+paso: 4 | pantalla=ninguna | permiso=ninguno | La recepción registra lo que llegó de verdad y actualiza el stock. La recepción física y la factura van por separado: puede llegar la mercadería sin factura, y la factura se completa después. Si el proveedor no entregará un saldo, esa cantidad se libera y vuelve a la Bandeja de Sourcing.
+paso: 5 | pantalla=ninguna | permiso=ninguno | La factura del proveedor crea la CxP (cuenta por pagar), vinculada a su orden de compra para no duplicar la deuda. El pago se registra en Cuentas por Pagar eligiendo la cuenta bancaria, y admite pagos parciales. Si la factura está sujeta a detracción se paga al proveedor el neto.
+paso: 6 | pantalla=ninguna | permiso=ninguno | No toda salida de dinero pasa por una orden de compra. Un servicio contratado a un tercero va con Orden de Servicio a proveedor y su conformidad. Un gasto menor se registra en Compras / Gastos con Nuevo egreso, o en Caja Chica si se pagó con el fondo. Los recibos por honorarios, tributos y reembolsos se registran directo en Cuentas por Pagar.

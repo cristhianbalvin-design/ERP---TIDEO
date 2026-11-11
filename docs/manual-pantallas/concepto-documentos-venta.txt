@@ -1,0 +1,14 @@
+clave: concepto_documentos_venta
+tipo: proceso
+pantalla: ninguna
+titulo: Los documentos de una venta: cotización, OS Cliente, OT, OF, valorización y factura
+resumen: Explica qué es cada documento del ciclo de venta, en qué se diferencian y en qué orden nacen.
+componentes: src/pages_core.jsx#OSCliente, src/pages_extra.jsx#Cotizaciones, src/pages_extra.jsx#Valorizacion, src/pages_fin.jsx#Ventas
+huella: 90315ca39a 2e3ef06c5d e710949e0a 9566fef6c9
+paso: 1 | pantalla=ninguna | permiso=ninguno | La cotización es la oferta al cliente: qué se le va a hacer y por cuánto. Puede salir de una oportunidad del Pipeline y, si el trabajo necesita calcular costos, de una Hoja de Costeo. Mientras no esté aprobada no compromete nada.
+paso: 2 | pantalla=ninguna | permiso=ninguno | La OS Cliente (orden de servicio del cliente) es el compromiso: nace de una cotización aprobada y agrupa todo lo que se le hará a ese cliente por ese pedido. Es el documento que se valoriza y se factura. Vive en Administración › Comercial › OS Cliente.
+paso: 3 | pantalla=ninguna | permiso=ninguno | La OT (orden de trabajo) es el trabajo concreto que ejecuta el taller o el equipo de campo para cumplir la OS: tiene técnico responsable, tareas, repuestos, partes diarios y costos reales. Una OS puede tener varias OT. La OF (orden de fabricación) es lo mismo pero para fabricar una pieza: tiene ruta de tareas y lista de materiales. Se usa OT para mantenimiento o servicio y OF para fabricación.
+paso: 4 | pantalla=ninguna | permiso=ninguno | La valorización dice cuánto de lo ejecutado ya se puede cobrar. Se registra dentro de la OS Cliente y debe aprobarse; se apoya en el cierre técnico de la OT y en el acta de conformidad del cliente.
+paso: 5 | pantalla=ninguna | permiso=ninguno | La factura (comprobante) se emite desde la valorización aprobada, en Administración › Administración › Facturación, y con Generar CxC crea la cuenta por cobrar, que es donde se controla el cobro y la mora.
+paso: 6 | pantalla=ninguna | permiso=ninguno | Ventas y Facturación no son lo mismo. Ventas registra ventas directas que no pasan por orden de servicio (por ejemplo un producto o un servicio simple): se registra la venta, se confirma, se emite su comprobante y se cobra ahí mismo. Facturación reúne todos los comprobantes, vengan de una valorización, de una venta o emitidos directamente.
+paso: 7 | pantalla=ninguna | permiso=ninguno | Un servicio que se cobra todos los meses se configura en la OS Cliente como cobro mensual: indicas la tarifa mensual sin IGV y la fecha de inicio; la primera OT la creas tú y después se crea sola el día 1 de cada mes.

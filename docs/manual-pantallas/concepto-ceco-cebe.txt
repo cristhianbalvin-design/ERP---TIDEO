@@ -1,0 +1,13 @@
+clave: concepto_ceco_cebe
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/maestros
+titulo: Qué son el CECO y el CEBE y por qué el sistema los pide
+resumen: Explica el centro de costo y el centro de beneficio, dónde se crean y en qué documentos son obligatorios.
+componentes: src/pages_admin.jsx#Maestros
+huella: 50855bc116
+paso: 1 | pantalla=ninguna | permiso=ninguno | El CECO (centro de costo) responde a la pregunta "¿a qué área o actividad se le carga este gasto?": taller, administración, un proyecto, una mina. El CEBE (centro de beneficio) responde a "¿qué línea de negocio genera este ingreso?". Con ellos la empresa puede ver cuánto gasta y cuánto gana cada área, y arma su Estado de Resultados y su Presupuesto vs Real.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Se crean en Administración › Configuración › Maestros Base, con Agregar CECO y Agregar CEBE. Un CECO en uso no se borra: se desactiva, y deja de aparecer para nuevas asignaciones aunque las órdenes que ya lo usan siguen vinculadas.
+paso: 3 | pantalla=ninguna | permiso=ninguno | El CECO es obligatorio al pedir y comprar: sin CECO la SOLPE no se guarda, la orden de compra no se emite y la orden de servicio a proveedor no continúa. Si una orden de compra mezcla líneas con CECO distintos o sin CECO, hay que reasignarlas antes de emitirla.
+paso: 4 | pantalla=ninguna | permiso=ninguno | En el trabajo operativo, cada orden de trabajo necesita un centro de costo para poder iniciarse, y la OS Cliente debe tener CEBE asignado antes de crear sus órdenes de trabajo.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Si al registrar algo no encuentras el CECO que necesitas, no elijas uno parecido: pide al administrador que lo cree en Maestros Base. Un gasto cargado al CECO equivocado distorsiona los resultados del área.
