@@ -394,7 +394,7 @@ html[data-dx-diagnostico-work-mode="true"] .dx-nav-shell {
 .dx-header-search { display: flex; align-items: center; gap: 8px; height: 36px; width: min(320px, 25vw); padding: 0 10px; border: 0; border-radius: 10px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.62); font: 13px 'DM Sans', sans-serif; cursor: pointer; }
 .dx-header-search svg { width: 19px; height: 19px; flex: none; }
 .dx-header-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dx-header-commit { flex: 0 1 auto; min-width: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.dx-header-commit { flex: 0 1 auto; flex-shrink: 1000; min-width: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 
 /* La cabecera de Inicio comparte el espacio sin ocultar controles. */
 .header-inicio:not(.header-compact) { gap: 8px !important; }

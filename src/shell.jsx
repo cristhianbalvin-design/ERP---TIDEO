@@ -915,7 +915,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
 
   return (
     <header className={'header' + (active === 'inicio' ? ' header-inicio' : '') + (isCompactHeader ? ' header-compact' : '')} style={{padding: isCompactHeader ? '0 12px' : '0 20px', gap: isCompactHeader ? 10 : 20}}>
-      <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isCompactHeader ? 140 : 'none'}}>{title}</div>
+      <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isCompactHeader ? 140 : active === 'inicio' ? 'none' : 320}}>{title}</div>
 
       {active === 'inicio' && !isCompactHeader && <span className="dx-header-fecha">{fechaInicio.charAt(0).toUpperCase() + fechaInicio.slice(1)}</span>}
       <div className="header-spacer"/>
