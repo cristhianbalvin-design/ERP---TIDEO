@@ -5,7 +5,7 @@ catalogo: admin/cxc
 titulo: Cuentas por cobrar
 resumen: Controla lo que deben los clientes: cobros, gestiones de cobranza, mora, autodetracciones y carga masiva de saldos.
 componentes: src/pages_fin.jsx#CxC, src/pages/cxc/CxCListado.jsx#CxCListado, src/pages/cxc/CxCFicha.jsx#CxCFicha, src/pages/cxc/CxCModales.jsx#CxCCobroModal, src/pages/cxc/CxCModales.jsx#CxCGestionModal, src/pages/cxc/CxCModales.jsx#CxCAnularFacturaModal, src/pages/cxc/CxCModales.jsx#CxCRevertirCobrosModal
-huella: 0e29c670ff c413195ab1 d7db22e42e cd05144c84 7f9d112d1d 57a22c01b6 0533c84717
+huella: 0e29c670ff 2d4363861a d7db22e42e cd05144c84 19a0217d2a c19a24ebcf 0533c84717
 paso: 1 | pantalla=cxc | permiso=ninguno | Elige Soles o Dólares arriba: los totales, la antigüedad y la lista se muestran solo en esa moneda. Las tarjetas resumen lo que está por cobrar, lo vencido, lo que vence en 7 días y lo cobrado en el mes.
 paso: 2 | pantalla=cxc | permiso=ninguno | La barra de antigüedad separa lo que está al día de lo vencido por tramos (1–30, 31–60, 61–90 y más de 90 días). Haz clic en un tramo para ver solo esas cuentas; otro clic quita el filtro.
 paso: 3 | pantalla=cxc | permiso=ninguno | Por defecto la lista muestra las cuentas con saldo. Usa el buscador (cliente, factura u OS) y los filtros de estado, período de emisión, gestor y vencimiento; Limpiar los quita todos.

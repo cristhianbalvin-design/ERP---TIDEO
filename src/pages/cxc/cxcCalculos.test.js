@@ -9,6 +9,7 @@ import {
   ordenarFilas,
   plural,
   validarCobroCxC,
+  validarGestionCxC,
 } from './cxcCalculos.js';
 
 test('formatea fechas civiles y valores vacíos', () => {
@@ -86,4 +87,16 @@ test('rechaza monto sobre el máximo', () => {
 
 test('acepta cobro válido', () => {
   assert.deepEqual(validarCobroCxC(cobroValido, contextoCobro), {});
+});
+
+test('valida todos los campos obligatorios de gestión en una pasada', () => {
+  assert.deepEqual(Object.keys(validarGestionCxC({ notas: '  ' })), ['tipo_gestion', 'resultado', 'notas']);
+  for (const resultado of ['promesa_pago', 'pagara_en_fecha_acordada']) {
+    assert.deepEqual(Object.keys(validarGestionCxC({ resultado })), ['tipo_gestion', 'fecha_proxima_accion', 'notas']);
+    assert.deepEqual(
+      validarGestionCxC({ tipo_gestion: 'email', resultado, fecha_proxima_accion: '2026-11-11', notas: 'Hecho' }),
+      {},
+    );
+  }
+  assert.deepEqual(validarGestionCxC({ tipo_gestion: 'email', resultado: 'otro', notas: 'Hecho' }), {});
 });

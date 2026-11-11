@@ -47,6 +47,17 @@ export function ordenarFilas(a, b) {
   return b.diasMora - a.diasMora || (a.vencimiento || '9999-12-31').localeCompare(b.vencimiento || '9999-12-31');
 }
 
+export function validarGestionCxC(form) {
+  const errores = {};
+  if (!form.tipo_gestion) errores.tipo_gestion = 'Seleccione el tipo de gestión.';
+  if (!form.resultado) errores.resultado = 'Seleccione el resultado.';
+  if (['promesa_pago', 'pagara_en_fecha_acordada'].includes(form.resultado) && !form.fecha_proxima_accion) {
+    errores.fecha_proxima_accion = 'Debe ingresar la fecha de próxima acción para este resultado.';
+  }
+  if (!String(form.notas || '').trim()) errores.notas = 'Ingrese las notas de la gestión.';
+  return errores;
+}
+
 export function validarCobroCxC(form, { saldo, maxNormal, pendiente, normalBloqueado = false, errorArchivo = '' }) {
   const errores = {};
   const monto = Number(form.monto || 0);

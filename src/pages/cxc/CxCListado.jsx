@@ -410,7 +410,7 @@ export default function CxCListado({
         {!rows.length && (
           <div className="dx-ui-empty">
             {todas.some((c) => monedaCxCDe(c) === moneda)
-              ? 'No hay registros que coincidan con los filtros.'
+              ? 'No hay cuentas que coincidan con los filtros. Usa Limpiar para verlas todas.'
               : 'No hay cuentas por cobrar en esta moneda.'}
           </div>
         )}

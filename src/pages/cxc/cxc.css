@@ -700,7 +700,7 @@
 }
 .dx-cxc .dx-cxc-pay-aside strong {
   text-align: right;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 .dx-cxc .dx-cxc-pay-aside .is-total {
   padding-top: 10px;

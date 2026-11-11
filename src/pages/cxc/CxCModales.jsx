@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { validarGestionCxC } from './cxcCalculos.js';
 
 function Dialogo({
   titulo,
@@ -430,7 +431,14 @@ export function CxCGestionModal({
 }) {
   const modificado = useRef(false);
   const inicial = useRef(JSON.stringify(form));
+  const [errores, setErrores] = useState({});
   const requiereFecha = ['promesa_pago', 'pagara_en_fecha_acordada'].includes(form.resultado);
+  const cambiar = (nombre, valor) => {
+    setForm((v) => ({ ...v, [nombre]: valor }));
+    setErrores((v) => ({ ...v, [nombre]: undefined }));
+    if (nombre === 'resultado') setErrores((v) => ({ ...v, fecha_proxima_accion: undefined }));
+    if (nombre === 'fecha_proxima_accion' || nombre === 'resultado') setError('');
+  };
   return (
     <Dialogo
       titulo="Gestión de cobranza"
@@ -440,19 +448,29 @@ export function CxCGestionModal({
       puedeCerrarFondo={() => !modificado.current || JSON.stringify(form) === inicial.current}
     >
       <form
+        noValidate
         onChangeCapture={() => {
           modificado.current = true;
         }}
-        onSubmit={guardar}
+        onSubmit={(e) => {
+          const nuevosErrores = validarGestionCxC(form);
+          setErrores(nuevosErrores);
+          const primerError = Object.keys(nuevosErrores)[0];
+          if (primerError) {
+            e.preventDefault();
+            e.currentTarget.elements.namedItem(primerError)?.focus();
+            return;
+          }
+          guardar(e);
+        }}
       >
         <div className="dx-cxc-modal-body dx-ui-form-grid">
-          <Campo nombre="tipo_gestion" etiqueta="Tipo de gestión *">
+          <Campo nombre="tipo_gestion" etiqueta="Tipo de gestión *" error={errores.tipo_gestion}>
             <select
-              id="cxc-tipo_gestion"
+              {...atributos('tipo_gestion', errores)}
               className="dx-ui-select"
-              required
               value={form.tipo_gestion}
-              onChange={(e) => setForm((v) => ({ ...v, tipo_gestion: e.target.value }))}
+              onChange={(e) => cambiar('tipo_gestion', e.target.value)}
             >
               <option value="">Seleccionar...</option>
               {[
@@ -469,13 +487,12 @@ export function CxCGestionModal({
               ))}
             </select>
           </Campo>
-          <Campo nombre="resultado" etiqueta="Resultado *">
+          <Campo nombre="resultado" etiqueta="Resultado *" error={errores.resultado}>
             <select
-              id="cxc-resultado"
+              {...atributos('resultado', errores)}
               className="dx-ui-select"
-              required
               value={form.resultado}
-              onChange={(e) => setForm((v) => ({ ...v, resultado: e.target.value }))}
+              onChange={(e) => cambiar('resultado', e.target.value)}
             >
               <option value="">Seleccionar...</option>
               {[
@@ -498,6 +515,7 @@ export function CxCGestionModal({
             <Campo nombre="fecha_acordada_pago" etiqueta="Fecha acordada de pago">
               <input
                 id="cxc-fecha_acordada_pago"
+                name="fecha_acordada_pago"
                 type="date"
                 value={form.fecha_acordada_pago}
                 onChange={(e) => setForm((v) => ({ ...v, fecha_acordada_pago: e.target.value }))}
@@ -507,25 +525,21 @@ export function CxCGestionModal({
           <Campo
             nombre="fecha_proxima_accion"
             etiqueta={`Fecha próxima acción${requiereFecha ? ' *' : ''}`}
-            error={error}
+            error={errores.fecha_proxima_accion || error}
           >
             <input
-              {...atributos('fecha_proxima_accion', { fecha_proxima_accion: error })}
+              {...atributos('fecha_proxima_accion', { fecha_proxima_accion: errores.fecha_proxima_accion || error })}
               type="date"
               value={form.fecha_proxima_accion}
-              onChange={(e) => {
-                setError('');
-                setForm((v) => ({ ...v, fecha_proxima_accion: e.target.value }));
-              }}
+              onChange={(e) => cambiar('fecha_proxima_accion', e.target.value)}
             />
           </Campo>
-          <Campo nombre="gestion_notas" etiqueta="Notas *" completo>
+          <Campo nombre="notas" etiqueta="Notas *" error={errores.notas} completo>
             <textarea
-              id="cxc-gestion_notas"
+              {...atributos('notas', errores)}
               rows={4}
-              required
               value={form.notas}
-              onChange={(e) => setForm((v) => ({ ...v, notas: e.target.value }))}
+              onChange={(e) => cambiar('notas', e.target.value)}
               placeholder="Detalla la gestión realizada, quién atendió, acuerdos..."
             />
           </Campo>
@@ -549,12 +563,20 @@ export function CxCGestionModal({
 }
 
 export function CxCAnularFacturaModal({ c, factura, cliente, total, motivo, setMotivo, cerrar, confirmar }) {
+  const [error, setError] = useState('');
   return (
     <Dialogo titulo="Anular documento financiero" cerrar={cerrar}>
       <form
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (motivo.trim()) confirmar(motivo.trim());
+          if (!motivo.trim()) {
+            setError('Ingrese el motivo de la anulación.');
+            e.currentTarget.elements.namedItem('motivo')?.focus();
+            return;
+          }
+          setError('');
+          confirmar(motivo.trim());
         }}
       >
         <div className="dx-cxc-modal-body">
@@ -577,15 +599,24 @@ export function CxCAnularFacturaModal({ c, factura, cliente, total, motivo, setM
             generar saldo pendiente.{' '}
             {c.valorizacion_id && 'Se aplicarán las reglas existentes de anulación de valorización.'}
           </p>
-          <Campo nombre="motivo" etiqueta="Motivo obligatorio">
-            <textarea id="cxc-motivo" rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus />
+          <Campo nombre="motivo" etiqueta="Motivo obligatorio *" error={error}>
+            <textarea
+              {...atributos('motivo', { motivo: error })}
+              rows={3}
+              value={motivo}
+              onChange={(e) => {
+                setMotivo(e.target.value);
+                setError('');
+              }}
+              autoFocus
+            />
           </Campo>
         </div>
         <div className="dx-ui-dialog-foot">
           <button type="button" className="dx-btn" onClick={cerrar}>
             Cancelar
           </button>
-          <button type="submit" className="dx-btn danger" disabled={!motivo.trim()}>
+          <button type="submit" className="dx-btn danger">
             Confirmar anulación
           </button>
         </div>
