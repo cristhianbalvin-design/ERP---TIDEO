@@ -25,7 +25,7 @@ function Fila({ c, activa, termino, onAbrir }) {
   </div>;
 }
 
-export default function AriaConversaciones({ empresaId, activaId, onAbrir, onNueva, onRecuerdos }) {
+export default function AriaConversaciones({ empresaId, activaId, onAbrir, onNueva, onRecuerdos, modo = 'normal' }) {
   const [texto, setTexto] = useState('');
   // Entrada a "Lo que Aria recuerda de ti": cuántos recuerdos hay y si la memoria está en pausa.
   const [memoria, setMemoria] = useState(null);
@@ -42,12 +42,12 @@ export default function AriaConversaciones({ empresaId, activaId, onAbrir, onNue
     const id = ++consulta.current;
     setEstado(prev => ({ ...prev, cargando: true, error: null }));
     const espera = setTimeout(() => {
-      listarConversaciones(empresaId, texto)
+      listarConversaciones(empresaId, texto, modo)
         .then(lista => { if (id === consulta.current) setEstado({ cargando: false, error: null, lista: Array.isArray(lista) ? lista : [] }); })
         .catch(error => { if (id === consulta.current) setEstado({ cargando: false, error: error.message, lista: [] }); });
     }, texto ? 300 : 0);
     return () => clearTimeout(espera);
-  }, [empresaId, texto]);
+  }, [empresaId, texto, modo]);
 
   // Al buscar, un solo grupo con el número de resultados; sin búsqueda, agrupadas por fecha.
   const grupos = texto.trim() && estado.lista.length

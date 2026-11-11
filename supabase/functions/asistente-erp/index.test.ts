@@ -1749,6 +1749,17 @@ Deno.test("modo experto responde con Sonnet, descuenta su cuota y lo marca en la
   assert(result.herramientas_usadas.includes("aria_modo_experto"));
 });
 
+Deno.test("modo experto guarda su conversación marcada como experta; el chat normal no", async () => {
+  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { permitido: true, usadas: 0, limite: 150, restantes: 150, puede_continuar: true }, error: null }
+    : name === "aria_conversacion_registrar" ? { data: { conversacion_id: "11111111-1111-4111-8111-111111111111", mensajes: 2, tarea: null }, error: null } : { data: { filas: [] }, error: null } });
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", modo: "experto", conversacion_id: null }));
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", conversacion_id: null }));
+  const registros = x.calls.filter((c: any) => c.name === "aria_conversacion_registrar");
+  equal(registros.length, 2);
+  equal(registros[0].args.p_extra.modo, "experto");
+  equal(registros[1].args.p_extra.modo, undefined);
+});
+
 Deno.test("modo experto sin cuota no llama al modelo y lo explica", async () => {
   const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { permitido: true, usadas: 150, limite: 150, restantes: 0, puede_continuar: false }, error: null } : { data: { filas: [] }, error: null } });
   const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Amplía en modo experto: hola", modo: "experto" }));
