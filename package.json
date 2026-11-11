@@ -9,7 +9,7 @@
     "build:admin": "vite build",
     "test:access": "node --test src/access/roleAccess.test.js",
     "test:aria-voz": "node --experimental-strip-types --test supabase/functions/aria-transcribir/handler.test.mjs src/lib/ariaHabla.test.mjs supabase/functions/asistente-erp/opciones.test.mjs supabase/functions/asistente-erp/memoria.test.mjs src/services/ariaMemoriaService.test.mjs",
-    "test:manual": "node --test scripts/manual-pantallas.test.mjs scripts/manual/catalogo.test.mjs scripts/manual/extraer.test.mjs",
+    "test:manual": "node --test scripts/manual-pantallas.test.mjs scripts/manual/catalogo.test.mjs scripts/manual/extraer.test.mjs scripts/aria/er-compartido.test.mjs",
     "manual:extraer": "node scripts/manual/extraer.mjs",
     "verificar:catalogo": "node scripts/manual/catalogo.mjs verificar && node scripts/verificar-manual-pantallas.mjs",
     "preview": "vite preview",

@@ -1,4 +1,5 @@
 import { collectBackedNumbers, comparisonRanges, createHandler, ESCRITURA_PROMPT, extractMoneyAmounts, fromAnthropicResponse, toAnthropicRequest, hasUnsupportedMoney, isConceptText, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, topicsWithoutCoverage, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
+import { estadoResultadosAria, resumirEstadoResultados } from "./finanzas.ts";
 
 const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
@@ -58,7 +59,7 @@ function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLi
   const request = (body: unknown = { empresa_id: EMPRESA, pregunta: "¿Qué cuentas hay?" }, extra: RequestInit = {}) => new Request("https://edge.example/asistente-erp", {
     method: "POST", headers: { Authorization: "Bearer valid-token", Origin: "https://erp.tideo.tech", "Content-Type": "application/json", ...(extra.headers as Record<string, string> ?? {}) }, body: JSON.stringify(body), ...extra,
   });
-  return { handler, request, calls, aiCalls, aiToolChoices };
+  return { handler, request, calls, aiCalls, aiToolChoices, deps };
 }
 
 const thenableWithoutCatch = <T>(value: T): PromiseLike<T> => {
@@ -1101,6 +1102,31 @@ Deno.test("herramientas de vencimientos y clientes mapean sus parámetros a los 
   equal(venc.args.p_empresa_id, EMPRESA); equal(venc.args.p_dias, 60);
   const cli = x.calls.find(c => c.name === "asistente_clientes_facturacion")!;
   equal(cli.args.p_dias_sin_compra, 120); equal(cli.args.p_limite, 5);
+});
+
+Deno.test("el Estado de Resultados usa el cálculo de la pantalla y respeta el permiso de finanzas", async () => {
+  const er = { hasMovements: true, er: {
+    ingresos: { total: { PEN: 1000, USD: 0 }, items: [{ label: "Servicios", totals: { PEN: 1000, USD: 0 } }] },
+    costoVentas: { total: { PEN: 400 }, items: [] }, gastosOp: { total: { PEN: 100 }, items: [] }, gastosFin: { total: {}, items: [] }, depreciacion: { total: {}, items: [] } },
+    utilidadBruta: { PEN: 600, USD: 0 }, resultadoOp: { PEN: 500 }, ebitda: { PEN: 500 }, resultadoNeto: { PEN: 500 }, margenes: { utilidadBruta: { PEN: 60 }, resultadoOp: { PEN: 50 }, resultadoNeto: { PEN: 50 } } };
+  const resumen = resumirEstadoResultados(er, "2026-10") as any;
+  equal(resumen.ingresos.total.PEN, 1000); equal(resumen.ingresos.total.USD, undefined); equal(resumen.ingresos.conceptos[0].concepto, "Servicios");
+  equal(resumen.utilidad_bruta.PEN, 600); equal(resumen.margenes_pct.resultado_neto.PEN, 50); equal(resumen.sin_movimientos, false);
+
+  const negado = await estadoResultadosAria({ rpc: (name: string) => Promise.resolve(name === "asistente_autorizar" ? { data: null, error: null } : { data: { ver_finanzas: false }, error: null }) }, EMPRESA, { p_periodo: "2026-10", p_sociedad_id: null });
+  equal((negado.data as any).respuesta, "sin permiso");
+  const sinPantalla = await estadoResultadosAria({ rpc: () => Promise.resolve({ data: null, error: { message: "Falta permiso" } }) }, EMPRESA, { p_periodo: "2026-10" });
+  assert(sinPantalla.error);
+  assert((await estadoResultadosAria({ rpc: () => Promise.resolve({ data: null, error: null }) }, EMPRESA, { p_periodo: "octubre" })).error);
+
+  let n = 0; let recibido: Record<string, unknown> | null = null;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "a", type: "function", function: { name: "asistente_estado_resultados", arguments: JSON.stringify({ periodo: "2026-10" }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  x.deps.estadoResultados = (_s, empresa, args) => { recibido = { empresa, ...args }; return Promise.resolve({ data: resumen, error: null }); };
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuál fue la utilidad de octubre?" }))).status, 200);
+  equal(recibido!.empresa, EMPRESA); equal(recibido!.p_periodo, "2026-10");
+  assert(!x.calls.some(c => c.name === "asistente_estado_resultados"));
 });
 
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {

@@ -17,7 +17,7 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
 | **Total** | 206 | 131 (64 %) | 76 (37 %) | 1 | 61 |
 
-Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
+Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_estado_resultados`, `asistente_resumen_financiero`.
 
 ## Administración
 

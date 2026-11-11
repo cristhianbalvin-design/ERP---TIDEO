@@ -1,0 +1,1090 @@
+// GENERADO por scripts/aria/er-compartido.mjs desde src/services/estadoResultadosService.js. No editar: cambia la fuente y regenera.
+import { normalizeCurrency } from './currency.js';
+import { isSupabaseMode } from './entorno.js';
+import { getSupabaseClient } from './entorno.js';
+import { crearEntradasDevengoCxp } from './cxpDistribucionCeco.js';
+import { getTipoCambioPorFecha } from './tipoCambioService.js';
+
+export const ER_CURRENCIES = ['PEN', 'USD'];
+
+const zeroTotals = () => Object.fromEntries(ER_CURRENCIES.map(m => [m, 0]));
+const isInPeriod = (date, period) => String(date || '').slice(0, 7) === period;
+const periodBounds = period => {
+  const [year, month] = String(period || '').split('-').map(Number);
+  const start = new Date(Date.UTC(year || new Date().getFullYear(), (month || 1) - 1, 1));
+  const next = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  return {
+    start: start.toISOString().slice(0, 10),
+    next: next.toISOString().slice(0, 10),
+  };
+};
+
+const emptyBlock = () => ({ total: zeroTotals(), items: [] });
+const emptyER = () => ({
+  ingresos: emptyBlock(),
+  costoVentas: emptyBlock(),
+  gastosOp: emptyBlock(),
+  gastosFin: emptyBlock(),
+  depreciacion: emptyBlock(),
+});
+
+const emptyResult = (periodo = '') => ({
+  periodo,
+  currencies: ER_CURRENCIES,
+  er: emptyER(),
+  utilidadBruta: zeroTotals(),
+  resultadoOp: zeroTotals(),
+  ebitda: zeroTotals(),
+  ebit: zeroTotals(),
+  resultadoNeto: zeroTotals(),
+  margenes: {
+    utilidadBruta: zeroTotals(),
+    resultadoOp: zeroTotals(),
+    ebitda: zeroTotals(),
+    ebit: zeroTotals(),
+    resultadoNeto: zeroTotals(),
+  },
+  hasMovements: false,
+  otherCurrenciesWarning: false,
+  sourceCounts: {},
+});
+
+const amount = value => Number(value || 0);
+
+export const costoPlanillaFila = fila => {
+  const costoReal = amount(fila.costo_real_empresa);
+  return costoReal > 0
+    ? costoReal
+    : amount(fila.remuneracion_bruta) + amount(fila.essalud) + amount(fila.cts) + amount(fila.gratificacion) + amount(fila.vacaciones);
+};
+
+export const partesPlanillaFila = fila => {
+  const cargas = amount(fila.essalud) + amount(fila.cts) + amount(fila.gratificacion) + amount(fila.vacaciones);
+  return { remuneraciones: Math.max(0, costoPlanillaFila(fila) - cargas), cargas };
+};
+// Corrección 2: no colapsar monedas desconocidas a PEN — preservar el código ISO real.
+const currencyOf = value => normalizeCurrency(value || 'PEN');
+
+const addToBlock = (block, label, value, currency = 'PEN', detail = null) => {
+  const numeric = amount(value);
+  if (!numeric) return;
+  const moneda = currencyOf(currency);
+  block.total[moneda] = (block.total[moneda] || 0) + numeric;
+  let item = block.items.find(i => i.label === label);
+  if (!item) {
+    item = { label, totals: zeroTotals(), details: [] };
+    block.items.push(item);
+  }
+  item.totals[moneda] = (item.totals[moneda] || 0) + numeric;
+  if (detail) {
+    item.details.push({
+      ...detail,
+      amount: numeric,
+      currency: moneda,
+    });
+  }
+};
+
+const subtractTotals = (left, right) => Object.fromEntries(
+  ER_CURRENCIES.map(moneda => [moneda, amount(left?.[moneda]) - amount(right?.[moneda])])
+);
+
+const marginTotals = (result, ingresos) => Object.fromEntries(
+  ER_CURRENCIES.map(moneda => {
+    const base = amount(ingresos?.[moneda]);
+    return [moneda, base ? Math.round((amount(result?.[moneda]) / base) * 100) : 0];
+  })
+);
+
+const finalizeResult = (result, sourceCounts = {}) => {
+  const er = result.er;
+  result.utilidadBruta = subtractTotals(er.ingresos.total, er.costoVentas.total);
+  result.resultadoOp   = subtractTotals(result.utilidadBruta, er.gastosOp.total);
+  result.ebitda        = subtractTotals(result.resultadoOp, er.gastosFin.total);
+  result.ebit          = subtractTotals(result.ebitda, er.depreciacion.total);
+  result.resultadoNeto = result.ebit;
+  result.margenes = {
+    utilidadBruta: marginTotals(result.utilidadBruta, er.ingresos.total),
+    resultadoOp:   marginTotals(result.resultadoOp, er.ingresos.total),
+    ebitda:        marginTotals(result.ebitda, er.ingresos.total),
+    ebit:          marginTotals(result.ebit, er.ingresos.total),
+    resultadoNeto: marginTotals(result.resultadoNeto, er.ingresos.total),
+  };
+  result.sourceCounts = sourceCounts;
+  result.hasMovements = Object.values(sourceCounts).some(v => Number(v || 0) > 0)
+    || ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].some(block =>
+      ER_CURRENCIES.some(moneda => amount(er[block].total[moneda]) !== 0)
+    );
+  // Corrección 2: detectar monedas fuera de ER_CURRENCIES que no pudieron sumarse.
+  result.otherCurrenciesWarning = result.otherCurrenciesWarning || ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].some(blockKey =>
+    Object.keys(er[blockKey].total).some(k => !ER_CURRENCIES.includes(k) && er[blockKey].total[k] > 0)
+  );
+  return result;
+};
+
+export const calcularManoObraNoAsignada = ({ filasPlanilla, costosOt, monedaCalculo, usd }) => {
+  const base = currencyOf(monedaCalculo);
+  const tasa = Number(usd);
+  const monedas = new Set([
+    ...filasPlanilla.filter(fila => amount(fila.importe)).map(fila => currencyOf(fila.moneda)),
+    ...costosOt.filter(costo => amount(costo.mano_obra)).map(costo => currencyOf(costo.moneda)),
+  ]);
+  const convertirDisponible = ER_CURRENCIES.includes(base) && tasa > 0;
+  const otherCurrenciesWarning = [...monedas].some(moneda => !ER_CURRENCIES.includes(moneda))
+    || (monedas.size > 1 && !convertirDisponible);
+  const grupoMoneda = moneda => convertirDisponible && ER_CURRENCIES.includes(moneda) ? base : moneda;
+  const convertir = (valor, moneda) => {
+    if (moneda === base || grupoMoneda(moneda) !== base) return amount(valor);
+    return amount(valor) * (base === 'USD' ? tasa : 1 / tasa);
+  };
+  const grupos = new Map();
+  filasPlanilla.forEach(fila => {
+    const moneda = currencyOf(fila.moneda);
+    const clave = grupoMoneda(moneda);
+    const grupo = grupos.get(clave) || { filas: [], total: 0, asignado: 0 };
+    grupo.filas.push(fila);
+    grupo.total += convertir(fila.importe, moneda);
+    grupos.set(clave, grupo);
+  });
+  costosOt.forEach(costo => {
+    const moneda = currencyOf(costo.moneda);
+    const grupo = grupos.get(grupoMoneda(moneda));
+    if (grupo) grupo.asignado += convertir(costo.mano_obra, moneda);
+  });
+  const filas = [];
+  grupos.forEach(grupo => {
+    const diferencia = Math.max(0, grupo.total - grupo.asignado);
+    if (diferencia && grupo.total > 0) grupo.filas.forEach(fila => {
+      filas.push({ ...fila, importe: amount(fila.importe) * diferencia / grupo.total });
+    });
+  });
+  return { filas, otherCurrenciesWarning };
+};
+
+const matchesIds = (id, ids) => ids == null || ids.includes(id);
+const intersectsIds = (id, ids) => ids == null || ids.includes(id);
+const normalizeSociedadIds = ids => Array.isArray(ids) && ids.filter(Boolean).length
+  ? [...new Set(ids.filter(Boolean))]
+  : null;
+const matchesSociedad = (id, ids) => ids == null || ids.includes(id);
+const norm = value => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+const sameMoney = (a, b) => Math.abs(amount(a) - amount(b)) < 0.01;
+const cxpOrigin = cxp => norm(cxp?.origen || 'manual');
+const cxpMotive = cxp => norm(cxp?.motivo_cxp || '');
+const cxpDocType = cxp => norm(cxp?.tipo_comprobante || '');
+const cxpIsCancelled = cxp => norm(cxp?.estado).includes('anulad');
+const cxpIsRhe = cxp => cxpDocType(cxp) === 'rhe'
+  || Boolean(cxp?.recibo_honorarios_id)
+  || amount(cxp?.monto_bruto) > 0;
+
+export function filtrarIngresosVentaSinComprobante(ventas = [], periodo, sociedadIds = null) {
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  return (ventas || []).filter(venta => venta?.tipo_venta === 'sin_comprobante'
+    && venta?.estado === 'confirmada'
+    && isInPeriod(venta?.fecha, periodo)
+    && matchesSociedad(venta?.sociedad_id, scopeSociedades));
+}
+
+export const ER_TIPO_SISTEMA_LABELS = {
+  mano_obra: 'Mano de obra',
+  materiales: 'Materiales',
+  servicios_terceros: 'Servicios terceros',
+  logistica: 'Logistica',
+  administrativos: 'Administrativos',
+  comerciales: 'Comerciales',
+  gastos_financieros: 'Gastos financieros',
+  planilla: 'Planilla',
+  cargas_sociales: 'Cargas sociales',
+  intereses_financiamiento: 'Intereses de financiamiento',
+  inversiones: 'Inversiones / Activos',
+};
+
+export const ER_TIPO_SISTEMA_OPTIONS = Object.entries(ER_TIPO_SISTEMA_LABELS)
+  .map(([value, label]) => ({ value, label }));
+
+const ER_FALLBACK_BY_TIPO = {
+  // Fallbacks universales cuando el tenant aun no tiene una categoria configurada para ese tipo.
+  mano_obra: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Mano de obra' },
+  materiales: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Materiales' },
+  servicios_terceros: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Servicios terceros' },
+  logistica: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Logistica' },
+  administrativos: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Administrativos' },
+  comerciales: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Comerciales' },
+  gastos_financieros: { seccion: 'gastos_financieros', regla_ot: 'siempre', nombre: 'Gastos financieros' },
+  planilla: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Planilla' },
+  cargas_sociales: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Cargas sociales' },
+  intereses_financiamiento: { seccion: 'gastos_financieros', regla_ot: 'siempre', nombre: 'Intereses de financiamiento' },
+};
+
+const inferTipoSistema = value => {
+  const v = norm(value);
+  if (!v) return null;
+  if (v.includes('mano de obra') || v.includes('mo operativa')) return 'mano_obra';
+  if (v.includes('material')) return 'materiales';
+  if (v.includes('servicio') && v.includes('tercero')) return 'servicios_terceros';
+  if (v.includes('tercero')) return 'servicios_terceros';
+  if (v.includes('logistica') || v.includes('transporte')) return 'logistica';
+  if (v.includes('administrativ')) return 'administrativos';
+  if (v.includes('comercial')) return 'comerciales';
+  if (v.includes('gasto') && v.includes('financier')) return 'gastos_financieros';
+  if (v.includes('planilla')) return 'planilla';
+  if (v.includes('carga') && v.includes('social')) return 'cargas_sociales';
+  if (v.includes('essalud') || v.includes('cts')) return 'cargas_sociales';
+  if (v.includes('interes') && (v.includes('financ') || v.includes('prestamo'))) return 'intereses_financiamiento';
+  return null;
+};
+
+const preferConfigByReglaOt = (configs, hasOt) => {
+  if (!configs.length) return null;
+  if (configs.length === 1) return configs[0];
+  const preferredRules = hasOt ? ['con_ot', 'siempre', 'sin_ot'] : ['sin_ot', 'siempre', 'con_ot'];
+  return preferredRules.map(rule => configs.find(c => c.regla_ot === rule)).find(Boolean) || configs[0];
+};
+
+export const resolverCategoriaPorTipoSistema = (erConfig = [], tipoSistema, { hasOt = false, allowFallback = true } = {}) => {
+  if (!tipoSistema) return null;
+  const configs = (erConfig || []).filter(c => c.tipo_sistema === tipoSistema && (allowFallback || !c.es_fallback));
+  const config = preferConfigByReglaOt(configs, hasOt);
+  if (config) return config;
+  const fallback = ER_FALLBACK_BY_TIPO[tipoSistema];
+  return allowFallback && fallback ? { ...fallback, tipo_sistema: tipoSistema, es_fallback: true } : null;
+};
+
+const resolverCategoriaEr = (erConfig = [], label, { hasOt = false } = {}) => {
+  const byName = (erConfig || []).find(c => norm(c.nombre) === norm(label));
+  if (byName) return byName;
+  return resolverCategoriaPorTipoSistema(erConfig, inferTipoSistema(label), { hasOt });
+};
+
+export const esCategoriaInversionCajaChica = (categoria, erConfig = []) =>
+  resolverCategoriaEr(erConfig, categoria, { hasOt: false })?.tipo_sistema === 'inversiones';
+
+// La naturaleza solo reasigna gastos operativos/directos. Ingresos y gastos
+// financieros conservan su clasificación explícita para no distorsionar margen
+// bruto ni resultado financiero.
+const NATURALEZA_ER_SECCION = Object.freeze({
+  productivo: 'costo_ventas',
+  apoyo: 'gastos_operativos',
+  estructural: 'gastos_operativos',
+});
+
+const seccionProtegidaPorClasificacion = seccion => (
+  seccion === 'gastos_financieros' || seccion === 'ingresos'
+);
+
+const seccionPorNaturaleza = naturaleza => NATURALEZA_ER_SECCION[norm(naturaleza)] || null;
+
+export const resolverSeccionGasto = ({ entry = null, naturaleza = null, fallback = 'gastos_operativos', incompatibleConOt = false } = {}) => {
+  if (seccionProtegidaPorClasificacion(entry?.seccion)) return entry.seccion;
+  const seccionNaturaleza = seccionPorNaturaleza(naturaleza);
+  if (seccionNaturaleza) return seccionNaturaleza;
+  // Una categoría "sin_ot" no puede desaparecer si se usó con una OT: se
+  // conserva su etiqueta, pero se registra como gasto operativo por defecto.
+  if (incompatibleConOt) return fallback;
+  return entry?.seccion || fallback;
+};
+
+const naturalezaByCeco = centrosCosto => new Map(
+  (centrosCosto || []).map(ceco => [ceco.id, ceco.naturaleza_economica || null])
+);
+
+const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion', 'tributos', 'dividendos']);
+const excludedCxpMotives = new Set(['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta']);
+
+export const cxpDevengoAmount = cxp => {
+  if (cxpIsRhe(cxp)) return amount(cxp?.monto_bruto) || amount(cxp?.monto_total);
+  return amount(cxp?.monto_total);
+};
+
+export const cxpDevengoLabel = cxp => {
+  if (cxp?.categoria_er) return cxp.categoria_er;
+  const origin = cxpOrigin(cxp);
+  const motive = cxpMotive(cxp);
+  if (cxpIsRhe(cxp) && cxp?.recibo_honorarios_id) return 'Comisiones por honorarios';
+  if (cxpIsRhe(cxp)) return 'Servicios terceros';
+  if (origin === 'viaticos' || motive === 'viaticos_reembolso') return 'Administrativos';
+  if (cxp?.tipo_beneficiario === 'personal') return 'Honorarios y reembolsos';
+  return 'Gastos operativos';
+};
+
+export const cxpCanDevengarEr = cxp => {
+  if (!cxp || cxpIsCancelled(cxp)) return false;
+  // Corrección 5: excluir si el campo no_devengar_er está activado.
+  if (cxp.no_devengar_er) return false;
+  // Corrección 5: excluir si hay recepcion_id sin importar el campo origen.
+  if (cxp.recepcion_id != null) return false;
+  if (excludedCxpOrigins.has(cxpOrigin(cxp))) return false;
+  if (excludedCxpMotives.has(cxpMotive(cxp))) return false;
+  return cxpDevengoAmount(cxp) > 0;
+};
+
+export const filtrarComprasGastosParaEr = comprasGastos =>
+  (comprasGastos || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
+
+export const filtrarCajaChicaSinGastoVinculado = filas =>
+  (filas || []).filter(r => r.gasto_id == null);
+
+export const compraCoversCxp = (cxp, comprasGastos = []) => {
+  const cxpId = cxp?.id;
+  const gastoId = cxp?.gasto_id;
+  // FK exacto primero (migration 168 agrega cxp_id a compras_gastos)
+  if (cxpId && comprasGastos.some(g => g.cxp_id === cxpId)) return true;
+  const fecha = String(cxp?.fecha_emision || '').slice(0, 10);
+  const moneda = currencyOf(cxp?.moneda);
+  const monto = cxpDevengoAmount(cxp);
+  const cxpText = norm([cxp?.concepto, cxp?.factura_numero, cxp?.nombre_emisor].filter(Boolean).join(' '));
+
+  return comprasGastos.some(g => {
+    if (cxpId && g.cxp_id === cxpId) return true;
+    if (gastoId && g.id === gastoId) return true;
+    const gastoText = norm([g.descripcion, g.subcategoria].filter(Boolean).join(' '));
+    const sameFingerprint = String(g.fecha || '').slice(0, 10) === fecha
+      && currencyOf(g.moneda) === moneda
+      && sameMoney(g.monto, monto);
+    if (!sameFingerprint || !cxpText || !gastoText) return false;
+    return cxpText.includes(gastoText)
+      || gastoText.includes(cxpText)
+      || (cxp?.factura_numero && gastoText.includes(norm(cxp.factura_numero)));
+  });
+};
+
+async function resolveCecoFilter(supabase, empresaId, cecoIds = [], cebeIds = [], sociedadIds = null) {
+  const selectedCecos = Array.isArray(cecoIds) ? cecoIds.filter(Boolean) : [];
+  const selectedCebes = Array.isArray(cebeIds) ? cebeIds.filter(Boolean) : [];
+  if (!selectedCebes.length) return selectedCecos.length ? selectedCecos : null;
+
+  let query = supabase
+    .from('centros_costo')
+    .select('id, cebe_id, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .in('cebe_id', selectedCebes);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const cecosFromCebe = (data || []).map(c => c.id);
+  if (selectedCecos.length) return selectedCecos.filter(id => cecosFromCebe.includes(id));
+  return cecosFromCebe;
+}
+
+export function buildEstadoResultados({ base, comprasGastos = [], ots = [], facturas = null, ventasSinComprobante = [], centrosCosto = [], centrosBeneficio = [], sociedadIds = null, empresa, periodo = '2026-04' }) {
+  const result = emptyResult(periodo);
+  const empresaId = empresa?.id;
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  const naturalezaCeco = naturalezaByCeco(centrosCosto);
+  const localBlockForSection = section => ({
+    ingresos: result.er.ingresos,
+    costo_ventas: result.er.costoVentas,
+    gastos_operativos: result.er.gastosOp,
+    gastos_financieros: result.er.gastosFin,
+  }[section] || result.er.gastosOp);
+  const sociedadOt = ot => {
+    const ceco = centrosCosto.find(c => c.id === ot?.centro_costo_id);
+    const cebe = centrosBeneficio.find(c => c.id === ot?.centro_beneficio_id);
+    return ceco?.sociedad_id || cebe?.sociedad_id || null;
+  };
+
+  if (Array.isArray(facturas)) {
+    facturas
+      .filter(f => (!empresaId || !f.empresa_id || f.empresa_id === empresaId)
+        && isInPeriod(f.fecha_emision, periodo)
+        && f.estado !== 'anulada'
+        && ['factura', 'boleta'].includes(f.tipo_documento)
+        && matchesSociedad(f.sociedad_id, scopeSociedades))
+      .forEach(f => addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda || 'PEN'));
+  } else {
+    (base?.ingresos?.items || []).forEach(item => {
+      addToBlock(result.er.ingresos, item.label, item.valor, 'PEN');
+    });
+    if (!result.er.ingresos.items.length && base?.ingresos?.total) {
+      addToBlock(result.er.ingresos, 'Ventas de servicios', base.ingresos.total, 'PEN');
+    }
+  }
+
+  filtrarIngresosVentaSinComprobante(ventasSinComprobante, periodo, scopeSociedades).forEach(venta => {
+    addToBlock(result.er.ingresos, 'Ingresos sin comprobante', venta.subtotal, venta.moneda || 'PEN', {
+      fuente: 'Ventas',
+      id: venta.id,
+      fecha: venta.fecha,
+      concepto: venta.concepto || venta.numero || 'Venta sin comprobante',
+      documento: venta.numero,
+    });
+  });
+
+  if (!Array.isArray(facturas)) {
+    (base?.costoVentas?.items || []).forEach(item => {
+      addToBlock(result.er.costoVentas, item.label, item.valor, 'PEN');
+    });
+  }
+
+  comprasGastos
+    .filter(g =>
+      (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
+      isInPeriod(g.fecha, periodo) &&
+      matchesSociedad(g.sociedad_id, scopeSociedades) &&
+      !g.es_activo_fijo &&
+      inferTipoSistema(g.categoria) !== 'gastos_financieros'
+    )
+    .forEach(g => {
+      const blockKey = resolverSeccionGasto({ naturaleza: naturalezaCeco.get(g.centro_costo_id) });
+      addToBlock(localBlockForSection(blockKey), g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN', {
+        fuente: 'Compras/Gastos',
+        id: g.id,
+        fecha: g.fecha,
+        concepto: g.descripcion || g.subcategoria || g.categoria || 'Gasto operativo',
+        subcategoria: g.subcategoria,
+        origen: g.origen_registro,
+        cecoId: g.centro_costo_id,
+      });
+    });
+
+  ots
+    .filter(o => isInPeriod(o.fecha_fin || o.fecha_inicio || o.fecha_programada, periodo)
+      && matchesSociedad(o.sociedad_id || sociedadOt(o), scopeSociedades))
+    .forEach(o => {
+      const blockKey = resolverSeccionGasto({
+        naturaleza: naturalezaCeco.get(o.centro_costo_id),
+        fallback: 'costo_ventas',
+      });
+      addToBlock(localBlockForSection(blockKey), 'Mano de obra directa', o.costo_real, 'PEN', {
+        fuente: 'Orden de trabajo',
+        id: o.id,
+        fecha: o.fecha_fin || o.fecha_inicio || o.fecha_programada,
+        concepto: o.numero || o.servicio || o.descripcion || 'Costo de OT',
+      });
+    });
+
+  const intereses = comprasGastos.filter(g =>
+    (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
+    isInPeriod(g.fecha, periodo) &&
+    matchesSociedad(g.sociedad_id, scopeSociedades) &&
+    inferTipoSistema(g.categoria) === 'gastos_financieros'
+  );
+  intereses.forEach(g => addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda || 'PEN', {
+    fuente: 'Compras/Gastos',
+    id: g.id,
+    fecha: g.fecha,
+    concepto: g.descripcion || g.subcategoria || 'Gastos financieros',
+    subcategoria: g.subcategoria,
+    origen: g.origen_registro,
+    cecoId: g.centro_costo_id,
+  }));
+
+  return finalizeResult(result, {
+    ingresos: result.er.ingresos.items.length,
+    costos_ot: result.er.costoVentas.items.length,
+    compras_gastos: result.er.gastosOp.items.length,
+    pagos_financiamiento: result.er.gastosFin.items.length,
+  });
+}
+
+async function loadFacturas(supabase, empresaId, periodo, cebeIds = [], sociedadIds = null) {
+  const { start, next } = periodBounds(periodo);
+  const selectedCebes = Array.isArray(cebeIds) ? cebeIds.filter(Boolean) : [];
+  let query = supabase
+    .from('facturas')
+    .select('id, numero, subtotal, igv, total, moneda, fecha_emision, estado, tipo_documento, centro_beneficio_id, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .gte('fecha_emision', start)
+    .lt('fecha_emision', next)
+    .neq('estado', 'anulada')
+    .in('tipo_documento', ['factura', 'boleta']);
+  if (selectedCebes.length) query = query.in('centro_beneficio_id', selectedCebes);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadVentasSinComprobante(supabase, empresaId, periodo, sociedadIds = null) {
+  const { start, next } = periodBounds(periodo);
+  let query = supabase.from('ventas')
+    .select('id, numero, fecha, concepto, subtotal, moneda, estado, tipo_venta, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .eq('tipo_venta', 'sin_comprobante')
+    .eq('estado', 'confirmada')
+    .gte('fecha', start)
+    .lt('fecha', next);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadCostosOt(supabase, empresaId, sociedadIds = null) {
+  const [costosR, cierresR] = await Promise.all([
+    supabase
+      .from('costos_ot')
+      .select('id, orden_trabajo_id, mano_obra, materiales, servicios_terceros, logistica, otros, total, moneda, calculado_at, ordenes_trabajo(id, numero, servicio, descripcion, fecha_fin, fecha_programada, centro_costo_id, centro_beneficio_id)')
+      .eq('empresa_id', empresaId),
+    supabase
+      .from('cierres_tecnicos')
+      .select('orden_trabajo_id, fecha_cierre')
+      .eq('empresa_id', empresaId),
+  ]);
+  if (costosR.error) throw costosR.error;
+  if (cierresR.error) throw cierresR.error;
+
+  const cierreByOt = new Map((cierresR.data || []).map(c => [c.orden_trabajo_id, c.fecha_cierre]));
+  let rows = (costosR.data || []).map(c => ({
+    ...c,
+    fecha_er: cierreByOt.get(c.orden_trabajo_id)
+      || c.ordenes_trabajo?.fecha_fin
+      || c.ordenes_trabajo?.fecha_programada
+      || c.calculado_at?.slice?.(0, 10),
+  }));
+  const cecoIds = [...new Set(rows.map(c => c.ordenes_trabajo?.centro_costo_id).filter(Boolean))];
+  const cebeIds = [...new Set(rows.map(c => c.ordenes_trabajo?.centro_beneficio_id).filter(Boolean))];
+  const [cecosR, cebesR] = await Promise.all([
+    cecoIds.length
+      ? supabase.from('centros_costo').select('id, sociedad_id, naturaleza_economica').eq('empresa_id', empresaId).in('id', cecoIds)
+      : Promise.resolve({ data: [], error: null }),
+    cebeIds.length
+      ? supabase.from('centros_beneficio').select('id, sociedad_id').eq('empresa_id', empresaId).in('id', cebeIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (cecosR.error) throw cecosR.error;
+  if (cebesR.error) throw cebesR.error;
+  const sociedadCeco = new Map((cecosR.data || []).map(c => [c.id, c.sociedad_id]));
+  const naturalezaCeco = naturalezaByCeco(cecosR.data);
+  const sociedadCebe = new Map((cebesR.data || []).map(c => [c.id, c.sociedad_id]));
+  rows = rows.map(c => ({
+    ...c,
+    naturaleza_economica: naturalezaCeco.get(c.ordenes_trabajo?.centro_costo_id) || null,
+    sociedad_id: sociedadCeco.get(c.ordenes_trabajo?.centro_costo_id) || sociedadCebe.get(c.ordenes_trabajo?.centro_beneficio_id) || null,
+  }));
+  if (sociedadIds) {
+    rows = rows.filter(c => sociedadIds.includes(
+      sociedadCeco.get(c.ordenes_trabajo?.centro_costo_id)
+        || sociedadCebe.get(c.ordenes_trabajo?.centro_beneficio_id)
+    ));
+  }
+  return rows;
+}
+
+async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds, sociedadIds = null) {
+  if (effectiveCecoIds && effectiveCecoIds.length === 0) return [];
+  const { start, next } = periodBounds(periodo);
+  let query = supabase
+    .from('compras_gastos')
+    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, orden_compra_id, excluir_de_er, periodo_nomina_id, origen_registro, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .gte('fecha', start)
+    .lt('fecha', next);
+  if (effectiveCecoIds) query = query.in('centro_costo_id', effectiveCecoIds);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
+  if (error) throw error;
+  return filtrarComprasGastosParaEr(data);
+}
+
+async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null) {
+  const { start, next } = periodBounds(periodo);
+  let query = supabase
+    .from('cxp')
+    // Corrección 5: se agrega no_devengar_er al SELECT.
+    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, tipo_gasto, centro_costo_id, ot_vinc_id, no_devengar_er, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .gte('fecha_emision', start)
+    .lt('fecha_emision', next);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadCxPDistribucionesCeco(supabase, empresaId, cxpDevengos) {
+  const cxpIds = [...new Set((cxpDevengos || []).map(cxp => cxp.id).filter(Boolean))];
+  const filas = [];
+  for (let inicio = 0; inicio < cxpIds.length; inicio += 200) {
+    const lote = cxpIds.slice(inicio, inicio + 200);
+    const { data, error } = await supabase
+      .from('cxp_distribucion_ceco')
+      .select('cxp_id, ceco_id, monto')
+      .eq('empresa_id', empresaId)
+      .in('cxp_id', lote);
+    if (error) throw error;
+    filas.push(...(data || []));
+  }
+  return filas;
+}
+
+async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds, sociedadIds = null) {
+  if (effectiveCecoIds && effectiveCecoIds.length === 0) return [];
+  const [year, month] = String(periodo || '').split('-').map(Number);
+  let periodosQ = supabase
+    .from('periodos_nomina')
+    .select('id, periodo, anio, mes, estado, sociedad_id')
+    .eq('empresa_id', empresaId);
+  if (sociedadIds) periodosQ = periodosQ.in('sociedad_id', sociedadIds);
+  if (year && month) periodosQ = periodosQ.or(`periodo.eq.${periodo},and(anio.eq.${year},mes.eq.${month})`);
+  const periodosR = await periodosQ;
+  if (periodosR.error) throw periodosR.error;
+
+  // Corrección 7: solo períodos cerrados para evitar montos preliminares de períodos abiertos.
+  const periodoIds = (periodosR.data || [])
+    .filter(p => p.estado === 'cerrado')
+    .map(p => p.id);
+  if (!periodoIds.length) return [];
+
+  let detalleQ = supabase
+    .from('detalle_nomina')
+    .select('id, periodo_nomina_id, centro_costo_id, trabajador_tipo, costo_real_empresa, remuneracion_bruta, essalud, cts, gratificacion, vacaciones, moneda')
+    .eq('empresa_id', empresaId)
+    .in('periodo_nomina_id', periodoIds);
+  if (effectiveCecoIds) detalleQ = detalleQ.in('centro_costo_id', effectiveCecoIds);
+  const detalleR = await detalleQ;
+  if (detalleR.error) throw detalleR.error;
+  const sociedadPorPeriodo = new Map((periodosR.data || []).map(p => [p.id, p.sociedad_id]));
+  return (detalleR.data || []).map(n => ({ ...n, sociedad_id: sociedadPorPeriodo.get(n.periodo_nomina_id) || null }));
+}
+
+async function loadPagosFinancieros(supabase, empresaId, periodo, sociedadIds = null) {
+  const { start, next } = periodBounds(periodo);
+  const pagosR = await supabase
+    .from('pagos_financiamiento')
+    .select('id, fecha_pago, interes, moneda, financiamientos(sociedad_id)')
+    .eq('empresa_id', empresaId)
+    .gte('fecha_pago', start)
+    .lt('fecha_pago', next);
+  if (pagosR.error) throw pagosR.error;
+  const pagos = sociedadIds
+    ? (pagosR.data || []).filter(p => sociedadIds.includes(p.financiamientos?.sociedad_id))
+    : (pagosR.data || []);
+  if ((pagosR.data || []).length) return pagos;
+
+  const amortR = await supabase
+    .from('tabla_amortizacion')
+    .select('id, fecha_pago_real, interes, estado, financiamientos(moneda, sociedad_id)')
+    .eq('empresa_id', empresaId)
+    .gte('fecha_pago_real', start)
+    .lt('fecha_pago_real', next)
+    .in('estado', ['pagada', 'pagado']);
+  if (amortR.error) throw amortR.error;
+  return (amortR.data || [])
+    .filter(row => !sociedadIds || sociedadIds.includes(row.financiamientos?.sociedad_id))
+    .map(row => ({
+    id: row.id,
+    fecha_pago: row.fecha_pago_real,
+    interes: row.interes,
+    moneda: row.financiamientos?.moneda || 'PEN',
+    }));
+}
+
+// Corrección 1: caja_chica nunca era consultada; los egresos sin gasto_id desaparecían del ER.
+async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null, erConfigPromise = cargarConfiguracionER(empresaId)) {
+  const { start, next } = periodBounds(periodo);
+  let query = supabase
+    .from('caja_chica')
+    .select('id, fecha, monto, moneda, categoria, ceco_id, gasto_id, estado, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .gte('fecha', start)
+    .lt('fecha', next)
+    .neq('estado', 'anulado');
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const [{ data, error }, erConfig] = await Promise.all([query, erConfigPromise]);
+  if (error) throw error;
+  // Excluir registros con gasto_id para no duplicar lo que ya recoge loadComprasGastos.
+  return filtrarCajaChicaSinGastoVinculado(data).filter(r =>
+    !esCategoriaInversionCajaChica(r.categoria, erConfig));
+}
+
+async function loadNaturalezasCeco(supabase, empresaId, cecoIds = []) {
+  const ids = [...new Set((cecoIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const { data, error } = await supabase
+    .from('centros_costo')
+    .select('id, naturaleza_economica')
+    .eq('empresa_id', empresaId)
+    .in('id', ids);
+  if (error) throw error;
+  return naturalezaByCeco(data);
+}
+
+// Fallback cuando el tenant no tiene filas en er_categorias (tenant nuevo sin configurar).
+const CATS_BASE_FALLBACK = [
+  { nombre: 'Mano de obra',       tipo_sistema: 'mano_obra',          seccion: 'costo_ventas',       regla_ot: 'con_ot', es_fallback: true  },
+  { nombre: 'Materiales',         tipo_sistema: 'materiales',         seccion: 'costo_ventas',       regla_ot: 'con_ot', es_fallback: true  },
+  { nombre: 'Servicios terceros', tipo_sistema: 'servicios_terceros', seccion: 'costo_ventas',       regla_ot: 'con_ot', es_fallback: true  },
+  { nombre: 'Logística',          seccion: 'costo_ventas',       regla_ot: 'con_ot'  },
+  { nombre: 'Administrativos',    tipo_sistema: 'administrativos',    seccion: 'gastos_operativos',  regla_ot: 'siempre', es_fallback: true },
+  { nombre: 'Comerciales',        tipo_sistema: 'comerciales',        seccion: 'gastos_operativos',  regla_ot: 'siempre', es_fallback: true },
+  { nombre: 'Gastos financieros', tipo_sistema: 'gastos_financieros', seccion: 'gastos_financieros', regla_ot: 'siempre', es_fallback: true },
+];
+
+export async function cargarConfiguracionER(empresaId) {
+  if (!isSupabaseMode() || !empresaId) return CATS_BASE_FALLBACK;
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('er_categorias')
+      .select('nombre, seccion, regla_ot, tipo_sistema')
+      .eq('empresa_id', empresaId)
+      .eq('activo', true)
+      .order('orden');
+    if (error || !data?.length) return CATS_BASE_FALLBACK;
+    return data;
+  } catch {
+    return CATS_BASE_FALLBACK;
+  }
+}
+
+export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], cebeIds = [], sociedadIds = null } = {}) {
+  if (!isSupabaseMode()) return emptyResult(periodo);
+  if (!empresaId) throw new Error('No hay empresa activa.');
+
+  const supabase = await getSupabaseClient();
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds, scopeSociedades);
+  const result = emptyResult(periodo);
+
+  const erConfigPromise = cargarConfiguracionER(empresaId);
+  const [facturas, ventasSinComprobante, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
+    loadFacturas(supabase, empresaId, periodo, cebeIds, scopeSociedades),
+    loadVentasSinComprobante(supabase, empresaId, periodo, scopeSociedades),
+    loadCostosOt(supabase, empresaId, scopeSociedades),
+    loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
+    loadNomina(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
+    loadPagosFinancieros(supabase, empresaId, periodo, scopeSociedades),
+    loadCxPDevengos(supabase, empresaId, periodo, scopeSociedades),
+    loadCajaChica(supabase, empresaId, periodo, scopeSociedades, erConfigPromise),
+    erConfigPromise,
+  ]);
+  const cxpDistribuciones = await loadCxPDistribucionesCeco(supabase, empresaId, cxpDevengos);
+  const distribucionesPorCxp = new Map();
+  cxpDistribuciones.forEach(fila => {
+    if (!distribucionesPorCxp.has(fila.cxp_id)) distribucionesPorCxp.set(fila.cxp_id, []);
+    distribucionesPorCxp.get(fila.cxp_id).push(fila);
+  });
+  const naturalezaCeco = await loadNaturalezasCeco(supabase, empresaId, [
+    ...comprasGastos.map(g => g.centro_costo_id),
+    ...cxpDevengos.map(cxp => cxp.centro_costo_id),
+    ...cxpDistribuciones.map(fila => fila.ceco_id),
+    ...detalleNomina.map(n => n.centro_costo_id),
+    ...cajaChica.map(r => r.ceco_id),
+  ]);
+
+  const sectionToBlock = {
+    ingresos:           result.er.ingresos,
+    costo_ventas:      result.er.costoVentas,
+    gastos_operativos: result.er.gastosOp,
+    gastos_financieros: result.er.gastosFin,
+  };
+  const blockForSection = section => sectionToBlock[section] || result.er.gastosOp;
+  const labelByTipo = (tipoSistema, fallback, hasOt = true) =>
+    resolverCategoriaPorTipoSistema(erConfig, tipoSistema, { hasOt })?.nombre || fallback;
+
+  facturas.forEach(f => {
+    addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda, {
+      fuente: 'Facturación',
+      id: f.id,
+      fecha: f.fecha_emision,
+      concepto: f.numero || f.tipo_documento || 'Venta de servicios',
+      documento: f.numero,
+    });
+  });
+
+  filtrarIngresosVentaSinComprobante(ventasSinComprobante, periodo, scopeSociedades).forEach(venta => {
+    addToBlock(result.er.ingresos, 'Ingresos sin comprobante', venta.subtotal, venta.moneda, {
+      fuente: 'Ventas', id: venta.id, fecha: venta.fecha,
+      concepto: venta.concepto || venta.numero || 'Venta sin comprobante', documento: venta.numero,
+    });
+  });
+
+  const costosOtPeriodo = costosOt
+    .filter(c => c.ordenes_trabajo?.estado !== 'anulada')
+    .filter(c => isInPeriod(c.fecha_er, periodo))
+    .filter(c => !effectiveCecoIds || matchesIds(c.ordenes_trabajo?.centro_costo_id, effectiveCecoIds))
+    .filter(c => !cebeIds?.length || intersectsIds(c.ordenes_trabajo?.centro_beneficio_id, cebeIds));
+  costosOtPeriodo.forEach(c => {
+      const block = blockForSection(resolverSeccionGasto({
+        naturaleza: c.naturaleza_economica,
+        fallback: 'costo_ventas',
+      }));
+      const detalleOt = {
+        fuente: 'Orden de trabajo',
+        id: c.id || c.orden_trabajo_id,
+        fecha: c.fecha_er,
+        concepto: c.ordenes_trabajo?.numero || c.ordenes_trabajo?.servicio || c.ordenes_trabajo?.descripcion || 'Costo de OT',
+        documento: c.ordenes_trabajo?.numero,
+        cecoId: c.ordenes_trabajo?.centro_costo_id,
+      };
+      addToBlock(block, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda, { ...detalleOt, detalle: 'Mano de obra' });
+      addToBlock(block, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda, { ...detalleOt, detalle: 'Materiales' });
+      addToBlock(block, labelByTipo('servicios_terceros', 'Servicios terceros'), c.servicios_terceros, c.moneda, { ...detalleOt, detalle: 'Servicios de terceros' });
+      addToBlock(block, labelByTipo('logistica', 'Logistica directa'), c.logistica, c.moneda, { ...detalleOt, detalle: 'Logística' });
+      addToBlock(block, 'Otros costos directos', c.otros, c.moneda, { ...detalleOt, detalle: 'Otros costos' });
+    });
+
+  const comprasGastosParaEr = detalleNomina.length
+    ? comprasGastos.filter(g => !g.periodo_nomina_id && norm(g.origen_registro) !== 'nomina')
+    : comprasGastos;
+
+  comprasGastosParaEr.forEach(g => {
+    const hasOt = g.ot_vinc_id != null;
+    const entry = resolverCategoriaEr(erConfig, g.categoria, { hasOt });
+    const detalleGasto = {
+      fuente: 'Compras/Gastos',
+      id: g.id,
+      fecha: g.fecha,
+      concepto: g.descripcion || g.subcategoria || g.categoria || 'Gasto operativo',
+      subcategoria: g.subcategoria,
+      origen: g.origen_registro,
+      cecoId: g.centro_costo_id,
+    };
+    if (entry) {
+      const incompatibleConOt = entry.regla_ot === 'sin_ot' && hasOt;
+      const block = blockForSection(resolverSeccionGasto({
+        entry,
+        naturaleza: naturalezaCeco.get(g.centro_costo_id),
+        incompatibleConOt,
+      }));
+      if (entry.regla_ot === 'con_ot') {
+        addToBlock(block, entry.nombre, g.monto, g.moneda, detalleGasto);
+      } else if (entry.regla_ot === 'sin_ot') {
+        addToBlock(block, entry.nombre, g.monto, g.moneda, detalleGasto);
+      } else {
+        addToBlock(block, entry.nombre, g.monto, g.moneda, detalleGasto);
+      }
+    } else if (inferTipoSistema(g.categoria) === 'gastos_financieros') {
+      // Categoría financiera sin config explícita — comportamiento original preservado.
+      addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda, detalleGasto);
+    } else {
+      // Sin coincidencia en categorías del sistema ni personalizadas: clasificar como Otros gastos.
+      addToBlock(result.er.gastosOp, 'Otros gastos', g.monto, g.moneda, detalleGasto);
+    }
+  });
+
+  const hasScopedFilters = Boolean(effectiveCecoIds) || Boolean(cebeIds?.length);
+  // La deduplicación usa comprasGastos completo (incluye financieros) para evitar doble conteo de CxPs.
+  const cxpDevengosEr = cxpDevengos.filter(cxp => {
+    if (!cxpCanDevengarEr(cxp)) return false;
+    if (compraCoversCxp(cxp, comprasGastos)) return false;
+    return crearEntradasDevengoCxp(
+      { ...cxp, devengoAmount: cxpDevengoAmount(cxp) },
+      distribucionesPorCxp.get(cxp.id),
+      { hasScopedFilters, effectiveCecoIds },
+    ).length > 0;
+  });
+  cxpDevengosEr.forEach(cxp => {
+    const label = cxpDevengoLabel(cxp);
+    // Corrección 6: CxP con label Gastos financieros (via categoria_er) va a gastosFin, no gastosOp.
+    const hasOt = cxp.ot_vinc_id != null;
+    const entry = resolverCategoriaEr(erConfig, label, { hasOt });
+    const entradas = crearEntradasDevengoCxp(
+      { ...cxp, devengoAmount: cxpDevengoAmount(cxp) },
+      distribucionesPorCxp.get(cxp.id),
+      { hasScopedFilters, effectiveCecoIds },
+    );
+    entradas.forEach(({ cecoId, amount: montoDevengable }) => {
+      const block = blockForSection(resolverSeccionGasto({
+        entry,
+        naturaleza: naturalezaCeco.get(cecoId),
+      }));
+      addToBlock(block, entry?.nombre || label, montoDevengable, cxp.moneda, {
+        fuente: 'Cuentas por pagar',
+        id: cxp.id,
+        fecha: cxp.fecha_emision,
+        concepto: cxp.concepto || cxp.nombre_emisor || cxp.factura_numero || 'Cuenta por pagar',
+        documento: cxp.factura_numero || cxp.tipo_comprobante,
+        tercero: cxp.nombre_emisor,
+        origen: cxp.origen,
+        subcategoria: cxp.tipo_gasto || null,
+        cecoId,
+      });
+    });
+  });
+
+  const nominaOperativa = new Map();
+  detalleNomina.forEach(n => {
+    if (norm(n.trabajador_tipo) === 'operativo') {
+      const clave = n.sociedad_id || null;
+      const grupo = nominaOperativa.get(clave) || { sociedadId: n.sociedad_id, filas: [] };
+      const importe = costoPlanillaFila(n);
+      grupo.filas.push({ ...n, importe });
+      nominaOperativa.set(clave, grupo);
+      return;
+    }
+    const block = blockForSection(resolverSeccionGasto({
+      naturaleza: naturalezaCeco.get(n.centro_costo_id),
+    }));
+    const { remuneraciones, cargas } = partesPlanillaFila(n);
+    addToBlock(block, labelByTipo('planilla', 'Remuneraciones', false), remuneraciones, n.moneda, {
+      fuente: 'Planilla',
+      id: n.id,
+      concepto: 'Remuneraciones',
+      cecoId: n.centro_costo_id,
+    });
+    addToBlock(block, labelByTipo('cargas_sociales', 'Cargas sociales', false), cargas, n.moneda, {
+      fuente: 'Planilla',
+      id: n.id,
+      concepto: 'Cargas sociales',
+      cecoId: n.centro_costo_id,
+    });
+  });
+
+
+  for (const grupo of nominaOperativa.values()) {
+    const costos = costosOtPeriodo.filter(c => c.sociedad_id === grupo.sociedadId);
+    const monedaCalculo = currencyOf(grupo.filas[0].moneda);
+    const monedas = new Set([...grupo.filas.filter(n => amount(n.importe)).map(n => currencyOf(n.moneda)), ...costos.filter(c => amount(c.mano_obra)).map(c => currencyOf(c.moneda))]);
+    let usd = null;
+    if (monedas.has('PEN') && monedas.has('USD')) {
+      try {
+        const tc = await getTipoCambioPorFecha(`${periodo}-01`, supabase);
+        usd = Number(tc?.usd);
+      } catch {
+        usd = null;
+      }
+    }
+    const calculo = calcularManoObraNoAsignada({ filasPlanilla: grupo.filas, costosOt: costos, monedaCalculo, usd });
+    result.otherCurrenciesWarning ||= calculo.otherCurrenciesWarning;
+    calculo.filas.forEach(n => {
+      addToBlock(result.er.costoVentas, 'Mano de obra no asignada a OT', n.importe, n.moneda, {
+        fuente: 'Planilla', id: n.id, concepto: 'Mano de obra no asignada a OT', cecoId: n.centro_costo_id,
+      });
+    });
+  }
+
+  // Egresos de caja chica sin gasto_id: su CECO participa de la misma regla.
+  cajaChica.forEach(r => {
+    const entry = resolverCategoriaEr(erConfig, r.categoria, { hasOt: false });
+    const block = blockForSection(resolverSeccionGasto({
+      entry,
+      naturaleza: naturalezaCeco.get(r.ceco_id),
+    }));
+    addToBlock(block, entry?.nombre || r.categoria || 'Caja chica', r.monto, r.moneda, {
+      fuente: 'Caja chica',
+      id: r.id,
+      fecha: r.fecha,
+      concepto: r.categoria || 'Egreso de caja chica',
+      cecoId: r.ceco_id,
+    });
+  });
+
+  pagosFinancieros.forEach(p => {
+    addToBlock(result.er.gastosFin, labelByTipo('intereses_financiamiento', 'Intereses de financiamiento', false), p.interes, p.moneda, {
+      fuente: 'Financiamiento',
+      id: p.id,
+      fecha: p.fecha_pago,
+      concepto: 'Intereses de financiamiento',
+    });
+  });
+
+  return finalizeResult(result, {
+    facturas: facturas.length,
+    ventas_sin_comprobante: filtrarIngresosVentaSinComprobante(ventasSinComprobante, periodo, scopeSociedades).length,
+    costos_ot: costosOt.filter(c => isInPeriod(c.fecha_er, periodo) && c.ordenes_trabajo?.estado !== 'anulada').length,
+    compras_gastos: comprasGastosParaEr.length,
+    cxp_devengos: cxpDevengosEr.length,
+    detalle_nomina: detalleNomina.length,
+    pagos_financiamiento: pagosFinancieros.length,
+    caja_chica: cajaChica.length,
+  });
+}
+
+export const ER_SCOPE_MODE = Object.freeze({
+  SOCIEDAD: 'sociedad',
+  COMPARATIVO: 'comparativo',
+  CONSOLIDADO: 'consolidado',
+});
+
+export function consolidarEstadosResultados(resultados = [], eliminaciones = [], periodo = '') {
+  const result = emptyResult(periodo);
+  const sourceCounts = {};
+
+  resultados.filter(Boolean).forEach(data => {
+    result.otherCurrenciesWarning ||= Boolean(data.otherCurrenciesWarning);
+    Object.entries(data.sourceCounts || {}).forEach(([key, value]) => {
+      sourceCounts[key] = (sourceCounts[key] || 0) + Number(value || 0);
+    });
+    ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].forEach(blockKey => {
+      (data.er?.[blockKey]?.items || []).forEach(item => {
+        if (Array.isArray(item.details) && item.details.length) {
+          item.details.forEach(detail => {
+            addToBlock(result.er[blockKey], item.label, detail.amount, detail.currency, detail);
+          });
+        } else {
+          Object.entries(item.totals || {}).forEach(([moneda, value]) => {
+            addToBlock(result.er[blockKey], item.label, value, moneda);
+          });
+        }
+      });
+    });
+  });
+
+  eliminaciones.forEach(op => {
+    addToBlock(
+      result.er.ingresos,
+      '(-) Eliminaciones intercompañía',
+      -Math.abs(amount(op.monto)),
+      op.moneda || 'PEN'
+    );
+  });
+  sourceCounts.eliminaciones_intercompania = eliminaciones.length;
+
+  const final = finalizeResult(result, sourceCounts);
+  final.scopeMode = ER_SCOPE_MODE.CONSOLIDADO;
+  final.eliminacionesIntercompania = eliminaciones;
+  return final;
+}
+
+export async function getEstadoResultadosPorScope({
+  empresaId,
+  periodo,
+  mode = ER_SCOPE_MODE.SOCIEDAD,
+  sociedadIds = [],
+  cecoIds = [],
+  cebeIds = [],
+} = {}) {
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  if (!scopeSociedades) {
+    return getEstadoResultados({ empresaId, periodo, cecoIds, cebeIds });
+  }
+
+  if (mode === ER_SCOPE_MODE.SOCIEDAD) {
+    return getEstadoResultados({
+      empresaId,
+      periodo,
+      cecoIds,
+      cebeIds,
+      sociedadIds: [scopeSociedades[0]],
+    });
+  }
+
+  const comparativo = await Promise.all(scopeSociedades.map(async sociedadId => ({
+    sociedadId,
+    data: await getEstadoResultados({
+      empresaId,
+      periodo,
+      cecoIds,
+      cebeIds,
+      sociedadIds: [sociedadId],
+    }),
+  })));
+
+  if (mode === ER_SCOPE_MODE.COMPARATIVO) {
+    return { periodo, scopeMode: ER_SCOPE_MODE.COMPARATIVO, comparativo };
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data: eliminaciones, error } = await supabase
+    .from('operaciones_intercompania')
+    .select('id, empresa_id, sociedad_origen, sociedad_destino, tipo_operacion, monto, moneda, periodo, concepto, factura_id, cxp_id, guia_remision_id')
+    .eq('empresa_id', empresaId)
+    .eq('periodo', periodo)
+    .in('sociedad_origen', scopeSociedades)
+    .in('sociedad_destino', scopeSociedades);
+  if (error) throw error;
+
+  return consolidarEstadosResultados(
+    comparativo.map(item => item.data),
+    eliminaciones || [],
+    periodo
+  );
+}
