@@ -271,7 +271,7 @@ body:has(.dx-asis-fab[aria-expanded="true"]) .dxi-root .dxi-fab { visibility:hid
 .dx-asis-opcion:disabled { opacity:.5; cursor:not-allowed; }
 /* Memoria de conversación: acciones de cabecera, franja de conversación retomada y lista de conversaciones */
 .dx-asis-head-acts { margin-left:auto; display:flex; gap:2px; }
-.dx-asis-head-acts .dx-asis-x, .dx-asis-x.dx-asis-back { margin-left:0; }
+.dx-asis-head-acts .dx-asis-x, .dx-asis-x.dx-asis-back { margin-left:0; flex:none; }
 .dx-asis-head { align-items:center; }
 .dx-asis-ret { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:10px; background:var(--dx-asis-cyan-bg); color:var(--dx-asis-cyan-text); font-size:12.5px; }
 .dx-asis-ret button { margin-left:auto; min-height:32px; border:0; background:none; color:inherit; font:inherit; font-weight:600; text-decoration:underline; cursor:pointer; white-space:nowrap; }

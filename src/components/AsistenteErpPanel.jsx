@@ -28,6 +28,7 @@ function etiquetaHerramienta(tool) {
   const nombre = String(tool || '').toLowerCase().replace(/^asistente_/, '');
   const grupos = [
     [['consultar_manual'], 'Consulté el manual'],
+    [['buscar_conversaciones'], 'Revisé tus conversaciones'],
     [['resumen_mensual'], 'Calculé el resumen mensual'],
     [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
@@ -223,7 +224,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     {abierto && <>
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
-        <header className="dx-asis-head"><div className="dx-asis-ico" aria-hidden="true"><AriaLogo size={44} /></div>
+        <header className="dx-asis-head">{vista === 'chat' && <div className="dx-asis-ico" aria-hidden="true"><AriaLogo size={44} /></div>}
           {vista === 'lista'
             ? <><button className="dx-asis-x dx-asis-back" type="button" aria-label="Volver al chat" onClick={() => setVista('chat')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
               <div><div className="dx-asis-eyebrow">Aria</div><h2 className="dx-asis-title" id="dx-asis-title">Conversaciones</h2></div></>
