@@ -14,5 +14,5 @@ paso: 4 | pantalla=diagnostico_tecnico | permiso=ninguno | Con el diagnóstico l
 paso: 5 | pantalla=ot | permiso=ninguno | Con el trabajo aprobado crea la orden de trabajo con Nueva OT: el asistente pide el contexto, el lugar, el cargo financiero, el técnico responsable y el centro de costo.
 paso: 6 | pantalla=ot | permiso=ninguno | En la Bandeja de OTs usa Iniciar para pasar la OT programada a ejecución. La OT debe tener técnico responsable y centro de costo.
 paso: 7 | pantalla=inventario | permiso=ninguno | En Reserva de Repuestos, almacén entrega al taller los repuestos de la OT con Despachar.
-paso: 8 | pantalla=partes | permiso=ninguno | Cada día el técnico registra su parte de taller con las actividades y sus tiempos, y lo manda con Enviar a revisión para que el supervisor lo revise.
+paso: 8 | pantalla=partes | permiso=ninguno | Cada día el técnico registra su parte de taller con las actividades y sus tiempos, y lo manda con Enviar a revisión. El supervisor aprueba los partes; sin partes aprobados la OT no se puede cerrar.
 paso: 9 | pantalla=ot | permiso=ninguno | En Cierre & Conformidad emite el acta: la OT debe tener técnico responsable, al menos un parte aprobado y ningún parte pendiente. El acta recorre resumen, fotos, conformidad, firma del técnico y firma del cliente, y su resultado puede ser conforme, con observaciones o pendiente de firma.
