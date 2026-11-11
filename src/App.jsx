@@ -464,7 +464,8 @@ function MainLayout({ onShowApplicationWelcome }) {
 const ADMINISTRATION_HOME = 'inicio';
 
 function ApplicationEntry() {
-  const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard'));
+  // ?ir=1: enlace directo a una pantalla (botón "Ir a…" de Aria desde Operaciones); entra sin pasar por la bienvenida.
+  const [selected, setSelected] = useState(() => window.location.hash.startsWith('#hoja_costeo_wizard') || new URLSearchParams(window.location.search).has('ir'));
   const { navigate, setMobileMode, setMobileProfile } = useApp();
   const enterAttendance = () => {
     setMobileProfile('asistencia');

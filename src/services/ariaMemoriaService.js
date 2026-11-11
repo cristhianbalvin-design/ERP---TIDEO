@@ -40,6 +40,13 @@ export function fechaRecuerdo(fecha, ahora = new Date()) {
   return f.toLocaleDateString('es-PE', { timeZone: 'America/Lima', weekday: 'short', day: 'numeric', month: 'short', ...(dias > 300 ? { year: 'numeric' } : {}) });
 }
 
+// Destino del botón "Ir a…": solo pantallas de Administración u Operaciones con una ruta simple.
+export function destinoValido(destino) {
+  if (!destino || (destino.app !== 'admin' && destino.app !== 'operaciones')) return null;
+  if (typeof destino.ruta !== 'string' || !/^[a-z0-9_-]{1,60}$/i.test(destino.ruta) || typeof destino.titulo !== 'string') return null;
+  return { app: destino.app, ruta: destino.ruta, titulo: destino.titulo.slice(0, 80), donde: typeof destino.donde === 'string' ? destino.donde.slice(0, 160) : '' };
+}
+
 // Convierte los mensajes guardados al formato del panel. Los botones solo se conservan en el último mensaje.
 export function mensajesDelPanel(guardados) {
   const lista = (Array.isArray(guardados) ? guardados : []).filter(m => (m?.rol === 'user' || m?.rol === 'assistant') && typeof m.contenido === 'string');
@@ -51,6 +58,7 @@ export function mensajesDelPanel(guardados) {
       borrador: m.extra?.borrador?.id ? m.extra.borrador : null,
       opciones: index === lista.length - 1 ? m.extra?.opciones ?? null : null,
       recuerdos: avisosDeRecuerdo(m.extra?.recuerdos),
+      destino: destinoValido(m.extra?.destino),
     }));
 }
 

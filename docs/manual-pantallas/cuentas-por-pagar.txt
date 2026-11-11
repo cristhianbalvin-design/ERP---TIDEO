@@ -14,3 +14,4 @@ paso: 5 | pantalla=cxp | permiso=ninguno | Registrar NC y Registrar ND ajustan l
 paso: 6 | pantalla=cxp | permiso=cxp:editar | Puedes cambiar la Prioridad de pago de una CxP para ordenar qué se paga primero.
 paso: 7 | pantalla=cxp | permiso=cxp:anular | Anular una CxP conserva su historial e indica el motivo; antes la pantalla verifica que no tenga pagos ni dependencias que lo impidan.
 paso: 8 | pantalla=cxp | permiso=ninguno | Para cargar muchas deudas a la vez usa Descargar plantilla, complétala y súbela con Subir plantilla masiva; la pantalla muestra las filas válidas y rechazadas antes de importar. Descargar reporte Excel exporta las cuentas y sus pagos.
+paso: 9 | pantalla=cxp | permiso=ninguno | Una CxP preliminar se puede borrar con Eliminar CxP preliminar, que elimina el registro; Anular, en cambio, conserva el historial. Guardar clasificación corrige la clasificación de una CxP, y puedes adjuntar archivos a la cuenta con Adjuntar archivo.

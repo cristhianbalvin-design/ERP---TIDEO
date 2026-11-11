@@ -11,3 +11,4 @@ paso: 2 | pantalla=proveedores | permiso=ninguno | En Ver ficha agrega contactos
 paso: 3 | pantalla=proveedores | permiso=ninguno | Nueva evaluacion registra la calificación del proveedor; su estado (por ejemplo homologado u observado) define si aparece al crear órdenes de compra.
 paso: 4 | pantalla=proveedores | permiso=ninguno | Emparejar Proveedores y Familias asigna qué familias de materiales atiende cada proveedor; la Bandeja de Sourcing usa esa relación para sugerir proveedores.
 paso: 5 | pantalla=proveedores | permiso=ninguno | Desde la ficha puedes iniciar Nueva OC o Solicitar cotizacion. Importar Excel carga muchos proveedores con la plantilla, y Descargar reporte exporta la lista.
+paso: 6 | pantalla=proveedores | permiso=ninguno | Editar proveedor corrige sus datos con Guardar cambios. Eliminar proveedor lo borra y pide confirmación. Antes de importar con Excel usa Descargar plantilla.
