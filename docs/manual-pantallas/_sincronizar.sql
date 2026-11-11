@@ -2,7 +2,7 @@
 -- Sincroniza las fichas del manual de Aria con Supabase (proyecto ERP - Tideo). Idempotente.
 -- La primera instrucción rechaza el archivo si la base ya tiene una revisión más nueva (catalogo/sincronizacion.json).
 BEGIN;
-SELECT public.aria_sincronizacion_autorizar('manual', 9, 'e8f3e5d84e76b7a4');
+SELECT public.aria_sincronizacion_autorizar('manual', 10, 'dd084e1b9a1115e3');
 DELETE FROM public.asistente_manual_pasos WHERE ficha_clave IN ('bandeja_ots','caja','como_usar_aria','compras_gastos','cxc','cxp','despachos_almacen','facturacion','financiamiento','inicio_operaciones','mis_ots_dia','monitor_viajes','nueva_ot','ordenes_compra','partes_taller','proceso_caja_chica','proceso_solpe_pago','proveedores','recepciones','reserva_repuestos','solpe','tesoreria');
 INSERT INTO public.asistente_manual_fichas (clave,tipo,pantalla_key,titulo,resumen,fuentes,revision) VALUES ('bandeja_ots','pantalla','ot','Bandeja de OTs','Lista todas las órdenes de trabajo con sus indicadores, filtros y búsqueda, y permite iniciar una OT programada.','["operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#OTsListadoPage"]'::jsonb,'b22cbde9d1')
   ON CONFLICT (clave) DO UPDATE SET tipo=EXCLUDED.tipo, pantalla_key=EXCLUDED.pantalla_key, titulo=EXCLUDED.titulo, resumen=EXCLUDED.resumen, fuentes=EXCLUDED.fuentes, revision=EXCLUDED.revision;
@@ -181,8 +181,8 @@ BEGIN
   IF (SELECT count(*) FROM public.asistente_manual_fichas WHERE clave IN ('bandeja_ots','caja','como_usar_aria','compras_gastos','cxc','cxp','despachos_almacen','facturacion','financiamiento','inicio_operaciones','mis_ots_dia','monitor_viajes','nueva_ot','ordenes_compra','partes_taller','proceso_caja_chica','proceso_solpe_pago','proveedores','recepciones','reserva_repuestos','solpe','tesoreria')) <> 22 THEN
     RAISE EXCEPTION 'Sincronización del manual: se esperaban 22 fichas';
   END IF;
-  IF (SELECT count(*) FROM public.asistente_manual_pasos WHERE ficha_clave IN ('bandeja_ots','caja','como_usar_aria','compras_gastos','cxc','cxp','despachos_almacen','facturacion','financiamiento','inicio_operaciones','mis_ots_dia','monitor_viajes','nueva_ot','ordenes_compra','partes_taller','proceso_caja_chica','proceso_solpe_pago','proveedores','recepciones','reserva_repuestos','solpe','tesoreria')) <> 125 THEN
-    RAISE EXCEPTION 'Sincronización del manual: se esperaban 125 pasos';
+  IF (SELECT count(*) FROM public.asistente_manual_pasos WHERE ficha_clave IN ('bandeja_ots','caja','como_usar_aria','compras_gastos','cxc','cxp','despachos_almacen','facturacion','financiamiento','inicio_operaciones','mis_ots_dia','monitor_viajes','nueva_ot','ordenes_compra','partes_taller','proceso_caja_chica','proceso_solpe_pago','proveedores','recepciones','reserva_repuestos','solpe','tesoreria')) <> 128 THEN
+    RAISE EXCEPTION 'Sincronización del manual: se esperaban 128 pasos';
   END IF;
 END
 $verificacion$;
