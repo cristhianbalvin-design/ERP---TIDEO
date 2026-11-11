@@ -44,6 +44,12 @@ function etiquetaHerramienta(tool) {
   return grupos.find(([fragmentos]) => fragmentos.some(fragmento => nombre.includes(fragmento)))?.[1] || 'Revisé tu ERP';
 }
 
+// Negritas del modelo (**texto**) como <b>, sin interpretar HTML.
+function conNegritas(texto) {
+  const partes = String(texto).split(/\*\*([^*]+)\*\*/);
+  return partes.length === 1 ? texto : partes.map((parte, i) => i % 2 ? <b key={i}>{parte}</b> : parte);
+}
+
 function TextoSeguro({ texto }) {
   const lineas = String(texto || '').split('\n');
   return lineas.map((linea, index) => {
@@ -60,8 +66,10 @@ function TextoSeguro({ texto }) {
       const negativo = /-\d/.test(cifra[2]);
       return <div key={index} className={`dx-asis-amount${total ? ' total' : ''}${negativo ? ' negative' : ''}`}><span>{cifra[1].trim()}</span><b>{cifra[2]}</b></div>;
     }
-    if (lista) return <div key={index} className="dx-asis-listitem">• {lista[1]}</div>;
-    return <React.Fragment key={index}>{linea}{salto}</React.Fragment>;
+    const subtitulo = linea.match(/^\s*(?:#{1,4}\s+(.+?)|\*\*([^*]+)\*\*:?)\s*$/);
+    if (subtitulo) return <div key={index} className="dx-asis-sub">{subtitulo[1] || subtitulo[2]}</div>;
+    if (lista) return <div key={index} className="dx-asis-listitem">• {conNegritas(lista[1])}</div>;
+    return <React.Fragment key={index}>{conNegritas(linea)}{salto}</React.Fragment>;
   });
 }
 
