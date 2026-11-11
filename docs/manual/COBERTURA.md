@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 72 (94 %) | 30 (39 %) | 1 | 3 |
+| Administración | 77 | 73 (95 %) | 30 (39 %) | 1 | 3 |
 | Operaciones | 120 | 49 (41 %) | 43 (36 %) | 0 | 58 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 130 (63 %) | 73 (35 %) | 1 | 61 |
+| **Total** | 206 | 131 (64 %) | 73 (35 %) | 1 | 61 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -54,7 +54,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras | Ordenes de Servicio (`ordenes_servicio`) | activa | ordenes_servicio | — | — | — |
 | Compras | Proveedores (`proveedores`) | activa | proveedores | — | 3 | — |
 | Compras | Recepciones (`recepciones`) | activa | recepciones | proceso_almacen, proceso_solpe_pago | 3 | — |
-| Compras | Bandeja de Sourcing (`sourcing_bandeja`) | activa | — | proceso_solpe_pago | 7 | — |
+| Compras | Bandeja de Sourcing (`sourcing_bandeja`) | activa | sourcing_bandeja | proceso_solpe_pago | 7 | — |
 | Configuración | Maestros Base (`maestros`) | activa | maestros | concepto_ceco_cebe, proceso_configuracion_inicial | — | — |
 | Configuración | Notificaciones (`notificaciones_config`) | activa | notificaciones_config | proceso_configuracion_inicial | — | — |
 | Configuración | Organigrama (`organigrama`) | activa | organigrama | — | — | — |

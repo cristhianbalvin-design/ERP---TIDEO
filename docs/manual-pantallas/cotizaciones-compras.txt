@@ -10,3 +10,5 @@ paso: 1 | pantalla=cot_compras | permiso=ninguno | Inicia con Nuevo proceso de c
 paso: 2 | pantalla=cot_compras | permiso=ninguno | Registrar respuesta anota lo que cotizó cada proveedor.
 paso: 3 | pantalla=cot_compras | permiso=ninguno | Seleccionar ganador elige la mejor oferta y Confirmar seleccion y generar OC / OS crea la orden de compra o la orden de servicio.
 paso: 4 | pantalla=cot_compras | permiso=ninguno | Ver proceso abre el detalle de un proceso.
+paso: 5 | pantalla=cot_compras | permiso=ninguno | Úsalo cuando quieres comparar precios antes de comprar: el mismo pedido se envía a varios proveedores, registras lo que responde cada uno y eliges al ganador. Si ya sabes a quién comprar, no hace falta: ve directo a la Bandeja de Sourcing o a la orden de compra.
+paso: 6 | pantalla=cot_compras | permiso=ninguno | Si cada material conviene comprarlo a un proveedor distinto, usa la Bandeja de Sourcing: ahí se asigna el proveedor línea por línea y se genera una orden por proveedor.

@@ -1,0 +1,14 @@
+clave: sourcing_bandeja
+tipo: pantalla
+pantalla: ordenes_compra
+catalogo: admin/sourcing_bandeja
+titulo: Bandeja de Sourcing
+resumen: Reparte los materiales de las SOLPE aprobadas entre proveedores, línea por línea, y genera una orden de compra por proveedor.
+componentes: src/pages_ops.jsx#BandejaSourcing
+huella: 59f4c3339c
+paso: 1 | pantalla=ordenes_compra | permiso=ninguno | Para qué sirve: aquí llegan las líneas de las SOLPE aprobadas que aún no tienen orden de compra. Permite comprar una misma SOLPE a varios proveedores, o juntar líneas de varias SOLPE en una sola orden. Está en Compras › Bandeja de Sourcing y también se abre con Generar OC desde la SOLPE.
+paso: 2 | pantalla=ordenes_compra | permiso=ninguno | Filtra por Familia, SOLPE de origen, Estado de campo o Comprador de campo, y usa Actualizar para recargar la bandeja.
+paso: 3 | pantalla=ordenes_compra | permiso=ninguno | Asigna un proveedor a cada línea. Los marcados como «sugerido» son los habilitados para la familia de ese material; con + Otro proveedor buscas cualquier otro. Si eliges uno que no está habilitado para esa familia, la pantalla pregunta si es Solo esta compra o si quieres Habilitar para esta familia en adelante.
+paso: 4 | pantalla=ordenes_compra | permiso=ninguno | Las líneas asignadas se agrupan en una columna por proveedor con su total. Generar OC crea la orden de compra de ese proveedor con sus líneas; repítelo por cada proveedor. Quitar proveedor devuelve la línea a la bandeja.
+paso: 5 | pantalla=ordenes_compra | permiso=ninguno | Una línea «en campo» la tomó un comprador de campo para comprarla en persona: mientras tanto no se le puede asignar proveedor. Quitar al comprador la libera, previa confirmación, porque esa persona podría estar comprándola en ese momento.
+paso: 6 | pantalla=ordenes_compra | permiso=ninguno | Si un proveedor no entregará parte de una orden, Liberar pendiente en la orden de compra devuelve ese saldo a esta bandeja para comprarlo a otro proveedor.

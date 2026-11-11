@@ -3,8 +3,12 @@ tipo: pantalla
 pantalla: inventario
 catalogo: operaciones/almacen-herramientas
 titulo: Préstamo de herramientas
-resumen: Préstamo y devolución de herramientas del almacén.
+resumen: Préstamo y devolución de herramientas del almacén: a quién se prestó, hasta cuándo y cuáles tienen la devolución vencida.
 componentes: operaciones-app/src/zahory-mock/pages/wms/HerramientasPage.jsx#HerramientasPage
 huella: 8536c0bbd6
 paso: 1 | pantalla=inventario | permiso=ninguno | Prestar herramienta registra a quién se entrega con Registrar préstamo.
 paso: 2 | pantalla=inventario | permiso=ninguno | Recibir anota su regreso con Registrar devolución.
+paso: 3 | pantalla=inventario | permiso=ninguno | Para qué sirve: la herramienta prestada sigue siendo del almacén y conserva su valor; no es un consumo. Mientras está prestada deja de estar disponible para otros.
+paso: 4 | pantalla=inventario | permiso=ninguno | Prestar herramienta pide la herramienta (búscala por código, descripción o serie), la cantidad, a quién se presta y la fecha de devolución; la OT y la observación son opcionales. No deja prestar más de lo disponible. Si el artículo no aparece, marca «Mostrar todo el stock, no solo herramientas».
+paso: 5 | pantalla=inventario | permiso=ninguno | Recibir registra la devolución con la cantidad devuelta; si regresa solo una parte, el resto sigue pendiente a nombre de la misma persona.
+paso: 6 | pantalla=inventario | permiso=ninguno | Los filtros Activos, Vencidos y Devueltos separan los préstamos. «Con devolución vencida» cuenta los que pasaron su fecha sin regresar: es la lista para reclamar a cada persona. Puedes buscar por herramienta, persona u OT.

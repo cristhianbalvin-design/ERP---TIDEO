@@ -3,9 +3,13 @@ tipo: pantalla
 pantalla: prestamos_personal
 catalogo: admin/prestamos_personal
 titulo: Prestamos al Personal
-resumen: Préstamos otorgados a trabajadores y el pago de sus cuotas.
+resumen: Préstamos de la empresa a sus trabajadores: registro, cuotas, descuento automático en planilla y pagos manuales.
 componentes: src/pages_fin.jsx#PrestamosPersonal
 huella: 5ed0bafa41
 paso: 1 | pantalla=prestamos_personal | permiso=ninguno | Registra un préstamo con Nuevo Préstamo.
 paso: 2 | pantalla=prestamos_personal | permiso=ninguno | Pagar cuota registra el pago manual de una cuota y pide confirmación.
 paso: 3 | pantalla=prestamos_personal | permiso=ninguno | Ver abre el detalle del préstamo. Cancelar el préstamo no se puede deshacer.
+paso: 4 | pantalla=prestamos_personal | permiso=ninguno | Nuevo Préstamo pide el trabajador, el monto total y el número de cuotas; la cuota mensual es el monto dividido entre las cuotas. Aquí no se calculan intereses.
+paso: 5 | pantalla=prestamos_personal | permiso=ninguno | Con «Descontar automáticamente en nómina» marcado, la cuota mensual queda en la ficha del trabajador y la planilla la descuenta cada mes. Sin marcar, cada cuota se registra a mano con Pagar cuota.
+paso: 6 | pantalla=prestamos_personal | permiso=ninguno | Avance Cuotas muestra cuántas van pagadas. Al pagarse la última, el préstamo queda cancelado y el descuento en planilla se detiene.
+paso: 7 | pantalla=prestamos_personal | permiso=ninguno | No confundir con Financiamiento y Deuda, que son los préstamos que la empresa recibe de bancos; esta pantalla es lo que la empresa presta a su personal.
