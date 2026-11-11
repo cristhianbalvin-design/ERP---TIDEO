@@ -45,4 +45,4 @@ jobs:
       - name: Desplegar asistente-erp
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: supabase functions deploy asistente-erp --project-ref atqwyjfidfoepthygfoo
+        run: supabase functions deploy asistente-erp --project-ref atqwyjfidfoepthygfoo --yes
