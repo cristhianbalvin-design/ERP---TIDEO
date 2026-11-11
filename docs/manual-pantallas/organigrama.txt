@@ -1,0 +1,13 @@
+clave: organigrama
+tipo: pantalla
+pantalla: organigrama
+catalogo: admin/organigrama
+titulo: Organigrama
+resumen: Estructura de la empresa: unidades, cargos y posiciones, con el rol que recibe cada posición.
+componentes: src/pages_organigrama_v2.jsx#OrganigramaV2Page
+huella: c1965a30ee
+paso: 1 | pantalla=organigrama | permiso=ninguno | Crea las áreas con Nueva unidad organizacional y elige su nivel.
+paso: 2 | pantalla=organigrama | permiso=ninguno | Dentro de una unidad defines el cargo y la cantidad de posiciones; al guardar se crean sus sillas vacantes.
+paso: 3 | pantalla=organigrama | permiso=ninguno | Cada posición lleva un rol sugerido, que puedes editar, y los módulos de campo habilitados para la aplicación móvil.
+paso: 4 | pantalla=organigrama | permiso=ninguno | Al guardar un cambio de rol o de módulos, se aplica a las personas que ocupan esa posición.
+paso: 5 | pantalla=organigrama | permiso=ninguno | Eliminar cargo retira un cargo del organigrama.

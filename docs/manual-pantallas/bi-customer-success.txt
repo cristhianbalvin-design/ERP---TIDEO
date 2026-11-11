@@ -1,0 +1,11 @@
+clave: bi_cs
+tipo: pantalla
+pantalla: bi_cs
+catalogo: admin/bi_cs
+titulo: BI Customer Success
+resumen: Indicadores de retención, salud y crecimiento de los clientes.
+componentes: src/pages_cs.jsx#BICustomerSuccess
+huella: 41eae9e552
+paso: 1 | pantalla=bi_cs | permiso=ninguno | Es un tablero de consulta: clientes saludables, clientes en riesgo, health score promedio y NPS promedio.
+paso: 2 | pantalla=bi_cs | permiso=ninguno | También muestra los onboardings en curso y las renovaciones próximas.
+paso: 3 | pantalla=bi_cs | permiso=ninguno | Exportar descarga la información.

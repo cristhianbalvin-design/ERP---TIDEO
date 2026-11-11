@@ -1,0 +1,10 @@
+clave: lugares_transporte
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-lugares
+titulo: Lugares
+resumen: Lugares de carga y de entrega del transporte.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/LugaresPage.jsx#LugaresPage
+huella: ca6f642574
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Nuevo lugar registra un punto de carga o de entrega.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Un lugar que ya no se usa se inactiva.

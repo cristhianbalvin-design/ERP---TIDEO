@@ -1,0 +1,10 @@
+clave: gestion_partes_taller
+tipo: pantalla
+pantalla: partes
+catalogo: operaciones/partes-taller
+titulo: Gestión de partes de taller
+resumen: Partes diarios del taller.
+componentes: operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#GestionPartesTallerPage
+huella: 5ebecf6ab0
+paso: 1 | pantalla=partes | permiso=ninguno | La lista muestra los partes diarios del taller.
+paso: 2 | pantalla=partes | permiso=ninguno | Nuevo Parte Diario registra un parte y Ver detalle del Parte Diario lo abre.

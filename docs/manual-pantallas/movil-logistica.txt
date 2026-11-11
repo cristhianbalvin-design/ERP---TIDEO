@@ -1,0 +1,13 @@
+clave: movil_logistica
+tipo: pantalla
+pantalla: campo
+catalogo: movil/logistica
+titulo: Móvil — Logística
+resumen: Rutas y viajes del conductor desde el celular.
+componentes: src/pages_mobile.jsx#LogisticaView
+huella: 4d6a4cf5e2
+paso: 1 | pantalla=campo | permiso=ninguno | Muestra tus rutas y viajes del día; Abrir viaje entra a uno.
+paso: 2 | pantalla=campo | permiso=ninguno | Antes de salir se hace la inspección de la unidad. Si hay puntos críticos debes esperar la autorización del despachador.
+paso: 3 | pantalla=campo | permiso=ninguno | En el viaje registras el kilometraje de salida y de llegada, los gastos y los incidentes; un incidente deja el viaje «con incidente» y el despachador lo ve en el Monitor.
+paso: 4 | pantalla=campo | permiso=ninguno | Omitir parada exige escribir el motivo, y el pedido vuelve a «Por enviar a ruta».
+paso: 5 | pantalla=campo | permiso=ninguno | Al terminar se registra la conformidad del cliente con la hora y el GPS, que sirven para la facturación.

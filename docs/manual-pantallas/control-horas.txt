@@ -1,0 +1,12 @@
+clave: control_horas
+tipo: pantalla
+pantalla: control_horas
+catalogo: admin/control_horas
+titulo: Control de Horas
+resumen: Horas trabajadas por colaborador en cada OT, con su disponibilidad y su costo imputado.
+componentes: src/pages_ops.jsx#ControlHoras
+huella: e8ca7edb9b
+paso: 1 | pantalla=control_horas | permiso=ninguno | Muestra las horas por colaborador y por OT del mes elegido; cambia de mes con Mes anterior y Mes siguiente.
+paso: 2 | pantalla=control_horas | permiso=ninguno | Filtra por colaborador y por modalidad: planilla u honorarios.
+paso: 3 | pantalla=control_horas | permiso=ninguno | Evaluar mes revisa la productividad del período y avisa cuántas alertas de baja productividad encontró.
+paso: 4 | pantalla=control_horas | permiso=ninguno | Exportar Excel descarga el reporte.

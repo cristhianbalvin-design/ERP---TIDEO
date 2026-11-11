@@ -1,0 +1,13 @@
+clave: valorizacion
+tipo: pantalla
+pantalla: valorizacion
+catalogo: admin/valorizacion
+titulo: Valorizaciones
+resumen: Valorización de lo ejecutado en una orden de servicio, su aprobación y su paso a facturación.
+componentes: src/pages_extra.jsx#Valorizacion
+huella: e710949e0a
+paso: 1 | pantalla=valorizacion | permiso=ninguno | Inicia con Generar valorización: primero debes seleccionar una OS Cliente y luego avanzas con Siguiente.
+paso: 2 | pantalla=valorizacion | permiso=ninguno | Agregar línea suma conceptos a la valorización y Guardar borrador la conserva sin aprobar.
+paso: 3 | pantalla=valorizacion | permiso=ninguno | Aprobar valorización la deja lista; con ella aprobada, Facturar la lleva a facturación.
+paso: 4 | pantalla=valorizacion | permiso=ninguno | Ver cierre y Ver conformidad muestran el cierre técnico y la conformidad del cliente que la sustentan.
+paso: 5 | pantalla=valorizacion | permiso=ninguno | Anular la deja sin efecto y pide Confirmar anulación.

@@ -1,0 +1,14 @@
+clave: ot_admin
+tipo: pantalla
+pantalla: ot
+catalogo: admin/ot
+titulo: Ordenes de Trabajo
+resumen: Órdenes de trabajo desde Administración: tareas, técnicos, costos, partes y cierre.
+componentes: src/pages_ops.jsx#OT
+huella: 00534e2e64
+paso: 1 | pantalla=ot | permiso=ninguno | Dentro de una OT, Agregar tarea o Nueva tarea arma el trabajo y Asignar tecnico define quién lo hace. Gestionar en Planner lleva a la programación.
+paso: 2 | pantalla=ot | permiso=ninguno | El estimado de la OT se arma con Agregar material, Agregar servicio de tercero y Agregar gasto logístico; Importar desde HC trae la Hoja de Costeo como estimado editable, que debes revisar y guardar con Guardar estimado.
+paso: 3 | pantalla=ot | permiso=ninguno | Iniciar OT comienza el trabajo. Para registrar un parte con Registrar Parte Diario debe existir al menos una tarea.
+paso: 4 | pantalla=ot | permiso=ninguno | Los partes se envían con Enviar a revisión; quien revisa usa Aprobar, Observar o Rechazar, y Reabrir para editar devuelve un parte ya revisado.
+paso: 5 | pantalla=ot | permiso=ninguno | Guardar costos reales y Recalcular costo real actualizan el costo real de la OT. Registrar Incidente deja constancia de un incidente.
+paso: 6 | pantalla=ot | permiso=ninguno | Abrir en Operaciones y Cerrar en Operaciones llevan a la aplicación de Operaciones, donde se cierra la OT. Anular OT la deja sin efecto y pide confirmación.

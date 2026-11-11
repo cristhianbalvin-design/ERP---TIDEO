@@ -1,0 +1,11 @@
+clave: equipos_clientes
+tipo: pantalla
+pantalla: os_cliente
+catalogo: admin/equipos_clientes
+titulo: Equipos de Clientes
+resumen: Consulta de los equipos de los clientes y su historial de órdenes de servicio.
+componentes: src/pages_equipos_clientes.jsx#EquiposClientes
+huella: c24d7b5762
+paso: 1 | pantalla=os_cliente | permiso=ninguno | Es una pantalla de consulta: busca por código, equipo o cliente.
+paso: 2 | pantalla=os_cliente | permiso=ninguno | Muestra los activos en custodia y el historial de OS Cliente de cada equipo.
+paso: 3 | pantalla=os_cliente | permiso=ninguno | Necesita una empresa activa seleccionada para mostrar datos.

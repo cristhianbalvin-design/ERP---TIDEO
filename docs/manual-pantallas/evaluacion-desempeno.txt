@@ -1,0 +1,13 @@
+clave: evaluaciones_desempeno
+tipo: pantalla
+pantalla: evaluaciones_desempeno
+catalogo: admin/evaluaciones_desempeno
+titulo: Evaluación de Desempeño
+resumen: Plantillas de evaluación, autoevaluación, evaluación del jefe y resultados.
+componentes: src/pages_evaluaciones.jsx#EvaluacionesDesempeno
+huella: fcea293bf5
+paso: 1 | pantalla=evaluaciones_desempeno | permiso=ninguno | Quien administra crea la evaluación con Nueva plantilla: Agregar competencia y Agregar objetivo definen qué se evalúa, y Crear y activar plantilla la pone en marcha.
+paso: 2 | pantalla=evaluaciones_desempeno | permiso=ninguno | Cada colaborador usa Autoevaluarme; puede Guardar borrador y, una vez enviada, ya no puede editarla.
+paso: 3 | pantalla=evaluaciones_desempeno | permiso=ninguno | El jefe usa Evaluar; al enviar su evaluación tampoco puede editarla.
+paso: 4 | pantalla=evaluaciones_desempeno | permiso=ninguno | Cerrar plantilla publica los resultados a los colaboradores, que los ven con Ver resultado.
+paso: 5 | pantalla=evaluaciones_desempeno | permiso=ninguno | Exportar Excel descarga los resultados.

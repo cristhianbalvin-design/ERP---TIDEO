@@ -1,0 +1,10 @@
+clave: actividades
+tipo: pantalla
+pantalla: actividades
+catalogo: admin/actividades
+titulo: Actividades
+resumen: Registro de las actividades comerciales: llamadas, visitas y reuniones.
+componentes: src/pages_core.jsx#Actividades
+huella: a926023fb3
+paso: 1 | pantalla=actividades | permiso=ninguno | Registra una actividad con Nueva actividad y Guardar actividad.
+paso: 2 | pantalla=actividades | permiso=ninguno | Puedes verlas en Kanban o en Lista y acotar con Filtros.

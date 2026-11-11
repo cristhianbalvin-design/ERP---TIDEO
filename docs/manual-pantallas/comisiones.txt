@@ -1,0 +1,13 @@
+clave: comisiones
+tipo: pantalla
+pantalla: comisiones
+catalogo: admin/comisiones
+titulo: Comisiones
+resumen: Comisiones de los vendedores: aprobación, recibo por honorarios y cuenta por pagar.
+componentes: src/pages_admin.jsx#Comisiones
+huella: f28b0f4d0f
+paso: 1 | pantalla=comisiones | permiso=ninguno | La pestaña Comisiones lista las comisiones; Recalcular cobradas recupera las de ventas ya cobradas que aún no estaban registradas.
+paso: 2 | pantalla=comisiones | permiso=ninguno | Revisar abre una comisión: Aprobar la aprueba y Rechazar exige escribir el motivo.
+paso: 3 | pantalla=comisiones | permiso=ninguno | Corregir monto cobrado y Corregir bonificación ajustan una comisión; Guardar corrección conserva el cambio.
+paso: 4 | pantalla=comisiones | permiso=ninguno | Generar crea el recibo de la comisión. Para confirmarlo debes ingresar el número de RHE y adjuntar el documento; Confirmar y generar CxP crea la cuenta por pagar.
+paso: 5 | pantalla=comisiones | permiso=ninguno | Acuerdos pendientes muestra los acuerdos de comisión por aprobar; solo aparece si tu rol puede aprobarlos.

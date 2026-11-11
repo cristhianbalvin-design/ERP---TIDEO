@@ -1,0 +1,11 @@
+clave: flota_transporte
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-flota
+titulo: Flota de transporte
+resumen: Unidades, conductores y transportistas del transporte.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/FlotaPage.jsx#FlotaPage
+huella: 56162d01ba
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Nueva unidad, Nuevo conductor y Nuevo transportista registran cada uno; solo aparecen si tu rol puede crear.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | La lista distingue lo propio de lo de terceros y avisa de documentos por vencer, como el certificado MTC o el brevete.
+paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Revisar abre el registro que tiene una alerta.

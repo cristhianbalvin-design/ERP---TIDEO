@@ -1,0 +1,11 @@
+clave: cierre
+tipo: pantalla
+pantalla: cierre
+catalogo: admin/cierre
+titulo: Cierre y Calidad
+resumen: Consulta de las OT cerradas, la conformidad del cliente y su estado de valorización.
+componentes: src/pages_ops.jsx#Cierre
+huella: db8d14d20f
+paso: 1 | pantalla=cierre | permiso=ninguno | La lista muestra las OT cerradas con su cierre técnico, su acta de conformidad y su estado de valorización.
+paso: 2 | pantalla=cierre | permiso=ninguno | Filtra por OS, cliente, responsable y fecha de cierre; Limpiar quita los filtros.
+paso: 3 | pantalla=cierre | permiso=ninguno | Detalle abre el cierre de una OT y Valorizar lleva a valorizar una OT lista para ello.

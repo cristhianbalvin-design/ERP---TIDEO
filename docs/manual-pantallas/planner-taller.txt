@@ -1,0 +1,12 @@
+clave: planner_taller
+tipo: pantalla
+pantalla: planner
+catalogo: operaciones/scheduler-despacho
+titulo: Planner
+resumen: Programación del taller: bahías, puestos, máquinas y órdenes de trabajo.
+componentes: operaciones-app/src/zahory-mock/pages/planner/PlannerPage.jsx#PlannerPage
+huella: 609b8e7459
+paso: 1 | pantalla=planner | permiso=ninguno | Antes de programar hay que configurar el taller con Configurar taller: sus bahías y puestos, y sus máquinas.
+paso: 2 | pantalla=planner | permiso=ninguno | Al programar una OT se le asignan personas, máquinas y puesto.
+paso: 3 | pantalla=planner | permiso=ninguno | La simulación permite elegir una OT para meterla con prioridad y ver cómo cambia el plan antes de aplicarlo con Aplicar al plan.
+paso: 4 | pantalla=planner | permiso=ninguno | Necesita una empresa activa en la sesión de Operaciones.

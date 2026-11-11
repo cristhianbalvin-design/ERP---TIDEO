@@ -1,0 +1,11 @@
+clave: costeo_variables
+tipo: pantalla
+pantalla: hoja_costeo
+catalogo: admin/costeo_variables
+titulo: Variables de Costeo
+resumen: Valores que usa la Hoja de Costeo: costo hora por cargo, depreciación de activos y gasto administrativo.
+componentes: src/pages_costeo_variables.jsx#CosteoVariables
+huella: f42c3b0172
+paso: 1 | pantalla=hoja_costeo | permiso=ninguno | La pantalla tiene tres secciones: Costo hora por cargo, Depreciación de activos y Gasto administrativo.
+paso: 2 | pantalla=hoja_costeo | permiso=ninguno | En cada una puedes escribir un valor manual, que debe ser un número mayor o igual a cero, y conservarlo con Guardar.
+paso: 3 | pantalla=hoja_costeo | permiso=ninguno | Si tu rol no puede modificar estas variables, la pantalla avisa que no tienes permiso para guardar.

@@ -1,0 +1,12 @@
+clave: movil_mi_portal
+tipo: pantalla
+pantalla: campo
+catalogo: movil/mi_espacio
+titulo: Móvil — Mi portal
+resumen: Espacio personal del trabajador en el celular: documentos, contrato y solicitudes.
+componentes: src/pages_mobile.jsx#MiEspacioMobileView
+huella: 1f9e81e467
+paso: 1 | pantalla=campo | permiso=ninguno | Marcar entrada/salida lleva a la asistencia.
+paso: 2 | pantalla=campo | permiso=ninguno | Solicitudes, Nueva licencia, Solicitar HE y Solicitar constancia envían tus pedidos; debes completar los campos obligatorios.
+paso: 3 | pantalla=campo | permiso=ninguno | Subir contrato firmado carga tu contrato, que queda en revisión por RRHH. El archivo no puede estar vacío ni pasar de 20 MB.
+paso: 4 | pantalla=campo | permiso=ninguno | Si no aparece tu ficha de personal, contacta a RRHH.

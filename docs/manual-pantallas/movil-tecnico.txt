@@ -1,0 +1,13 @@
+clave: movil_tecnico
+tipo: pantalla
+pantalla: campo
+catalogo: movil/tecnico
+titulo: Móvil — Técnico
+resumen: Trabajo del técnico en campo desde el celular.
+componentes: src/pages_mobile.jsx#TecnicoView
+huella: 3940dcb878
+paso: 1 | pantalla=campo | permiso=ninguno | Iniciar esta tarea comienza una tarea y Continuar trabajando en esta tarea la retoma.
+paso: 2 | pantalla=campo | permiso=ninguno | Escanear Material registra el material usado.
+paso: 3 | pantalla=campo | permiso=ninguno | Parte registra el parte del día y Enviar al supervisor lo manda a revisión.
+paso: 4 | pantalla=campo | permiso=ninguno | Firmar y Completar cierra el trabajo con firma.
+paso: 5 | pantalla=campo | permiso=ninguno | SSOMA abre la sección de seguridad y SOS sirve para pedir ayuda.

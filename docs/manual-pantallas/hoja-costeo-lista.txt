@@ -1,0 +1,13 @@
+clave: hoja_costeo_lista
+tipo: pantalla
+pantalla: hoja_costeo
+catalogo: admin/hoja_costeo
+titulo: Hoja de Costeo (listado)
+resumen: Listado de hojas de costeo, su revisión, aprobación y paso a cotización.
+componentes: src/pages_extra.jsx#HojaCosteo
+huella: 6a72bdfbb6
+paso: 1 | pantalla=hoja_costeo | permiso=ninguno | La lista muestra las hojas de costeo. El indicador Por cotizar filtra las aprobadas que aún no tienen cotización.
+paso: 2 | pantalla=hoja_costeo | permiso=ninguno | Abrir wizard lleva a la hoja en el asistente de costeo paso a paso.
+paso: 3 | pantalla=hoja_costeo | permiso=ninguno | Agregar línea suma una línea de costo y Guardar y Continuar conserva el avance.
+paso: 4 | pantalla=hoja_costeo | permiso=ninguno | Enviar a revision la manda a revisión, Aprobar Costeo la aprueba y Volver a borrador la devuelve para corregir.
+paso: 5 | pantalla=hoja_costeo | permiso=ninguno | Con la hoja aprobada, Generar Cotización crea la cotización. PDF descarga la hoja.

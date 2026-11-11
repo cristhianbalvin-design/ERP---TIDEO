@@ -1,0 +1,10 @@
+clave: dashboard
+tipo: pantalla
+pantalla: dashboard
+catalogo: admin/dashboard
+titulo: Dashboards
+resumen: Tableros de indicadores de la empresa.
+componentes: src/pages_dashboards.jsx#DashboardsPage
+huella: 063f9e54c0
+paso: 1 | pantalla=dashboard | permiso=ninguno | Es una pantalla de consulta: reúne los tableros de indicadores disponibles para tu rol.
+paso: 2 | pantalla=dashboard | permiso=ninguno | No registra información; los datos vienen de lo que se registra en el resto del sistema.

@@ -1,0 +1,14 @@
+clave: movil_vendedor
+tipo: pantalla
+pantalla: campo
+catalogo: movil/vendedor
+titulo: Móvil — Vendedor
+resumen: Leads, oportunidades, agenda y comisión del vendedor desde el celular.
+componentes: src/pages_mobile.jsx#VendedorView
+huella: 30d5a9d29f
+paso: 1 | pantalla=campo | permiso=ninguno | Agregar lead registra un prospecto a mano; Crear lead con foto de tarjeta extrae los datos de la tarjeta automáticamente.
+paso: 2 | pantalla=campo | permiso=ninguno | Convertir pasa un lead a oportunidad y Descartar lo saca del seguimiento.
+paso: 3 | pantalla=campo | permiso=ninguno | Registrar Actividad anota un contacto y Planificar en agenda agenda la próxima reunión o visita. Llamar marca al teléfono del contacto.
+paso: 4 | pantalla=campo | permiso=ninguno | Una oportunidad se marca como Perdida con Confirmar perdida.
+paso: 5 | pantalla=campo | permiso=ninguno | En Comisión, Proponer acuerdo especial envía tu propuesta con Enviar a aprobación; Retirar solicitud la retira.
+paso: 6 | pantalla=campo | permiso=ninguno | Sincronizar ahora actualiza los datos cuando hay conexión.

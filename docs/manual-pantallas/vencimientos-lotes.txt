@@ -1,0 +1,10 @@
+clave: vencimientos_lotes
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-vencimientos
+titulo: Vencimientos y lotes
+resumen: Lotes por vencer y su paso a cuarentena.
+componentes: operaciones-app/src/zahory-mock/pages/wms/VencimientosPage.jsx#VencimientosPage
+huella: b58d015cfc
+paso: 1 | pantalla=inventario | permiso=ninguno | La lista muestra los lotes y su vencimiento.
+paso: 2 | pantalla=inventario | permiso=ninguno | Mover a cuarentena retira un lote del stock disponible.

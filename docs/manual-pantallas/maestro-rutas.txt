@@ -1,0 +1,10 @@
+clave: maestro_rutas
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-tarifas
+titulo: Maestro de Rutas
+resumen: Rutas de transporte.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/MaestroRutasPage.jsx#MaestroRutasPage
+huella: aaec02a4ba
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Nueva ruta registra una ruta.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Editar cambia sus datos.

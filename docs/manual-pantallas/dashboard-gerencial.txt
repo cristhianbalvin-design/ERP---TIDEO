@@ -1,0 +1,11 @@
+clave: dashboard_gerencial
+tipo: pantalla
+pantalla: dashboard
+catalogo: operaciones/dashboard
+titulo: Dashboard Gerencial
+resumen: Indicadores gerenciales de la operación.
+componentes: operaciones-app/src/zahory-mock/pages/dashboardGerencial.jsx#DashboardPage
+huella: 33352eff28
+paso: 1 | pantalla=dashboard | permiso=ninguno | Es un tablero de consulta con los indicadores de la operación del período.
+paso: 2 | pantalla=dashboard | permiso=ninguno | Exportar PDF descarga el tablero.
+paso: 3 | pantalla=dashboard | permiso=ninguno | Si no hay tipo de cambio para el período, la pantalla lo avisa.

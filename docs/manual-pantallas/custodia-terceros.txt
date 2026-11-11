@@ -1,0 +1,12 @@
+clave: custodia_terceros
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-custodia
+titulo: Custodia de terceros
+resumen: Mercadería de terceros guardada en el almacén, sus retiros y su cobro.
+componentes: operaciones-app/src/zahory-mock/pages/wms/CustodiaPage.jsx#CustodiaPage
+huella: b96d4c42a1
+paso: 1 | pantalla=inventario | permiso=ninguno | Registrar ingreso anota la mercadería de un tercero que entra en custodia y Asignar posiciones define dónde se guarda.
+paso: 2 | pantalla=inventario | permiso=ninguno | Solicitar retiro crea el retiro de esa mercadería.
+paso: 3 | pantalla=inventario | permiso=ninguno | Tarifa define lo que se cobra por la custodia.
+paso: 4 | pantalla=inventario | permiso=ninguno | Calcular obtiene la liquidación del período y Enviar a Ventas la envía como venta en borrador.

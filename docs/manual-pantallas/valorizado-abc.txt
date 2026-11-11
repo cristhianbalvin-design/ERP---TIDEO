@@ -1,0 +1,10 @@
+clave: valorizado_abc
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-reportes
+titulo: Valorizado y ABC
+resumen: Reporte del inventario valorizado y su clasificación ABC.
+componentes: operaciones-app/src/zahory-mock/pages/wms/ReporteValorizadoPage.jsx#ReporteValorizadoPage
+huella: 9eb7af8503
+paso: 1 | pantalla=inventario | permiso=ninguno | Es un reporte de consulta del valor del inventario y su clasificación ABC.
+paso: 2 | pantalla=inventario | permiso=ninguno | Exportar Excel descarga el reporte.

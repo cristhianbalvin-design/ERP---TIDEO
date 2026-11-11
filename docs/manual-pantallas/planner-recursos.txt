@@ -1,0 +1,13 @@
+clave: planner
+tipo: pantalla
+pantalla: planner
+catalogo: admin/planner
+titulo: Planner y Recursos
+resumen: Asignación de personal y cuadrillas a las órdenes de trabajo por día y por semana.
+componentes: src/pages_ops.jsx#Planner
+huella: 08abbaac09
+paso: 1 | pantalla=planner | permiso=ninguno | Navega por semana o por mes; Hoy vuelve a la fecha actual.
+paso: 2 | pantalla=planner | permiso=ninguno | Agregar colaborador este día asigna a una persona; Asignar por rango la asigna a varios días y se confirma con Confirmar asignación.
+paso: 3 | pantalla=planner | permiso=ninguno | Nueva cuadrilla crea un grupo de trabajo con Crear cuadrilla.
+paso: 4 | pantalla=planner | permiso=ninguno | Editar fecha/horario cambia una asignación y Eliminar la quita.
+paso: 5 | pantalla=planner | permiso=ninguno | Exportar Excel descarga la programación y Ver Detalle OT abre la orden.

@@ -1,0 +1,12 @@
+clave: minas_proyectos
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-minas
+titulo: Minas y proyectos
+resumen: Minas, sus proyectos y sus almacenes periféricos.
+componentes: operaciones-app/src/zahory-mock/pages/MinasProyectosPage.jsx#MinasProyectosPage
+huella: 67b307ee29
+paso: 1 | pantalla=inventario | permiso=ninguno | Nueva mina registra una mina y Editar mina cambia sus datos; ambos dependen de lo que tu rol puede crear o editar.
+paso: 2 | pantalla=inventario | permiso=ninguno | Nuevo proyecto crea un proyecto en la mina y Asignar proyecto existente vincula uno ya creado.
+paso: 3 | pantalla=inventario | permiso=ninguno | Agregar almacén periférico crea el almacén de la mina.
+paso: 4 | pantalla=inventario | permiso=ninguno | Devolver a central regresa el material del almacén periférico al almacén central.

@@ -1,0 +1,12 @@
+clave: api_keys
+tipo: pantalla
+pantalla: api_keys
+catalogo: admin/api_keys
+titulo: API Keys
+resumen: Llaves de acceso para integrar otros sistemas con el ERP.
+componentes: src/pages_api_keys.jsx#ApiKeys
+huella: e7d844db55
+paso: 1 | pantalla=api_keys | permiso=ninguno | Crea una llave con Nuevo API Key y Crear API Key.
+paso: 2 | pantalla=api_keys | permiso=ninguno | La llave se muestra una sola vez: cópiala con Copiar y confirma con Entendido, ya lo guardé.
+paso: 3 | pantalla=api_keys | permiso=ninguno | Editar permisos cambia lo que la llave puede hacer.
+paso: 4 | pantalla=api_keys | permiso=ninguno | Revocar key la desactiva de forma irreversible.
