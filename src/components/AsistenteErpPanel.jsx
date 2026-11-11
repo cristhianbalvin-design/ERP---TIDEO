@@ -6,8 +6,9 @@ import { hablar } from '../lib/ariaHabla.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
-import { abrirConversacion, conversacionActual, etiquetaRetomada, mensajesDelPanel } from '../services/ariaMemoriaService.js';
+import { abrirConversacion, avisosDeRecuerdo, borrarRecuerdo, conversacionActual, etiquetaRetomada, mensajesDelPanel } from '../services/ariaMemoriaService.js';
 import AriaConversaciones from './AriaConversaciones.jsx';
+import AriaRecuerdos from './AriaRecuerdos.jsx';
 
 const LIMITE_DIARIO = 30;
 
@@ -29,6 +30,7 @@ function etiquetaHerramienta(tool) {
   const grupos = [
     [['consultar_manual'], 'Consulté el manual'],
     [['buscar_conversaciones'], 'Revisé tus conversaciones'],
+    [['recuerdo_guardar'], 'Guardé un recuerdo'],
     [['resumen_mensual'], 'Calculé el resumen mensual'],
     [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
@@ -183,7 +185,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     try {
       const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva }, conversacionId });
       if (typeof data?.conversacion_id === 'string') setConversacionId(data.conversacion_id);
-      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones) }]);
+      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones), recuerdos: avisosDeRecuerdo(data?.recuerdos) }]);
       if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {
@@ -213,6 +215,13 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     if (mensajes.length) return;
     conversacionActual(empresaId).then(datos => mostrarConversacion(datos, true)).catch(() => undefined);
   }, [abierto, empresaId]);
+  // Deshacer un recuerdo recién guardado: se borra de la memoria y el aviso queda como borrado.
+  const deshacerRecuerdo = (posicion, id) => {
+    const marcar = cambio => setMensajes(prev => prev.map((item, index) => index === posicion ? { ...item, recuerdos: (item.recuerdos || []).map(r => r.id === id ? { ...r, ...cambio } : r) } : item));
+    marcar({ borrando: true });
+    borrarRecuerdo(id).then(() => marcar({ borrando: false, borrado: true }))
+      .catch(causa => { marcar({ borrando: false }); setError({ status: 0, mensaje: causa.message }); });
+  };
   const abrirAnterior = id => {
     if (id === conversacionId) { setVista('chat'); return; }
     abrirConversacion(id).then(datos => mostrarConversacion(datos, false)).catch(() => setError({ status: 0, mensaje: 'No pude abrir esa conversación. Inténtalo de nuevo.' }));
@@ -225,7 +234,10 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
         <header className="dx-asis-head">{vista === 'chat' && <div className="dx-asis-ico" aria-hidden="true"><AriaLogo size={44} /></div>}
-          {vista === 'lista'
+          {vista === 'recuerdos'
+            ? <><button className="dx-asis-x dx-asis-back" type="button" aria-label="Volver a conversaciones" onClick={() => setVista('lista')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
+              <div><div className="dx-asis-eyebrow">Aria · Memoria</div><h2 className="dx-asis-title" id="dx-asis-title">Lo que recuerdo de ti</h2></div></>
+            : vista === 'lista'
             ? <><button className="dx-asis-x dx-asis-back" type="button" aria-label="Volver al chat" onClick={() => setVista('chat')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
               <div><div className="dx-asis-eyebrow">Aria</div><h2 className="dx-asis-title" id="dx-asis-title">Conversaciones</h2></div></>
             : <div><div className="dx-asis-eyebrow">OPERA · Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Aria</h2><div className="dx-asis-sub">Respeta tus permisos · confirma antes de registrar</div></div>}
@@ -235,7 +247,8 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
           <button className="dx-asis-x" type="button" aria-label="Cerrar asistente" onClick={cerrar}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
         </header>
         {contexto?.tipo && contexto?.id && <div className="dx-asis-ctx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg><span>Viendo: <b>{tituloContexto}</b></span></div>}
-        {vista === 'lista' ? <AriaConversaciones empresaId={empresaId} activaId={conversacionId} onAbrir={abrirAnterior} onNueva={nuevaConversacion} /> : <>
+        {vista === 'recuerdos' ? <AriaRecuerdos empresaId={empresaId} />
+          : vista === 'lista' ? <AriaConversaciones empresaId={empresaId} activaId={conversacionId} onAbrir={abrirAnterior} onNueva={nuevaConversacion} onRecuerdos={() => setVista('recuerdos')} /> : <>
         <div ref={mensajesRef} className="dx-asis-body" aria-live="polite" aria-relevant="additions text">
           {retomada && mensajes.length > 0 && <div className="dx-asis-ret" role="status"><span>Retomando tu conversación {etiquetaRetomada(retomada.fecha)}</span><button type="button" onClick={nuevaConversacion}>Empezar una nueva</button></div>}
           {!mensajes.length && <><div className="dx-asis-hello"><h3>{primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
@@ -249,6 +262,10 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
                 <b>{item.etiqueta}</b>{item.detalle && <small>{item.detalle}</small>}
               </button>)}</div>
             </div>}
+            {mensaje.role === 'assistant' && (mensaje.recuerdos || []).map(r => <div className={`dx-asis-rec${r.tipo === 'automatico' ? ' auto' : ''}`} key={r.id} role="status">
+              {r.borrado ? <span>Recuerdo borrado.</span> : <><span><b>{r.tipo === 'automatico' ? 'Aria recordó:' : 'Guardado en tu memoria:'}</b> {r.texto}</span>
+                <button type="button" disabled={r.borrando} onClick={() => deshacerRecuerdo(index, r.id)}>{r.borrando ? 'Borrando…' : 'Deshacer'}</button></>}
+            </div>)}
             {mensaje.role === 'assistant' && mensaje.herramientas?.length > 0 && <div className="dx-asis-tools">{[...new Set(mensaje.herramientas.map(etiquetaHerramienta))].map(etiqueta => <span className="dx-asis-pill cy" key={etiqueta}><i />{etiqueta}</span>)}</div>}
           </React.Fragment>)}
           {consultando && <div className="dx-asis-tools"><span className="dx-asis-dots" aria-hidden="true"><span/><span/><span/></span><span role="status">Aria está revisando…</span></div>}

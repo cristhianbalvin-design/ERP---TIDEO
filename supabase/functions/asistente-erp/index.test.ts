@@ -1835,3 +1835,66 @@ Deno.test("memoria: herramienta de conversaciones pasadas publicada con texto y 
   assert(tool.function.description.includes("no datos vigentes"));
   equal(Object.keys(tool.function.parameters.properties).sort().join(","), "limite,texto");
 });
+
+Deno.test("recuerdos: se inyectan antes de la pregunta, la herramienta guarda como explícito y el panel recibe los avisos", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: (name) => name === "aria_recuerdos_contexto" ? { data: { pausada: false, total: 1, por_avisar: 1, recuerdos: [{ id: "r1", texto: "Trabajas sobre todo con la Caja Chica Taller Ate." }] }, error: null }
+      : name === "aria_recuerdo_guardar" ? { data: { estado: "guardado", id: "r2", texto: "Prefieres respuestas cortas.", tipo: "explicito" }, error: null }
+      : name === "aria_recuerdos_por_avisar" ? { data: [{ id: "r3", texto: "Sueles usar el CECO 1010.", tipo: "automatico" }], error: null }
+      : name === "aria_conversacion_registrar" ? { data: { conversacion_id: uuid, mensajes: 2, tarea: null }, error: null } : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "m", type: "function", function: { name: "aria_recuerdo_guardar", arguments: JSON.stringify({ texto: "Prefieres respuestas cortas." }) } }] })
+      : completion({ role: "assistant", content: "Anotado: te responderé corto." }),
+  });
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "recuerda que prefiero respuestas cortas", conversacion_id: null }));
+  equal(res.status, 200);
+  const body = await res.json();
+  const enviados = x.aiCalls[0];
+  const pos = enviados.findIndex((m: any) => String(m.content).startsWith("Lo que recuerdas de esta persona"));
+  assert(pos > 0, "falta el mensaje de recuerdos");
+  assert(String(enviados[pos].content).includes("- Trabajas sobre todo con la Caja Chica Taller Ate."));
+  assert(String(enviados[pos].content).includes("no respaldan cifras"));
+  assert(String(enviados[pos + 1].content).startsWith("recuerda que prefiero respuestas cortas"));
+  const guardado = x.calls.find(c => c.name === "aria_recuerdo_guardar")!;
+  equal(guardado.args.p_tipo, "explicito");
+  equal(guardado.args.p_texto, "Prefieres respuestas cortas.");
+  equal(guardado.args.p_embedding, null);
+  equal(guardado.args.p_conversacion_id, null);
+  equal(JSON.stringify(body.recuerdos.map((r: any) => `${r.id}:${r.tipo}`)), JSON.stringify(["r2:explicito", "r3:automatico"]));
+  const extra = x.calls.find(c => c.name === "aria_conversacion_registrar")!.args.p_extra as any;
+  equal(extra.recuerdos.length, 2);
+});
+
+Deno.test("recuerdos: con la memoria activa el archivado aprende; en pausa no se inyecta ni se aprende", async () => {
+  const conv = "88888888-8888-4888-8888-888888888888";
+  const correr = async (contexto: unknown) => {
+    const x = setupMemoria(name => name === "aria_recuerdos_contexto" ? { data: contexto, error: null }
+      : name === "aria_conversacion_registrar" ? { data: { conversacion_id: conv, mensajes: 2, tarea: { falta_titulo: true, hasta: 0, por_resumir: [], recientes: [{ rol: "user", contenido: "egreso del taller con CECO 1010 como siempre" }] } }, error: null }
+      : { data: null, error: null },
+      ["Listo.", '{"titulo": "Egreso del taller", "resumen": "Pidió un egreso.", "recuerdos": ["Sueles usar el CECO 1010 para egresos del taller."]}']);
+    const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "egreso del taller con CECO 1010 como siempre", conversacion_id: null }));
+    equal(res.status, 200);
+    await Promise.all(x.tareas);
+    return x;
+  };
+  const activa = await correr({ pausada: false, total: 0, por_avisar: 0, recuerdos: [] });
+  assert(String(activa.aiCalls[1][0].content).includes('"recuerdos"'));
+  const aprendido = activa.calls.find(c => c.name === "aria_recuerdo_guardar")!;
+  equal(aprendido.args.p_tipo, "automatico");
+  equal(aprendido.args.p_conversacion_id, conv);
+  equal(aprendido.args.p_texto, "Sueles usar el CECO 1010 para egresos del taller.");
+  equal(activa.calls.some(c => c.name === "aria_recuerdos_por_avisar"), false);
+  const pausada = await correr({ pausada: true, total: 3, por_avisar: 0, recuerdos: [{ id: "r1", texto: "No debe usarse en pausa." }] });
+  assert(!pausada.aiCalls[0].some((m: any) => String(m.content).includes("Lo que recuerdas")));
+  assert(!String(pausada.aiCalls[1][0].content).includes('"recuerdos"'));
+  equal(pausada.calls.some(c => c.name === "aria_recuerdo_guardar"), false);
+});
+
+Deno.test("recuerdos: herramienta publicada con texto obligatorio y sin cifras", () => {
+  const tool = OPENAI_TOOLS.find((t: any) => t.function.name === "aria_recuerdo_guardar") as any;
+  assert(tool);
+  assert(tool.function.description.includes("Nunca guardes montos"));
+  equal(JSON.stringify(Object.keys(tool.function.parameters.properties)), JSON.stringify(["texto"]));
+  equal(JSON.stringify(tool.function.parameters.required), JSON.stringify(["texto"]));
+});
