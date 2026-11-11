@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 72 (94 %) | 21 (27 %) | 1 | 3 |
-| Operaciones | 120 | 49 (41 %) | 27 (23 %) | 0 | 61 |
+| Administración | 77 | 72 (94 %) | 30 (39 %) | 1 | 3 |
+| Operaciones | 120 | 49 (41 %) | 43 (36 %) | 0 | 58 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 130 (63 %) | 48 (23 %) | 1 | 64 |
+| **Total** | 206 | 130 (63 %) | 73 (35 %) | 1 | 61 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -28,7 +28,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | concepto_detraccion, problemas_corregir_registro, proceso_cierre_mes, proceso_cotizacion_cobro | 4 | — |
 | Administración | Cuentas por Pagar (`cxp`) | activa | cxp | concepto_detraccion, proceso_cierre_mes, proceso_solpe_pago | 4 | — |
 | Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_cotizacion_cobro | 4 | — |
-| Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | — | — |
+| Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | 1 | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | presupuestos | proceso_cierre_mes | — | — |
 | Administración | Estado Resultados (`resultados`) | activa | resultados | proceso_cierre_mes | — | — |
@@ -73,7 +73,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Customer Success | Onboarding (`cs_onboarding`) | activa | cs_onboarding | — | — | — |
 | Customer Success | Planes de Exito (`cs_planes`) | activa | cs_planes | — | — | — |
 | Customer Success | Renovaciones (`cs_renovaciones`) | activa | cs_renovaciones | — | — | — |
-| Dashboards | Dashboards (`dashboard`) | activa | dashboard | — | — | — |
+| Dashboards | Dashboards (`dashboard`) | activa | dashboard | — | 1 | — |
 | Inicio | Inicio (pendientes de hoy) (`inicio`) | activa | — | como_usar_aria, concepto_que_es_opera | — | — |
 | Integraciones | API Keys (`api_keys`) | activa | api_keys | — | — | — |
 | Logística | Almacenes (`inventario`) | activa | inventario_admin | proceso_almacen, proceso_recepcion_entrega | 8 | — |
@@ -82,7 +82,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Operaciones | Backlog (`backlog`) | activa | backlog | — | — | — |
 | Operaciones | Cierre y Calidad (`cierre`) | activa | cierre | — | — | — |
 | Operaciones | IA Operativa (`ia_operativa`) | legado | — | — | — | — |
-| Operaciones | Ordenes de Trabajo (`ot`) | activa | ot_admin | proceso_recepcion_entrega | — | — |
+| Operaciones | Ordenes de Trabajo (`ot`) | activa | ot_admin | proceso_recepcion_entrega | 2 | — |
 | Operaciones | Partes Diarios (`partes`) | activa | partes | proceso_recepcion_entrega | — | — |
 | Operaciones | Planner y Recursos (`planner`) | activa | planner | — | — | — |
 | Operaciones | Soporte y Tickets (`tickets`) | activa | tickets | — | — | — |
@@ -90,18 +90,18 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Plataforma | Planes y Licencias (`planes`) | maqueta | — | — | — | — |
 | Plataforma | Salud de implementación (plataforma) (`salud_implementacion`) | activa | salud_implementacion | — | — | — |
 | Plataforma | Empresas / Tenants (`tenants`) | activa | tenants | — | — | — |
-| RRHH | Control de Asistencia (`asistencia`) | activa | asistencia | concepto_personal_planilla, proceso_asistencia | — | — |
-| RRHH | Comisiones (`comisiones`) | activa | comisiones | — | — | — |
+| RRHH | Control de Asistencia (`asistencia`) | activa | asistencia | concepto_personal_planilla, proceso_asistencia | 1 | — |
+| RRHH | Comisiones (`comisiones`) | activa | comisiones | — | 1 | — |
 | RRHH | Control de Horas (`control_horas`) | activa | control_horas | — | — | — |
 | RRHH | Evaluación de Desempeño (`evaluaciones_desempeno`) | activa | evaluaciones_desempeno | — | — | — |
 | RRHH | Liquidación por Cese (`liquidaciones_cese`) | activa | liquidaciones_cese | proceso_planilla | — | — |
 | RRHH | Mi portal (`mi_portal`) | activa | mi_portal | — | — | — |
-| RRHH | Nomina (`nomina`) | activa | nomina | concepto_personal_planilla, proceso_cierre_mes, proceso_planilla | — | — |
+| RRHH | Nomina (`nomina`) | activa | nomina | concepto_personal_planilla, proceso_cierre_mes, proceso_planilla | 1 | — |
 | RRHH | Prestamos al Personal (`prestamos_personal`) | activa | prestamos_personal | — | — | — |
 | RRHH | Reclutamiento (`reclutamiento`) | activa | reclutamiento | proceso_planilla | — | — |
-| RRHH | Personal Administrativo (`rrhh_admin`) | activa | rrhh_admin | proceso_planilla | — | — |
-| RRHH | Personal Operativo (`rrhh_operativo`) | activa | rrhh_operativo | proceso_planilla | — | — |
-| RRHH | Solicitudes (`solicitudes_rrhh`) | activa | solicitudes_rrhh | proceso_asistencia | — | — |
+| RRHH | Personal Administrativo (`rrhh_admin`) | activa | rrhh_admin | proceso_planilla | 1 | — |
+| RRHH | Personal Operativo (`rrhh_operativo`) | activa | rrhh_operativo | proceso_planilla | 1 | — |
+| RRHH | Solicitudes (`solicitudes_rrhh`) | activa | solicitudes_rrhh | proceso_asistencia | 1 | — |
 | RRHH | Tareo Administrativo (`tareo_admin`) | activa | tareo_admin | — | — | — |
 | RRHH | Turnos y Horarios (`turnos`) | activa | turnos | proceso_asistencia | — | — |
 
@@ -160,19 +160,19 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | HSE — SEGURIDAD | Permisos de Trabajo (`permisos-trabajo`) | maqueta | — | — | — | — |
 | HSE — SEGURIDAD | Protocolo LOTO (`protocolo-loto`) | maqueta | — | — | — | — |
 | HSE — SEGURIDAD | Registro de Incidentes (`registro-incidentes`) | maqueta | — | — | — | — |
-| Inicio | Dashboard Gerencial (`dashboard`) | activa | dashboard_gerencial | — | — | — |
+| Inicio | Dashboard Gerencial (`dashboard`) | activa | dashboard_gerencial | — | 1 | — |
 | Inicio | Mapa de Campo (`mapa-campo`) | maqueta | — | — | — | — |
-| Inicio | Mis OTs del día (`mis-ots-hoy`) | activa | mis_ots_dia | — | — | — |
+| Inicio | Mis OTs del día (`mis-ots-hoy`) | activa | mis_ots_dia | — | 2 | — |
 | Operaciones | Documentos (`docs`) | maqueta | — | — | — | — |
 | Operaciones | Indicadores de confiabilidad (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
 | Inicio | Inicio operativo (Aria) (`inicio`) | activa | inicio_operaciones | — | — | — |
 | Operaciones | Proveedores (operaciones) (`proveedores`) | placeholder | — | — | — | — |
-| Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | cierre_conformidad | proceso_recepcion_entrega | — | — |
-| Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | nueva_ot | proceso_recepcion_entrega | — | — |
+| Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | cierre_conformidad | proceso_recepcion_entrega | 2 | — |
+| Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | nueva_ot | proceso_recepcion_entrega | 2 | — |
 | Órdenes de Trabajo | Diagnóstico Técnico (`diagnostico-tecnico`) | activa | diagnostico_tecnico | proceso_recepcion_entrega | — | — |
 | Órdenes de Trabajo | Nuevo reporte de mina (`nuevo-reporte`) | activa | reportes_mina | — | — | — |
-| Órdenes de Trabajo | Detalle de OT (`ot-detalle`) | maqueta | — | — | — | — |
-| Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | bandeja_ots | proceso_recepcion_entrega | — | — |
+| Órdenes de Trabajo | Detalle de OT (`ot-detalle`) | maqueta | — | — | 2 | — |
+| Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | bandeja_ots | proceso_recepcion_entrega | 2 | — |
 | Órdenes de Trabajo | Reportes Mina (`partes-mina`) | activa | reportes_mina | — | — | — |
 | Órdenes de Trabajo | Gestión de partes de taller (`partes-taller`) | activa | gestion_partes_taller | — | — | — |
 | Órdenes de Trabajo | Recepción de Activos (`recepcion-activos`) | activa | recepcion_activos | proceso_recepcion_entrega | — | — |
@@ -215,16 +215,16 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Producción | Soldadura Estructural (`sol-estructural`) | maqueta | — | — | — | — |
 | Producción | MIG / TIG / SMAW (`sol-mig-tig`) | maqueta | — | — | — | — |
 | Producción | Recargue y Recuperación (`sol-recargue`) | maqueta | — | — | — | — |
-| Transporte Comercial | Dashboard de Transporte (`dashboard-transporte`) | maqueta | — | — | — | — |
-| Transporte Comercial | Nueva orden de viaje (`transporte-crear-ov`) | activa | orden_viaje | proceso_viaje_transporte | — | — |
-| Transporte Comercial | Flota (`transporte-flota`) | activa | flota_transporte | — | — | — |
-| Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | maqueta | — | — | — | — |
-| Transporte Comercial | Lugares (`transporte-lugares`) | activa | lugares_transporte | — | — | — |
-| Transporte Comercial | Hoja de Ruta (`transporte-ruta`) | activa | hoja_ruta | proceso_viaje_transporte | — | — |
-| Transporte Comercial | Maestro de Rutas (`transporte-tarifas`) | activa | maestro_rutas | — | — | — |
-| Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | activa | tarifas_transporte | — | — | — |
-| Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | detalle_viaje | proceso_viaje_transporte | — | — |
-| Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | monitor_viajes | proceso_viaje_transporte | — | — |
+| Transporte Comercial | Dashboard de Transporte (`dashboard-transporte`) | maqueta | — | — | 1 | — |
+| Transporte Comercial | Nueva orden de viaje (`transporte-crear-ov`) | activa | orden_viaje | proceso_viaje_transporte | 1 | — |
+| Transporte Comercial | Flota (`transporte-flota`) | activa | flota_transporte | — | 1 | — |
+| Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | maqueta | — | — | 1 | — |
+| Transporte Comercial | Lugares (`transporte-lugares`) | activa | lugares_transporte | — | 1 | — |
+| Transporte Comercial | Hoja de Ruta (`transporte-ruta`) | activa | hoja_ruta | proceso_viaje_transporte | 1 | — |
+| Transporte Comercial | Maestro de Rutas (`transporte-tarifas`) | activa | maestro_rutas | — | 1 | — |
+| Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | activa | tarifas_transporte | — | 1 | — |
+| Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | detalle_viaje | proceso_viaje_transporte | 1 | — |
+| Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | monitor_viajes | proceso_viaje_transporte | 1 | — |
 | Venta de Repuestos | Catálogo de venta (`catalogo`) | activa | catalogo_venta | — | 8 | — |
 | Venta de Repuestos | Catálogo de precios (`catalogo-precios`) | maqueta | — | — | — | — |
 | Venta de Repuestos | Dashboard de Repuestos (`dashboard-repuestos`) | maqueta | — | — | — | — |

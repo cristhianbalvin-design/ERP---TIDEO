@@ -5,7 +5,7 @@ catalogo: admin/inicio
 titulo: Cómo usar Aria
 resumen: Cómo preguntarle a Aria escribiendo o dictando, cómo escuchar sus respuestas, cuántas consultas puedes hacer al día y cómo ver o borrar lo que recuerda de ti.
 componentes: src/components/AsistenteErpPanel.jsx#AsistenteErpPanelBase, src/components/AriaMicrofono.jsx#AriaMicrofono, src/lib/ariaHabla.js, src/components/AriaConversaciones.jsx#AriaConversaciones, src/components/AriaRecuerdos.jsx#AriaRecuerdos
-huella: 3317d0a058 c65836e99c c4d45aa981 3ed41385e9 cd021d0a54
+huella: 3628df9921 c65836e99c c4d45aa981 3ed41385e9 cd021d0a54
 paso: 1 | pantalla=ninguna | permiso=ninguno | Abre Aria con el robot de la esquina inferior derecha, disponible en las pantallas de Administración y de Operaciones, o escribe en el cuadro Pregúntale a Aria del Inicio.
 paso: 2 | pantalla=ninguna | permiso=ninguno | Escribe tu pregunta y pulsa Enviar. Aria responde solo con la información que tus permisos te dejan ver y te indica qué módulos revisó.
 paso: 3 | pantalla=ninguna | permiso=ninguno | Para dictar, toca el micrófono, habla y vuelve a tocarlo al terminar; puedes hablar hasta un minuto. La primera vez el navegador te pedirá permiso para usar el micrófono.
