@@ -1738,6 +1738,34 @@ Deno.test("con clave de Claude responde Haiku y audita el modelo", async () => {
   equal(x.claudeCalls[0].messages[1].content, ESCRITURA_PROMPT);
 });
 
+Deno.test("modo experto responde con Sonnet, descuenta su cuota y lo marca en la respuesta", async () => {
+  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { usadas: 3, limite: 10, restantes: 7, puede_continuar: true }, error: null } : { data: { filas: [] }, error: null } });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Amplía en modo experto: hola", modo: "experto" }))).json();
+  equal(x.claudeCalls[0].model, "claude-sonnet-5-5");
+  assert(x.claudeCalls[0].messages.some((m: any) => m.role === "system" && String(m.content).startsWith("MODO EXPERTO")));
+  equal(x.historial()[0].p_modelo, "claude-sonnet-5-5");
+  equal(result.experto.restantes, 6);
+  assert(result.herramientas_usadas.includes("aria_modo_experto"));
+});
+
+Deno.test("modo experto sin cuota no llama al modelo y lo explica", async () => {
+  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { usadas: 10, limite: 10, restantes: 0, puede_continuar: false }, error: null } : { data: { filas: [] }, error: null } });
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Amplía en modo experto: hola", modo: "experto" }));
+  equal(res.status, 200);
+  const result = await res.json();
+  assert(result.respuesta.includes("10 consultas de modo experto"));
+  equal(result.experto.restantes, 0);
+  equal(x.claudeCalls.length, 0);
+  equal(x.openaiCalls.length, 0);
+});
+
+Deno.test("modo desconocido se rechaza y el chat normal no consulta la cuota de experto", async () => {
+  const x = setupClaude();
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", modo: "otro" }))).status, 400);
+  equal((await x.handler(x.request())).status, 200);
+  equal(x.calls.some((c: any) => c.name === "aria_experto_cuota"), false);
+});
+
 Deno.test("ASISTENTE_PROVEEDOR=openai apaga Claude sin desplegar", async () => {
   const x = setupClaude({ envExtra: { ASISTENTE_PROVEEDOR: "openai" } });
   equal((await (await x.handler(x.request())).json()).respuesta, "Respuesta de respaldo.");
