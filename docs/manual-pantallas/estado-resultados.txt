@@ -3,9 +3,15 @@ tipo: pantalla
 pantalla: resultados
 catalogo: admin/resultados
 titulo: Estado Resultados
-resumen: Estado de Resultados del período, con el detalle de cada línea.
+resumen: Estado de Resultados (ganancias y pérdidas) del mes: ingresos, costos, gastos, utilidad bruta, resultado operativo y neto, con sus márgenes y el detalle de cada línea.
 componentes: src/pages_fin.jsx#Resultados
 huella: 07b83d2f9d
 paso: 1 | pantalla=resultados | permiso=ninguno | Elige el período y revisa el resultado por línea.
 paso: 2 | pantalla=resultados | permiso=ninguno | Abre una línea para ver el detalle de sus gastos y ciérralo con Cerrar detalle.
 paso: 3 | pantalla=resultados | permiso=ninguno | PDF descarga el reporte.
+paso: 4 | pantalla=resultados | permiso=ninguno | Para qué sirve: muestra si la empresa ganó o perdió en un mes. Se lee de arriba abajo: Ingresos menos Costo de ventas da la Utilidad bruta; menos Gastos operativos da el Resultado operativo; luego se restan los Gastos financieros y la Depreciación hasta el Resultado neto. Cada resultado muestra su margen, que es su porcentaje sobre los ingresos.
+paso: 5 | pantalla=resultados | permiso=ninguno | De dónde sale cada cifra: los ingresos son las facturas y boletas emitidas en el mes, sin IGV y sin las anuladas, más las ventas cobradas sin comprobante. Los costos y gastos salen de lo registrado en Compras y Gastos, cuentas por pagar, caja chica, la planilla del período y los costos de las órdenes de trabajo; los gastos financieros incluyen los intereses de los préstamos pagados en el mes.
+paso: 6 | pantalla=resultados | permiso=ninguno | Si una cifra no cuadra, revisa primero la categoría del gasto: cada egreso cae en la línea que indica su categoría del Estado de Resultados, que se elige al registrarlo. Un gasto mal categorizado aparece en la línea equivocada; abre la línea para ver su detalle y ubicar el registro.
+paso: 7 | pantalla=resultados | permiso=ninguno | Soles y dólares se muestran por separado y no se suman. Los filtros de centro de costo y de centro de beneficio permiten ver el resultado de un área o de una línea de negocio.
+paso: 8 | pantalla=resultados | permiso=ninguno | En empresas con varias sociedades eliges ver una sociedad, compararlas lado a lado o el consolidado, que elimina las operaciones entre sociedades del grupo.
+paso: 9 | pantalla=resultados | permiso=ninguno | Solo lo ven los roles con acceso a Estado de Resultados y con permiso para ver finanzas. También puedes pedírselo a Aria (por ejemplo «¿cuál fue la utilidad de octubre?»): usa este mismo cálculo, para la sociedad activa.
