@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAnonKey } from "../_shared/supabaseKeys.ts";
 import { opcionesDeEgreso, type OpcionesRespuesta } from "./opciones.ts";
-import { avisosRecuerdo, extraDelTurno, leerRecuerdos, leerResumen, MAX_RECUERDOS_CONTEXTO, pideRecordar, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto, type AvisoRecuerdo, type TareaResumen } from "./memoria.ts";
+import { avisosRecuerdo, destinosManual, elegirDestino, extraDelTurno, leerRecuerdos, leerResumen, MAX_RECUERDOS_CONTEXTO, pideManual, pideRecordar, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto, type AvisoRecuerdo, type DestinoManual, type TareaResumen } from "./memoria.ts";
 
 const ALLOWED_ORIGIN = "https://erp.tideo.tech";
 const MAX_BODY_BYTES = 32_000;
@@ -94,7 +94,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_resumen_facturacion", desc: "Resume documentos emitidos por mes y moneda en un rango de hasta 36 meses; admite periodo o ultimos_meses (1–36), desde/hasta explícitos y moneda PEN o USD. Excluye anuladas e informa su cantidad aparte. total_facturado representa el total de comprobantes, no saldo por cobrar. Si hay notas de crédito, presenta facturado bruto, notas de crédito y neto, y pregunta cuál vista prefiere la persona (bruto o neto de notas de crédito); no elijas por ella. No mezcles monedas.", params: [society(), e("periodo", ["mes_actual", "mes_anterior", "trimestre_actual", "anio_actual", "ultimos_meses"], true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, d("desde", true), d("hasta", true), e("moneda", ["PEN", "USD"], true)] },
   { name: "asistente_buscar_os_clientes", desc: "Busca órdenes de servicio de clientes por texto, estado, estado de producción y fecha de emisión (máximo 12 meses). 'activa' (o 'activo') y 'en_ejecucion' son estados distintos; para 'en ejecución' usa estado en_ejecucion, para 'activas' usa activa; si la persona pide 'vigentes' o no precisa, presenta ambos estados por separado sin sumarlos; no sumes estados distintos. Presenta importes solo cuando estén disponibles por permiso y no mezcles monedas.", params: [society(), s("texto", 200, true), s("estado", 80, true), e("estado_produccion", ["Evaluación", "Cotización", "Stand By", "Proceso", "Terminado", "No Procede", "Devolución", "Entregado", "Negociación"], true), d("desde", true), d("hasta", true), n("limite", true)] },
   { name: "asistente_resumen_os_clientes", desc: "Resume órdenes de servicio de clientes por estado normalizado, moneda y estado de producción. 'activa' (o 'activo') y 'en_ejecucion' son estados distintos; para 'en ejecución' usa estado en_ejecucion, para 'activas' usa activa; si la persona pide 'vigentes' o no precisa, presenta ambos estados por separado sin sumarlos; no sumes estados distintos. Presenta importes solo cuando estén disponibles por permiso y nunca mezcles monedas.", params: [society(), s("texto", 200, true)] },
-  { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el resultado trae soporte_notificado, empieza exactamente con: 'Esto todavía no está en el manual de OPERA. Ya avisé al equipo de soporte para que lo documente; pronto estará disponible.' y luego da solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Si la respuesta es en_demostracion, di que esa pantalla todavía es una demostración sin datos reales, nombra las pantallas de pantallas_demostracion y no describas pasos ni botones. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
+  { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el resultado trae soporte_notificado, empieza exactamente con: 'Esto todavía no está en el manual de OPERA. Ya avisé al equipo de soporte para que lo documente; pronto estará disponible.' y luego da solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Cada ficha trae donde: la ruta exacta de sus pantallas (Aplicación › Módulo › Pantalla). Al indicar qué hacer di siempre esa ruta exacta, copiada tal cual, y el nombre del botón; nunca inventes una ruta. Si la respuesta es en_demostracion, di que esa pantalla todavía es una demostración sin datos reales, nombra las pantallas de pantallas_demostracion y no describas pasos ni botones. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "aria_diagnosticar_acceso", desc: "Úsala cuando la persona pregunte por qué no puede ver, entrar, crear, editar, aprobar, anular o exportar algo, por qué no le aparece una pantalla o un botón, o qué permisos tiene. pantalla es el nombre de la pantalla o la del contexto; accion es ver, crear, editar, anular, aprobar o exportar. Con el resultado explica si la causa es el permiso de su rol (di su rol y que lo cambia el administrador de la empresa en Roles y Permisos) o que la pantalla es una demostración. Si tiene el permiso, consulta el manual para ver qué condición del registro lo impide. Nunca ofrezcas cambiar permisos tú.", params: [s("pantalla", 100), s("accion", 30, true)] },
   { name: "aria_buscar_conversaciones", desc: "Busca en las conversaciones anteriores de esta persona con Aria (título, resumen y mensajes). Úsala cuando pregunte qué revisaron, consultaron o decidieron antes (ayer, la semana pasada, la vez anterior) o pida retomar un tema. Devuelve recuerdos, no datos vigentes: si necesita cifras actuales, vuelve a consultarlas con las herramientas de datos.", params: [s("texto", 100, true), n("limite", true)] },
   { name: "aria_recuerdo_guardar", desc: "Guarda en la memoria de Aria un dato duradero sobre cómo trabaja esta persona. Úsala cuando lo pida ('recuerda que…', 'ten en cuenta que siempre…', 'de ahora en adelante…'). No es un registro del ERP ni requiere confirmación: guárdalo y avisa en una línea. texto: una sola frase clara en segunda persona (p. ej. 'Trabajas sobre todo con la Caja Chica Taller Ate.'). Nunca guardes montos, saldos, stock ni datos personales sensibles: esos se consultan. Estados: guardado o actualizado (confirma lo que recordarás); pausada (dile que su memoria está en pausa y que la activa en Conversaciones › Lo que Aria recuerda de ti); rechazado (explica que no guardas cifras ni textos vacíos); limite (ya tiene 100 recuerdos: debe borrar alguno). Para ver o borrar recuerdos, indícale esa misma pantalla.", params: [s("texto", 300)] },
@@ -563,6 +563,21 @@ export function createHandler(deps: HandlerDeps) {
       if (datos.respuesta === "sin resultados" && demo.length) return { respuesta: "en_demostracion", fichas: [], pantallas_demostracion: demo, truncado: false };
       return datos;
     };
+    // Ruta exacta de cada ficha (Aplicación › Módulo › Pantalla) y destinos para el botón "Ir a…" del chat.
+    const destinos: DestinoManual[] = [];
+    const ubicarManual = async (datos: Record<string, unknown> | null): Promise<Record<string, unknown> | null> => {
+      const fichas = Array.isArray(datos?.fichas) ? datos!.fichas as Record<string, unknown>[] : [];
+      const claves = fichas.map(f => String(f.clave ?? "")).filter(Boolean).slice(0, 10);
+      if (!claves.length) return datos;
+      const rutas = await safely(() => supabase.rpc("aria_manual_rutas", { p_empresa_id: body.empresa_id, p_claves: claves }));
+      const mapa = rutas.error || !rutas.data || typeof rutas.data !== "object" ? {} : rutas.data as Record<string, unknown>;
+      const ubicadas = fichas.map(f => {
+        const lista = destinosManual(mapa[String(f.clave ?? "")]);
+        for (const d of lista) if (!destinos.some(x => x.app === d.app && x.ruta === d.ruta)) destinos.push(d);
+        return lista.length ? { ...f, donde: lista.map(d => d.donde) } : f;
+      });
+      return { ...datos, fichas: ubicadas };
+    };
     // Mantiene al día los embeddings de las fichas: se calculan en segundo plano cuando alguien consulta el manual.
     const indexarManual = async (): Promise<void> => {
       if (!deps.embeber) return;
@@ -608,6 +623,9 @@ export function createHandler(deps: HandlerDeps) {
       }
     };
     const reply200 = async (payload: Record<string, unknown>) => {
+      // Botón "Ir a…": la pantalla exacta donde se hace lo que Aria explicó con el manual.
+      const destino = payload.borrador ? null : elegirDestino(payload.respuesta, destinos);
+      if (destino) payload.destino = destino;
       if (!evalModel && usaMemoria) {
         // Avisos para el panel: lo guardado en este turno y lo que Aria aprendió sola desde el turno anterior.
         if (Number(recuerdosCtx?.por_avisar) > 0) {
@@ -617,7 +635,7 @@ export function createHandler(deps: HandlerDeps) {
         if (recuerdosNuevos.length) payload.recuerdos = avisosRecuerdo(recuerdosNuevos);
         const registro = await safely(() => supabase.rpc("aria_conversacion_registrar", {
           p_empresa_id: body.empresa_id, p_conversacion_id: conversacionId, p_pregunta: body.pregunta, p_respuesta: String(payload.respuesta ?? ""),
-          p_extra: extraDelTurno(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : [], payload.opciones ?? null, payload.borrador ?? null, payload.recuerdos ?? null),
+          p_extra: extraDelTurno(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : [], payload.opciones ?? null, payload.borrador ?? null, payload.recuerdos ?? null, payload.destino ?? null),
         }));
         const datos = registro.data as { conversacion_id?: string; tarea?: TareaResumen | null } | null;
         if (!registro.error && datos?.conversacion_id) {
@@ -636,6 +654,7 @@ export function createHandler(deps: HandlerDeps) {
     let guardActivated = false;
     let cifraRetryUsed = false;
     let recordarRetryUsed = false;
+    let manualRetryUsed = false;
     let retryToolChoice: string | undefined;
     const cifrasNeutral = "No pude verificar las cifras de esa respuesta. ¿Puedes hacer la consulta por partes?";
     const extra = () => ({ ...(borrador ? { borrador } : {}), ...(opciones && !borrador ? { opciones } : {}), ...(evalModel ? { modelo: model, tokens_entrada: tokensIn, tokens_salida: tokensOut, respaldo } : {}) });
@@ -710,6 +729,13 @@ export function createHandler(deps: HandlerDeps) {
             recordarRetryUsed = true;
             retryToolChoice = "required";
             messages.push({ role: "system", content: "La persona pidió que recuerdes algo. Antes de responder, guárdalo con aria_recuerdo_guardar (una sola frase en segunda persona, sin montos). No digas que lo recordarás sin haberlo guardado." });
+            continue;
+          }
+          // Pregunta de cómo o dónde se hace algo: Aria no responde de memoria de la conversación; consulta el manual vigente.
+          if (!manualRetryUsed && !toolsUsed.length && pideManual(body.pregunta)) {
+            manualRetryUsed = true;
+            retryToolChoice = "required";
+            messages.push({ role: "system", content: "Es una pregunta sobre cómo o dónde se hace algo en el ERP. Antes de responder consulta asistente_consultar_manual ahora, aunque ya hayas respondido algo parecido en esta conversación: el manual pudo cambiar y tu respuesta anterior pudo estar incompleta. Si pregunta por qué no puede hacer algo, usa aria_diagnosticar_acceso." });
             continue;
           }
           const canVerifyFinancialAnswer = toolsUsed.length > 0 || toolCallsAttempted || finalRound;
@@ -801,7 +827,7 @@ export function createHandler(deps: HandlerDeps) {
           }
           else {
             if (spec.name === "asistente_consultar_manual") {
-              rpc.data = await ampliarManual(rpc.data as Record<string, unknown> | null, toolArgs);
+              rpc.data = await ubicarManual(await ampliarManual(rpc.data as Record<string, unknown> | null, toolArgs));
               if (deps.waitUntil) deps.waitUntil(indexarManual().catch(() => undefined));
             }
             // Manual sin respuesta: se registra la pregunta original para el resumen diario a soporte.

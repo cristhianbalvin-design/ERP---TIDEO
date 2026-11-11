@@ -93,7 +93,42 @@ export function avisosRecuerdo(lista: unknown): AvisoRecuerdo[] {
 }
 
 // Lo que se guarda junto a la respuesta para poder redibujarla igual al retomar la conversación.
-export function extraDelTurno(herramientas: string[], opciones: unknown, borrador: unknown, recuerdos?: unknown): Record<string, unknown> {
+export function extraDelTurno(herramientas: string[], opciones: unknown, borrador: unknown, recuerdos?: unknown, destino?: unknown): Record<string, unknown> {
   const avisos = avisosRecuerdo(recuerdos);
-  return { herramientas: [...new Set(herramientas)], ...(opciones ? { opciones } : {}), ...(borrador ? { borrador } : {}), ...(avisos.length ? { recuerdos: avisos } : {}) };
+  return { herramientas: [...new Set(herramientas)], ...(opciones ? { opciones } : {}), ...(borrador ? { borrador } : {}), ...(avisos.length ? { recuerdos: avisos } : {}), ...(destino ? { destino } : {}) };
+}
+
+const sinTildes = (texto: unknown): string => String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+// ¿La persona pregunta cómo o dónde se hace algo en el ERP? Entonces Aria debe consultar el manual en este turno,
+// aunque ya haya respondido algo parecido antes en la conversación (el manual pudo cambiar).
+export function pideManual(texto: unknown): boolean {
+  const t = sinTildes(texto);
+  if (/\b(como|donde)\s+(estas|esta\s+todo|te\s+va|va\s+todo|vamos|andas|te\s+llamas|amaneciste)\b/.test(t)) return false;
+  return /\b(como|donde|por\s+donde|desde\s+donde)\s+(se|puedo|podria|debo|hago|hacer|hay\s+que|uso|usar|funciona|registro|registrar|creo|crear|subo|subir|cargo|cargar|importo|importar|genero|generar|emito|emitir|apruebo|aprobar|anulo|anular|configuro|configurar|cierro|cerrar|asigno|asignar|encuentro|encontrar|veo|ver|agrego|agregar|edito|editar|elimino|eliminar|descargo|descargar|exporto|exportar)\b/.test(t)
+    || /\b(en\s+que\s+(pantalla|parte|modulo|menu)|que\s+pasos|cuales\s+son\s+los\s+pasos|para\s+que\s+sirve|por\s+que\s+no\s+(puedo|me\s+deja|me\s+aparece|veo))\b/.test(t);
+}
+
+export type DestinoManual = { app: string; ruta: string; titulo: string; donde: string };
+
+// Destinos válidos que devuelve aria_manual_rutas (solo Administración y Operaciones, textos simples).
+export function destinosManual(lista: unknown): DestinoManual[] {
+  if (!Array.isArray(lista)) return [];
+  return lista.filter((d): d is DestinoManual => !!d && typeof d === "object"
+    && ((d as DestinoManual).app === "admin" || (d as DestinoManual).app === "operaciones")
+    && /^[a-z0-9_-]{1,60}$/i.test(String((d as DestinoManual).ruta ?? ""))
+    && typeof (d as DestinoManual).titulo === "string" && typeof (d as DestinoManual).donde === "string")
+    .map(d => ({ app: d.app, ruta: d.ruta, titulo: d.titulo.slice(0, 80), donde: d.donde.slice(0, 160) }));
+}
+
+// El botón "Ir a…" lleva a la pantalla que la respuesta nombra primero; si no nombra ninguna, a la de la ficha más afín.
+export function elegirDestino(respuesta: unknown, destinos: DestinoManual[]): DestinoManual | null {
+  if (!destinos.length) return null;
+  const texto = sinTildes(respuesta);
+  let mejor: DestinoManual | null = null; let posicion = Infinity;
+  for (const d of destinos) {
+    const i = texto.indexOf(sinTildes(d.titulo));
+    if (i >= 0 && i < posicion) { mejor = d; posicion = i; }
+  }
+  return mejor ?? destinos[0];
 }

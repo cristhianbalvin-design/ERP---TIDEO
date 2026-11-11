@@ -6,7 +6,7 @@ import { hablar } from '../lib/ariaHabla.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
-import { abrirConversacion, avisosDeRecuerdo, borrarRecuerdo, conversacionActual, etiquetaRetomada, mensajesDelPanel } from '../services/ariaMemoriaService.js';
+import { abrirConversacion, avisosDeRecuerdo, borrarRecuerdo, conversacionActual, destinoValido, etiquetaRetomada, mensajesDelPanel } from '../services/ariaMemoriaService.js';
 import AriaConversaciones from './AriaConversaciones.jsx';
 import AriaRecuerdos from './AriaRecuerdos.jsx';
 
@@ -75,7 +75,7 @@ function opcionesValidas(opciones) {
   return items.length ? { titulo: opciones.titulo.slice(0, 80), items } : null;
 }
 
-export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false }) {
+export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false, onIr }) {
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
   const [pendientes, setPendientes] = useState(null);
@@ -170,6 +170,8 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     if (estado === 'pidiendo') callar();
   };
   const cerrar = () => { callar(); setAbierto(false); requestAnimationFrame(() => botonRef.current?.focus()); };
+  // Botón "Ir a…": abre la pantalla exacta; en pantallas angostas el chat se cierra para dejarla ver.
+  const irA = destino => { if (window.matchMedia?.('(max-width: 900px)').matches) { callar(); setAbierto(false); } onIr?.(destino); };
   const nuevaConversacion = () => { callar(); porVoz.current = false; setAvisoVoz(null); setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; setConversacionId(null); setRetomada(null); setVista('chat'); requestAnimationFrame(() => campoRef.current?.focus()); };
   const enviar = async (texto = pregunta, reintento = false) => {
     const contenido = String(texto || '').trim().slice(0, 1000);
@@ -185,7 +187,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     try {
       const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva }, conversacionId });
       if (typeof data?.conversacion_id === 'string') setConversacionId(data.conversacion_id);
-      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones), recuerdos: avisosDeRecuerdo(data?.recuerdos) }]);
+      setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones), recuerdos: avisosDeRecuerdo(data?.recuerdos), destino: destinoValido(data?.destino) }]);
       if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {
@@ -261,6 +263,10 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
               <div className="dx-asis-opciones-l">{mensaje.opciones.items.map(item => <button type="button" key={item.valor} className="dx-asis-opcion" disabled={agotada} onClick={() => enviar(item.valor)}>
                 <b>{item.etiqueta}</b>{item.detalle && <small>{item.detalle}</small>}
               </button>)}</div>
+            </div>}
+            {mensaje.role === 'assistant' && mensaje.destino && onIr && <div className="dx-asis-ir">
+              <button type="button" className="dx-asis-ir-b" onClick={() => irA(mensaje.destino)}><span>Ir a {mensaje.destino.titulo}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+              {mensaje.destino.donde && <small>{mensaje.destino.donde}</small>}
             </div>}
             {mensaje.role === 'assistant' && (mensaje.recuerdos || []).map(r => <div className={`dx-asis-rec${r.tipo === 'automatico' ? ' auto' : ''}`} key={r.id} role="status">
               {r.borrado ? <span>Recuerdo borrado.</span> : <><span><b>{r.tipo === 'automatico' ? 'Aria recordó:' : 'Guardado en tu memoria:'}</b> {r.texto}</span>

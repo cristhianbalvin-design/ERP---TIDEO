@@ -26,6 +26,11 @@ export function AriaOperaciones({ sesion, ruta }) {
   const nombre = usuario?.user_metadata?.nombre || usuario?.user_metadata?.full_name || usuario?.email?.split('@')[0] || '';
   const habilitado = sesion?.estado === 'listo' && Boolean(sesion?.empresaId);
   const sociedadId = sesion?.vistaConsolidada ? undefined : (sesion?.sociedadId || undefined);
+  // Botón "Ir a…" de Aria: navega dentro de Operaciones o abre la pantalla de Administración.
+  const ir = destino => {
+    if (destino.app === 'operaciones') window.location.hash = `/${destino.ruta}`;
+    else window.location.assign(`${(import.meta.env.VITE_ADMIN_APP_URL || '/').replace(/[?#].*$/, '')}?ir=1#${destino.ruta}`);
+  };
   return <AsistenteErpPanelBase empresaId={sesion?.empresaId} sociedadId={sociedadId} nombreUsuario={nombre}
-    habilitado={habilitado} pantallaActiva={pantalla} ocultarFab={ruta === 'inicio'} />;
+    habilitado={habilitado} pantallaActiva={pantalla} ocultarFab={ruta === 'inicio'} onIr={ir} />;
 }

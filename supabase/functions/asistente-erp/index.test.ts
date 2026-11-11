@@ -1028,6 +1028,46 @@ Deno.test("diagnóstico de acceso mapea pantalla y acción a su RPC", async () =
   equal(rpc.args.p_accion, "aprobar");
 });
 
+Deno.test("manual añade la ruta exacta a cada ficha y devuelve el destino del botón", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_consultar_manual" ? { data: { respuesta: "ok", busqueda: "todas_las_palabras", fichas: [{ clave: "cxc", pasos: [] }, { clave: "facturacion", pasos: [] }], truncado: false }, error: null }
+      : name === "aria_manual_rutas" ? { data: { cxc: [{ app: "admin", ruta: "cxc", titulo: "Cuentas por Cobrar", donde: "Administración › Administración › Cuentas por Cobrar" }], facturacion: [{ app: "admin", ruta: "facturacion", titulo: "Facturación", donde: "Administración › Administración › Facturación" }, { app: "movil", ruta: "x", titulo: "X", donde: "X" }] }, error: null }
+      : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "carga masiva facturas" }) } }] })
+      : completion({ role: "assistant", content: "Ve a Administración › Administración › Facturación y usa Carga masiva. También está en Cuentas por Cobrar." }),
+  });
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Por dónde se suben las facturas?" }));
+  equal(res.status, 200);
+  const rutas = x.calls.find(c => c.name === "aria_manual_rutas")!;
+  equal(JSON.stringify(rutas.args.p_claves), '["cxc","facturacion"]');
+  assert(String(x.aiCalls[1].find((m: any) => m.role === "tool")?.content).includes('"donde":["Administración › Administración › Facturación"]'));
+  const body = await res.json();
+  equal(body.destino.ruta, "facturacion");
+  equal(body.destino.app, "admin");
+});
+
+Deno.test("pregunta de cómo se hace sin consultar el manual obliga a consultarlo", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_consultar_manual" ? { data: { respuesta: "ok", busqueda: "todas_las_palabras", fichas: [{ clave: "nomina", pasos: [] }], truncado: false }, error: null } : { data: null, error: null },
+    ai: async () => ++n === 1 ? completion({ role: "assistant", content: "Como te dije antes, no se puede." })
+      : n === 2 ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "subir facturas" }) } }] })
+      : completion({ role: "assistant", content: "Se hace con Carga masiva." }),
+  });
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "por donde se suben masivamente las facturas de mis clientes" }));
+  equal(res.status, 200);
+  equal(x.aiToolChoices[1], "required");
+  equal((await res.json()).respuesta, "Se hace con Carga masiva.");
+});
+
+Deno.test("un saludo con cómo no obliga a consultar el manual", async () => {
+  const x = setup({ ai: async () => completion({ role: "assistant", content: "Bien, gracias." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola, ¿cómo estás?" }))).status, 200);
+  equal(x.aiCalls.length, 1);
+});
+
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
   const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
   const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;
