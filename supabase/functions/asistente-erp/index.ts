@@ -516,10 +516,11 @@ export function createHandler(deps: HandlerDeps) {
     ];
     // Memoria: si llega conversacion_id, el historial sale de la base (resumen + últimos 20 mensajes), no del navegador.
     let conversacionId: string | null = null;
-    let conversacion: { resumen?: unknown; mensajes?: Array<{ rol: string; contenido: string }>; dichos?: unknown[] } | null = null;
+    type ContextoConversacion = { resumen?: unknown; mensajes?: Array<{ rol: string; contenido: string }>; dichos?: unknown[] };
+    let conversacion: ContextoConversacion | null = null;
     if (body.conversacion_id && !evalModel) {
       const ctx = await safely(() => supabase.rpc("aria_conversacion_contexto", { p_conversacion_id: body.conversacion_id }));
-      if (!ctx.error && ctx.data && typeof ctx.data === "object" && !Array.isArray(ctx.data)) { conversacion = ctx.data as typeof conversacion; conversacionId = body.conversacion_id; }
+      if (!ctx.error && ctx.data && typeof ctx.data === "object" && !Array.isArray(ctx.data)) { conversacion = ctx.data as ContextoConversacion; conversacionId = body.conversacion_id; }
     }
     if (conversacion) {
       const resumen = sistemaResumen(conversacion.resumen);
@@ -531,7 +532,7 @@ export function createHandler(deps: HandlerDeps) {
       for (const m of body.historial ?? []) messages.push({ role: m.role, content: m.content });
     }
     const dichosPorLaPersona = conversacion
-      ? (Array.isArray(conversacion.dichos) ? conversacion.dichos : []).map(d => String(d ?? ""))
+      ? (Array.isArray(conversacion.dichos) ? conversacion.dichos : []).map((d: unknown) => String(d ?? ""))
       : (body.historial ?? []).filter((m: { role: string }) => m.role === "user").map((m: { content: string }) => String(m.content ?? ""));
     // Guarda el turno y, si toca, resume la conversación en segundo plano (no demora la respuesta).
     const resumirConversacion = async (id: string, tarea: TareaResumen) => {
