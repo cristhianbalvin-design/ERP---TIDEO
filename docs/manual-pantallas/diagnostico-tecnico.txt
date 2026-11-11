@@ -1,0 +1,14 @@
+clave: diagnostico_tecnico
+tipo: pantalla
+pantalla: diagnostico_tecnico
+catalogo: operaciones/diagnostico-tecnico
+titulo: Diagnóstico Técnico
+resumen: Evaluación técnica del equipo: hallazgos, trabajos, actividades, informe al cliente y hoja de costeo.
+componentes: operaciones-app/src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx#DiagnosticoTecnicoPage
+huella: e945eecb6f
+paso: 1 | pantalla=diagnostico_tecnico | permiso=ninguno | Elige si el diagnóstico es de Mantenimiento o de Fabricación y avanza por sus pasos con Siguiente; Abrir borrador retoma uno sin terminar.
+paso: 2 | pantalla=diagnostico_tecnico | permiso=ninguno | Registra lo encontrado con Agregar hallazgo y guárdalo con Guardar hallazgo.
+paso: 3 | pantalla=diagnostico_tecnico | permiso=ninguno | Arma los trabajos con Agregar trabajo y sus actividades con Agregar actividad. Un trabajo sin actividades ni tareas impide continuar: agrega una o quita el trabajo.
+paso: 4 | pantalla=diagnostico_tecnico | permiso=ninguno | Emitir diagnóstico lo cierra. Informe al cliente prepara el informe y Emitir informe lo emite.
+paso: 5 | pantalla=diagnostico_tecnico | permiso=ninguno | Generar hoja de costeo crea la Hoja de Costeo del diagnóstico; si ya existe, el botón la abre.
+paso: 6 | pantalla=diagnostico_tecnico | permiso=ninguno | Si la empresa operativa está en modo solo lectura no se pueden guardar diagnósticos.

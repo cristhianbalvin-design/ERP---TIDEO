@@ -1,0 +1,11 @@
+clave: presupuestos
+tipo: pantalla
+pantalla: presupuestos
+catalogo: admin/presupuestos
+titulo: Presupuesto vs Real
+resumen: Presupuestos por partida, su aprobación y su comparación con lo gastado.
+componentes: src/pages_fin.jsx#Presupuestos
+huella: 610c0f3670
+paso: 1 | pantalla=presupuestos | permiso=ninguno | Crea un presupuesto con Nuevo presupuesto y sus partidas con Agregar partida.
+paso: 2 | pantalla=presupuestos | permiso=ninguno | Agregar aprobador define quién debe aprobarlo, y Enviar a aprobación lo manda a revisión.
+paso: 3 | pantalla=presupuestos | permiso=ninguno | Los aprobadores usan Aprobar o Rechazar.

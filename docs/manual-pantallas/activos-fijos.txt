@@ -1,0 +1,12 @@
+clave: activos_fijos
+tipo: pantalla
+pantalla: activos_fijos
+catalogo: admin/activos_fijos
+titulo: Activos Fijos
+resumen: Registro de los activos fijos de la empresa, sus documentos y su baja.
+componentes: src/pages_fin.jsx#ActivosFijos
+huella: ba438c208f
+paso: 1 | pantalla=activos_fijos | permiso=ninguno | Registra un activo con Nuevo activo indicando nombre, fecha, valor y vida útil. Nuevo activo (Compras) lo registra además como compra en Compras / Gastos.
+paso: 2 | pantalla=activos_fijos | permiso=ninguno | Agregar doc adjunta documentos al activo y Editar cambia sus datos.
+paso: 3 | pantalla=activos_fijos | permiso=ninguno | Promover al Maestro lleva el activo al maestro de la empresa.
+paso: 4 | pantalla=activos_fijos | permiso=ninguno | Dar de baja retira el activo: debes indicar el motivo y confirmar con Confirmar baja.

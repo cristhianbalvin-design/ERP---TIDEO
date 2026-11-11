@@ -1,0 +1,11 @@
+clave: nueva_of
+tipo: pantalla
+pantalla: of
+catalogo: operaciones/produccion-crear-of
+titulo: Nueva OF
+resumen: Creación de una orden de fabricación a partir de la orden de servicio del cliente.
+componentes: operaciones-app/src/zahory-mock/pages/of/CrearOFPage.jsx#CrearOFPage
+huella: 4ff52824a1
+paso: 1 | pantalla=of | permiso=ninguno | La OF se crea a partir de la OS del cliente; Cambiar permite elegir otra.
+paso: 2 | pantalla=of | permiso=ninguno | La pantalla indica si la OS tiene Hoja de Costeo, que sirve de base a la orden.
+paso: 3 | pantalla=of | permiso=ninguno | Crear OF registra la orden. Si la OS ya tiene una, el botón dice Crear OF adicional.

@@ -1,0 +1,12 @@
+clave: detalle_of
+tipo: pantalla
+pantalla: of
+catalogo: operaciones/produccion-detalle-of
+titulo: Detalle de OF
+resumen: Ruta de tareas, materiales y aprobación de una orden de fabricación.
+componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
+huella: 3f49007a28
+paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
+paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
+paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
+paso: 4 | pantalla=of | permiso=ninguno | Aprobar OF aprueba la orden.

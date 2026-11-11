@@ -1,0 +1,11 @@
+clave: contratos_rental
+tipo: pantalla
+pantalla: contratos_alquiler
+catalogo: operaciones/contratos-rental
+titulo: Contratos Rental
+resumen: Contratos de alquiler de equipos y sus tarifas.
+componentes: operaciones-app/src/zahory-mock/pages/flota/ContratosRentalPage.jsx#ContratosRentalPage
+huella: b8f7626900
+paso: 1 | pantalla=contratos_alquiler | permiso=ninguno | Registra un alquiler con Nuevo contrato y Crear contrato.
+paso: 2 | pantalla=contratos_alquiler | permiso=ninguno | Cambiar tarifa modifica la tarifa y Guardar versión conserva el cambio como una nueva versión del contrato.
+paso: 3 | pantalla=contratos_alquiler | permiso=ninguno | Cambiar a cambia el estado del contrato.

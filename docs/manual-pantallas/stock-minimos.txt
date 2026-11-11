@@ -1,0 +1,11 @@
+clave: stock_minimos
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-alertas
+titulo: Stock mínimos & reposición
+resumen: Materiales bajo su mínimo y generación de la solicitud de compra.
+componentes: operaciones-app/src/zahory-mock/pages/wms/StockMinimosPage.jsx#StockMinimosPage
+huella: 126af95fbf
+paso: 1 | pantalla=inventario | permiso=ninguno | La lista muestra los materiales por debajo de su mínimo. Editar cambia los parámetros de reposición de un material.
+paso: 2 | pantalla=inventario | permiso=ninguno | Seleccionar sugeridos marca lo que conviene reponer.
+paso: 3 | pantalla=inventario | permiso=ninguno | Generar SOLPE crea la solicitud de compra con los materiales elegidos; Compras la ve en su bandeja.

@@ -1,0 +1,12 @@
+clave: tickets
+tipo: pantalla
+pantalla: tickets
+catalogo: admin/tickets
+titulo: Soporte y Tickets
+resumen: Registro y seguimiento de tickets de soporte hasta su resolución.
+componentes: src/pages_ops.jsx#Tickets
+huella: 9edc6256b1
+paso: 1 | pantalla=tickets | permiso=ninguno | Crea un ticket con Nuevo Ticket; el título es obligatorio. Puedes verlos en Kanban o en Lista y acotar con Filtros.
+paso: 2 | pantalla=tickets | permiso=ninguno | Dentro del ticket agrega comentarios al hilo y usa Adjuntar imagen para sumar evidencia.
+paso: 3 | pantalla=tickets | permiso=ninguno | Un ticket no se puede resolver hasta aprobar su control de calidad.
+paso: 4 | pantalla=tickets | permiso=ninguno | Reabrir ticket lo vuelve a abrir; debes escribir el motivo de la reapertura.

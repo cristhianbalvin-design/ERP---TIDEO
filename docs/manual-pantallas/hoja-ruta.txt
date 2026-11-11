@@ -1,0 +1,11 @@
+clave: hoja_ruta
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-ruta
+titulo: Hoja de Ruta
+resumen: Programación diaria de las rutas de transporte y logística.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/HojaDeRutaPage.jsx#HojaDeRutaPage
+huella: fb0b722c0a
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Crea una ruta del día y agrégale pedidos con Agregar; Nueva ruta de logística crea una ruta propia de logística.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Asignar define la unidad y el conductor de la ruta, y Editar la modifica.
+paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Hoja imprime la hoja de una ruta e Imprimir hojas del día las de todo el día.

@@ -1,0 +1,11 @@
+clave: devoluciones_almacen
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-devoluciones
+titulo: Devoluciones
+resumen: Ingreso de mercadería devuelta y su inspección.
+componentes: operaciones-app/src/zahory-mock/pages/wms/DevolucionesPage.jsx#DevolucionesPage
+huella: 895a94a0ee
+paso: 1 | pantalla=inventario | permiso=ninguno | Registrar devolución ingresa la mercadería devuelta por un cliente o por una OT; queda en cuarentena para inspección.
+paso: 2 | pantalla=inventario | permiso=ninguno | Revisa las cantidades de cada línea antes de registrar.
+paso: 3 | pantalla=inventario | permiso=ninguno | Cerrar inspección termina la revisión; en una devolución de venta, Administración recibe el aviso para emitir la nota de crédito.

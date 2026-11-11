@@ -1,0 +1,12 @@
+clave: servicios
+tipo: pantalla
+pantalla: servicios
+catalogo: admin/servicios
+titulo: Catalogo Servicios
+resumen: Catálogo de los servicios que la empresa vende y cotiza.
+componentes: src/pages_admin.jsx#Servicios
+huella: fb5e7f9dc7
+paso: 1 | pantalla=servicios | permiso=ninguno | Crea un servicio con Nuevo servicio. Si la familia no existe, Crear y seleccionar la crea en el momento.
+paso: 2 | pantalla=servicios | permiso=ninguno | Marca Recurrente mensual en los servicios que se cobran todos los meses.
+paso: 3 | pantalla=servicios | permiso=ninguno | Para cargar muchos servicios descarga la Plantilla y usa Importar Excel; solo se importan las filas válidas.
+paso: 4 | pantalla=servicios | permiso=ninguno | Eliminar borra un servicio y pide confirmación.

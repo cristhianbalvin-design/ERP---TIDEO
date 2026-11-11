@@ -1,0 +1,13 @@
+clave: rrhh_operativo
+tipo: pantalla
+pantalla: rrhh_operativo
+catalogo: admin/rrhh_operativo
+titulo: Personal Operativo
+resumen: Ficha del personal operativo: datos, contratos, jornada, documentos y amonestaciones.
+componentes: src/pages_ops.jsx#RRHH_Operativo
+huella: 8339f61f9c
+paso: 1 | pantalla=rrhh_operativo | permiso=ninguno | Registra a un trabajador con Nuevo Colaborador; Carga masiva registra a varios desde un archivo y Descargar Excel exporta la lista.
+paso: 2 | pantalla=rrhh_operativo | permiso=ninguno | Nuevo contrato registra su contrato y Renovar lo renueva. El contrato se puede enviar con Enviar a firma del trabajador y firmar con Firmar como empresa.
+paso: 3 | pantalla=rrhh_operativo | permiso=ninguno | Asignar jornada define su horario y Agregar cuenta registra sus datos bancarios.
+paso: 4 | pantalla=rrhh_operativo | permiso=ninguno | Un documento subido queda pendiente de aprobación por RRHH. Archivar documento lo conserva pero deja de estar vigente.
+paso: 5 | pantalla=rrhh_operativo | permiso=ninguno | Registrar amonestación deja constancia de una sanción; el motivo es obligatorio.

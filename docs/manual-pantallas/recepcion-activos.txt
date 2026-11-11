@@ -1,0 +1,13 @@
+clave: recepcion_activos
+tipo: pantalla
+pantalla: recepcion_activos_cliente
+catalogo: operaciones/recepcion-activos
+titulo: Recepción de Activos
+resumen: Ingreso al taller de los equipos del cliente, con su custodia y su diagnóstico.
+componentes: operaciones-app/src/zahory-mock/pages/RecepcionActivosClientePage.jsx#RecepcionActivosClientePage
+huella: 4923fe7cdf
+paso: 1 | pantalla=recepcion_activos_cliente | permiso=ninguno | Registra el ingreso con Nueva recepción: elige el cliente propietario, el tipo de activo, el activo, el almacén de custodia y la fecha de ingreso, que es obligatoria.
+paso: 2 | pantalla=recepcion_activos_cliente | permiso=ninguno | Si el equipo aún no existe usa Registrar como activo nuevo; para una maquinaria completa la marca y el modelo son obligatorios. El activo se crea al registrar la recepción.
+paso: 3 | pantalla=recepcion_activos_cliente | permiso=ninguno | Puedes adjuntar fotos; si alguna falla, la recepción se registra igual y la pantalla indica cuáles no se cargaron.
+paso: 4 | pantalla=recepcion_activos_cliente | permiso=ninguno | Abrir diagnóstico inicia la evaluación técnica del equipo y Ver informe PDF descarga el informe.
+paso: 5 | pantalla=recepcion_activos_cliente | permiso=ninguno | Si tu rol o la sociedad activa no lo permiten, la pantalla avisa que no puedes registrar ni editar recepciones.

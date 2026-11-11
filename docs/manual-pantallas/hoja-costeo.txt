@@ -1,0 +1,13 @@
+clave: hoja_costeo
+tipo: pantalla
+pantalla: hoja_costeo
+catalogo: admin/hoja_costeo_wizard
+titulo: Hoja de Costeo
+resumen: Costeo de un servicio: trabajos, materiales, gasto administrativo y margen, hasta su aprobación.
+componentes: src/pages_hoja_costeo_wizard.jsx#HojaCosteoWizard
+huella: c181c07274
+paso: 1 | pantalla=hoja_costeo | permiso=ninguno | Agrega los trabajos con Agregar trabajo: cada uno necesita tarea, cargo y horas mayores a cero. Si el cargo no tiene costo por hora, la pantalla lo avisa.
+paso: 2 | pantalla=hoja_costeo | permiso=ninguno | Agrega los materiales con Agregar material indicando descripción, cantidad, unidad y un costo unitario mayor a cero.
+paso: 3 | pantalla=hoja_costeo | permiso=ninguno | Define el porcentaje de gasto administrativo y el de margen; la suma de ambos debe ser menor a 100 %.
+paso: 4 | pantalla=hoja_costeo | permiso=ninguno | Si la hoja nació de un diagnóstico, Actualizar desde el diagnóstico trae sus cambios.
+paso: 5 | pantalla=hoja_costeo | permiso=ninguno | Usa Enviar a revisión; solo después se puede aprobar con Aprobar hoja. Crear nueva versión abre una versión nueva de la hoja y Generar cotización especial crea la cotización a partir de ella.

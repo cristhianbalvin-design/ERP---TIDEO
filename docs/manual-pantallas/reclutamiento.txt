@@ -1,0 +1,12 @@
+clave: reclutamiento
+tipo: pantalla
+pantalla: reclutamiento
+catalogo: admin/reclutamiento
+titulo: Reclutamiento
+resumen: Vacantes, candidatos y su avance hasta la contratación.
+componentes: src/pages_reclutamiento.jsx#Reclutamiento
+huella: a1ede63e31
+paso: 1 | pantalla=reclutamiento | permiso=ninguno | Crea una vacante con Crear vacante y comparte su Link publico para recibir postulaciones; Copiar lo copia.
+paso: 2 | pantalla=reclutamiento | permiso=ninguno | Registra a un candidato con Registrar. La vista Pipeline muestra en qué etapa está cada uno y Ver CV abre su hoja de vida.
+paso: 3 | pantalla=reclutamiento | permiso=ninguno | Invitar a esta vacante suma a la vacante a un candidato que ya está en el banco.
+paso: 4 | pantalla=reclutamiento | permiso=ninguno | Al contratar, la pantalla pregunta si el alta se crea como personal administrativo u operativo.

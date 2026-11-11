@@ -1,0 +1,11 @@
+clave: ordenes_fabricacion
+tipo: pantalla
+pantalla: of
+catalogo: operaciones/maestranza-of
+titulo: Órdenes de Fab. (OF)
+resumen: Bandeja de las órdenes de fabricación.
+componentes: operaciones-app/src/zahory-mock/pages/of/BandejaOFPage.jsx#BandejaOFPage
+huella: 6f1d2aaebd
+paso: 1 | pantalla=of | permiso=ninguno | La bandeja lista las órdenes de fabricación; Todas muestra todos los estados y Limpiar filtros quita los filtros.
+paso: 2 | pantalla=of | permiso=ninguno | Nueva OF abre el registro de una orden nueva.
+paso: 3 | pantalla=of | permiso=ninguno | Abre una orden para ver su ruta y sus materiales.

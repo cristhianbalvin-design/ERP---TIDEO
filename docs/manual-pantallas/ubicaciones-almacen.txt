@@ -1,0 +1,11 @@
+clave: ubicaciones_almacen
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-ubicaciones
+titulo: Ubicaciones
+resumen: Ubicaciones físicas del almacén.
+componentes: operaciones-app/src/zahory-mock/pages/UbicacionesPage.jsx#UbicacionesPage
+huella: 1fc2efb872
+paso: 1 | pantalla=inventario | permiso=ninguno | Crea una ubicación con Nueva ubicación; nace sin stock.
+paso: 2 | pantalla=inventario | permiso=ninguno | Editar cambia sus datos. Desactivar la retira del uso y Reactivar la devuelve.
+paso: 3 | pantalla=inventario | permiso=ninguno | Mostrar inactivas incluye en la lista las ubicaciones desactivadas.

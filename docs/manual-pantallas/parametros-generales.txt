@@ -1,0 +1,13 @@
+clave: parametros
+tipo: pantalla
+pantalla: parametros
+catalogo: admin/parametros
+titulo: Parametros Generales
+resumen: Configuración general de la empresa: sociedades, series, cuentas bancarias, tipo de cambio, feriados y nómina.
+componentes: src/pages_admin.jsx#Parametros
+huella: 980cef576e
+paso: 1 | pantalla=parametros | permiso=ninguno | Nueva sociedad registra cada sociedad de la empresa.
+paso: 2 | pantalla=parametros | permiso=ninguno | Las series de los documentos se crean con Agregar serie indicando documento y serie, y las cuentas bancarias con Agregar cuenta.
+paso: 3 | pantalla=parametros | permiso=ninguno | Guardar TC registra el tipo de cambio; Actualizar ahora lo trae de la fuente externa.
+paso: 4 | pantalla=parametros | permiso=ninguno | Agregar feriado suma un feriado con su fecha y su nombre.
+paso: 5 | pantalla=parametros | permiso=ninguno | Las secciones de nómina y de evaluaciones guardan sus propios parámetros, entre ellos las tasas de AFP con Editar tasa AFP.

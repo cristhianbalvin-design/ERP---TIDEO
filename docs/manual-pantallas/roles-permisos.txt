@@ -1,0 +1,12 @@
+clave: roles
+tipo: pantalla
+pantalla: roles
+catalogo: admin/roles
+titulo: Roles y Permisos
+resumen: Definición de roles y de lo que cada uno puede ver y hacer.
+componentes: src/pages_admin.jsx#Roles
+huella: 0186d2d3a6
+paso: 1 | pantalla=roles | permiso=ninguno | Crea un rol con Nuevo rol, o parte de uno existente con Clonar rol.
+paso: 2 | pantalla=roles | permiso=ninguno | Marca lo que el rol puede ver y hacer en cada pantalla y usa Guardar permisos.
+paso: 3 | pantalla=roles | permiso=ninguno | Como ve la app este rol? muestra la aplicación tal como la verá alguien con ese rol.
+paso: 4 | pantalla=roles | permiso=ninguno | Antes de eliminar un rol, Reasignar pasa sus usuarios a otro rol. Eliminar rol no se puede deshacer.

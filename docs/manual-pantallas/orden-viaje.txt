@@ -1,0 +1,11 @@
+clave: orden_viaje
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-crear-ov
+titulo: Nueva orden de viaje
+resumen: Registro de un viaje de transporte, desde una orden de servicio o como viaje directo.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/OrdenViajePage.jsx#OrdenViajePage
+huella: aa6bbffce0
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Elige si el viaje parte Desde OS del cliente o es un Viaje directo, y avanza con Siguiente.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Guardar borrador conserva el viaje sin programarlo; Guardar y programar lo deja programado.
+paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Si sales con cambios sin guardar, la pantalla pregunta si quieres Salir o Seguir editando.
