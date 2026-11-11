@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAnonKey } from "../_shared/supabaseKeys.ts";
 import { opcionesDeEgreso, type OpcionesRespuesta } from "./opciones.ts";
+import { extraDelTurno, leerResumen, promptResumen, sistemaResumen, type TareaResumen } from "./memoria.ts";
 
 const ALLOWED_ORIGIN = "https://erp.tideo.tech";
 const MAX_BODY_BYTES = 32_000;
@@ -94,6 +95,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_buscar_os_clientes", desc: "Busca órdenes de servicio de clientes por texto, estado, estado de producción y fecha de emisión (máximo 12 meses). 'activa' (o 'activo') y 'en_ejecucion' son estados distintos; para 'en ejecución' usa estado en_ejecucion, para 'activas' usa activa; si la persona pide 'vigentes' o no precisa, presenta ambos estados por separado sin sumarlos; no sumes estados distintos. Presenta importes solo cuando estén disponibles por permiso y no mezcles monedas.", params: [society(), s("texto", 200, true), s("estado", 80, true), e("estado_produccion", ["Evaluación", "Cotización", "Stand By", "Proceso", "Terminado", "No Procede", "Devolución", "Entregado", "Negociación"], true), d("desde", true), d("hasta", true), n("limite", true)] },
   { name: "asistente_resumen_os_clientes", desc: "Resume órdenes de servicio de clientes por estado normalizado, moneda y estado de producción. 'activa' (o 'activo') y 'en_ejecucion' son estados distintos; para 'en ejecución' usa estado en_ejecucion, para 'activas' usa activa; si la persona pide 'vigentes' o no precisa, presenta ambos estados por separado sin sumarlos; no sumes estados distintos. Presenta importes solo cuando estén disponibles por permiso y nunca mezcles monedas.", params: [society(), s("texto", 200, true)] },
   { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el resultado trae soporte_notificado, empieza exactamente con: 'Esto todavía no está en el manual de OPERA. Ya avisé al equipo de soporte para que lo documente; pronto estará disponible.' y luego da solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
+  { name: "aria_buscar_conversaciones", desc: "Busca en las conversaciones anteriores de esta persona con Aria (título, resumen y mensajes). Úsala cuando pregunte qué revisaron, consultaron o decidieron antes (ayer, la semana pasada, la vez anterior) o pida retomar un tema. Devuelve recuerdos, no datos vigentes: si necesita cifras actuales, vuelve a consultarlas con las herramientas de datos.", params: [s("texto", 100, true), n("limite", true)] },
   { name: "asistente_detalle_orden_compra", params: [id("oc_id"), society()] },
   { name: "asistente_buscar_recepciones", params: [id("orden_compra_id", true), d("desde", true), d("hasta", true), n("limite", true), society()] },
   { name: "asistente_buscar_materiales", params: [s("texto", 200, true), s("familia", 100, true), s("estado", 80, true), n("limite", true)] },
@@ -140,7 +142,8 @@ export type SupabaseLike = {
   rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown | null }>;
 };
 type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal, toolChoice?: string) => Promise<{ response: Response; data?: any }>;
-export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; callClaude?: ModelCall; env: (name: string) => string | undefined; now?: () => number };
+// waitUntil: deja terminar una tarea en segundo plano (resumen de la conversación) después de responder.
+export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; callClaude?: ModelCall; env: (name: string) => string | undefined; now?: () => number; waitUntil?: (tarea: Promise<unknown>) => void };
 
 // Adaptador Anthropic Messages <-> formato interno (estilo OpenAI) que usan las guardas y las pruebas.
 export function toAnthropicRequest(messages: Array<Record<string, unknown>>, tools: any[], model: string, toolChoice?: string, effort?: string): Record<string, unknown> {
@@ -364,7 +367,8 @@ async function safely<T extends { data: unknown; error: unknown }>(operation: ()
 function validatePayload(value: unknown): { ok: true; body: any } | { ok: false } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false };
   const b = value as Record<string, unknown>;
-  if (Object.keys(b).some(k => !["empresa_id", "sociedad_id", "pregunta", "historial", "contexto", "modelo_eval"].includes(k))) return { ok: false };
+  if (Object.keys(b).some(k => !["empresa_id", "sociedad_id", "pregunta", "historial", "contexto", "modelo_eval", "conversacion_id"].includes(k))) return { ok: false };
+  if (b.conversacion_id !== undefined && b.conversacion_id !== null && (typeof b.conversacion_id !== "string" || !UUID_RE.test(b.conversacion_id))) return { ok: false };
   if (b.modelo_eval !== undefined && !(MODELOS_EVAL as readonly unknown[]).includes(b.modelo_eval)) return { ok: false };
   if (typeof b.empresa_id !== "string" || !EMPRESA_ID_RE.test(b.empresa_id) || (b.sociedad_id !== undefined && (typeof b.sociedad_id !== "string" || !UUID_RE.test(b.sociedad_id)))) return { ok: false };
   if (typeof b.pregunta !== "string" || !b.pregunta.trim() || b.pregunta.length > 1000) return { ok: false };
@@ -510,8 +514,51 @@ export function createHandler(deps: HandlerDeps) {
       { role: "system", content: ESCRITURA_PROMPT },
       { role: "system", content: `Fecha de hoy en America/Lima: ${today}. Resuelve los periodos relativos desde esta fecha.` },
     ];
-    for (const m of body.historial ?? []) messages.push({ role: m.role, content: m.content });
-    const dichosPorLaPersona = (body.historial ?? []).filter((m: { role: string }) => m.role === "user").map((m: { content: string }) => String(m.content ?? ""));
+    // Memoria: si llega conversacion_id, el historial sale de la base (resumen + últimos 20 mensajes), no del navegador.
+    let conversacionId: string | null = null;
+    let conversacion: { resumen?: unknown; mensajes?: Array<{ rol: string; contenido: string }>; dichos?: unknown[] } | null = null;
+    if (body.conversacion_id && !evalModel) {
+      const ctx = await safely(() => supabase.rpc("aria_conversacion_contexto", { p_conversacion_id: body.conversacion_id }));
+      if (!ctx.error && ctx.data && typeof ctx.data === "object" && !Array.isArray(ctx.data)) { conversacion = ctx.data as typeof conversacion; conversacionId = body.conversacion_id; }
+    }
+    if (conversacion) {
+      const resumen = sistemaResumen(conversacion.resumen);
+      if (resumen) messages.push({ role: "system", content: resumen });
+      for (const m of Array.isArray(conversacion.mensajes) ? conversacion.mensajes : []) {
+        if ((m?.rol === "user" || m?.rol === "assistant") && typeof m.contenido === "string") messages.push({ role: m.rol, content: m.contenido.slice(0, 2000) });
+      }
+    } else {
+      for (const m of body.historial ?? []) messages.push({ role: m.role, content: m.content });
+    }
+    const dichosPorLaPersona = conversacion
+      ? (Array.isArray(conversacion.dichos) ? conversacion.dichos : []).map(d => String(d ?? ""))
+      : (body.historial ?? []).filter((m: { role: string }) => m.role === "user").map((m: { content: string }) => String(m.content ?? ""));
+    // Guarda el turno y, si toca, resume la conversación en segundo plano (no demora la respuesta).
+    const resumirConversacion = async (id: string, tarea: TareaResumen) => {
+      const pedido = promptResumen(tarea);
+      let datos: any;
+      try {
+        if (hasClaude) datos = (await deps.callClaude!(pedido, [], claudeModel, AbortSignal.timeout(CLAUDE_TIMEOUT_MS))).data;
+        else if (hasOpenAI) datos = (await deps.callOpenAI(pedido, [], openaiModel, AbortSignal.timeout(OPENAI_TIMEOUT_MS))).data;
+      } catch { return; }
+      const leido = leerResumen(datos?.choices?.[0]?.message?.content);
+      if (!leido) return;
+      await safely(() => supabase.rpc("aria_conversacion_guardar_resumen", { p_conversacion_id: id, p_titulo: leido.titulo, p_resumen: leido.resumen, p_hasta: tarea.hasta ?? 0 }));
+    };
+    const reply200 = async (payload: Record<string, unknown>) => {
+      if (!evalModel) {
+        const registro = await safely(() => supabase.rpc("aria_conversacion_registrar", {
+          p_empresa_id: body.empresa_id, p_conversacion_id: conversacionId, p_pregunta: body.pregunta, p_respuesta: String(payload.respuesta ?? ""),
+          p_extra: extraDelTurno(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : [], payload.opciones ?? null, payload.borrador ?? null),
+        }));
+        const datos = registro.data as { conversacion_id?: string; tarea?: TareaResumen | null } | null;
+        if (!registro.error && datos?.conversacion_id) {
+          payload.conversacion_id = datos.conversacion_id;
+          if (datos.tarea && deps.waitUntil) deps.waitUntil(resumirConversacion(datos.conversacion_id, datos.tarea).catch(() => undefined));
+        }
+      }
+      return reply(200, payload, origin, origins);
+    };
     const contextText = body.contexto ? `\nContexto de pantalla: ${safeJson(body.contexto)}` : "";
     messages.push({ role: "user", content: `${body.pregunta}${contextText}` });
     let rounds = 0;
@@ -578,10 +625,10 @@ export function createHandler(deps: HandlerDeps) {
               continue;
             }
             await audit("completado", "cifras_sin_respaldo", "Respuesta rechazada por cifras sin respaldo: " + answer.slice(0, 1100));
-            return reply(200, { respuesta: cifrasNeutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() }, origin, origins);
+            return await reply200({ respuesta: cifrasNeutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() });
           }
           await audit("completado", rpcFailed ? "rpc_error" : guardActivated ? "guarda_sin_herramienta" : null, answer.slice(0, 1200));
-          return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() }, origin, origins);
+          return await reply200({ respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() });
         }
         if (!calls.length) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
@@ -594,7 +641,7 @@ export function createHandler(deps: HandlerDeps) {
               continue;
             }
             await audit("completado", "cifras_sin_respaldo", "Respuesta rechazada por cifras sin respaldo: " + answer.slice(0, 1100));
-            return reply(200, { respuesta: cifrasNeutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() }, origin, origins);
+            return await reply200({ respuesta: cifrasNeutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() });
           }
           const rejectedToolQueryError = toolCallsAttempted && toolsUsed.length === 0 && QUERY_ERROR_RE.test(answer);
           if (!finalRound && !guardActivated && toolsUsed.length === 0 && (rejectedToolQueryError || (!toolCallsAttempted && hasGuardTrigger(answer, body.pregunta)))) {
@@ -606,10 +653,10 @@ export function createHandler(deps: HandlerDeps) {
           if (guardActivated && !toolsUsed.length) {
             const neutral = "No pude consultar los datos para responder eso. ¿Puedes reformular la pregunta?";
             await audit("completado", "guarda_sin_herramienta", neutral);
-            return reply(200, { respuesta: neutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [] }, origin, origins);
+            return await reply200({ respuesta: neutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [] });
           }
           await audit("completado", rpcFailed ? "rpc_error" : guardActivated ? "guarda_sin_herramienta" : null, answer.slice(0, 1200));
-          return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() }, origin, origins);
+          return await reply200({ respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)], ...extra() });
         }
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: calls, ...(Array.isArray(message._anthropic_content) ? { _anthropic_content: message._anthropic_content } : {}) });
         rounds++;
@@ -706,6 +753,7 @@ const handler = createHandler({
     global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false },
   }) as unknown as SupabaseLike,
   env: (name) => Deno.env.get(name),
+  waitUntil: (tarea) => (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime?.waitUntil(tarea),
   callOpenAI: async (messages, tools, model, signal, toolChoice) => {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST", signal, headers: { Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`, "Content-Type": "application/json" },

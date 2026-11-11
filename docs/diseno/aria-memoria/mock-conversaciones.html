@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aria · Memoria de conversación (mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A2B4A;--cyan:#00ACC1;--cyan-text:#0B4F5A;--cyan-bg:#E0F7FA;--muted:#6B7280;--line:#E4E7EB;--line-soft:#EEF0F3;--field:#C9CFD8;--page:#F4F6F8;--head:#F8F9FA;--card:#fff;--text:#1A2B4A;--user:#1A2B4A;--user-text:#fff;--amber:#8A4B00;--amber-bg:#FFF3E0}
+.dark{--navy:#E8EEF8;--cyan:#26C6DA;--cyan-text:#A5ECF5;--cyan-bg:#0E3A44;--muted:#9AA4B2;--line:#2A3447;--line-soft:#222B3B;--field:#3A465B;--page:#0F1624;--head:#18212F;--card:#141C2B;--text:#E8EEF8;--user:#26C6DA;--user-text:#06222A;--amber:#FFC27A;--amber-bg:#3A2A10}
+*{box-sizing:border-box}body{margin:0;font-family:'DM Sans',sans-serif;background:#d9dee5;color:#1A2B4A;padding:24px}
+body.dark{background:#060a12;color:#E8EEF8}
+.top{display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap}.top h1{font-family:Sora;font-size:18px;margin:0}.top button{height:40px;padding:0 14px;border-radius:10px;border:1px solid #C9CFD8;background:#fff;font:inherit;cursor:pointer}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.cap{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#5b6b80;margin:0 0 8px}
+.p{width:420px;height:760px;display:flex;flex-direction:column;overflow:hidden;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(26,43,74,.18)}
+.p.m{width:375px}
+.hd{flex:none;padding:14px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:10px;background:var(--head)}
+.av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#00ACC1,#1A2B4A);flex:none}
+.eb{color:var(--cyan-text);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.tt{font-family:Sora;font-size:18px;font-weight:600;margin-top:2px}
+.ib{width:40px;height:40px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.ib:hover{background:var(--line-soft)}.ib.on{border-color:var(--cyan);color:var(--cyan-text);background:var(--cyan-bg)}
+.acts{margin-left:auto;display:flex;gap:2px}
+.bd{flex:1;min-height:0;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--page)}
+.ret{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:var(--cyan-bg);color:var(--cyan-text);font-size:12.5px}
+.ret button{margin-left:auto;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer;min-height:32px}
+.msg{max-width:86%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}
+.me{align-self:flex-end;background:var(--user);color:var(--user-text);border-bottom-right-radius:4px}
+.ai{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+.sep{align-self:center;font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:8px;width:100%}.sep:before,.sep:after{content:"";flex:1;height:1px;background:var(--line)}
+.ft{flex:none;padding:12px 16px;border-top:1px solid var(--line-soft);display:flex;gap:8px;background:var(--card)}
+.in{flex:1;height:44px;border:1px solid var(--field);border-radius:10px;padding:0 12px;font:inherit;background:var(--card);color:var(--muted);display:flex;align-items:center}
+.sq{width:44px;height:44px;border-radius:10px;border:1px solid var(--field);display:grid;place-items:center;color:var(--cyan-text);background:var(--card)}
+.sq.pri{background:var(--navy);border-color:var(--navy);color:var(--card)}
+/* lista */
+.lh{display:flex;gap:8px;align-items:center}
+.search{flex:1;height:40px;border:1px solid var(--field);border-radius:10px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--card);color:var(--muted);font-size:13.5px}
+.nueva{height:40px;padding:0 12px;border-radius:10px;border:0;background:var(--navy);color:var(--card);font:inherit;font-weight:600;font-size:13px;white-space:nowrap;cursor:pointer}
+.grp{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 2px -4px}
+.row{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer;text-align:left}
+.row:hover{border-color:var(--cyan)}.row.act{border-color:var(--cyan);box-shadow:inset 3px 0 0 var(--cyan)}
+.row .ic{width:32px;height:32px;border-radius:9px;background:var(--cyan-bg);color:var(--cyan-text);display:grid;place-items:center;flex:none;font-size:15px}
+.row .ic.eg{background:var(--amber-bg);color:var(--amber)}
+.row b{display:block;font-size:13.5px;font-weight:600;line-height:1.3}
+.row p{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row .meta{margin-left:auto;text-align:right;font-size:11.5px;color:var(--muted);white-space:nowrap;padding-left:6px}
+.pill{display:inline-flex;align-items:center;gap:5px;margin-top:5px;padding:2px 8px;border-radius:999px;background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:600}
+.pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.empty{margin:auto;text-align:center;color:var(--muted);font-size:13.5px;max-width:260px}.empty b{display:block;color:var(--text);font-family:Sora;font-size:15px;margin-bottom:4px}
+.note{font-size:12px;color:var(--muted);text-align:center;padding:4px 0 0}
+mark{background:var(--cyan-bg);color:var(--cyan-text);border-radius:3px;padding:0 2px}
+</style>
+</head>
+<body>
+<div class="top"><h1>Aria · Memoria de conversación — mock para aprobación</h1>
+<button onclick="document.body.classList.toggle('dark');document.querySelectorAll('.p').forEach(p=>p.classList.toggle('dark'))">Claro / oscuro</button>
+<span style="font-size:13px;color:#5b6b80">Datos reales: tus preguntas a Aria de hoy (10/11/2026). Anchos: 420 px (escritorio) y 375 px (celular).</span></div>
+
+<div class="grid">
+<!-- A: chat retomado -->
+<div><p class="cap">A · Chat retomado al abrir Aria</p>
+<div class="p">
+ <div class="hd"><span class="av"></span><div><div class="eb">OPERA · Asistente</div><div class="tt">Aria</div></div>
+  <div class="acts"><button class="ib" title="Conversaciones anteriores" aria-label="Conversaciones anteriores">🕘</button><button class="ib" title="Nueva conversación" aria-label="Nueva conversación">＋</button><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="ret">↺ Retomando tu conversación de hoy, 4:48 p. m. <button>Empezar una nueva</button></div>
+  <div class="sep">Hoy</div>
+  <div class="msg me">registrar un egreso de caja chica por 100 soles, compra de guantes para taller</div>
+  <div class="msg ai">Claro, lo preparo. ¿De qué fondo sale el egreso? Si es para el taller, quizá sea Taller Ate.</div>
+  <div class="msg me">Del fondo Caja Chica Taller Ate</div>
+  <div class="msg ai">Ya tengo el fondo y el monto. Me falta la categoría del Estado de Resultados…</div>
+  <div class="msg me">CECO: 1010</div>
+  <div class="msg ai">Listo, el borrador está preparado, pero todavía no está registrado. Revísalo en la tarjeta y pulsa Confirmar.</div>
+ </div>
+ <div class="ft"><div class="in">Pregúntale a Aria…</div><div class="sq">🎤</div><div class="sq pri">→</div></div>
+</div></div>
+
+<!-- B: lista -->
+<div><p class="cap">B · Conversaciones anteriores</p>
+<div class="p">
+ <div class="hd"><button class="ib" aria-label="Volver al chat">←</button><div><div class="eb">Aria</div><div class="tt">Conversaciones</div></div>
+  <div class="acts"><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="lh"><div class="search">🔍 Buscar en tus conversaciones</div><button class="nueva">＋ Nueva</button></div>
+  <div class="grp">Hoy</div>
+  <div class="row act" role="button" tabindex="0"><span class="ic eg">S/</span><div><b>Egreso de guantes para taller</b><p>Fondo Caja Chica Taller Ate, S/ 100.00, Costos indirectos de taller, CECO 1010. Borrador sin confirmar.</p><span class="pill">Borrador pendiente</span></div><div class="meta">4:48 p. m.<br>12 mensajes</div></div>
+  <div class="row" role="button" tabindex="0"><span class="ic">?</span><div><b>Cómo aprobar una SOLPE y pasarla a OC</b><p>Atender la SOLPE, luego Generar OC en la Bandeja de Sourcing.</p></div><div class="meta">4:27 p. m.<br>2 mensajes</div></div>
+  <div class="row" role="button" tabindex="0"><span class="ic">≡</span><div><b>Pagos a Omar en octubre y noviembre</b><p>Sin depósitos en octubre; en noviembre un pasaje de S/ 10.00 en caja chica.</p></div><div class="meta">1:56 p. m.<br>8 mensajes</div></div>
+  <div class="row" role="button" tabindex="0"><span class="ic">≡</span><div><b>Saldo de caja chica</b><p>Dos fondos activos a cargo de Diego Saenz.</p></div><div class="meta">11:58 a. m.<br>4 mensajes</div></div>
+  <div class="grp">Esta semana</div>
+  <div class="row" role="button" tabindex="0"><span class="ic">≡</span><div><b>Categoría sugerida para un egreso</b><p>Revisión de categorías del Estado de Resultados.</p></div><div class="meta">lun 9<br>3 mensajes</div></div>
+  <div class="note">Se guardan 180 días · Solo tú ves tus conversaciones</div>
+ </div>
+</div></div>
+
+<!-- C: búsqueda y celular -->
+<div><p class="cap">C · Búsqueda en celular (375 px)</p>
+<div class="p m">
+ <div class="hd"><button class="ib" aria-label="Volver al chat">←</button><div><div class="eb">Aria</div><div class="tt">Conversaciones</div></div>
+  <div class="acts"><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="lh"><div class="search" style="color:var(--text)">🔍 omar</div><button class="nueva">＋ Nueva</button></div>
+  <div class="grp">1 resultado</div>
+  <div class="row" role="button" tabindex="0"><span class="ic">≡</span><div><b>Pagos a <mark>Omar</mark> en octubre y noviembre</b><p>…en noviembre un pasaje de S/ 10.00 con concepto "pasaje <mark>Omar</mark>"…</p></div><div class="meta">Hoy<br>1:56 p. m.</div></div>
+  <div class="grp" style="margin-top:14px">Sin resultados (otro ejemplo)</div>
+  <div class="empty"><b>No encontré conversaciones</b>Prueba con otra palabra, por ejemplo el nombre de un proveedor o un número de OC.</div>
+ </div>
+</div></div>
+</div>
+</body></html>

@@ -269,3 +269,32 @@ body:has(.dx-asis-fab[aria-expanded="true"]) .dxi-root .dxi-fab { visibility:hid
 .dx-asis-opcion:hover:not(:disabled) { border-color:var(--dx-asis-cyan); background:var(--dx-asis-cyan-bg); }
 .dx-asis-opcion:focus-visible { outline:2px solid var(--dx-asis-cyan); outline-offset:2px; }
 .dx-asis-opcion:disabled { opacity:.5; cursor:not-allowed; }
+/* Memoria de conversación: acciones de cabecera, franja de conversación retomada y lista de conversaciones */
+.dx-asis-head-acts { margin-left:auto; display:flex; gap:2px; }
+.dx-asis-head-acts .dx-asis-x, .dx-asis-x.dx-asis-back { margin-left:0; }
+.dx-asis-head { align-items:center; }
+.dx-asis-ret { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:10px; background:var(--dx-asis-cyan-bg); color:var(--dx-asis-cyan-text); font-size:12.5px; }
+.dx-asis-ret button { margin-left:auto; min-height:32px; border:0; background:none; color:inherit; font:inherit; font-weight:600; text-decoration:underline; cursor:pointer; white-space:nowrap; }
+.dx-asis-conv { gap:10px; }
+.dx-asis-conv-bar { display:flex; gap:8px; align-items:center; }
+.dx-asis-conv-search { flex:1; min-width:0; height:40px; display:flex; align-items:center; gap:8px; padding:0 12px; border:1px solid var(--dx-asis-field); border-radius:10px; background:var(--dx-asis-card); color:var(--dx-asis-muted); }
+.dx-asis-conv-search:focus-within { border-color:var(--dx-asis-cyan); box-shadow:0 0 0 3px var(--dx-asis-cyan-bg); }
+.dx-asis-conv-search input { flex:1; min-width:0; height:100%; border:0; outline:0; background:transparent; color:var(--dx-asis-text); font:inherit; font-size:13.5px; }
+.dx-asis-conv-nueva { height:40px; padding:0 12px; border:0; border-radius:10px; background:var(--dx-asis-navy); color:var(--dx-asis-card); font:inherit; font-size:13px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.dx-asis-conv-grp { margin:6px 2px -2px; color:var(--dx-asis-muted); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
+.dx-asis-conv-row { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--dx-asis-line); border-radius:12px; background:var(--dx-asis-card); cursor:pointer; }
+.dx-asis-conv-row:hover { border-color:var(--dx-asis-cyan); }
+.dx-asis-conv-row.is-act { border-color:var(--dx-asis-cyan); box-shadow:inset 3px 0 0 var(--dx-asis-cyan); }
+.dx-asis-conv-row:focus-visible, .dx-asis-conv-nueva:focus-visible, .dx-asis-ret button:focus-visible { outline:2px solid var(--dx-asis-cyan); outline-offset:2px; }
+.dx-asis-conv-ic { width:32px; height:32px; flex:none; display:grid; place-items:center; border-radius:9px; background:var(--dx-asis-cyan-bg); color:var(--dx-asis-cyan-text); font-size:13px; font-weight:700; }
+.dx-asis-conv-ic.eg { background:var(--dx-asis-amber-bg); color:var(--dx-asis-amber); }
+.dx-asis-conv-tx { flex:1; min-width:0; }
+.dx-asis-conv-tx b { display:block; font-size:13.5px; font-weight:600; line-height:1.3; overflow-wrap:anywhere; }
+.dx-asis-conv-tx p { margin:3px 0 0; color:var(--dx-asis-muted); font-size:12.5px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.dx-asis-conv-tx mark { padding:0 2px; border-radius:3px; background:var(--dx-asis-cyan-bg); color:var(--dx-asis-cyan-text); }
+.dx-asis-conv-pill { display:inline-flex; align-items:center; gap:5px; margin-top:5px; padding:2px 8px; border-radius:999px; background:var(--dx-asis-amber-bg); color:var(--dx-asis-amber); font-size:11px; font-weight:600; }
+.dx-asis-conv-pill::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.dx-asis-conv-meta { flex:none; padding-left:6px; color:var(--dx-asis-muted); font-size:11.5px; line-height:1.5; text-align:right; white-space:nowrap; }
+.dx-asis-conv-empty { margin:auto; max-width:270px; color:var(--dx-asis-muted); font-size:13.5px; text-align:center; }
+.dx-asis-conv-empty b { display:block; margin-bottom:4px; color:var(--dx-asis-text); font-family:'Sora',sans-serif; font-size:15px; }
+.dx-asis-conv-note { margin:4px 0 0; color:var(--dx-asis-muted); font-size:12px; text-align:center; }

@@ -6,6 +6,8 @@ import { hablar } from '../lib/ariaHabla.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
+import { abrirConversacion, conversacionActual, etiquetaRetomada, mensajesDelPanel } from '../services/ariaMemoriaService.js';
+import AriaConversaciones from './AriaConversaciones.jsx';
 
 const LIMITE_DIARIO = 30;
 
@@ -81,6 +83,11 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
   }, []);
   const [pregunta, setPregunta] = useState('');
   const [mensajes, setMensajes] = useState([]);
+  // Memoria: conversación guardada en la base (se retoma si tiene menos de 24 h) y vista de conversaciones anteriores.
+  const [conversacionId, setConversacionId] = useState(null);
+  const [retomada, setRetomada] = useState(null);
+  const [vista, setVista] = useState('chat');
+  const memoriaCargada = useRef(null);
   const [error, setError] = useState(null);
   const [consultando, setConsultando] = useState(false);
   const [cuotaRestante, setCuotaRestante] = useState(null);
@@ -160,7 +167,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     if (estado === 'pidiendo') callar();
   };
   const cerrar = () => { callar(); setAbierto(false); requestAnimationFrame(() => botonRef.current?.focus()); };
-  const nuevaConversacion = () => { callar(); porVoz.current = false; setAvisoVoz(null); setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; requestAnimationFrame(() => campoRef.current?.focus()); };
+  const nuevaConversacion = () => { callar(); porVoz.current = false; setAvisoVoz(null); setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; setConversacionId(null); setRetomada(null); setVista('chat'); requestAnimationFrame(() => campoRef.current?.focus()); };
   const enviar = async (texto = pregunta, reintento = false) => {
     const contenido = String(texto || '').trim().slice(0, 1000);
     if (!contenido || consultando || agotada) return;
@@ -173,7 +180,8 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     callar();
     setError(null); setConsultando(true);
     try {
-      const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
+      const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva }, conversacionId });
+      if (typeof data?.conversacion_id === 'string') setConversacionId(data.conversacion_id);
       setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones) }]);
       if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
@@ -188,6 +196,26 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     if (solicitudApertura?.texto) enviar(solicitudApertura.texto);
   }, [solicitudApertura, habilitado, consultando]);
   const enviarForm = event => { event.preventDefault(); enviar(); };
+  const mostrarConversacion = (datos, comoRetomada) => {
+    if (!datos?.id) return false;
+    callar(); setError(null); ultimaConsulta.current = null;
+    setConversacionId(datos.id);
+    setMensajes(mensajesDelPanel(datos.mensajes));
+    setRetomada(comoRetomada ? { fecha: datos.actualizado_en } : null);
+    setVista('chat');
+    return true;
+  };
+  // Al abrir Aria por primera vez en esta empresa, retoma la conversación de las últimas 24 horas.
+  useEffect(() => {
+    if (!abierto || !empresaId || memoriaCargada.current === empresaId) return;
+    memoriaCargada.current = empresaId;
+    if (mensajes.length) return;
+    conversacionActual(empresaId).then(datos => mostrarConversacion(datos, true)).catch(() => undefined);
+  }, [abierto, empresaId]);
+  const abrirAnterior = id => {
+    if (id === conversacionId) { setVista('chat'); return; }
+    abrirConversacion(id).then(datos => mostrarConversacion(datos, false)).catch(() => setError({ status: 0, mensaje: 'No pude abrir esa conversación. Inténtalo de nuevo.' }));
+  };
 
   if (!habilitado) return null;
   return <div className="dx-asis">
@@ -196,11 +224,19 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
         <header className="dx-asis-head"><div className="dx-asis-ico" aria-hidden="true"><AriaLogo size={44} /></div>
-          <div><div className="dx-asis-eyebrow">OPERA · Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Aria</h2><div className="dx-asis-sub">Respeta tus permisos · confirma antes de registrar</div></div>
-          <button className="dx-asis-x" type="button" aria-label="Cerrar asistente" onClick={cerrar}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          {vista === 'lista'
+            ? <><button className="dx-asis-x dx-asis-back" type="button" aria-label="Volver al chat" onClick={() => setVista('chat')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
+              <div><div className="dx-asis-eyebrow">Aria</div><h2 className="dx-asis-title" id="dx-asis-title">Conversaciones</h2></div></>
+            : <div><div className="dx-asis-eyebrow">OPERA · Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Aria</h2><div className="dx-asis-sub">Respeta tus permisos · confirma antes de registrar</div></div>}
+          <div className="dx-asis-head-acts">
+          {vista === 'chat' && <><button className="dx-asis-x" type="button" aria-label="Conversaciones anteriores" title="Conversaciones anteriores" onClick={() => setVista('lista')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 103-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg></button>
+          <button className="dx-asis-x" type="button" aria-label="Nueva conversación" title="Nueva conversación" onClick={nuevaConversacion}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button></>}
+          <button className="dx-asis-x" type="button" aria-label="Cerrar asistente" onClick={cerrar}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
         </header>
         {contexto?.tipo && contexto?.id && <div className="dx-asis-ctx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg><span>Viendo: <b>{tituloContexto}</b></span></div>}
+        {vista === 'lista' ? <AriaConversaciones empresaId={empresaId} activaId={conversacionId} onAbrir={abrirAnterior} onNueva={nuevaConversacion} /> : <>
         <div ref={mensajesRef} className="dx-asis-body" aria-live="polite" aria-relevant="additions text">
+          {retomada && mensajes.length > 0 && <div className="dx-asis-ret" role="status"><span>Retomando tu conversación {etiquetaRetomada(retomada.fecha)}</span><button type="button" onClick={nuevaConversacion}>Empezar una nueva</button></div>}
           {!mensajes.length && <><div className="dx-asis-hello"><h3>{primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
           {mensajes.map((mensaje, index) => <React.Fragment key={`${index}-${mensaje.role}`}>
             <div className={`dx-asis-message ${mensaje.role === 'user' ? 'me' : 'ai'}`}>{mensaje.role === 'assistant' && <span className="dx-asis-mini" aria-hidden="true"><AriaLogo size={24} /></span>}<div className={`dx-asis-msg ${mensaje.role === 'user' ? 'me' : 'ai'}`}><TextoSeguro texto={mensaje.content} /></div></div>
@@ -228,6 +264,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
           <button className="dx-asis-send" type="submit" aria-label="Enviar pregunta" disabled={!pregunta.trim() || agotada || consultando || voz.estado === 'grabando' || voz.estado === 'transcribiendo'}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
           <div className="dx-asis-meta">{mensajes.length ? <button type="button" onClick={nuevaConversacion}>Nueva conversación</button> : <span className="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span>}{cuotaRestante !== null && <span>{Math.max(0, LIMITE_DIARIO - cuotaRestante)} de {LIMITE_DIARIO} hoy</span>}</div>
         </footer>
+        </>}
       </section>
     </>}
   </div>;
