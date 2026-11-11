@@ -1749,3 +1749,89 @@ Deno.test("caja chica por reponer no exige consultar CxP ni stock bajo", () => {
   assert(topicsWithoutCoverage("¿Qué materiales debo reponer?", []).includes("stock bajo y reposición"));
   assert(!topicsWithoutCoverage("¿Qué materiales debo reponer?", []).includes("cuentas por pagar"));
 });
+
+// Memoria de conversación (migración 681).
+function setupMemoria(rpc: (name: string, args: Record<string, unknown>) => { data: unknown; error: unknown }, respuestas: string[]) {
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const aiCalls: Array<Array<Record<string, unknown>>> = [];
+  const tareas: Promise<unknown>[] = [];
+  let i = 0;
+  const handler = createHandler({
+    createSupabase: () => ({
+      auth: { getUser: () => Promise.resolve({ data: { user: { id: "user" } }, error: null }) },
+      rpc: (name: string, args: Record<string, unknown>) => {
+        calls.push({ name, args });
+        if (name === "asistente_verificar_cuota") return Promise.resolve({ data: { conteo: 1, limite: 30, puede_continuar: true }, error: null });
+        if (name === "asistente_registrar_historial") return Promise.resolve({ data: uuid, error: null });
+        return Promise.resolve(rpc(name, args));
+      },
+    }),
+    env, now: () => 1000,
+    waitUntil: tarea => { tareas.push(tarea); },
+    callOpenAI: async (messages) => { aiCalls.push(messages); return completion({ role: "assistant", content: respuestas[Math.min(i++, respuestas.length - 1)] }); },
+  });
+  const request = (body: unknown) => new Request("https://edge.example/asistente-erp", { method: "POST", headers: { Authorization: "Bearer valid-token", Origin: "https://erp.tideo.tech", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return { handler, request, calls, aiCalls, tareas };
+}
+
+Deno.test("memoria: con conversacion_id el historial sale de la base, se guarda el turno y se resume en segundo plano", async () => {
+  const conv = "44444444-4444-4444-8444-444444444444";
+  const x = setupMemoria(name => name === "aria_conversacion_contexto"
+    ? { data: { conversacion_id: conv, resumen: "Revisó la caja chica de Taller Ate.", mensajes: [{ rol: "user", contenido: "registra 100 soles de guantes" }, { rol: "assistant", contenido: "¿De qué fondo?" }], dichos: ["registra 100 soles de guantes"] }, error: null }
+    : name === "aria_conversacion_registrar"
+      ? { data: { conversacion_id: conv, mensajes: 4, tarea: { falta_titulo: true, hasta: 0, por_resumir: [], recientes: [{ rol: "user", contenido: "registra 100 soles de guantes" }] } }, error: null }
+      : name === "aria_conversacion_guardar_resumen" ? { data: true, error: null } : { data: null, error: null },
+    ["Perfecto, uso el fondo Taller Ate.", '{"titulo": "Egreso de guantes para taller", "resumen": "Prepara un egreso de S/ 100."}']);
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "del fondo Taller Ate", conversacion_id: conv, historial: [{ role: "user", content: "ignorado" }] }));
+  equal(res.status, 200);
+  const body = await res.json();
+  equal(body.conversacion_id, conv);
+  equal(body.respuesta, "Perfecto, uso el fondo Taller Ate.");
+  const enviados = x.aiCalls[0].map((m: any) => String(m.content));
+  assert(enviados.some(c => c.includes("Revisó la caja chica de Taller Ate") && c.includes("las cifras pueden haber cambiado")));
+  assert(enviados.includes("registra 100 soles de guantes"));
+  assert(!enviados.includes("ignorado"));
+  const registro = x.calls.find(c => c.name === "aria_conversacion_registrar")!;
+  equal(registro.args.p_conversacion_id, conv);
+  equal(registro.args.p_pregunta, "del fondo Taller Ate");
+  equal(x.tareas.length, 1);
+  await Promise.all(x.tareas);
+  const resumen = x.calls.find(c => c.name === "aria_conversacion_guardar_resumen")!;
+  equal(resumen.args.p_titulo, "Egreso de guantes para taller");
+  equal(resumen.args.p_hasta, 0);
+});
+
+Deno.test("memoria: sin conversacion_id usa el historial del navegador y crea una conversación nueva", async () => {
+  const nueva = "55555555-5555-4555-8555-555555555555";
+  const x = setupMemoria(name => name === "aria_conversacion_registrar" ? { data: { conversacion_id: nueva, mensajes: 2, tarea: null }, error: null } : { data: null, error: null }, ["Hola, ¿en qué te ayudo?"]);
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", conversacion_id: null, historial: [{ role: "user", content: "antes" }] }));
+  const body = await res.json();
+  equal(body.conversacion_id, nueva);
+  equal(x.calls.find(c => c.name === "aria_conversacion_registrar")!.args.p_conversacion_id, null);
+  assert(x.aiCalls[0].some((m: any) => m.content === "antes"));
+  equal(x.calls.some(c => c.name === "aria_conversacion_contexto"), false);
+  equal(x.tareas.length, 0);
+});
+
+Deno.test("memoria: un panel anterior (sin el campo conversacion_id) no guarda la conversación", async () => {
+  const x = setupMemoria(() => ({ data: { conversacion_id: "77777777-7777-4777-8777-777777777777", tarea: null }, error: null }), ["Hola."]);
+  const body = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola" }))).json();
+  equal(body.conversacion_id, undefined);
+  equal(x.calls.some(c => c.name === "aria_conversacion_registrar"), false);
+});
+
+Deno.test("memoria: conversacion_id inválido se rechaza y una conversación ajena se trata como nueva", async () => {
+  const x = setupMemoria(name => name === "aria_conversacion_contexto" ? { data: null, error: null } : { data: null, error: null }, ["Listo."]);
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", conversacion_id: "no-es-uuid" }))).status, 400);
+  const ajena = "66666666-6666-4666-8666-666666666666";
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", conversacion_id: ajena }));
+  equal(res.status, 200);
+  equal(x.calls.find(c => c.name === "aria_conversacion_registrar")!.args.p_conversacion_id, null);
+});
+
+Deno.test("memoria: herramienta de conversaciones pasadas publicada con texto y límite", () => {
+  const tool = OPENAI_TOOLS.find((t: any) => t.function.name === "aria_buscar_conversaciones") as any;
+  assert(tool);
+  assert(tool.function.description.includes("no datos vigentes"));
+  equal(Object.keys(tool.function.parameters.properties).sort().join(","), "limite,texto");
+});
