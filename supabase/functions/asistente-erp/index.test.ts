@@ -1,5 +1,5 @@
 import { collectBackedNumbers, comparisonRanges, createHandler, ESCRITURA_PROMPT, extractMoneyAmounts, fromAnthropicResponse, toAnthropicRequest, hasUnsupportedMoney, isConceptText, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, topicsWithoutCoverage, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
-import { estadoResultadosAria, resumirEstadoResultados } from "./finanzas.ts";
+import { estadoResultadosAria, presupuestoRealAria, resumirEstadoResultados } from "./finanzas.ts";
 
 const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
@@ -1127,6 +1127,28 @@ Deno.test("el Estado de Resultados usa el cálculo de la pantalla y respeta el p
   equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuál fue la utilidad de octubre?" }))).status, 200);
   equal(recibido!.empresa, EMPRESA); equal(recibido!.p_periodo, "2026-10");
   assert(!x.calls.some(c => c.name === "asistente_estado_resultados"));
+});
+
+Deno.test("el presupuesto contra real usa el cálculo de la pantalla con los datos de la persona", async () => {
+  const tablas: Record<string, unknown[]> = {
+    empresas: [{ id: EMPRESA, multisociedad_habilitado: false }],
+    presupuestos: [{ id: "p1", empresa_id: EMPRESA, nombre: "Taller octubre", periodo: "2026-10", estado: "aprobado", sociedad_id: null }, { id: "p2", empresa_id: EMPRESA, nombre: "Otro mes", periodo: "2026-09" }],
+    presupuesto_partidas: [{ id: "a", presupuesto_id: "p1", categoria: "Materiales", monto_presupuestado: 1000, moneda: "PEN", orden: 1 }, { id: "b", presupuesto_id: "p1", categoria: "Mano de obra", monto_presupuestado: 500, moneda: "PEN", orden: 2 }],
+    compras_gastos: [{ empresa_id: EMPRESA, fecha: "2026-10-05", categoria: "Materiales", moneda: "PEN", monto: 1200 }, { empresa_id: EMPRESA, fecha: "2026-09-30", categoria: "Materiales", moneda: "PEN", monto: 999 }],
+    cxp: [], centros_costo: [], centros_beneficio: [],
+    ordenes_trabajo: [{ empresa_id: EMPRESA, numero: "OT-1", estado: "cerrado", fecha_cierre: "2026-10-20", costo_real: 300 }],
+  };
+  const consulta = (tabla: string) => { const q: any = { select: () => q, eq: () => q, order: () => q, in: () => q, then: (ok: (v: unknown) => unknown) => ok({ data: tablas[tabla] ?? [], error: null }) }; return q; };
+  const cliente = { from: consulta, rpc: () => Promise.resolve({ data: null, error: null }) };
+  const r = await presupuestoRealAria(cliente, EMPRESA, { p_periodo: "2026-10", p_sociedad_id: null });
+  const pres = (r.data as any).presupuestos;
+  equal(pres.length, 1); equal(pres[0].nombre, "Taller octubre");
+  equal(pres[0].presupuestado.PEN, 1500); equal(pres[0].ejecutado.PEN, 1500);
+  const materiales = pres[0].partidas.find((p: any) => p.categoria === "Materiales");
+  equal(materiales.ejecutado, 1200); equal(materiales.excedida, true); equal(materiales.ejecucion_pct, 120);
+  equal(pres[0].partidas.find((p: any) => p.categoria === "Mano de obra").ejecutado, 300);
+  assert((await presupuestoRealAria({ from: consulta, rpc: () => Promise.resolve({ data: null, error: { message: "Falta permiso" } }) }, EMPRESA, { p_periodo: "2026-10" })).error);
+  assert(OPENAI_TOOLS.some((tool: any) => tool.function.name === "asistente_presupuesto_real"));
 });
 
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
