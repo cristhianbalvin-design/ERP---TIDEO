@@ -1,0 +1,15 @@
+clave: problemas_corregir_registro
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/facturacion, admin/cxc
+titulo: Me equivoqué al registrar algo: cómo corregir o anular cada documento
+resumen: Guía rápida de qué se puede editar, qué se anula y qué no se puede deshacer, documento por documento.
+componentes: src/pages_fin.jsx#Facturacion, src/pages_fin.jsx#CxC
+huella: e697a23316 06993c9c6e
+paso: 1 | pantalla=ninguna | permiso=ninguno | Regla general: mientras un documento está en borrador se puede editar con libertad. Una vez emitido, aprobado o con movimientos de dinero, normalmente ya no se edita: se anula con un motivo y se registra de nuevo. Anular conserva el historial; eliminar borra el registro y suele estar permitido solo cuando el documento aún no generó nada.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Egreso de caja chica: en el fondo, Historial › Egresos, usa Editar para cambiar concepto, categoría, centro de costo, número de comprobante y fecha. El monto no se edita: si está mal, anula el egreso con su motivo y regístralo otra vez. El egreso anulado devuelve su monto al saldo.
+paso: 3 | pantalla=ninguna | permiso=ninguno | Gasto en Compras / Gastos: ábrelo y usa Editar. No se puede editar ahí si ya tiene una cuenta por pagar generada, si viene de nómina, si está en Caja Chica o si se capitalizó como activo fijo; la pantalla indica dónde corregirlo.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Orden de compra: se edita mientras está en borrador. Recepción: anularla revierte el stock que ingresó, y solo corresponde si la mercadería no llegó realmente. Cuenta por pagar: Anular conserva el historial y solo procede si no tiene pagos ni dependencias; una CxP preliminar se puede eliminar.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Factura a cliente: Editar corrige datos del comprobante; Anular la deja sin efecto y Restaurar la devuelve a emitida. Para corregir un importe ya facturado lo correcto es una Nota de Crédito o de Débito. En Cuentas por Cobrar, Revertir cobros deshace cobros y conciliaciones.
+paso: 6 | pantalla=ninguna | permiso=ninguno | Parte diario: si ya fue revisado, el supervisor usa Reabrir para editar. Marcación de asistencia: se corrige con un ajuste que exige motivo y aprobación. Préstamo o financiamiento: Editar recalcula las cuotas pendientes y no cambia las pagadas.
+paso: 7 | pantalla=ninguna | permiso=ninguno | Acciones que no se pueden deshacer y piden doble cuidado: eliminar un fondo de caja chica, eliminar un financiamiento con sus pagos, revocar una API key, eliminar un rol y cerrar un período de nómina.

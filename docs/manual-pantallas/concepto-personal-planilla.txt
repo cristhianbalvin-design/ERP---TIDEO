@@ -1,0 +1,14 @@
+clave: concepto_personal_planilla
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/nomina, admin/asistencia
+titulo: Cómo se conectan el personal, la asistencia y la planilla
+resumen: Explica qué necesita un trabajador para marcar y cobrar, y cómo la asistencia y las solicitudes llegan a la planilla.
+componentes: src/pages_ops.jsx#Nomina, src/pages_ops.jsx#ControlAsistencia
+huella: 21d2972451 ce8d288576
+paso: 1 | pantalla=ninguna | permiso=ninguno | Cada trabajador tiene una ficha en Personal Administrativo o en Personal Operativo, con su contrato, su cargo, su jornada, su cuenta bancaria y sus documentos. Al contratar desde Reclutamiento, el sistema pregunta en cuál de las dos se crea.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Para marcar asistencia el trabajador necesita un turno asignado en su ficha. Marca desde el celular; la geocerca define desde dónde es válido marcar, y si está fuera puede enviar un reporte para revisión. Sin señal, la marcación se guarda y se sincroniza al recuperar conexión.
+paso: 3 | pantalla=ninguna | permiso=ninguno | Las vacaciones, permisos y descansos se piden como solicitudes; una vez aprobadas, Aplicar a asistencia crea los registros de esos días para que no cuenten como falta. Una marcación errada se corrige con un ajuste, que exige motivo y aprobación.
+paso: 4 | pantalla=ninguna | permiso=ninguno | La planilla se calcula por período en Nómina: se crea el período y se calcula con Procesar; si se paga por quincenas, la primera quincena se procesa antes que la segunda. Los ingresos o descuentos extraordinarios se registran antes de cerrar. Al cerrar el período se generan los egresos de la planilla, por eso conviene revisar las boletas antes.
+paso: 5 | pantalla=ninguna | permiso=ninguno | El trabajador ve sus boletas en Mi portal, después de registrar su consentimiento de entrega electrónica. Ahí también sube su contrato firmado y pide constancias, horas extra, vacaciones y permisos.
+paso: 6 | pantalla=ninguna | permiso=ninguno | Cuando un trabajador cesa, la Liquidación por Cese calcula lo que se le debe; al confirmarla se genera la cuenta por pagar y se bloquea su acceso al sistema.

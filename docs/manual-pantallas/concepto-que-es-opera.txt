@@ -1,0 +1,14 @@
+clave: concepto_que_es_opera
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/inicio
+titulo: Qué es OPERA y por dónde empezar
+resumen: Orientación para quien recién entra: qué hace el sistema, sus tres aplicaciones, cómo está organizado el menú y qué hacer el primer día.
+componentes: catalogo/pantallas.json
+huella: 3495e022a1
+paso: 1 | pantalla=ninguna | permiso=ninguno | OPERA es el sistema donde la empresa lleva todo su trabajo en un solo lugar: lo que vende, lo que compra, lo que cobra y paga, su personal, su taller, su almacén, su flota y su transporte. Lo que una persona registra en un módulo lo usan los demás: por ejemplo, una cotización aprobada se vuelve orden de servicio, la orden genera trabajo en el taller, el trabajo terminado se valoriza y se factura, y la factura queda como cuenta por cobrar.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Tiene tres aplicaciones, que eliges al entrar en la pantalla Elige una aplicación. Administración es para oficina: comercial, compras, finanzas, RRHH y configuración. Operaciones es para el trabajo operativo: órdenes de trabajo del taller, almacén, flota y alquileres, transporte y producción. Control de asistencia y la versión móvil son para el celular: marcar asistencia, registrar partes, aprobar y vender en campo.
+paso: 3 | pantalla=ninguna | permiso=ninguno | En Administración el menú se agrupa por área: Inicio, CRM & Marketing, Comercial, Compras, Logística, Operaciones, Administración (finanzas), RRHH, Customer Success, Dashboards y Configuración. Solo ves las áreas y pantallas que tu rol permite; si no ves algo, no es un error: tu rol no lo tiene asignado y lo habilita el administrador de tu empresa en Roles y Permisos.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Empieza siempre por Inicio: muestra lo que tienes pendiente hoy (aprobaciones, documentos por atender, avisos) y un botón para ir directo a cada cosa. Ahí mismo puedes preguntarle a Aria.
+paso: 5 | pantalla=ninguna | permiso=ninguno | El primer día conviene: revisar tu ficha y tus documentos en Mi portal, marcar tu asistencia si te corresponde, y pedirle a Aria que te explique la pantalla donde estás. Aria te dice la ruta exacta de cada pantalla y te lleva con el botón Ir a.
+paso: 6 | pantalla=ninguna | permiso=ninguno | Casi todas las pantallas funcionan igual: una lista con buscador y filtros, un botón para crear (Nuevo…), y al abrir un registro ves su detalle con las acciones permitidas según su estado. Los indicadores de arriba de cada lista suelen servir también como filtro al tocarlos.

@@ -1,0 +1,15 @@
+clave: problemas_saldo_banco
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/tesoreria
+titulo: No me cuadra el saldo del banco con el sistema: qué revisar
+resumen: Pasos para encontrar por qué el saldo de una cuenta en Tesorería no coincide con el del banco.
+componentes: src/pages_fin.jsx#Tesoreria
+huella: b0397fbc8c
+paso: 1 | pantalla=ninguna | permiso=ninguno | El saldo de una cuenta en el sistema es su saldo inicial más todos los movimientos registrados. Si no coincide con el banco, falta un movimiento, sobra uno, hay uno duplicado o el saldo inicial está mal.
+paso: 2 | pantalla=ninguna | permiso=ninguno | Primero importa el extracto del banco en Tesorería › Extracto banco con Importar extracto, y ve a Match Bancario: lo que queda sin emparejar de un lado o del otro es exactamente la diferencia.
+paso: 3 | pantalla=ninguna | permiso=ninguno | Movimiento del banco sin pareja en el sistema: falta registrarlo. Si es un cobro o un pago, regístralo en su módulo (Cuentas por Cobrar o Cuentas por Pagar); si es una comisión bancaria, un interés u otro movimiento que no viene de un módulo, usa Movimiento manual.
+paso: 4 | pantalla=ninguna | permiso=ninguno | Movimiento del sistema sin pareja en el banco: puede ser un pago registrado que el banco aún no procesa, un registro en la cuenta equivocada o un duplicado. Revisa cuenta, fecha e importe antes de confirmar un match; un match equivocado se puede deshacer.
+paso: 5 | pantalla=ninguna | permiso=ninguno | Si importaste el mismo extracto dos veces, el historial de lotes permite borrar el lote cargado por error.
+paso: 6 | pantalla=ninguna | permiso=ninguno | Si todo está emparejado y aun así hay diferencia desde el primer día, corrige el saldo con el que empezó la cuenta con Editar saldo inicial.
+paso: 7 | pantalla=ninguna | permiso=ninguno | El dinero que pasa de una cuenta propia a otra se registra como Transferencia entre cuentas, no como un egreso y un ingreso sueltos: así no distorsiona los gastos.
