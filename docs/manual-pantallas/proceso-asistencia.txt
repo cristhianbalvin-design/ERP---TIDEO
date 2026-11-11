@@ -1,0 +1,16 @@
+clave: proceso_asistencia
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/turnos, admin/asistencia, admin/solicitudes_rrhh
+titulo: Turnos, asistencia y solicitudes del personal
+resumen: Sigue el control de asistencia: turnos, marcaciones, geocercas, ajustes, vacaciones y permisos, y el reporte del mes.
+componentes: src/pages_turnos.jsx#TurnosHorarios, src/pages_ops.jsx#ControlAsistencia, src/pages_ops.jsx#SolicitudesRrhh
+huella: 0f9bfb4e97 ce8d288576 fe86ec31ab
+pantalla_recorrido: turnos,asistencia,solicitudes_rrhh
+paso: 1 | pantalla=turnos | permiso=ninguno | Crea los horarios con Nuevo turno. Un turno que ya usan trabajadores o que tiene asistencias no se puede eliminar: edítalo y cambia su estado a Inactivo.
+paso: 2 | pantalla=asistencia | permiso=ninguno | Cada trabajador necesita un turno asignado antes de marcar asistencia; se le asigna desde su ficha en Personal.
+paso: 3 | pantalla=asistencia | permiso=ninguno | Las marcaciones llegan del Reloj Control (Móvil). También puedes registrarlas a mano, con Registro masivo o con Importar marcaciones desde un archivo.
+paso: 4 | pantalla=asistencia | permiso=ninguno | Las geocercas definen dónde se puede marcar: se crean con nombre, latitud y longitud, o dibujando en el mapa un polígono de al menos tres vértices.
+paso: 5 | pantalla=asistencia | permiso=ninguno | Para corregir una marcación se pide un ajuste indicando el motivo, que es obligatorio; quien aprueba usa Aprobar o Rechazar.
+paso: 6 | pantalla=solicitudes_rrhh | permiso=ninguno | Las vacaciones y permisos se piden con Nueva solicitud; el sistema avisa si no alcanza el saldo de vacaciones. Una solicitud aprobada se pasa a la asistencia con Aplicar a asistencia.
+paso: 7 | pantalla=asistencia | permiso=ninguno | Para cerrar el mes usa Reporte mensual y Exportar Excel.

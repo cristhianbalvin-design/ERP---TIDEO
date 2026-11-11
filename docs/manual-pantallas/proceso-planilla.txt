@@ -1,0 +1,17 @@
+clave: proceso_planilla
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/reclutamiento, admin/rrhh_admin, admin/rrhh_operativo, admin/nomina, admin/liquidaciones_cese
+titulo: Del ingreso de un trabajador al pago de planilla y su cese
+resumen: Sigue a un trabajador desde la vacante y su alta, con contrato y jornada, hasta el proceso y cierre de la nómina y la liquidación por cese.
+componentes: src/pages_reclutamiento.jsx#Reclutamiento, src/pages_admin.jsx#RRHHAdmin, src/pages_ops.jsx#RRHH_Operativo, src/pages_ops.jsx#Nomina, src/pages_liquidaciones.jsx#LiquidacionesCese
+huella: a1ede63e31 2883372074 8339f61f9c 21d2972451 8409cfda1b
+pantalla_recorrido: reclutamiento,rrhh_admin,rrhh_operativo,nomina,liquidaciones_cese
+paso: 1 | pantalla=reclutamiento | permiso=ninguno | Crea la vacante y comparte su Link publico para recibir postulaciones. Registra a los candidatos y sigue su avance en la vista Pipeline; Ver CV abre la hoja de vida.
+paso: 2 | pantalla=rrhh_admin | permiso=ninguno | Da de alta al trabajador administrativo con Nuevo colaborador. Registra su contrato con Nuevo contrato; el contrato se puede enviar con Enviar a firma del trabajador y firmar con Firmar como empresa.
+paso: 3 | pantalla=rrhh_admin | permiso=ninguno | Completa la ficha: Asignar jornada define su horario y Agregar cuenta registra sus datos bancarios. Los contratos se renuevan con Renovar.
+paso: 4 | pantalla=rrhh_operativo | permiso=ninguno | El personal operativo se registra igual en Personal Operativo con Nuevo Colaborador; para muchos trabajadores usa Carga masiva.
+paso: 5 | pantalla=nomina | permiso=ninguno | Crea el período con Nuevo período y calcula la planilla con Procesar. Si pagas por quincenas, debes procesar la primera quincena antes de la segunda.
+paso: 6 | pantalla=nomina | permiso=ninguno | Registra lo extraordinario con Nuevo ingreso y Nuevo descuento. Boleta descarga la boleta en PDF de cada trabajador y Descargar Excel PLAME genera el archivo del período.
+paso: 7 | pantalla=nomina | permiso=ninguno | Cierra el período con Confirmar cierre. El período debe estar procesado y, cuando corresponde gratificación, primero debes confirmar la gratificación real. Al cerrar se generan los egresos de la planilla.
+paso: 8 | pantalla=liquidaciones_cese | permiso=ninguno | Cuando un trabajador cesa usa Nueva liquidación: elige al colaborador, el tipo de cese y la fecha de cese, que no puede ser anterior a su fecha de ingreso. Al confirmar se genera la cuenta por pagar y se bloquea su acceso al sistema.

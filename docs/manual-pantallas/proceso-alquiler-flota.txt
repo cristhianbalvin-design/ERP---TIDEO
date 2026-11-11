@@ -1,0 +1,15 @@
+clave: proceso_alquiler_flota
+tipo: proceso
+pantalla: ninguna
+catalogo: operaciones/flota, operaciones/contratos-rental, operaciones/checkout, operaciones/liquidacion
+titulo: Alquiler de equipos: del contrato a la liquidación
+resumen: Sigue un alquiler de equipo: registro del equipo, contrato, acta de despacho y de recepción, partes diarios y liquidación mensual.
+componentes: operaciones-app/src/zahory-mock/pages/flota/FlotaPanelPage.jsx#FlotaPanelPage, operaciones-app/src/zahory-mock/pages/flota/ContratosRentalPage.jsx#ContratosRentalPage, operaciones-app/src/zahory-mock/pages/flota/ActasDespachosPage.jsx#ActasDespachosPage, operaciones-app/src/zahory-mock/pages/flota/LiquidacionFlotaPage.jsx#LiquidacionFlotaPage
+huella: a4bc77e2dd b8f7626900 b079728c36 a3c150a93e
+pantalla_recorrido: flota_panel,contratos_alquiler,actas_despachos,liquidacion_flota
+paso: 1 | pantalla=flota_panel | permiso=ninguno | El equipo propio se da de alta en el Panel de Flota con Registrar equipo.
+paso: 2 | pantalla=contratos_alquiler | permiso=ninguno | El alquiler se formaliza en Contratos Rental con Nuevo contrato. Si la tarifa cambia, Cambiar tarifa guarda una nueva versión del contrato.
+paso: 3 | pantalla=actas_despachos | permiso=ninguno | Al entregar el equipo usa Despachar equipo y emite el acta con Crear acta: completa el checklist (Cargar checklist sugerido trae uno base), marca cada punto como Conforme u Observado y cierra con Confirmar acta. Guardar borrador permite seguir después.
+paso: 4 | pantalla=actas_despachos | permiso=ninguno | Cuando el equipo regresa usa Recibir equipo y emite el acta de recepción de la misma forma. Un acta equivocada se deja sin efecto con Anular acta.
+paso: 5 | pantalla=liquidacion_flota | permiso=ninguno | En Liquidación & DMR registra cada día con Nuevo parte: las horas operadas, el horómetro y las paradas, que se agregan con Agregar parada.
+paso: 6 | pantalla=liquidacion_flota | permiso=ninguno | Al cierre del mes usa Liquidar un mes y Crear liquidación, que queda en borrador. Se manda con Enviar a revisión y quien revisa usa Aprobar o Devolver.

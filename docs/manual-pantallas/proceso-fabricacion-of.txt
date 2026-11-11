@@ -1,0 +1,14 @@
+clave: proceso_fabricacion_of
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/os_cliente, operaciones/produccion-crear-of, operaciones/produccion-detalle-of, operaciones/maestranza-of
+titulo: Fabricación con Orden de Fabricación (OF)
+resumen: Sigue un trabajo de fabricación desde la orden de servicio del cliente hasta la OF aprobada: creación, ruta de tareas, materiales y aprobación.
+componentes: src/pages_core.jsx#OSCliente, operaciones-app/src/zahory-mock/pages/of/CrearOFPage.jsx#CrearOFPage, operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage, operaciones-app/src/zahory-mock/pages/of/BandejaOFPage.jsx#BandejaOFPage
+huella: 90315ca39a 4ff52824a1 3f49007a28 6f1d2aaebd
+pantalla_recorrido: os_cliente,of
+paso: 1 | pantalla=os_cliente | permiso=ninguno | Cuando el trabajo vendido es una fabricación, en la OS Cliente usa Crear OF en lugar de Crear OT.
+paso: 2 | pantalla=of | permiso=ninguno | En Nueva OF, la orden parte de la OS del cliente y toma su Hoja de Costeo si la tiene. Crear OF la registra; si la OS ya tiene una, el botón dice Crear OF adicional.
+paso: 3 | pantalla=of | permiso=ninguno | En el detalle de la OF arma la Ruta con Agregar tarea y la lista de Materiales con Agregar material. Lo que no estaba previsto se agrega como Material no planificado.
+paso: 4 | pantalla=of | permiso=ninguno | Con la ruta y los materiales definidos usa Aprobar OF.
+paso: 5 | pantalla=of | permiso=ninguno | La bandeja Órdenes de Fab. lista todas las OF; fíltralas por estado y usa Limpiar filtros para verlas todas. Nueva OF también se abre desde ahí.
