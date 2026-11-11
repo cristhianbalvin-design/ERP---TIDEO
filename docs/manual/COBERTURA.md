@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 68 (88 %) | 21 (27 %) | 1 | 7 |
-| Operaciones | 120 | 47 (39 %) | 26 (22 %) | 0 | 63 |
+| Administración | 77 | 72 (94 %) | 21 (27 %) | 1 | 3 |
+| Operaciones | 120 | 49 (41 %) | 27 (23 %) | 0 | 61 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 124 (60 %) | 47 (23 %) | 1 | 70 |
+| **Total** | 206 | 130 (63 %) | 48 (23 %) | 1 | 64 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -46,7 +46,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Comercial | OS Cliente (`os_cliente`) | activa | os_cliente | proceso_cotizacion_cobro, proceso_fabricacion_of | 4 | — |
 | Comercial | Panel de Producción (`panel_produccion`) | activa | panel_produccion | proceso_cotizacion_cobro, proceso_fabricacion_of | 4 | — |
 | Comercial | Pipeline (`pipeline`) | activa | pipeline | proceso_lead_cotizacion | 3 | — |
-| Comercial | Recetas de actividad (`recetas_actividad`) | activa | — | — | — | — |
+| Comercial | Recetas de actividad (`recetas_actividad`) | activa | recetas_actividad | proceso_configuracion_inicial | — | — |
 | Compras | Compras (vista anterior) (`compras`) | legado | — | — | — | — |
 | Compras | Compras / Gastos (`compras_gastos`) | activa | compras_gastos | — | 4 | — |
 | Compras | Cotizaciones (`cot_compras`) | activa | cot_compras | — | 2 | — |
@@ -56,11 +56,11 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras | Recepciones (`recepciones`) | activa | recepciones | proceso_almacen, proceso_solpe_pago | 3 | — |
 | Compras | Bandeja de Sourcing (`sourcing_bandeja`) | activa | — | proceso_solpe_pago | 7 | — |
 | Configuración | Maestros Base (`maestros`) | activa | maestros | proceso_configuracion_inicial | — | — |
-| Configuración | Notificaciones (`notificaciones_config`) | activa | — | — | — | — |
+| Configuración | Notificaciones (`notificaciones_config`) | activa | notificaciones_config | proceso_configuracion_inicial | — | — |
 | Configuración | Organigrama (`organigrama`) | activa | organigrama | — | — | — |
 | Configuración | Parametros Generales (`parametros`) | activa | parametros | proceso_configuracion_inicial | — | — |
 | Configuración | Roles y Permisos (`roles`) | activa | roles | proceso_configuracion_inicial | — | — |
-| Configuración | Salud Implementacion (`salud_implementacion_tenant`) | activa | — | — | — | — |
+| Configuración | Salud Implementacion (`salud_implementacion_tenant`) | activa | salud_implementacion_tenant | proceso_configuracion_inicial | — | — |
 | Configuración | Catalogo Servicios (`servicios`) | activa | servicios | proceso_configuracion_inicial | — | — |
 | Configuración | Tarifarios (`tarifarios`) | maqueta | — | — | — | — |
 | Configuración | Usuarios (`usuarios`) | activa | usuarios | proceso_configuracion_inicial | — | — |
@@ -88,7 +88,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Operaciones | Soporte y Tickets (`tickets`) | activa | tickets | — | — | — |
 | Plataforma | Metricas SaaS (`metricas_saas`) | maqueta | — | — | — | — |
 | Plataforma | Planes y Licencias (`planes`) | maqueta | — | — | — | — |
-| Plataforma | Salud de implementación (plataforma) (`salud_implementacion`) | activa | — | — | — | — |
+| Plataforma | Salud de implementación (plataforma) (`salud_implementacion`) | activa | salud_implementacion | — | — | — |
 | Plataforma | Empresas / Tenants (`tenants`) | activa | tenants | — | — | — |
 | RRHH | Control de Asistencia (`asistencia`) | activa | asistencia | proceso_asistencia | — | — |
 | RRHH | Comisiones (`comisiones`) | activa | comisiones | — | — | — |
@@ -127,7 +127,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
 | Clientes & Activos | Clientes & Contratos (`clientes`) | maqueta | — | — | 3 | — |
 | Clientes & Activos | Equipos & Activos (`equipos`) | maqueta | — | — | — | — |
-| Clientes & Activos | Proyectos & Tarifas (`proyectos`) | activa | — | — | — | — |
+| Clientes & Activos | Proyectos & Tarifas (`proyectos`) | activa | proyectos_tarifas | — | — | — |
 | Compras & Importación | Cotizaciones Compra (`compras-cotizaciones`) | puente | — | — | 2 | — |
 | Compras & Importación | Importaciones & DUA (`compras-importaciones`) | placeholder | — | — | — | — |
 | Compras & Importación | Órdenes de Compra (`compras-oc`) | puente | — | — | 7 | — |
@@ -225,7 +225,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | activa | tarifas_transporte | — | — | — |
 | Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | detalle_viaje | proceso_viaje_transporte | — | — |
 | Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | monitor_viajes | proceso_viaje_transporte | — | — |
-| Venta de Repuestos | Catálogo de venta (`catalogo`) | activa | — | — | — | — |
+| Venta de Repuestos | Catálogo de venta (`catalogo`) | activa | catalogo_venta | — | 8 | — |
 | Venta de Repuestos | Catálogo de precios (`catalogo-precios`) | maqueta | — | — | — | — |
 | Venta de Repuestos | Dashboard de Repuestos (`dashboard-repuestos`) | maqueta | — | — | — | — |
 | Venta de Repuestos | Despachos de repuestos (`despachos-repuestos`) | maqueta | — | — | — | — |

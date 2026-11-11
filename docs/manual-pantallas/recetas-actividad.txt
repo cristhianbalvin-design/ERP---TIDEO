@@ -1,0 +1,12 @@
+clave: recetas_actividad
+tipo: pantalla
+pantalla: maestros
+catalogo: admin/recetas_actividad
+titulo: Recetas de actividad
+resumen: Definición de las tareas que componen cada actividad, base del diagnóstico y del costeo.
+componentes: src/pages_recetas_actividad.jsx#RecetasActividad
+huella: 9ef699c848
+paso: 1 | pantalla=maestros | permiso=ninguno | Elige una actividad y arma su receta con las tareas que la componen. Crear tarea agrega una tarea nueva.
+paso: 2 | pantalla=maestros | permiso=ninguno | Subir tarea y Bajar tarea cambian el orden; Quitar tarea la retira de la receta.
+paso: 3 | pantalla=maestros | permiso=ninguno | Guardar receta conserva los cambios. Si cambias de actividad con cambios sin guardar, la pantalla pregunta si quieres descartarlos.
+paso: 4 | pantalla=maestros | permiso=ninguno | Ver variables de costeo abre los valores que usa el costeo y Maestros regresa a Maestros Base.

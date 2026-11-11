@@ -1,0 +1,10 @@
+clave: salud_implementacion_tenant
+tipo: pantalla
+pantalla: parametros
+catalogo: admin/salud_implementacion_tenant
+titulo: Salud Implementacion
+resumen: Estado de la implementación del sistema en la empresa.
+componentes: src/pages_salud_tenant.jsx#SaludImplementacionTenant
+huella: 2f5fe0eb24
+paso: 1 | pantalla=parametros | permiso=ninguno | Es una pantalla de consulta sobre el avance de la implementación de la empresa activa.
+paso: 2 | pantalla=parametros | permiso=ninguno | Solo entra el Administrador de Empresa o el personal de TIDEO; a los demás les muestra acceso denegado.

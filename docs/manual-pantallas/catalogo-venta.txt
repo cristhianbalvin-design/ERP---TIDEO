@@ -1,0 +1,10 @@
+clave: catalogo_venta
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/catalogo
+titulo: Catálogo de venta
+resumen: Productos del almacén que se ofrecen a la venta.
+componentes: operaciones-app/src/zahory-mock/pages/wms/CatalogoVentaPage.jsx#CatalogoVentaPage
+huella: 7819c0b8aa
+paso: 1 | pantalla=inventario | permiso=ninguno | Agregar producto suma un material del almacén al catálogo con Agregar al catálogo.
+paso: 2 | pantalla=inventario | permiso=ninguno | Un producto que ya está en el catálogo se puede editar con Guardar cambios.

@@ -1,0 +1,12 @@
+clave: notificaciones_config
+tipo: pantalla
+pantalla: parametros
+catalogo: admin/notificaciones_config
+titulo: Notificaciones
+resumen: Configuración de los avisos automáticos de la empresa y su historial de envíos.
+componentes: src/pages_notificaciones_config.jsx#NotificacionesConfig
+huella: 37041730c7
+paso: 1 | pantalla=parametros | permiso=ninguno | Debes tener seleccionada una empresa para configurar sus notificaciones.
+paso: 2 | pantalla=parametros | permiso=ninguno | En Eventos activas cada aviso y defines a quién llega; Agregar aviso suma uno nuevo y Guardar cambios conserva la configuración.
+paso: 3 | pantalla=parametros | permiso=ninguno | Probar ahora ejecuta el aviso en el momento para comprobar que funciona.
+paso: 4 | pantalla=parametros | permiso=ninguno | Historial de envíos muestra lo que ya se envió.
