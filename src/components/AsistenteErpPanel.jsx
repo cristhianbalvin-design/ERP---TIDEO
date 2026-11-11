@@ -112,6 +112,10 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
   const [conversacionId, setConversacionId] = useState(null);
   const [retomada, setRetomada] = useState(null);
   const [vista, setVista] = useState('chat');
+  // Chat activo: 'normal' (Aria) o 'experto' (Aria experta, solo administradores). Cada uno tiene su conversación.
+  const [modo, setModo] = useState('normal');
+  const preguntaPendiente = useRef(null);
+  const modoActual = useRef('normal');
   const memoriaCargada = useRef(null);
   const [error, setError] = useState(null);
   const [consultando, setConsultando] = useState(false);
@@ -195,14 +199,14 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
   // Botón "Ir a…": abre la pantalla exacta; en pantallas angostas el chat se cierra para dejarla ver.
   const irA = destino => { if (window.matchMedia?.('(max-width: 900px)').matches) { callar(); setAbierto(false); } onIr?.(destino); };
   const nuevaConversacion = () => { callar(); porVoz.current = false; setAvisoVoz(null); setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; setConversacionId(null); setRetomada(null); setVista('chat'); requestAnimationFrame(() => campoRef.current?.focus()); };
-  const enviar = async (texto = pregunta, reintento = false, modo = null) => {
+  const enviar = async (texto = pregunta, reintento = false) => {
     const contenido = String(texto || '').trim().slice(0, 1000);
     if (!contenido || consultando || agotada) return;
     const base = reintento ? mensajes : [...mensajes, { role: 'user', content: contenido }];
     const historial = (reintento ? mensajes.slice(0, -1) : mensajes).slice(-10).map(m => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
     const leerRespuesta = reintento ? Boolean(ultimaConsulta.current?.porVoz) : porVoz.current;
     porVoz.current = false;
-    const modoEnvio = reintento ? ultimaConsulta.current?.modo ?? null : modo;
+    const modoEnvio = reintento ? ultimaConsulta.current?.modo ?? null : (modo === 'experto' ? 'experto' : null);
     ultimaConsulta.current = { contenido, base, porVoz: leerRespuesta, modo: modoEnvio };
     if (!reintento) { setMensajes(base); setPregunta(''); setAvisoVoz(null); }
     callar();
@@ -239,8 +243,25 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     if (!abierto || !empresaId || memoriaCargada.current === empresaId) return;
     memoriaCargada.current = empresaId;
     if (mensajes.length) return;
-    conversacionActual(empresaId).then(datos => mostrarConversacion(datos, true)).catch(() => undefined);
+    conversacionActual(empresaId, modo).then(datos => mostrarConversacion(datos, true)).catch(() => undefined);
   }, [abierto, empresaId]);
+  // Cambiar de chat: se guarda aparte, así que se limpia el panel y se retoma la conversación de ese modo.
+  // Con una pregunta inicial (botón «Ampliar en Aria experta») empieza una conversación nueva y la envía.
+  const cambiarModo = (nuevo, preguntaInicial = null) => {
+    if (consultando || (nuevo === modo && !preguntaInicial)) return;
+    callar(); porVoz.current = false; setAvisoVoz(null); setError(null); ultimaConsulta.current = null;
+    setMensajes([]); setPregunta(''); setConversacionId(null); setRetomada(null); setVista('chat');
+    preguntaPendiente.current = preguntaInicial;
+    modoActual.current = nuevo;
+    setModo(nuevo);
+    if (!preguntaInicial && empresaId) conversacionActual(empresaId, nuevo).then(datos => { if (modoActual.current === nuevo) mostrarConversacion(datos, true); }).catch(() => undefined);
+  };
+  useEffect(() => {
+    if (!preguntaPendiente.current || consultando) return;
+    const texto = preguntaPendiente.current;
+    preguntaPendiente.current = null;
+    enviar(texto);
+  }, [modo, mensajes.length === 0]);
   // Deshacer un recuerdo recién guardado: se borra de la memoria y el aviso queda como borrado.
   const deshacerRecuerdo = (posicion, id) => {
     const marcar = cambio => setMensajes(prev => prev.map((item, index) => index === posicion ? { ...item, recuerdos: (item.recuerdos || []).map(r => r.id === id ? { ...r, ...cambio } : r) } : item));
@@ -258,7 +279,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     <AriaFab ref={botonRef} pendientes={pendientes} abierto={abierto} oculto={ocultarFab} onClick={() => setAbierto(true)} />
     {abierto && <>
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
-      <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
+      <section ref={panelRef} className={`dx-asis-panel${modo === 'experto' ? ' is-experto' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
         <header className="dx-asis-head">{vista === 'chat' && <div className="dx-asis-ico" aria-hidden="true"><AriaLogo size={44} /></div>}
           {vista === 'recuerdos'
             ? <><button className="dx-asis-x dx-asis-back" type="button" aria-label="Volver a conversaciones" onClick={() => setVista('lista')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
@@ -266,18 +287,23 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
             : vista === 'lista'
             ? <><button className="dx-asis-x dx-asis-back" type="button" aria-label="Volver al chat" onClick={() => setVista('chat')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
               <div><div className="dx-asis-eyebrow">Aria</div><h2 className="dx-asis-title" id="dx-asis-title">Conversaciones</h2></div></>
+            : modo === 'experto' ? <div><div className="dx-asis-eyebrow">OPERA · Modo experto</div><h2 className="dx-asis-title" id="dx-asis-title">Aria experta</h2><div className="dx-asis-sub">Análisis y explicaciones a fondo · solo administradores</div></div>
             : <div><div className="dx-asis-eyebrow">OPERA · Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Aria</h2><div className="dx-asis-sub">Respeta tus permisos · confirma antes de registrar</div></div>}
           <div className="dx-asis-head-acts">
           {vista === 'chat' && <><button className="dx-asis-x" type="button" aria-label="Conversaciones anteriores" title="Conversaciones anteriores" onClick={() => setVista('lista')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 103-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg></button>
           <button className="dx-asis-x" type="button" aria-label="Nueva conversación" title="Nueva conversación" onClick={nuevaConversacion}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button></>}
           <button className="dx-asis-x" type="button" aria-label="Cerrar asistente" onClick={cerrar}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
         </header>
+        {vista === 'chat' && experto?.permitido && <div className="dx-asis-modo" role="tablist" aria-label="Modo de Aria">
+          <button type="button" role="tab" aria-selected={modo === 'normal'} className={`dx-asis-modo-b${modo === 'normal' ? ' on' : ''}`} disabled={consultando} onClick={() => cambiarModo('normal')}>Aria</button>
+          <button type="button" role="tab" aria-selected={modo === 'experto'} className={`dx-asis-modo-b${modo === 'experto' ? ' on' : ''}`} disabled={consultando} onClick={() => cambiarModo('experto')}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></svg><span>Aria experta</span></button>
+        </div>}
         {contexto?.tipo && contexto?.id && <div className="dx-asis-ctx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg><span>Viendo: <b>{tituloContexto}</b></span></div>}
         {vista === 'recuerdos' ? <AriaRecuerdos empresaId={empresaId} />
-          : vista === 'lista' ? <AriaConversaciones empresaId={empresaId} activaId={conversacionId} onAbrir={abrirAnterior} onNueva={nuevaConversacion} onRecuerdos={() => setVista('recuerdos')} /> : <>
+          : vista === 'lista' ? <AriaConversaciones empresaId={empresaId} activaId={conversacionId} onAbrir={abrirAnterior} onNueva={nuevaConversacion} onRecuerdos={() => setVista('recuerdos')} modo={modo} /> : <>
         <div ref={mensajesRef} className="dx-asis-body" aria-live="polite" aria-relevant="additions text">
           {retomada && mensajes.length > 0 && <div className="dx-asis-ret" role="status"><span>Retomando tu conversación {etiquetaRetomada(retomada.fecha)}</span><button type="button" onClick={nuevaConversacion}>Empezar una nueva</button></div>}
-          {!mensajes.length && <><div className="dx-asis-hello"><h3>{primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
+          {!mensajes.length && <><div className="dx-asis-hello"><h3>{modo === 'experto' ? 'Aria experta' : primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>{modo === 'experto' ? 'Estás en Aria experta. Pregúntame cómo funciona un proceso de punta a punta o pídeme un análisis del negocio: respondo a fondo. Cada pregunta usa una de las consultas expertas del mes de tu empresa.' : 'Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.'}</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
           {mensajes.map((mensaje, index) => <React.Fragment key={`${index}-${mensaje.role}`}>
             <div className={`dx-asis-message ${mensaje.role === 'user' ? 'me' : 'ai'}`}>{mensaje.role === 'assistant' && <span className="dx-asis-mini" aria-hidden="true"><AriaLogo size={24} /></span>}<div className={`dx-asis-msg ${mensaje.role === 'user' ? 'me' : 'ai'}`}><TextoSeguro texto={mensaje.content} /></div></div>
             {mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresaId} estadoInicial={mensaje.borradorEstado}
@@ -292,9 +318,9 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
               <button type="button" className="dx-asis-ir-b" onClick={() => irA(mensaje.destino)}><span>Ir a {mensaje.destino.titulo}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
               {mensaje.destino.donde && <small>{mensaje.destino.donde}</small>}
             </div>}
-            {mensaje.role === 'assistant' && index === mensajes.length - 1 && !consultando && !agotada && experto?.permitido && experto.restantes > 0 && puedeAmpliar(mensaje) && mensajes[index - 1]?.role === 'user' && <div className="dx-asis-exp">
-              <button type="button" className="dx-asis-exp-b" onClick={() => enviar(`Amplía en modo experto: ${String(mensajes[index - 1].content).replace(/^Amplía en modo experto:\s*/i, '')}`, false, 'experto')}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></svg><span>Ampliar con modo experto</span></button>
-              <small>Respuesta más profunda · quedan {experto.restantes} de {experto.limite} este mes en tu empresa</small>
+            {mensaje.role === 'assistant' && index === mensajes.length - 1 && modo === 'normal' && !consultando && !agotada && experto?.permitido && experto.restantes > 0 && puedeAmpliar(mensaje) && mensajes[index - 1]?.role === 'user' && <div className="dx-asis-exp">
+              <button type="button" className="dx-asis-exp-b" onClick={() => cambiarModo('experto', `Amplía en modo experto: ${String(mensajes[index - 1].content)}`.slice(0, 1000))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></svg><span>Ampliar en Aria experta</span></button>
+              <small>Abre el chat experto con esta pregunta · quedan {experto.restantes} de {experto.limite} este mes</small>
             </div>}
             {mensaje.role === 'assistant' && (mensaje.recuerdos || []).map(r => <div className={`dx-asis-rec${r.tipo === 'automatico' ? ' auto' : ''}`} key={r.id} role="status">
               {r.borrado ? <span>Recuerdo borrado.</span> : <><span><b>{r.tipo === 'automatico' ? 'Aria recordó:' : 'Guardado en tu memoria:'}</b> {r.texto}</span>
@@ -311,10 +337,10 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
             : voz.estado === 'transcribiendo' ? <><span className="dx-asis-dots" aria-hidden="true"><span/><span/><span/></span>Escribiendo lo que dijiste…</>
             : hablando ? <><span>Aria está leyendo su respuesta</span><button type="button" onClick={callar}>Detener voz</button></>
             : <><span>{avisoVoz}</span><button type="button" aria-label="Cerrar aviso" onClick={() => setAvisoVoz(null)}>×</button></>}
-        </div>}<form className="dx-asis-form" onSubmit={enviarForm}><label className="dx-asis-label" htmlFor="dx-asis-question">Tu pregunta</label><textarea id="dx-asis-question" ref={campoRef} className="dx-asis-in" rows="1" placeholder={agotada ? 'Límite diario alcanzado' : 'Pregúntale a Aria…'} maxLength="1000" value={pregunta} disabled={agotada || consultando} onChange={event => { setPregunta(event.target.value); if (!event.target.value.trim()) porVoz.current = false; }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); enviar(); } }} />
+        </div>}<form className="dx-asis-form" onSubmit={enviarForm}><label className="dx-asis-label" htmlFor="dx-asis-question">Tu pregunta</label><textarea id="dx-asis-question" ref={campoRef} className="dx-asis-in" rows="1" placeholder={agotada ? 'Límite diario alcanzado' : modo === 'experto' ? 'Pregúntale a Aria experta…' : 'Pregúntale a Aria…'} maxLength="1000" value={pregunta} disabled={agotada || consultando} onChange={event => { setPregunta(event.target.value); if (!event.target.value.trim()) porVoz.current = false; }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); enviar(); } }} />
           <AriaMicrofono empresaId={empresaId} deshabilitado={agotada || consultando} onTexto={recibirDictado} onAviso={setAvisoVoz} onEstado={cambioVoz} />
           <button className="dx-asis-send" type="submit" aria-label="Enviar pregunta" disabled={!pregunta.trim() || agotada || consultando || voz.estado === 'grabando' || voz.estado === 'transcribiendo'}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
-          <div className="dx-asis-meta">{mensajes.length ? <button type="button" onClick={nuevaConversacion}>Nueva conversación</button> : <span className="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span>}{cuotaRestante !== null && <span>{Math.max(0, LIMITE_DIARIO - cuotaRestante)} de {LIMITE_DIARIO} hoy</span>}</div>
+          <div className="dx-asis-meta">{mensajes.length ? <button type="button" onClick={nuevaConversacion}>Nueva conversación</button> : <span className="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span>}{modo === 'experto' && experto ? <span>Quedan {experto.restantes} de {experto.limite} este mes en tu empresa</span> : cuotaRestante !== null && <span>{Math.max(0, LIMITE_DIARIO - cuotaRestante)} de {LIMITE_DIARIO} hoy</span>}</div>
         </footer>
         </>}
       </section>

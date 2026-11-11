@@ -10,9 +10,11 @@ async function llamar(funcion, args, mensaje = 'No pude cargar tus conversacione
 }
 
 // Conversación de las últimas 24 horas para retomarla al abrir Aria (o null si no hay).
-export const conversacionActual = empresaId => llamar('aria_conversacion_actual', { p_empresa_id: empresaId });
+// Cada chat (normal o experto) retoma y lista solo sus conversaciones (migración 689).
+const modoValido = modo => modo === 'experto' ? 'experto' : 'normal';
+export const conversacionActual = (empresaId, modo) => llamar('aria_conversacion_actual_modo', { p_empresa_id: empresaId, p_modo: modoValido(modo) });
 export const abrirConversacion = id => llamar('aria_conversacion_abrir', { p_conversacion_id: id });
-export const listarConversaciones = (empresaId, texto) => llamar('aria_conversaciones_listar', { p_empresa_id: empresaId, p_texto: texto?.trim() || null, p_limite: 40 });
+export const listarConversaciones = (empresaId, texto, modo) => llamar('aria_conversaciones_listar_modo', { p_empresa_id: empresaId, p_modo: modoValido(modo), p_texto: texto?.trim() || null, p_limite: 40 });
 
 // Memoria de largo plazo (migración 683): lo que Aria recuerda de la persona. Solo ella lo ve y lo borra.
 export const listarRecuerdos = (empresaId, texto) => llamar('aria_recuerdos_listar', { p_empresa_id: empresaId, p_texto: texto?.trim() || null }, 'No pude cargar tus recuerdos.');
