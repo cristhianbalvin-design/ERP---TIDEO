@@ -1756,8 +1756,8 @@ Deno.test("modo experto guarda su conversación marcada como experta; el chat no
   await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "hola", conversacion_id: null }));
   const registros = x.calls.filter((c: any) => c.name === "aria_conversacion_registrar");
   equal(registros.length, 2);
-  equal(registros[0].args.p_extra.modo, "experto");
-  equal(registros[1].args.p_extra.modo, undefined);
+  equal((registros[0].args.p_extra as any).modo, "experto");
+  equal((registros[1].args.p_extra as any).modo, undefined);
 });
 
 Deno.test("modo experto sin cuota no llama al modelo y lo explica", async () => {
