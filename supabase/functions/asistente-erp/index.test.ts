@@ -963,6 +963,71 @@ Deno.test("manual sin resultados registra la pregunta para soporte y lo indica a
   assert(String(x.aiCalls[1].find((m: any) => m.role === "tool")?.content).includes('"soporte_notificado":true'));
 });
 
+Deno.test("manual sin resultados por palabras usa las fichas afines por significado y no avisa a soporte", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_consultar_manual" ? { data: { respuesta: "sin resultados", fichas: [], truncado: false }, error: null }
+      : name === "aria_manual_ampliar" ? { data: { fichas: [{ clave: "nomina", titulo: "Nomina", pasos: [{ orden: 1, texto: "Procesar" }] }], pantallas_demostracion: [] }, error: null }
+      : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "pagar sueldos" }) } }] })
+      : completion({ role: "assistant", content: "Se hace en Nomina." }),
+  });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cómo le pago el sueldo a mi gente?" }))).status, 200);
+  const ampliar = x.calls.find(c => c.name === "aria_manual_ampliar")!;
+  equal(ampliar.args.p_empresa_id, EMPRESA);
+  equal(ampliar.args.p_texto, "pagar sueldos");
+  equal(x.calls.some(c => c.name === "aria_registrar_sin_respuesta"), false);
+  const resultado = String(x.aiCalls[1].find((m: any) => m.role === "tool")?.content);
+  assert(resultado.includes('"busqueda":"significado"'));
+  assert(resultado.includes('"clave":"nomina"'));
+});
+
+Deno.test("manual de una pantalla en demostración lo indica y no avisa a soporte", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_consultar_manual" ? { data: { respuesta: "sin resultados", fichas: [], truncado: false }, error: null }
+      : name === "aria_manual_ampliar" ? { data: { fichas: [], pantallas_demostracion: [{ titulo: "Catálogo de precios", estado: "maqueta" }] }, error: null }
+      : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "catálogo de precios" }) } }] })
+      : completion({ role: "assistant", content: "Esa pantalla todavía es una demostración." }),
+  });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cómo uso el catálogo de precios?" }))).status, 200);
+  equal(x.calls.some(c => c.name === "aria_registrar_sin_respuesta"), false);
+  assert(String(x.aiCalls[1].find((m: any) => m.role === "tool")?.content).includes('"respuesta":"en_demostracion"'));
+});
+
+Deno.test("manual con fichas por todas las palabras no amplía la búsqueda", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "asistente_consultar_manual" ? { data: { respuesta: "ok", busqueda: "todas_las_palabras", fichas: [{ clave: "tesoreria", pasos: [] }], truncado: false }, error: null } : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "conciliar" }) } }] })
+      : completion({ role: "assistant", content: "Listo." }),
+  });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cómo concilio?" }))).status, 200);
+  equal(x.calls.some(c => c.name === "aria_manual_ampliar"), false);
+});
+
+Deno.test("diagnóstico de acceso mapea pantalla y acción a su RPC", async () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "aria_diagnosticar_acceso") as any;
+  assert(tool);
+  equal(JSON.stringify(tool.function.parameters.required), '["pantalla"]');
+  let n = 0;
+  const x = setup({
+    rpc: name => name === "aria_diagnosticar_acceso" ? { data: { respuesta: "ok", rol: "Asistente", pantallas: [{ titulo: "Nomina", estado: "activa", accion_permitida: false }] }, error: null } : { data: null, error: null },
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "acceso", type: "function", function: { name: "aria_diagnosticar_acceso", arguments: JSON.stringify({ pantalla: "nomina", accion: "aprobar" }) } }] })
+      : completion({ role: "assistant", content: "Tu rol Asistente no puede aprobar en Nomina." }),
+  });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Por qué no puedo aprobar la planilla?" }))).status, 200);
+  const rpc = x.calls.find(c => c.name === "aria_diagnosticar_acceso")!;
+  equal(rpc.args.p_empresa_id, EMPRESA);
+  equal(rpc.args.p_pantalla, "nomina");
+  equal(rpc.args.p_accion, "aprobar");
+});
+
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
   const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
   const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;
