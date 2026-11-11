@@ -67,7 +67,7 @@ function TextoSeguro({ texto }) {
       return <div key={index} className={`dx-asis-amount${total ? ' total' : ''}${negativo ? ' negative' : ''}`}><span>{cifra[1].trim()}</span><b>{cifra[2]}</b></div>;
     }
     const subtitulo = linea.match(/^\s*(?:#{1,4}\s+(.+?)|\*\*([^*]+)\*\*:?)\s*$/);
-    if (subtitulo) return <div key={index} className="dx-asis-sub">{subtitulo[1] || subtitulo[2]}</div>;
+    if (subtitulo) return <div key={index} className="dx-asis-h">{subtitulo[1] || subtitulo[2]}</div>;
     if (lista) return <div key={index} className="dx-asis-listitem">• {conNegritas(lista[1])}</div>;
     return <React.Fragment key={index}>{conNegritas(linea)}{salto}</React.Fragment>;
   });
