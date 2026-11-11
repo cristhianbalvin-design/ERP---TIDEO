@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAnonKey } from "../_shared/supabaseKeys.ts";
 import { opcionesDeEgreso, type OpcionesRespuesta } from "./opciones.ts";
-import { avisosRecuerdo, extraDelTurno, leerRecuerdos, leerResumen, MAX_RECUERDOS_CONTEXTO, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto, type AvisoRecuerdo, type TareaResumen } from "./memoria.ts";
+import { avisosRecuerdo, extraDelTurno, leerRecuerdos, leerResumen, MAX_RECUERDOS_CONTEXTO, pideRecordar, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto, type AvisoRecuerdo, type TareaResumen } from "./memoria.ts";
 
 const ALLOWED_ORIGIN = "https://erp.tideo.tech";
 const MAX_BODY_BYTES = 32_000;
@@ -604,6 +604,7 @@ export function createHandler(deps: HandlerDeps) {
     let rounds = 0;
     let guardActivated = false;
     let cifraRetryUsed = false;
+    let recordarRetryUsed = false;
     let retryToolChoice: string | undefined;
     const cifrasNeutral = "No pude verificar las cifras de esa respuesta. ¿Puedes hacer la consulta por partes?";
     const extra = () => ({ ...(borrador ? { borrador } : {}), ...(opciones && !borrador ? { opciones } : {}), ...(evalModel ? { modelo: model, tokens_entrada: tokensIn, tokens_salida: tokensOut, respaldo } : {}) });
@@ -673,6 +674,13 @@ export function createHandler(deps: HandlerDeps) {
         if (!calls.length) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
           if (!answer) { await audit("error", "respuesta_vacia", null); return errorReply(502, "La IA devolvió una respuesta no válida.", origin, origins); }
+          // Si la persona pidió recordar algo y Aria iba a responder sin guardarlo, se le exige usar la herramienta.
+          if (!recordarRetryUsed && pideRecordar(body.pregunta) && !toolsUsed.includes("aria_recuerdo_guardar")) {
+            recordarRetryUsed = true;
+            retryToolChoice = "required";
+            messages.push({ role: "system", content: "La persona pidió que recuerdes algo. Antes de responder, guárdalo con aria_recuerdo_guardar (una sola frase en segunda persona, sin montos). No digas que lo recordarás sin haberlo guardado." });
+            continue;
+          }
           const canVerifyFinancialAnswer = toolsUsed.length > 0 || toolCallsAttempted || finalRound;
           if (canVerifyFinancialAnswer && needsFinancialVerification(answer, body.pregunta, toolsUsed, messages.filter(message => message.role === "tool").map(message => String(message.content ?? "")), [body.pregunta], dichosPorLaPersona)) {
             if (!cifraRetryUsed) {

@@ -69,6 +69,14 @@ export function sistemaRecuerdos(recuerdos: unknown): string | null {
     lista.map(texto => `- ${texto}`).join("\n");
 }
 
+// ¿La persona pidió recordar algo? ("recuerda que…", "ten en cuenta que…", "de ahora en adelante…").
+// No coincide con preguntas sobre el pasado ("¿recuerdas qué revisamos?") ni con recordatorios ("recuérdame pagar").
+export function pideRecordar(texto: unknown): boolean {
+  const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /\b(recuerda|acuerdate de|ten en cuenta|ten presente|toma nota de|anota|no olvides)\s+que\b/.test(t)
+    || /^[\s¡¿"'«]*(aria[,:]?\s+)?(de ahora en adelante|desde ahora|a partir de ahora)\b/.test(t);
+}
+
 // Embedding como texto "[n,n,…]" para pgvector; null si no tiene las 1536 dimensiones esperadas.
 export function vectorTexto(vector: unknown): string | null {
   if (!Array.isArray(vector) || vector.length !== 1536 || !vector.every(v => typeof v === "number" && Number.isFinite(v))) return null;

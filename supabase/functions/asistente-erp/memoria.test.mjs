@@ -1,7 +1,7 @@
 // Pruebas de la memoria de conversación de Aria. Ejecutar: npm run test:aria-voz (Node) o deno test (Deno).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { avisosRecuerdo, extraDelTurno, leerRecuerdos, leerResumen, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto } from './memoria.ts';
+import { avisosRecuerdo, extraDelTurno, leerRecuerdos, leerResumen, pideRecordar, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto } from './memoria.ts';
 
 test('el resumen previo entra como sistema con la advertencia de cifras', () => {
   assert.equal(sistemaResumen(''), null);
@@ -65,4 +65,10 @@ test('los avisos de recuerdo conservan id, texto y tipo, y viajan en el extra de
   assert.deepEqual(avisosRecuerdo('x'), []);
   assert.deepEqual(extraDelTurno(['a'], null, null, [{ id: 'a', texto: 'Uno', tipo: 'explicito' }]), { herramientas: ['a'], recuerdos: [{ id: 'a', texto: 'Uno', tipo: 'explicito' }] });
   assert.deepEqual(extraDelTurno(['a'], null, null, []), { herramientas: ['a'] });
+});
+
+test('reconoce cuando la persona pide recordar algo y no confunde preguntas ni recordatorios', () => {
+  for (const si of ['recuerda que para egresos del taller suelo usar el CECO 1010', 'Aria, ten en cuenta que siempre trabajo con Taller Ate', 'Acuérdate de que prefiero respuestas cortas',
+    'por favor anota que mi área es Logística', 'De ahora en adelante respóndeme corto', '¡No olvides que el proveedor principal es Ferreyros!']) assert.equal(pideRecordar(si), true, si);
+  for (const no of ['¿recuerdas qué revisamos ayer?', 'recuérdame pagar la factura mañana', '¿cuánto hay en caja chica?', 'no recuerdo qué fondo usé', '', null]) assert.equal(pideRecordar(no), false, String(no));
 });

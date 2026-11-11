@@ -1898,3 +1898,23 @@ Deno.test("recuerdos: herramienta publicada con texto obligatorio y sin cifras",
   equal(JSON.stringify(Object.keys(tool.function.parameters.properties)), JSON.stringify(["texto"]));
   equal(JSON.stringify(tool.function.parameters.required), JSON.stringify(["texto"]));
 });
+
+Deno.test("recuerdos: si piden recordar algo y Aria responde sin guardarlo, se le exige la herramienta", async () => {
+  let n = 0;
+  const x = setup({
+    rpc: (name) => name === "aria_recuerdo_guardar" ? { data: { estado: "guardado", id: "r9", texto: "Sueles usar el CECO 1010 para egresos del taller.", tipo: "explicito" }, error: null }
+      : name === "aria_conversacion_registrar" ? { data: { conversacion_id: uuid, mensajes: 2, tarea: null }, error: null } : { data: null, error: null },
+    ai: async () => ++n === 1 ? completion({ role: "assistant", content: "Entendido. Lo tendré en cuenta." })
+      : n === 2 ? completion({ role: "assistant", tool_calls: [{ id: "m", type: "function", function: { name: "aria_recuerdo_guardar", arguments: JSON.stringify({ texto: "Sueles usar el CECO 1010 para egresos del taller." }) } }] })
+      : completion({ role: "assistant", content: "Anotado: usaré el CECO 1010 para egresos del taller." }),
+  });
+  const body = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "recuerda que para egresos del taller suelo usar el CECO 1010", conversacion_id: null }))).json();
+  equal(x.aiToolChoices[1], "required");
+  assert(x.aiCalls[1].some((m: any) => String(m.content).includes("No digas que lo recordarás sin haberlo guardado")));
+  equal(x.calls.filter(c => c.name === "aria_recuerdo_guardar").length, 1);
+  equal(body.respuesta, "Anotado: usaré el CECO 1010 para egresos del taller.");
+  equal(body.recuerdos[0].id, "r9");
+  const sinPedido = setup({ ai: async () => completion({ role: "assistant", content: "Ayer revisamos la caja chica." }) });
+  await sinPedido.handler(sinPedido.request({ empresa_id: EMPRESA, pregunta: "¿recuerdas qué revisamos ayer?" }));
+  equal(sinPedido.aiCalls.length, 1);
+});
