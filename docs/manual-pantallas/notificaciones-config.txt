@@ -3,10 +3,15 @@ tipo: pantalla
 pantalla: parametros
 catalogo: admin/notificaciones_config
 titulo: Notificaciones
-resumen: Configuración de los avisos automáticos de la empresa y su historial de envíos.
+resumen: Avisos automáticos de la empresa (contratos y documentos por vencer, tardanzas, OT y partes): a quién llegan, por campana, correo o WhatsApp, y su historial de envíos.
 componentes: src/pages_notificaciones_config.jsx#NotificacionesConfig
 huella: 37041730c7
 paso: 1 | pantalla=parametros | permiso=ninguno | Debes tener seleccionada una empresa para configurar sus notificaciones.
 paso: 2 | pantalla=parametros | permiso=ninguno | En Eventos activas cada aviso y defines a quién llega; Agregar aviso suma uno nuevo y Guardar cambios conserva la configuración.
 paso: 3 | pantalla=parametros | permiso=ninguno | Probar ahora ejecuta el aviso en el momento para comprobar que funciona.
 paso: 4 | pantalla=parametros | permiso=ninguno | Historial de envíos muestra lo que ya se envió.
+paso: 5 | pantalla=parametros | permiso=ninguno | Avisos disponibles: contratos por vencer (por defecto a 30, 15 y 7 días; hasta 5 avisos entre 1 y 180 días), contratos vencidos sin renovar, documentos por vencer, resumen diario de tardanzas (más de 10 minutos por defecto), OT creadas en el día y partes no llenados. Todos nacen apagados: cada empresa activa los que quiere.
+paso: 6 | pantalla=parametros | permiso=ninguno | Cada aviso define a quién llega (RRHH o administración, jefe directo, colaborador, Operaciones) y por qué canal: campana del sistema, correo o WhatsApp. Se pueden sumar hasta 10 correos y 10 teléfonos adicionales por aviso, y elegir qué roles cuentan como RRHH u Operaciones.
+paso: 7 | pantalla=parametros | permiso=ninguno | La campana avisa al instante. El correo llega como una lista diaria por destinatario, alrededor de las 7:20 a. m. El resumen de tardanzas admite una hora de envío propia para recibir las del mismo día.
+paso: 8 | pantalla=parametros | permiso=ninguno | Si alguien no recibe un aviso, revisa: que el aviso esté activo, que su rol esté entre los destinatarios, que tenga correo real en su usuario (o teléfono para WhatsApp) y, para el jefe directo, que el organigrama indique a quién reporta. Historial de envíos muestra qué salió, a quién y si falló.
+paso: 9 | pantalla=parametros | permiso=ninguno | Un contrato con renovación aprobada que empalma no genera aviso de vencimiento, y las adendas tampoco.

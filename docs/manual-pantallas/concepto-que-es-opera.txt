@@ -2,7 +2,7 @@ clave: concepto_que_es_opera
 tipo: proceso
 pantalla: ninguna
 catalogo: admin/inicio
-titulo: Qué es OPERA y por dónde empezar
+titulo: Qué es OPERA y para qué sirve cada aplicación
 resumen: Orientación para quien recién entra: qué es OPERA, qué hace el sistema, para qué sirve cada una de sus tres aplicaciones, cómo está organizado el menú y qué hacer el primer día.
 componentes: catalogo/pantallas.json
 huella: 3495e022a1

@@ -1,5 +1,5 @@
 {
- "descripcion": "Examen de recuperación del manual de Aria: para cada pregunta de negocio, la búsqueda del manual debe traer al menos una de las fichas esperadas. Se ejecuta con scripts/manual/examen-aria.sql.",
+ "descripcion": "Examen de recuperación del manual de Aria: para cada pregunta de negocio, la búsqueda del manual debe traer al menos una de las fichas esperadas. Se ejecuta con la función aria_examen_manual(empresa), que lee estos casos de la tabla aria_examen_casos.",
  "casos": [
   {
    "id": 1,
@@ -825,6 +825,91 @@
    "fichas": [
     "concepto_costeo",
     "hoja_costeo"
+   ]
+  },
+  {
+   "id": 91,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo compro una misma SOLPE a varios proveedores?",
+   "fichas": [
+    "sourcing_bandeja",
+    "proceso_solpe_pago"
+   ]
+  },
+  {
+   "id": 92,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo renuevo un contrato con firma digital?",
+   "fichas": [
+    "rrhh_operativo",
+    "rrhh_admin"
+   ]
+  },
+  {
+   "id": 93,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo descuento un préstamo del trabajador en la planilla?",
+   "fichas": [
+    "prestamos_personal"
+   ]
+  },
+  {
+   "id": 94,
+   "perfil": "oficina",
+   "pregunta": "¿Por qué no me llega el aviso de contratos por vencer?",
+   "fichas": [
+    "notificaciones_config"
+   ]
+  },
+  {
+   "id": 95,
+   "perfil": "taller",
+   "pregunta": "¿Quién tiene prestada una herramienta y cuáles están vencidas?",
+   "fichas": [
+    "prestamo_herramientas"
+   ]
+  },
+  {
+   "id": 96,
+   "perfil": "taller",
+   "pregunta": "¿Cómo se calcula la cantidad sugerida de reposición?",
+   "fichas": [
+    "stock_minimos"
+   ]
+  },
+  {
+   "id": 97,
+   "perfil": "oficina",
+   "pregunta": "¿Cómo cobro el almacenaje de la mercadería de un cliente?",
+   "fichas": [
+    "custodia_terceros"
+   ]
+  },
+  {
+   "id": 98,
+   "perfil": "taller",
+   "pregunta": "¿Cómo meto una OT urgente en el plan del taller?",
+   "fichas": [
+    "planner_taller"
+   ]
+  },
+  {
+   "id": 99,
+   "perfil": "taller",
+   "pregunta": "¿Por qué no puedo editar la ruta de una OF aprobada?",
+   "fichas": [
+    "detalle_of",
+    "proceso_fabricacion_of"
+   ]
+  },
+  {
+   "id": 100,
+   "perfil": "jefe",
+   "pregunta": "¿Cómo apruebo u observo un parte diario?",
+   "fichas": [
+    "gestion_partes_taller",
+    "partes_taller",
+    "ot_admin"
    ]
   }
  ]
