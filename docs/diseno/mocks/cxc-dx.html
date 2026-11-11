@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cuentas por Cobrar · mock dx</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Mock CxC — clases dx-ui-* del estándar (src/dx_ui_base.css) + prefijo dx-cxc- para lo propio de la pantalla.
+   Datos: tenant PRUEBA (emp_2000000000), consultados el 2026-11-10. */
+:root{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3;
+  --dx-ui-border:#C9CFD8; --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937; --dx-ui-hover:#F6FBFC;
+  --dx-ui-cyan-bg:#E0F7FA; --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A; --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08);
+  --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-hover:#172033;
+  --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08);
+  --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-hover:#172033;
+  --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--dx-ui-bg);color:var(--dx-ui-ink);font:14px/1.4 'DM Sans',sans-serif;padding:20px 16px 48px;overflow-x:hidden}
+.mock-bar{max-width:1180px;margin:0 auto 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--dx-ui-gray);font-size:12px}
+.mock-bar b{color:var(--dx-ui-navy)}
+.mock-bar button{height:32px;padding:0 12px;border:1px solid var(--dx-ui-line);border-radius:999px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:600 12px 'DM Sans',sans-serif;cursor:pointer}
+.mock-bar .sp{margin-left:auto}
+
+/* ===== Estándar dx-ui (copia literal de src/dx_ui_base.css, lo necesario para el mock) ===== */
+.dx-ui{max-width:1180px;margin:0 auto;color:var(--dx-ui-ink)}
+.dx-ui .dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui .dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui .dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui .dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.dx-ui .dx-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.dx-ui .dx-btn:hover{background:var(--dx-ui-hover)}
+.dx-ui .dx-btn.primary{border-color:var(--dx-ui-navy);background:var(--dx-ui-navy);color:var(--dx-ui-bg)}
+.dx-ui .dx-btn.primary:hover{opacity:.88}
+.dx-ui .dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ui .dx-btn:disabled{border-color:var(--dx-ui-line);background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);opacity:.55;cursor:not-allowed}
+.dx-ui .dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui .dx-ui-kpi{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card)}
+.dx-ui .dx-ui-kpi strong{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif;white-space:nowrap}
+.dx-ui .dx-ui-kpi span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui .dx-ui-card{container-type:inline-size;overflow:hidden;width:100%;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 1px 2px rgba(15,27,48,.04)}
+.dx-ui .dx-ui-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-toolbar h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 16px/1.4 'Sora',sans-serif}
+.dx-ui .dx-ui-count{color:var(--dx-ui-gray);font-size:12px;white-space:nowrap}
+.dx-ui .dx-ui-search{display:flex;align-items:center;gap:8px;width:340px;max-width:100%;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-search:focus-within{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ui .dx-ui-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui .dx-ui-head,.dx-ui .dx-ui-row{display:grid;grid-template-columns:var(--dx-ui-cols,minmax(0,1fr));column-gap:16px;align-items:center;padding-inline:20px}
+.dx-ui .dx-ui-head{min-height:38px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ui .dx-ui-row{min-height:68px;border-bottom:1px solid var(--dx-ui-line-soft);cursor:pointer;transition:background .12s}
+.dx-ui .dx-ui-row:last-child{border-bottom:0}
+.dx-ui .dx-ui-row:hover{background:var(--dx-ui-hover)}
+.dx-ui .dx-ui-row:hover .dx-ui-arrow{color:var(--dx-ui-navy);transform:translateX(2px)}
+.dx-ui .dx-ui-row:focus-visible{position:relative;z-index:1;outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-ui .dx-ui-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ui .dx-ui-pill i{width:6px;height:6px;flex:none;border-radius:50%;background:currentColor}
+.dx-ui .dx-ui-pill.is-amber{background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)} .dx-ui .dx-ui-pill.is-amber i{background:var(--dx-ui-amber-dot)}
+.dx-ui .dx-ui-pill.is-green{background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg)}
+.dx-ui .dx-ui-pill.is-red{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)} .dx-ui .dx-ui-pill.is-red i{background:var(--dx-ui-red-dot)}
+.dx-ui .dx-ui-pill.is-gray{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)} .dx-ui .dx-ui-pill.is-gray i{background:var(--dx-ui-gray-dot)}
+.dx-ui .dx-ui-pill.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui .dx-ui-arrow{color:#9AA3B2;transition:.12s}
+.dx-ui .dx-ui-empty{padding:48px 20px;color:var(--dx-ui-gray);text-align:center}
+.dx-ui .dx-ui-field{display:flex;min-width:0;flex-direction:column;gap:6px;font-size:12px;font-weight:600}
+.dx-ui .dx-ui-field > label{min-height:18px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-ui .dx-ui-field input,.dx-ui .dx-ui-select{box-sizing:border-box;width:100%;min-width:0;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui .dx-ui-select{padding:0 34px 0 12px;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dx-ui-gray) 50%),linear-gradient(135deg,var(--dx-ui-gray) 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.dx-ui .dx-ui-field input:focus,.dx-ui .dx-ui-select:focus{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-ui .dx-ui-field-hint{color:var(--dx-ui-gray);font-size:12px;font-weight:400}
+/* Modal: se trae de zahory.css al admin (pregunta 4 aprobada) */
+.dx-ui .dx-ui-overlay{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;overflow:auto;padding:20px;background:color-mix(in srgb,#0B1220 55%,transparent)}
+.dx-ui .dx-ui-dialog{display:flex;flex-direction:column;width:min(620px,100%);max-height:calc(100dvh - 40px);overflow:auto;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 18px 48px rgba(0,0,0,.24)}
+.dx-ui .dx-ui-dialog-wide{width:min(940px,100%)}
+.dx-ui .dx-ui-dialog-head,.dx-ui .dx-ui-dialog-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui .dx-ui-dialog-head h2{margin:0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif}
+.dx-ui .dx-ui-dialog-head p{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui .dx-ui-dialog-foot{justify-content:flex-end;margin-top:auto;border-top:1px solid var(--dx-ui-line);border-bottom:0;flex-wrap:wrap}
+
+/* ===== Propio de la pantalla: dx-cxc- ===== */
+.dx-cxc .dx-cxc-kpis{container-type:inline-size}
+.dx-cxc .dx-cxc-kpis .dx-ui-kpi-row{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dx-cxc .dx-cxc-kpis .dx-ui-kpi{flex-direction:column;align-items:flex-start;justify-content:center;gap:0;min-width:0}
+.dx-cxc .dx-cxc-kpis .dx-ui-kpi strong{line-height:22px}
+.dx-cxc .dx-cxc-kpis .dx-ui-kpi span{max-width:100%;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-cxc .dx-cxc-kpi-alert strong{color:var(--dx-ui-red-fg)}
+.dx-cxc .dx-cxc-kpi-ok strong{color:var(--dx-ui-green-fg)}
+@container (max-width:899px){ .dx-cxc .dx-cxc-kpis .dx-ui-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@container (max-width:439px){ .dx-cxc .dx-cxc-kpis .dx-ui-kpi-row{grid-template-columns:minmax(0,1fr)} }
+/* Selector de moneda */
+.dx-cxc .dx-cxc-seg{display:inline-flex;padding:3px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);gap:2px}
+.dx-cxc .dx-cxc-seg button{height:34px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.dx-cxc .dx-cxc-seg button[aria-pressed="true"]{background:var(--dx-ui-navy);color:var(--dx-ui-bg)}
+.dx-cxc .dx-cxc-seg button:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-cxc .dx-cxc-seg small{opacity:.75;font-weight:500;margin-left:4px}
+.dx-cxc .dx-cxc-topline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.dx-cxc .dx-cxc-topline p{margin:0;color:var(--dx-ui-gray);font-size:12px}
+/* Antigüedad */
+.dx-cxc .dx-cxc-aging{padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-cxc .dx-cxc-aging-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-cxc .dx-cxc-bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--dx-ui-line-soft);margin-bottom:10px}
+.dx-cxc .dx-cxc-bar i{display:block;height:100%}
+.dx-cxc .dx-cxc-buckets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.dx-cxc .dx-cxc-bucket{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:8px 12px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:inherit;text-align:left;cursor:pointer}
+.dx-cxc .dx-cxc-bucket:hover{background:var(--dx-ui-hover)}
+.dx-cxc .dx-cxc-bucket:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-cxc .dx-cxc-bucket[aria-pressed="true"]{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 1px var(--dx-ui-cyan) inset;background:var(--dx-ui-cyan-bg)}
+.dx-cxc .dx-cxc-bucket span{display:flex;align-items:center;gap:6px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-cxc .dx-cxc-bucket span i{width:8px;height:8px;border-radius:50%}
+.dx-cxc .dx-cxc-bucket strong{font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dx-cxc .dx-cxc-bucket small{color:var(--dx-ui-gray);font-size:12px}
+.dx-cxc .t-ok{background:#16A34A}.dx-cxc .t-1{background:#E08A00}.dx-cxc .t-2{background:#EA580C}.dx-cxc .t-3{background:#DC2626}.dx-cxc .t-4{background:#991B1B}
+/* Filtros */
+.dx-cxc .dx-cxc-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.4fr) auto;gap:12px 14px;align-items:end;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head)}
+.dx-cxc .dx-cxc-range{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Filas */
+.dx-cxc .dx-cxc-cols{--dx-ui-cols:minmax(130px,.9fr) minmax(190px,1.6fr) minmax(130px,.9fr) minmax(140px,1fr) minmax(120px,.85fr) 128px}
+.dx-cxc .dx-cxc-num{font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy);white-space:nowrap}
+.dx-cxc .dx-cxc-small{display:block;color:var(--dx-ui-gray);font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-cxc .dx-cxc-client{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.dx-cxc .dx-cxc-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.dx-cxc .dx-cxc-tag{padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)}
+.dx-cxc .dx-cxc-tag.is-ok{background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg)}
+.dx-cxc .dx-cxc-money{font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dx-cxc .dx-cxc-late{color:var(--dx-ui-red-fg);font-weight:600}
+.dx-cxc .dx-cxc-soon{color:var(--dx-ui-amber-fg);font-weight:600}
+.dx-cxc .dx-cxc-label{display:none}
+.dx-cxc .dx-cxc-acts{display:flex;align-items:center;justify-content:flex-end;gap:4px;position:relative}
+.dx-cxc .dx-cxc-acts .dx-btn{height:34px;padding:0 12px;font-size:13px}
+.dx-cxc .dx-cxc-more{width:34px;height:34px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font-size:18px;line-height:1;cursor:pointer}
+.dx-cxc .dx-cxc-more:hover{background:var(--dx-ui-hover);border-color:var(--dx-ui-line)}
+.dx-cxc .dx-cxc-more:focus-visible,.dx-cxc .dx-cxc-x:focus-visible{outline:2px solid var(--dx-ui-cyan)}
+.dx-cxc .dx-cxc-menu{position:absolute;z-index:20;top:38px;right:0;min-width:230px;padding:6px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);box-shadow:0 12px 32px rgba(0,0,0,.16)}
+.dx-cxc .dx-cxc-menu button{display:block;width:100%;padding:9px 10px;border:0;border-radius:6px;background:transparent;color:var(--dx-ui-ink);font:500 13px 'DM Sans',sans-serif;text-align:left;cursor:pointer}
+.dx-cxc .dx-cxc-menu button:hover{background:var(--dx-ui-hover)}
+.dx-cxc .dx-cxc-menu button.is-danger{color:var(--dx-ui-red-fg)}
+.dx-cxc .dx-cxc-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--dx-ui-line);color:var(--dx-ui-gray);font-size:12px}
+/* Ficha lateral */
+.dx-cxc .dx-cxc-drawer-bg{position:fixed;inset:0;z-index:1100;background:color-mix(in srgb,#0B1220 45%,transparent)}
+.dx-cxc .dx-cxc-drawer{position:fixed;z-index:1101;top:0;right:0;bottom:0;display:flex;flex-direction:column;width:min(620px,100%);background:var(--dx-ui-bg);border-left:1px solid var(--dx-ui-line);box-shadow:-18px 0 48px rgba(0,0,0,.2);container-type:inline-size}
+.dx-cxc .dx-cxc-dhead{padding:16px 20px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-card)}
+.dx-cxc .dx-cxc-dtop{display:flex;align-items:flex-start;gap:10px}
+.dx-cxc .dx-cxc-dtop h2{margin:2px 0 0;font:700 20px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-cxc .dx-cxc-dtop p{margin:2px 0 0;color:var(--dx-ui-gray)}
+.dx-cxc .dx-cxc-dactions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.dx-cxc .dx-cxc-x{width:36px;height:36px;margin-left:auto;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font-size:20px;cursor:pointer;flex:none}
+.dx-cxc .dx-cxc-x:hover{background:var(--dx-ui-hover)}
+.dx-cxc .dx-cxc-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-card);overflow-x:auto}
+.dx-cxc .dx-cxc-tabs button{height:42px;padding:0 10px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.dx-cxc .dx-cxc-tabs button[aria-selected="true"]{color:var(--dx-ui-navy);border-bottom-color:var(--dx-ui-cyan)}
+.dx-cxc .dx-cxc-dbody{flex:1;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.dx-cxc .dx-cxc-block{padding:14px 16px;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card)}
+.dx-cxc .dx-cxc-block h3{margin:0 0 10px;font:700 14px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-cxc .dx-cxc-dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;margin:0}
+.dx-cxc .dx-cxc-dl div{min-width:0}
+.dx-cxc .dx-cxc-dl dt{color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-cxc .dx-cxc-dl dd{margin:2px 0 0;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.dx-cxc .dx-cxc-dl dd.is-empty{color:var(--dx-ui-gray);font-weight:400}
+.dx-cxc .dx-cxc-progress{height:8px;border-radius:999px;background:var(--dx-ui-line-soft);overflow:hidden;margin:10px 0 6px}
+.dx-cxc .dx-cxc-progress i{display:block;height:100%;background:var(--dx-ui-green-fg)}
+.dx-cxc .dx-cxc-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dx-cxc .dx-cxc-totals div{padding:8px 10px;border-radius:10px;background:var(--dx-ui-head)}
+.dx-cxc .dx-cxc-totals span{display:block;color:var(--dx-ui-gray);font-size:12px}
+.dx-cxc .dx-cxc-totals strong{font:700 15px 'Sora',sans-serif;color:var(--dx-ui-navy);white-space:nowrap}
+.dx-cxc .dx-cxc-link{border:0;background:none;padding:0;color:var(--dx-ui-cyan-fg);font:600 12px 'DM Sans',sans-serif;cursor:pointer;text-decoration:underline}
+.dx-cxc .dx-cxc-list{display:flex;flex-direction:column}
+.dx-cxc .dx-cxc-item{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--dx-ui-line-soft)}
+.dx-cxc .dx-cxc-item:last-child{border-bottom:0}
+@container (max-width:480px){ .dx-cxc .dx-cxc-dl,.dx-cxc .dx-cxc-totals{grid-template-columns:minmax(0,1fr)} }
+/* Modal de cobro */
+.dx-cxc .dx-cxc-pay{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:0}
+.dx-cxc .dx-cxc-pay-main{padding:16px 20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.dx-cxc .dx-cxc-pay-aside{padding:16px 20px;border-left:1px solid var(--dx-ui-line);background:var(--dx-ui-head);display:flex;flex-direction:column;gap:10px}
+.dx-cxc .dx-cxc-pay-aside div{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.dx-cxc .dx-cxc-pay-aside div span{color:var(--dx-ui-gray)}
+.dx-cxc .dx-cxc-pay-aside div strong{font-family:'Sora',sans-serif;white-space:nowrap}
+.dx-cxc .dx-cxc-pay-aside .is-total{padding-top:10px;border-top:1px solid var(--dx-ui-line);font-size:14px}
+.dx-cxc .dx-ui-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px;align-items:start}
+.dx-cxc .dx-ui-form-grid .is-full{grid-column:1 / -1}
+.dx-cxc .dx-ui-required{color:var(--dx-ui-red-dot);margin-left:2px}
+.dx-cxc .dx-ui-field-error{color:var(--dx-ui-red-fg);font-size:12px;font-weight:500}
+.dx-cxc .dx-ui-field [aria-invalid="true"]{border-color:var(--dx-ui-red-dot)}
+.dx-cxc .dx-ui-field textarea{min-height:72px;padding:10px 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif;resize:vertical}
+.dx-cxc .dx-cxc-note{padding:10px 12px;border-radius:10px;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg);font-size:13px}
+.dx-cxc .dx-cxc-pay .dx-cxc-seg{align-self:flex-start}
+.dx-cxc .dx-ui-dialog{container-type:inline-size}
+@container (max-width:700px){ .dx-cxc .dx-cxc-pay{grid-template-columns:minmax(0,1fr)} .dx-cxc .dx-cxc-pay-aside{border-left:0;border-top:1px solid var(--dx-ui-line);order:-1} }
+@container (max-width:480px){ .dx-cxc .dx-ui-form-grid{grid-template-columns:minmax(0,1fr)} }
+[hidden]{display:none!important}
+
+@container (max-width:1100px){ .dx-cxc .dx-cxc-cols{--dx-ui-cols:minmax(120px,.9fr) minmax(160px,1.4fr) minmax(120px,.9fr) minmax(130px,1fr) minmax(110px,.85fr) 120px} }
+@container (max-width:880px){
+  .dx-cxc .dx-cxc-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dx-cxc .dx-cxc-filters > .dx-btn{justify-self:start}
+  .dx-cxc .dx-cxc-buckets{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .dx-cxc .dx-ui-head.dx-cxc-cols{display:none}
+  .dx-cxc .dx-ui-row.dx-cxc-cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:10px;padding-block:14px}
+  .dx-cxc .dx-ui-row.dx-cxc-cols > .dx-cxc-c-client{grid-column:1 / -1;order:-1}
+  .dx-cxc .dx-ui-row.dx-cxc-cols > .dx-cxc-acts{grid-column:1 / -1;justify-content:flex-start}
+  .dx-cxc .dx-cxc-label{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px}
+}
+@container (max-width:600px){ .dx-cxc .dx-cxc-buckets{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@container (max-width:420px){ .dx-cxc .dx-cxc-filters,.dx-cxc .dx-ui-row.dx-cxc-cols,.dx-cxc .dx-cxc-range{grid-template-columns:minmax(0,1fr)} .dx-cxc .dx-cxc-buckets{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:760px){ .dx-ui .dx-ui-head-page{flex-direction:column;align-items:flex-start} .dx-ui .dx-ui-actions{width:100%;margin-left:0} }
+@media (max-width:420px){ .dx-ui .dx-ui-actions .dx-btn{flex:1 1 100%} .dx-ui .dx-ui-search{width:100%} }
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <b>Mock · Cuentas por Cobrar (dx)</b> · datos reales del tenant PRUEBA al 10/11/2026 (fecha de Lima)
+  <span class="sp"></span>
+  <button type="button" id="open-ficha">Ver ficha (cobro parcial)</button>
+  <button type="button" id="open-pay">Ver modal: registrar cobro</button>
+  <button type="button" id="open-pay-err">Modal con errores</button>
+  <button type="button" id="theme">Tema: auto</button>
+</div>
+
+<main class="dx-ui dx-cxc">
+  <header class="dx-ui-head-page">
+    <div>
+      <div class="dx-ui-eyebrow">Finanzas · Cobranza</div>
+      <h1 class="dx-ui-title">Cuentas por Cobrar</h1>
+      <p class="dx-ui-sub" id="sub"></p>
+    </div>
+    <div class="dx-ui-actions">
+      <button class="dx-btn" type="button">⇪ Carga masiva</button>
+      <button class="dx-btn" type="button">⇩ Exportar</button>
+    </div>
+  </header>
+
+  <div class="dx-cxc-topline">
+    <div class="dx-cxc-seg" role="group" aria-label="Moneda">
+      <button type="button" data-mon="PEN" aria-pressed="true">Soles <small id="n-pen"></small></button>
+      <button type="button" data-mon="USD" aria-pressed="false">Dólares <small id="n-usd"></small></button>
+    </div>
+    <p>Los montos y la antigüedad se muestran en la moneda elegida; nunca se suman soles con dólares.</p>
+  </div>
+
+  <div class="dx-cxc-kpis">
+    <section class="dx-ui-kpi-row" aria-label="Resumen" id="kpis"></section>
+  </div>
+
+  <section class="dx-ui-card" aria-labelledby="t-list">
+    <div class="dx-ui-toolbar">
+      <h2 id="t-list">Cuentas por cobrar</h2>
+      <span class="dx-ui-count" id="count"></span>
+      <label class="dx-ui-search"><span aria-hidden="true">⌕</span><input id="q" type="search" placeholder="Buscar por cliente, factura u OS…" aria-label="Buscar cuentas por cobrar"></label>
+    </div>
+    <div class="dx-cxc-aging" aria-label="Antigüedad del saldo">
+      <div class="dx-cxc-aging-head"><span>Antigüedad del saldo pendiente</span><span id="aging-total"></span></div>
+      <div class="dx-cxc-bar" id="bar" aria-hidden="true"></div>
+      <div class="dx-cxc-buckets" id="buckets"></div>
+    </div>
+    <div class="dx-cxc-filters">
+      <div class="dx-ui-field"><label for="f-est">Estado</label><select id="f-est" class="dx-ui-select">
+        <option value="pend">Pendientes</option><option value="">Todas</option><option value="por_cobrar">Por cobrar</option><option value="por_vencer">Por vencer (7 días)</option><option value="vencida">Vencida</option><option value="cobrada_parcial">Cobro parcial</option><option value="en_gestion">En gestión</option><option value="cobrada">Cobrada</option><option value="anulada">Anulada</option></select></div>
+      <div class="dx-ui-field"><label for="f-per">Período de emisión</label><select id="f-per" class="dx-ui-select"><option value="">Todos</option><option value="2026-11">Noviembre 2026</option><option value="2026-10">Octubre 2026</option><option value="2026-09">Septiembre 2026</option><option value="2026-08">Agosto 2026</option></select></div>
+      <div class="dx-ui-field"><label for="f-ges">Gestor</label><select id="f-ges" class="dx-ui-select"><option value="">Todos</option></select></div>
+      <div class="dx-ui-field"><label>Vencimiento</label><div class="dx-cxc-range"><input type="date" id="f-vd" aria-label="Vencimiento desde"><input type="date" id="f-vh" aria-label="Vencimiento hasta"></div></div>
+      <button class="dx-btn" type="button" id="clear">Limpiar</button>
+    </div>
+    <div class="dx-ui-head dx-cxc-cols" role="row">
+      <span>Factura</span><span>Cliente</span><span>Vencimiento</span><span>Saldo</span><span>Estado</span><span></span>
+    </div>
+    <div id="rows"></div>
+    <div class="dx-ui-empty" id="empty" hidden></div>
+    <div class="dx-cxc-foot"><span id="foot-l"></span><span>Clic en una fila para ver la ficha · Enter o Espacio con el teclado</span></div>
+  </section>
+
+  <!-- Ficha lateral -->
+  <div id="drawer" hidden>
+    <div class="dx-cxc-drawer-bg" data-close-drawer></div>
+    <aside class="dx-cxc-drawer" role="dialog" aria-modal="true" aria-labelledby="d-title">
+      <div class="dx-cxc-dhead">
+        <div class="dx-cxc-dtop">
+          <div>
+            <div class="dx-ui-eyebrow">Cuenta por cobrar</div>
+            <h2 id="d-title"></h2>
+            <p id="d-sub"></p>
+          </div>
+          <button class="dx-cxc-x" type="button" aria-label="Cerrar ficha" data-close-drawer>×</button>
+        </div>
+        <div class="dx-cxc-dactions">
+          <button class="dx-btn primary" type="button" id="d-cobrar">Registrar cobro</button>
+          <button class="dx-btn" type="button">Registrar gestión</button>
+          <div class="dx-cxc-acts"><button class="dx-cxc-more" type="button" aria-label="Más acciones" data-menu="drawer">⋯</button></div>
+        </div>
+      </div>
+      <div class="dx-cxc-tabs" role="tablist" id="d-tabs"></div>
+      <div class="dx-cxc-dbody" id="d-body"></div>
+    </aside>
+  </div>
+
+  <!-- Modal de cobro -->
+  <div class="dx-ui-overlay" id="pay" hidden>
+    <form class="dx-ui-dialog dx-ui-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="p-title" novalidate id="pay-form">
+      <div class="dx-ui-dialog-head">
+        <div><h2 id="p-title">Registrar cobro</h2><p id="p-sub"></p></div>
+        <button class="dx-cxc-x" type="button" aria-label="Cerrar" data-close-pay>×</button>
+      </div>
+      <div class="dx-cxc-pay">
+        <div class="dx-cxc-pay-main">
+          <div class="dx-cxc-seg" role="group" aria-label="Tipo de cobro">
+            <button type="button" aria-pressed="true">Cobro normal</button>
+            <button type="button" aria-pressed="false">Depósito de detracción</button>
+          </div>
+          <div class="dx-ui-form-grid">
+            <div class="dx-ui-field"><label for="p-monto">Monto cobrado<span class="dx-ui-required">*</span></label><input id="p-monto" inputmode="decimal"><span class="dx-ui-field-hint" id="p-monto-h">Máximo: S/ 20,827.00</span></div>
+            <div class="dx-ui-field"><label for="p-fecha">Fecha de cobro<span class="dx-ui-required">*</span></label><input id="p-fecha" type="date" value="2026-11-10"></div>
+            <div class="dx-ui-field"><label for="p-medio">Medio de pago<span class="dx-ui-required">*</span></label><select id="p-medio" class="dx-ui-select"><option value="">Selecciona…</option><option>Transferencia bancaria</option><option>Depósito</option><option>Cheque</option><option>Efectivo</option></select></div>
+            <div class="dx-ui-field"><label for="p-cuenta">Cuenta bancaria<span class="dx-ui-required">*</span></label><select id="p-cuenta" class="dx-ui-select"><option value="">Selecciona…</option><option>BCP Soles · 193-…-0021</option></select></div>
+            <div class="dx-ui-field"><label for="p-op">N.° de operación<span class="dx-ui-required" id="p-op-req">*</span></label><input id="p-op"><span class="dx-ui-field-hint">Obligatorio en transferencias y depósitos</span></div>
+            <div class="dx-ui-field"><label for="p-adj">Comprobante del pago</label><input id="p-adj" type="file" style="padding-top:8px"></div>
+            <div class="dx-ui-field is-full"><label for="p-notas">Notas</label><textarea id="p-notas"></textarea></div>
+          </div>
+        </div>
+        <aside class="dx-cxc-pay-aside" aria-label="Resumen del cobro">
+          <div><span>Total de la factura</span><strong id="a-total"></strong></div>
+          <div><span>Cobrado antes</span><strong id="a-cob"></strong></div>
+          <div><span>Reservado para detracción</span><strong id="a-det"></strong></div>
+          <div><span>Este cobro</span><strong id="a-este">S/ 0.00</strong></div>
+          <div class="is-total"><span>Saldo después</span><strong id="a-saldo"></strong></div>
+        </aside>
+      </div>
+      <div class="dx-ui-dialog-foot">
+        <span role="alert" id="p-server" style="margin-right:auto;color:var(--dx-ui-red-fg);font-size:13px"></span>
+        <button class="dx-btn" type="button" data-close-pay>Cancelar</button>
+        <button class="dx-btn primary" type="submit">Registrar cobro</button>
+      </div>
+    </form>
+  </div>
+</main>
+
+<script>
+const HOY='2026-11-10';
+// Datos reales tenant PRUEBA (emp_2000000000), consulta del 10/11/2026
+const D=[
+['F001-00002304','Agregados Lima Norte S.A.C.','2026-09-12','2026-09-27',14750,14750,'cobrada','depositada',142,'OS-2026-0154'],
+['F001-00002307','Obras Civiles Inca Ingenieros S.A.C.','2026-09-21','2026-10-06',44958,44958,'cobrada','depositada',141.6,'OS-2026-0157'],
+['F001-00002303','Minera Santa Lucía de Áncash S.A.C.','2026-09-09','2026-10-09',65372,65372,'cobrada',null,0,'OS-2026-0153'],
+['F001-00002319','Constructora Pacífico Sur S.A.C.','2026-09-11','2026-10-11',10856,0,'vencida','pendiente',141.6,'OS-2026-0169'],
+['F001-00000411','Minera Cordillera Azul S.A.A.','2026-08-31','2026-10-15',50167.7,50167.7,'cobrada',null,0,null],
+['F001-00000413','Consorcio Vial Los Andes','2026-08-31','2026-10-15',63082.8,63082.8,'cobrada',null,0,null],
+['F001-00002305','Cementos Altiplano S.A.A.','2026-09-15','2026-10-15',7670,7670,'cobrada',null,0,'OS-2026-0155'],
+['F001-00000417','Agregados Lima Norte S.A.C.','2026-09-30','2026-10-15',27688.7,27688.7,'cobrada',null,0,null],
+['F001-00002306','Pesquera Mar de Grau S.A.','2026-09-18','2026-10-18',75638,75638,'cobrada',null,0,'OS-2026-0156'],
+['F001-00002313','Transportes Interoceánica Cargo S.A.C.','2026-10-06','2026-10-21',15812,15812,'cobrada','pendiente',424.8,'OS-2026-0163'],
+['F001-00002301','Consorcio Vial Los Andes','2026-09-06','2026-10-21',74930,74930,'cobrada',null,0,'OS-2026-0151'],
+['F001-00002315','Agregados Lima Norte S.A.C.','2026-10-09','2026-10-24',10384,5192,'cobro_parcial',null,0,'OS-2026-0165'],
+['F001-00002302','Minera Cordillera Azul S.A.A.','2026-09-09','2026-10-24',58174,58174,'cobrada',null,0,'OS-2026-0152'],
+['F001-00002309','Agroindustrial Valle Norte S.A.C.','2026-09-27','2026-10-27',13098,13098,'cobrada',null,0,'OS-2026-0159'],
+['F001-00000412','Compañía Minera Huaytapallana S.A.','2026-08-31','2026-10-30',146140.05,146140.05,'cobrada',null,0,null],
+['F001-00002318','Obras Civiles Inca Ingenieros S.A.C.','2026-10-18','2026-11-02',29146,29146,'cobrada',null,0,'OS-2026-0168'],
+['F001-00002308','Minera Cordillera Azul S.A.A.','2026-09-21','2026-11-05',41654,20827,'cobro_parcial',null,0,'OS-2026-0158'],
+['F001-00002310','Energía Hidroandina del Centro S.A.','2026-09-27','2026-11-11',13334,0,'por_cobrar','depositada',142,'OS-2026-0160'],
+['F001-00002317','Pesquera Mar de Grau S.A.','2026-10-15','2026-11-14',38586,0,'por_cobrar',null,0,'OS-2026-0167'],
+['F001-00002311','Minera Cordillera Azul S.A.A.','2026-09-30','2026-11-14',77880,0,'por_cobrar',null,0,'OS-2026-0161'],
+['F001-00000416','Consorcio Vial Los Andes','2026-09-30','2026-11-14',84653.2,0,'por_cobrar',null,0,null],
+['F001-00000414','Minera Cordillera Azul S.A.A.','2026-09-30','2026-11-14',64315.9,0,'por_cobrar',null,0,null],
+['F001-00000420','Agregados Lima Norte S.A.C.','2026-10-31','2026-11-15',28249.2,0,'por_cobrar',null,0,null],
+['F001-00002322','Transportes Interoceánica Cargo S.A.C.','2026-11-02','2026-11-17',9440,0,'por_cobrar',null,0,'OS-2026-0172'],
+['F001-00002312','Minera Cordillera Azul S.A.A.','2026-10-03','2026-11-17',71272,0,'por_cobrar',null,0,'OS-2026-0162'],
+['F001-00002314','Minera Cordillera Azul S.A.A.','2026-10-09','2026-11-23',80712,0,'por_cobrar',null,0,'OS-2026-0164'],
+['F001-00002320','Agroindustrial Valle Norte S.A.C.','2026-10-24','2026-11-23',82128,0,'por_cobrar',null,0,'OS-2026-0170'],
+['F001-00000415','Compañía Minera Huaytapallana S.A.','2026-09-30','2026-11-29',187563.95,0,'por_cobrar',null,0,null],
+['F001-00002323','Minera Santa Lucía de Áncash S.A.C.','2026-11-05','2026-12-05',65844,0,'por_cobrar',null,0,'OS-2026-0173'],
+['F001-00002316','Compañía Minera Huaytapallana S.A.','2026-10-12','2026-12-11',61478,0,'por_cobrar','depositada',70.8,'OS-2026-0166'],
+['F001-00002321','Energía Hidroandina del Centro S.A.','2026-10-30','2026-12-14',17228,0,'por_cobrar',null,0,'OS-2026-0171'],
+['F001-00000419','Consorcio Vial Los Andes','2026-10-31','2026-12-15',86547.1,0,'por_cobrar',null,0,null],
+['F001-00000418','Compañía Minera Huaytapallana S.A.','2026-10-31','2026-12-30',181677.76,0,'por_cobrar',null,0,null],
+].map(r=>({num:r[0],cli:r[1],emi:r[2],ven:r[3],total:r[4],pag:r[5],est0:r[6],det:r[7],detM:r[8],os:r[9],mon:'PEN'}));
+const COBRADO_MES={PEN:20827,USD:0};
+
+const sym=m=>m==='USD'?'US$':'S/';
+const money=(v,m)=>sym(m)+' '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fdate=d=>d?d.split('-').reverse().join('/'):'Sin dato';
+const days=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);
+const saldo=c=>['cobrada','anulada','cancelada'].includes(c.est0)?0:Math.max(0,Math.round((c.total-c.pag)*100)/100);
+const mora=c=>saldo(c)>0?Math.max(0,days(c.ven,HOY)):0;
+const estado=c=>{ if(['anulada','cancelada'].includes(c.est0))return c.est0; if(saldo(c)<=0)return 'cobrada';
+  if(mora(c)>0)return 'vencida'; const p=days(HOY,c.ven); if(p>=0&&p<=7)return 'por_vencer'; if(c.pag>0)return 'cobrada_parcial'; return 'por_cobrar'; };
+const META={por_cobrar:['Por cobrar','is-cyan'],por_vencer:['Por vencer','is-amber'],vencida:['Vencida','is-red'],en_gestion:['En gestión','is-amber'],cobrada_parcial:['Cobro parcial','is-amber'],cobrada:['Cobrada','is-green'],anulada:['Anulada','is-gray'],cancelada:['Cancelada','is-gray']};
+const TRAMOS=[{k:'ok',l:'Al día',t:'t-ok',f:c=>mora(c)===0},{k:'1',l:'1–30 días',t:'t-1',f:c=>mora(c)>=1&&mora(c)<=30},{k:'2',l:'31–60 días',t:'t-2',f:c=>mora(c)>=31&&mora(c)<=60},{k:'3',l:'61–90 días',t:'t-3',f:c=>mora(c)>=61&&mora(c)<=90},{k:'4',l:'+90 días',t:'t-4',f:c=>mora(c)>90}];
+let MON='PEN', TRAMO=null;
+const $=s=>document.querySelector(s);
+const plural=(n,s,p)=>n+' '+(n===1?s:p);
+
+function render(){
+  const all=D.filter(c=>c.mon===MON), pend=all.filter(c=>saldo(c)>0);
+  $('#n-pen').textContent='('+D.filter(c=>c.mon==='PEN'&&saldo(c)>0).length+')';
+  $('#n-usd').textContent='('+D.filter(c=>c.mon==='USD'&&saldo(c)>0).length+')';
+  const tot=pend.reduce((s,c)=>s+saldo(c),0), venc=pend.filter(c=>mora(c)>0), pv=pend.filter(c=>estado(c)==='por_vencer');
+  $('#sub').textContent=plural(pend.length,'cuenta pendiente','cuentas pendientes')+' en '+(MON==='PEN'?'soles':'dólares')+' · '+plural(venc.length,'vencida','vencidas');
+  $('#kpis').innerHTML=
+   `<div class="dx-ui-kpi" title="Saldo pendiente"><strong>${money(tot,MON)}</strong><span>Por cobrar · ${plural(pend.length,'factura','facturas')}</span></div>`+
+   `<div class="dx-ui-kpi ${venc.length?'dx-cxc-kpi-alert':''}"><strong>${money(venc.reduce((s,c)=>s+saldo(c),0),MON)}</strong><span>Vencido · ${plural(venc.length,'factura','facturas')}</span></div>`+
+   `<div class="dx-ui-kpi"><strong>${money(pv.reduce((s,c)=>s+saldo(c),0),MON)}</strong><span>Vence en 7 días · ${plural(pv.length,'factura','facturas')}</span></div>`+
+   `<div class="dx-ui-kpi dx-cxc-kpi-ok"><strong>${money(COBRADO_MES[MON],MON)}</strong><span>Cobrado en noviembre</span></div>`;
+  // aging
+  $('#aging-total').textContent=money(tot,MON);
+  $('#bar').innerHTML=TRAMOS.map(t=>{const m=pend.filter(t.f).reduce((s,c)=>s+saldo(c),0);return tot?`<i class="${t.t}" style="width:${m/tot*100}%"></i>`:''}).join('');
+  $('#buckets').innerHTML=TRAMOS.map(t=>{const it=pend.filter(t.f);return `<button type="button" class="dx-cxc-bucket" data-t="${t.k}" aria-pressed="${TRAMO===t.k}"><span><i class="${t.t}"></i>${t.l}</span><strong>${money(it.reduce((s,c)=>s+saldo(c),0),MON)}</strong><small>${plural(it.length,'factura','facturas')}</small></button>`}).join('');
+  // filtros
+  const q=$('#q').value.trim().toLowerCase(), fe=$('#f-est').value, fp=$('#f-per').value, vd=$('#f-vd').value, vh=$('#f-vh').value;
+  let rows=all.filter(c=>{
+    if(fe==='pend'&&saldo(c)<=0)return false; if(fe&&fe!=='pend'&&estado(c)!==fe)return false;
+    if(TRAMO&&!(saldo(c)>0&&TRAMOS.find(t=>t.k===TRAMO).f(c)))return false;
+    if(fp&&c.emi.slice(0,7)!==fp)return false; if(vd&&c.ven<vd)return false; if(vh&&c.ven>vh)return false;
+    if(q&&!(c.cli+' '+c.num+' '+(c.os||'')).toLowerCase().includes(q))return false; return true;});
+  rows.sort((a,b)=>mora(b)-mora(a)||a.ven.localeCompare(b.ven));
+  $('#count').textContent=plural(rows.length,'cuenta','cuentas');
+  $('#foot-l').textContent='Mostrando '+rows.length+' de '+all.length;
+  $('#rows').innerHTML=rows.map((c,i)=>{const e=estado(c),m=mora(c),p=days(HOY,c.ven),s=saldo(c);
+    const venTxt=s<=0?'Cobrada':m>0?`<span class="dx-cxc-late">${plural(m,'día vencida','días vencida')}</span>`:p===0?'<span class="dx-cxc-soon">Vence hoy</span>':p<=7?`<span class="dx-cxc-soon">Vence en ${plural(p,'día','días')}</span>`:`Vence en ${p} días`;
+    const tags=[c.det==='pendiente'?'<span class="dx-cxc-tag">Detracción pendiente</span>':'',c.det==='depositada'?'<span class="dx-cxc-tag is-ok">Detracción depositada</span>':''].join('');
+    return `<div class="dx-ui-row dx-cxc-cols" role="button" tabindex="0" data-i="${D.indexOf(c)}" aria-label="Abrir ${c.num}">
+      <div><span class="dx-cxc-label">Factura</span><strong class="dx-cxc-num">${c.num}</strong><span class="dx-cxc-small">${c.os||'Sin OS de cliente'}</span></div>
+      <div class="dx-cxc-c-client"><span class="dx-cxc-client">${c.cli}</span>${tags?`<div class="dx-cxc-tags">${tags}</div>`:''}</div>
+      <div><span class="dx-cxc-label">Vencimiento</span>${fdate(c.ven)}<span class="dx-cxc-small">${venTxt}</span></div>
+      <div><span class="dx-cxc-label">Saldo</span><span class="dx-cxc-money">${money(s,c.mon)}</span><span class="dx-cxc-small">de ${money(c.total,c.mon)}</span></div>
+      <div><span class="dx-cxc-label">Estado</span><span class="dx-ui-pill ${META[e][1]}"><i></i>${META[e][0]}</span></div>
+      <div class="dx-cxc-acts">${s>0?`<button class="dx-btn primary" type="button" data-pay="${D.indexOf(c)}">Cobrar</button>`:''}<button class="dx-cxc-more" type="button" aria-label="Más acciones de ${c.num}" data-menu="${D.indexOf(c)}">⋯</button></div>
+    </div>`}).join('');
+  const emp=$('#empty'); emp.hidden=rows.length>0;
+  emp.textContent=all.length===0?`No hay cuentas por cobrar en ${MON==='PEN'?'soles':'dólares'}.`:'No hay cuentas que coincidan con los filtros. Usa "Limpiar" para verlas todas.';
+}
+function closeMenus(){document.querySelectorAll('.dx-cxc-menu').forEach(m=>m.remove())}
+function menu(btn,idx){closeMenus();const c=D[idx]||D[16];const m=document.createElement('div');m.className='dx-cxc-menu';m.setAttribute('role','menu');
+  m.innerHTML=`<button role="menuitem">Registrar gestión de cobranza</button><button role="menuitem">Editar vencimiento</button>${c.pag>0&&saldo(c)>0?'<button role="menuitem" class="is-danger">Revertir cobros…</button>':''}${c.pag===0&&saldo(c)>0?'<button role="menuitem" class="is-danger">Anular factura y su CxC…</button>':''}`;
+  btn.parentElement.appendChild(m);}
+let DI=16, TAB='resumen';
+function ficha(i){DI=i;TAB='resumen';const c=D[i],e=estado(c),s=saldo(c);
+  $('#d-title').innerHTML=`${c.num} <span class="dx-ui-pill ${META[e][1]}" style="vertical-align:middle"><i></i>${META[e][0]}</span>`;
+  $('#d-sub').textContent=c.cli+' · '+(c.os||'Sin OS de cliente');
+  $('#d-cobrar').hidden=s<=0;
+  const n={cobros:c.pag>0?1:0,ges:0,det:c.det?1:0,notas:0};
+  const tabs=[['resumen','Resumen'],['cobros','Cobros ('+n.cobros+')'],['gestion','Gestión ('+n.ges+')'],['detracciones','Detracciones ('+n.det+')'],['notas','Notas de crédito/débito ('+n.notas+')'],...(mora(c)>0?[['mora','Mora']]:[])];
+  $('#d-tabs').innerHTML=tabs.map(t=>`<button role="tab" aria-selected="${t[0]===TAB}" data-tab="${t[0]}">${t[1]}</button>`).join('');
+  fichaBody();$('#drawer').hidden=false;}
+function fichaBody(){const c=D[DI],s=saldo(c),pct=c.total?c.pag/c.total*100:0;let h='';
+  if(TAB==='resumen'){h=`<div class="dx-cxc-block"><h3>Cobranza</h3><div class="dx-cxc-totals"><div><span>Total</span><strong>${money(c.total,c.mon)}</strong></div><div><span>Cobrado</span><strong>${money(c.pag,c.mon)}</strong></div><div><span>Saldo</span><strong>${money(s,c.mon)}</strong></div></div><div class="dx-cxc-progress"><i style="width:${pct}%"></i></div><span class="dx-cxc-small">${Math.round(pct)}% cobrado</span></div>
+   <div class="dx-cxc-block"><h3>Datos</h3><dl class="dx-cxc-dl"><div><dt>Emisión</dt><dd>${fdate(c.emi)}</dd></div><div><dt>Vencimiento</dt><dd>${fdate(c.ven)} · <button class="dx-cxc-link" type="button">Editar</button></dd></div>
+   <div><dt>Días de mora</dt><dd>${mora(c)?plural(mora(c),'día','días'):'Al día'}</dd></div><div><dt>Moneda</dt><dd>${c.mon==='PEN'?'Soles (PEN)':'Dólares (USD)'}</dd></div>
+   <div><dt>Medio de pago esperado</dt><dd class="is-empty">Sin dato</dd></div><div><dt>Gestor de cobranza</dt><dd class="is-empty">Sin dato</dd></div>
+   <div><dt>Detracción</dt><dd${c.det?'':' class="is-empty"'}>${c.det?money(c.detM,'PEN')+' · '+(c.det==='pendiente'?'Pendiente':'Depositada'):'No aplica'}</dd></div><div><dt>Retención SUNAT</dt><dd class="is-empty">No aplica</dd></div></dl></div>`;}
+  else if(TAB==='cobros'){h=c.pag>0?`<div class="dx-cxc-block"><h3>Historial de cobros</h3><div class="dx-cxc-list"><div class="dx-cxc-item"><div><strong>01/11/2026 · Transferencia bancaria</strong><span class="dx-cxc-small">Operación 880136 · BCP Soles</span></div><strong class="dx-cxc-money">${money(c.pag,c.mon)}</strong></div></div></div>`:'<div class="dx-ui-empty">Todavía no hay cobros registrados.</div>';}
+  else h='<div class="dx-ui-empty">Sin registros.</div>';
+  $('#d-body').innerHTML=h;}
+function pay(i,err){const c=D[i],s=saldo(c);$('#p-sub').textContent=`${c.num} · ${c.cli} · saldo ${money(s,c.mon)}`;
+  $('#p-monto').value=err?'25000':String(s.toFixed(2));$('#p-monto-h').textContent='Máximo: '+money(s,c.mon);
+  $('#a-total').textContent=money(c.total,c.mon);$('#a-cob').textContent=money(c.pag,c.mon);$('#a-det').textContent=c.det==='pendiente'?money(c.detM,'PEN'):money(0,c.mon);
+  upd();clearErr();$('#pay').hidden=false;if(err)validate();}
+function upd(){const c=D[DI],v=Number($('#p-monto').value||0);$('#a-este').textContent=money(v,c.mon);$('#a-saldo').textContent=money(Math.max(0,saldo(c)-v),c.mon);}
+function clearErr(){document.querySelectorAll('#pay .dx-ui-field-error').forEach(e=>e.remove());document.querySelectorAll('#pay [aria-invalid]').forEach(e=>e.removeAttribute('aria-invalid'));}
+function validate(){clearErr();const c=D[DI],errs=[];const v=Number($('#p-monto').value||0);
+  if(!(v>0))errs.push(['p-monto','Ingresa un monto mayor a cero.']);else if(v>saldo(c))errs.push(['p-monto','No puede superar el saldo de '+money(saldo(c),c.mon)+'.']);
+  if(!$('#p-fecha').value)errs.push(['p-fecha','Indica la fecha del cobro.']);
+  if(!$('#p-medio').value)errs.push(['p-medio','Selecciona el medio de pago.']);
+  if(!$('#p-cuenta').value)errs.push(['p-cuenta','Selecciona la cuenta donde entró el dinero.']);
+  if(['Transferencia bancaria','Depósito',''].includes($('#p-medio').value)&&!$('#p-op').value)errs.push(['p-op','Ingresa el número de operación.']);
+  errs.forEach(([id,m])=>{const el=document.getElementById(id);el.setAttribute('aria-invalid','true');const s=document.createElement('span');s.className='dx-ui-field-error';s.textContent=m;s.id=id+'-err';el.setAttribute('aria-describedby',id+'-err');el.parentElement.appendChild(s);});
+  if(errs.length)document.getElementById(errs[0][0]).focus();return !errs.length;}
+
+document.addEventListener('click',e=>{const t=e.target;
+  if(t.closest('[data-mon]')){MON=t.closest('[data-mon]').dataset.mon;TRAMO=null;document.querySelectorAll('[data-mon]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mon===MON));render();return;}
+  if(t.closest('.dx-cxc-bucket')){const k=t.closest('.dx-cxc-bucket').dataset.t;TRAMO=TRAMO===k?null:k;render();return;}
+  if(t.closest('[data-menu]')){e.stopPropagation();menu(t.closest('[data-menu]'),Number(t.closest('[data-menu]').dataset.menu));return;}
+  if(!t.closest('.dx-cxc-menu'))closeMenus();
+  if(t.closest('[data-pay]')){DI=Number(t.closest('[data-pay]').dataset.pay);pay(DI);return;}
+  if(t.closest('[data-tab]')){TAB=t.closest('[data-tab]').dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===TAB));fichaBody();return;}
+  if(t.closest('.dx-ui-row')){ficha(Number(t.closest('.dx-ui-row').dataset.i));return;}
+  if(t.closest('[data-close-drawer]')){$('#drawer').hidden=true;return;}
+  if(t.closest('[data-close-pay]')){$('#pay').hidden=true;return;}
+});
+document.addEventListener('keydown',e=>{const r=e.target.closest&&e.target.closest('.dx-ui-row');if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();ficha(Number(r.dataset.i));}
+  if(e.key==='Escape'){closeMenus();if(!$('#pay').hidden)$('#pay').hidden=true;else $('#drawer').hidden=true;}});
+['#q','#f-est','#f-per','#f-vd','#f-vh'].forEach(s=>$(s).addEventListener('input',render));
+$('#clear').onclick=()=>{$('#q').value='';$('#f-est').value='pend';$('#f-per').value='';$('#f-vd').value='';$('#f-vh').value='';TRAMO=null;render();};
+$('#p-monto').addEventListener('input',upd);
+$('#pay-form').addEventListener('submit',e=>{e.preventDefault();if(validate())$('#p-server').textContent='(mock) Aquí se registraría el cobro.';});
+$('#d-cobrar').onclick=()=>pay(DI);
+$('#open-ficha').onclick=()=>ficha(16);
+$('#open-pay').onclick=()=>{DI=16;pay(16)};
+$('#open-pay-err').onclick=()=>{DI=16;pay(16,true)};
+const modes=['auto','light','dark'];let mi=0;$('#theme').onclick=()=>{mi=(mi+1)%3;const m=modes[mi];if(m==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',m);$('#theme').textContent='Tema: '+m;};
+render();
+</script>
+</body>
+</html>

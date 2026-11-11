@@ -131,7 +131,7 @@ Los componentes genéricos viven en `operaciones-app/src/zahory-mock/components/
 - `dx-ui-form-grid is-2` fija dos columnas; ambas variantes pasan a una columna bajo 480 px de contenedor o 600 px de ventana.
 - La etiqueta puede ser el primer `span` o un `<label>` hijo directo (o `.dx-ui-label` si agrupa controles); ambas formas comparten estilo.
 - `dx-ui-field-hint` es el texto de ayuda gris de 12 px bajo el control.
-- Pantallas que ya usan el estándar: Transporte y WMS (Despachos, Stock mínimos, Conteos, Custodia, Configuración, Vencimientos, Devoluciones, Herramientas, Etiquetas, Reporte valorizado).
+- Pantallas que ya usan el estándar: Facturación, Cuentas por Cobrar (`dx-cxc-`), Transporte y WMS (Despachos, Stock mínimos, Conteos, Custodia, Configuración, Vencimientos, Devoluciones, Herramientas, Etiquetas, Reporte valorizado).
 
 ### Familias KPI existentes por migrar
 

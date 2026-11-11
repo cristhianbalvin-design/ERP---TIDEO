@@ -4,11 +4,14 @@ pantalla: cxc
 catalogo: admin/cxc
 titulo: Cuentas por cobrar
 resumen: Controla lo que deben los clientes: cobros, gestiones de cobranza, mora, autodetracciones y carga masiva de saldos.
-componentes: src/pages_fin.jsx#CxC
-huella: 06993c9c6e
-paso: 1 | pantalla=cxc | permiso=ninguno | La lista muestra cada cuenta por cobrar con su saldo y vencimiento. Usa Cobrar para registrar un pago: elige el medio de pago e ingresa el número de operación o referencia bancaria.
-paso: 2 | pantalla=cxc | permiso=ninguno | Nueva gestión registra una acción de cobranza (llamada, correo, compromiso de pago). Según el resultado, la fecha de próxima acción es obligatoria.
-paso: 3 | pantalla=cxc | permiso=ninguno | Si el cliente no depositó la detracción, usa Registrar autodetracción con las cuentas y la constancia del depósito.
-paso: 4 | pantalla=cxc | permiso=cxc:editar | La mora se calcula con una tasa diaria. Puedes Condonar mora para que deje de calcularse (queda en el historial) o Restaurar tasa al valor estándar.
-paso: 5 | pantalla=cxc | permiso=cxc:anular | Revertir cobros deshace los cobros y conciliaciones de una cuenta; Anular factura y CxC relacionada anula ambas con confirmación.
-paso: 6 | pantalla=cxc | permiso=ninguno | Carga masiva importa saldos por cobrar desde una plantilla, y Exportar descarga la lista.
+componentes: src/pages_fin.jsx#CxC, src/pages/cxc/CxCListado.jsx#CxCListado, src/pages/cxc/CxCFicha.jsx#CxCFicha, src/pages/cxc/CxCModales.jsx#CxCCobroModal, src/pages/cxc/CxCModales.jsx#CxCGestionModal, src/pages/cxc/CxCModales.jsx#CxCAnularFacturaModal, src/pages/cxc/CxCModales.jsx#CxCRevertirCobrosModal
+huella: 0e29c670ff c413195ab1 d7db22e42e cd05144c84 7f9d112d1d 57a22c01b6 0533c84717
+paso: 1 | pantalla=cxc | permiso=ninguno | Elige Soles o Dólares arriba: los totales, la antigüedad y la lista se muestran solo en esa moneda. Las tarjetas resumen lo que está por cobrar, lo vencido, lo que vence en 7 días y lo cobrado en el mes.
+paso: 2 | pantalla=cxc | permiso=ninguno | La barra de antigüedad separa lo que está al día de lo vencido por tramos (1–30, 31–60, 61–90 y más de 90 días). Haz clic en un tramo para ver solo esas cuentas; otro clic quita el filtro.
+paso: 3 | pantalla=cxc | permiso=ninguno | Por defecto la lista muestra las cuentas con saldo. Usa el buscador (cliente, factura u OS) y los filtros de estado, período de emisión, gestor y vencimiento; Limpiar los quita todos.
+paso: 4 | pantalla=cxc | permiso=ninguno | Cobrar abre el registro del pago: indica monto, fecha, medio de pago y, en transferencias y depósitos, el número de operación. Si falta algo, el aviso aparece bajo cada campo.
+paso: 5 | pantalla=cxc | permiso=ninguno | Abre una fila para ver su ficha con el resumen de cobranza y las pestañas de cobros, gestión, detracciones, notas y mora. Registrar gestión anota una acción de cobranza; según el resultado, la fecha de próxima acción es obligatoria.
+paso: 6 | pantalla=cxc | permiso=ninguno | Si el cliente no depositó la detracción, usa Registrar autodetracción en la ficha con las cuentas y la constancia del depósito.
+paso: 7 | pantalla=cxc | permiso=cxc:editar | En el menú ⋯ puedes editar el vencimiento y revertir los cobros de una cuenta. En la pestaña Mora puedes condonar la mora o restaurar la tasa estándar, confirmando la acción.
+paso: 8 | pantalla=cxc | permiso=cxc:anular | En el menú ⋯, Anular factura y su CxC anula ambas cuando la cuenta todavía no tiene cobros; pide un motivo y confirmación.
+paso: 9 | pantalla=cxc | permiso=ninguno | Carga masiva importa facturas con su cuenta por cobrar desde una plantilla, y Exportar descarga la lista filtrada.

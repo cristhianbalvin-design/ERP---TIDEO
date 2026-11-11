@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
+import { fechaHoyLima, diasEntreFechas, ordenarFilas, tramoAntiguedad, validarCobroCxC } from './pages/cxc/cxcCalculos.js';
+import CxCListado from './pages/cxc/CxCListado.jsx';
+import CxCFicha from './pages/cxc/CxCFicha.jsx';
+import { CxCCobroModal, CxCGestionModal, CxCAnularFacturaModal, CxCRevertirCobrosModal } from './pages/cxc/CxCModales.jsx';
+import './pages/cxc/cxc.css';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { isSupabaseMode } from './lib/dataMode.js';
@@ -529,7 +534,7 @@ function CxC() {
     [cxc, modoVistaSociedadCxC.sinFiltro, sociedadesIdsVistaCxCKey],
   );
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = fechaHoyLima();
   const TASA_MORA_DIARIA = 0.000833; // 0.083% diario — tasa legal Perú ~30% anual
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -565,7 +570,7 @@ function CxC() {
     if (saldoDe(c) <= 0 || estadoTerminalCxC(c)) return 0;
     const vence = c?.fecha_vencimiento || c?.vence;
     if (!vence) return 0;
-    return Math.max(0, Math.floor((new Date(`${today}T00:00:00`) - new Date(`${vence}T00:00:00`)) / 86400000));
+    return Math.max(0, diasEntreFechas(vence, today));
   };
 
   const interesMoraDe = c => {
@@ -589,7 +594,7 @@ function CxC() {
     if (dias > 0) return 'vencida';
     const vence = c?.fecha_vencimiento || c?.vence;
     if (vence) {
-      const diasParaVencer = Math.floor((new Date(`${vence}T00:00:00`) - new Date(`${today}T00:00:00`)) / 86400000);
+      const diasParaVencer = diasEntreFechas(today, vence);
       if (diasParaVencer >= 0 && diasParaVencer <= 7) return 'por_vencer';
     }
     if (pagadoDe(c) > 0 && saldo > 0) return 'cobrada_parcial';
@@ -610,15 +615,13 @@ function CxC() {
   // ── State ─────────────────────────────────────────────────────────────
   const [selCxC, setSelCxC] = useState(null);
   const [fichaTab, setFichaTab] = useState('resumen');
+  const [menuFicha, setMenuFicha] = useState(false);
+  const fichaRef = useRef(null);
   const [agingFilter, setAgingFilter] = useState(null);
-  const [showFiltros, setShowFiltros] = useState(false);
   const [fCliente, setFCliente] = useState('');
-  const [fEstado, setFEstado] = useState('');
-  const [fMoneda, setFMoneda] = useState('');
+  const [fEstado, setFEstado] = useState('pendientes');
   const [fVenceDesde, setFVenceDesde] = useState('');
   const [fVenceHasta, setFVenceHasta] = useState('');
-  const [fMoraDesde, setFMoraDesde] = useState('');
-  const [fMoraHasta, setFMoraHasta] = useState('');
   const [fGestor, setFGestor] = useState('');
   const [fPeriodoEmision, setFPeriodoEmision] = useState('');
 
@@ -632,9 +635,7 @@ function CxC() {
   const [detraccionesCxcError, setDetraccionesCxcError] = useState('');
   const [archivoCobro, setArchivoCobro] = useState(null);
   const [archivoCobroError, setArchivoCobroError] = useState('');
-  const [montoError, setMontoError] = useState('');
   const [savingCobro, setSavingCobro] = useState(false);
-  const archivoCobroRef = useRef(null);
   const cuentasBancariasActivas = filtrarOpcionesPorSociedadEscritura(
     (cuentasBancarias||[]).filter(cb=>cb.estado!=='inactivo'&&cb.estado!=='eliminado'),
     modoVistaSociedadCxC.sociedadIdEscritura,
@@ -692,6 +693,7 @@ function CxC() {
   };
 
   const [panelGestion, setPanelGestion] = useState(false);
+  const [savingGestion, setSavingGestion] = useState(false);
   const [gestionSel, setGestionSel] = useState(null);
   const [formGestion, setFormGestion] = useState({ tipo_gestion:'', resultado:'', fecha_proxima_accion:'', fecha_acordada_pago:'', notas:'' });
   const [editVencimiento, setEditVencimiento] = useState(null);
@@ -700,89 +702,49 @@ function CxC() {
   const [confirmAnularFacturaCxC, setConfirmAnularFacturaCxC] = useState(null);
   const [motivoAnularFacturaCxC, setMotivoAnularFacturaCxC] = useState('');
   const [savingCondonar, setSavingCondonar] = useState(false);
+  const [confirmMora, setConfirmMora] = useState('');
+  const [erroresCobro, setErroresCobro] = useState({});
+  const [errorGestion, setErrorGestion] = useState('');
+  const [errorServidorCobro, setErrorServidorCobro] = useState('');
+  const [errorServidorGestion, setErrorServidorGestion] = useState('');
   const [cargaMasivaAbierta, setCargaMasivaAbierta] = useState(false);
+  useEffect(() => {
+    if (!selCxC) return undefined;
+    fichaRef.current?.focus();
+  }, [selCxC]);
+  useEffect(() => {
+    if (!selCxC) return undefined;
+    const cerrar = e => { if (e.key === 'Escape' && !panelCobro && !panelGestion && !panelAutodetraccion && !confirmAnular && !confirmAnularFacturaCxC) { if (menuFicha) setMenuFicha(false); else setSelCxC(null); } };
+    document.addEventListener('keydown', cerrar);
+    return () => document.removeEventListener('keydown', cerrar);
+  }, [selCxC, menuFicha, panelCobro, panelGestion, panelAutodetraccion, confirmAnular, confirmAnularFacturaCxC]);
 
-  const MONEDAS_CXC = [
-    { moneda: 'PEN', titulo: 'Soles (PEN)' },
-    { moneda: 'USD', titulo: 'Dolares (USD)' },
-  ];
-  const AGING_BUCKETS_CXC = [
-    { key:'0-30',  label:'0-30 dias',  min:0,  max:30,  color:'green'  },
-    { key:'31-60', label:'31-60 dias', min:31, max:60,  color:'orange' },
-    { key:'61-90', label:'61-90 dias', min:61, max:90,  color:'orange' },
-    { key:'+90',   label:'+90 dias',   min:91, max:null, color:'danger' },
-  ];
   const monedaCxCDe = c => (c?.moneda || c?.facturas?.moneda || 'PEN') === 'USD' ? 'USD' : 'PEN';
-  const cxcActivas = useMemo(() => cxcVista.filter(c => !estadoTerminalCxC(c) && saldoDe(c) > 0), [cxcVista]);
-  const totalPorCobrarPEN = useMemo(() => cxcActivas.filter(c => monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
-  const totalPorCobrarUSD = useMemo(() => cxcActivas.filter(c => monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
-  const totalVencidoPEN   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
-  const totalVencidoUSD   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
-  const totalEnGestionPEN = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
-  const totalEnGestionUSD = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
-  const cxcPendientesAging = useMemo(
-    () => cxcActivas.filter(c => {
-      if (fPeriodoEmision && (c.fecha_emision || '').slice(0, 7) !== fPeriodoEmision) return false;
-      return saldoDe(c) > 0 && !['cobrada','pagada','anulada','cancelada'].includes(estadoDe(c));
-    }),
-    [cxcActivas, gestionesCobranza, today, fPeriodoEmision],
+  const cxcActivas = useMemo(
+    () => cxcVista.filter(c => !estadoTerminalCxC(c) && saldoDe(c) > 0), [cxcVista],
   );
-
-  // ── Aging ─────────────────────────────────────────────────────────────
-  const aging = useMemo(() => [
-    { key:'0-30',  label:'0–30 días',  min:0,  max:30,  color:'green'  },
-    { key:'31-60', label:'31–60 días', min:31, max:60,  color:'orange' },
-    { key:'61-90', label:'61–90 días', min:61, max:90,  color:'orange' },
-    { key:'+90',   label:'+90 días',   min:91, max:null, color:'danger' },
-  ].map(b => {
-    const items = cxcActivas.filter(c => {
-      const d = diasMoraDe(c);
-      return saldoDe(c) > 0 && d >= b.min && (b.max == null || d <= b.max);
-    });
-    return { 
-      ...b, 
-      montoPEN: items.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0),
-      montoUSD: items.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), 
-      count: items.length 
-    };
-  }), [cxcActivas, today]);
-
-  // ── Filtered rows ─────────────────────────────────────────────────────
-  const agingPorMoneda = useMemo(() => MONEDAS_CXC.reduce((acc, meta) => {
-    acc[meta.moneda] = AGING_BUCKETS_CXC.map(b => {
-      const items = cxcPendientesAging.filter(c => {
-        const d = diasMoraDe(c);
-        return monedaCxCDe(c) === meta.moneda && d >= b.min && (b.max == null || d <= b.max);
-      });
-      return {
-        ...b,
-        monto: items.reduce((s,c) => s + saldoDe(c), 0),
-        count: items.length,
-      };
-    });
-    return acc;
-  }, {}), [cxcPendientesAging, today]);
-
-  const cxcFiltrada = useMemo(() => {
-    let rows = cxcVista;
-    if (agingFilter) {
-      const b = AGING_BUCKETS_CXC.find(a => a.key === agingFilter);
-      if (b) rows = cxcActivas.filter(c => { const d = diasMoraDe(c); return saldoDe(c) > 0 && !['cobrada','pagada','anulada','cancelada'].includes(estadoDe(c)) && d >= b.min && (b.max == null || d <= b.max); });
-    }
-    if (fCliente)    rows = rows.filter(c => clienteDe(c).toLowerCase().includes(fCliente.toLowerCase()));
-    if (fEstado)     rows = rows.filter(c => estadoDe(c) === fEstado);
-    if (fMoneda)     rows = rows.filter(c => monedaCxCDe(c) === fMoneda);
-    if (fVenceDesde) rows = rows.filter(c => (c.fecha_vencimiento||c.vence||'') >= fVenceDesde);
-    if (fVenceHasta) rows = rows.filter(c => (c.fecha_vencimiento||c.vence||'') <= fVenceHasta);
-    if (fMoraDesde)  rows = rows.filter(c => diasMoraDe(c) >= Number(fMoraDesde));
-    if (fMoraHasta)       rows = rows.filter(c => diasMoraDe(c) <= Number(fMoraHasta));
-    if (fGestor)          rows = rows.filter(c => (c.gestor_cobranza_id || '') === fGestor);
-    if (fPeriodoEmision)  rows = rows.filter(c => (c.fecha_emision || '').slice(0, 7) === fPeriodoEmision);
-    return rows;
-  }, [cxcVista, cxcActivas, agingFilter, fCliente, fEstado, fMoneda, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, fPeriodoEmision, today, gestionesCobranza]);
+  const [monedaVista, setMonedaVista] = useState(() => cxcActivas.some(c => monedaCxCDe(c) === 'PEN') ? 'PEN' : cxcActivas.some(c => monedaCxCDe(c) === 'USD') ? 'USD' : 'PEN');
+  const monedaInicialElegida = useRef(cxcActivas.length > 0);
+  useEffect(() => {
+    if (monedaInicialElegida.current || !cxcActivas.length) return;
+    setMonedaVista(cxcActivas.some(c => monedaCxCDe(c) === 'PEN') ? 'PEN' : 'USD');
+    monedaInicialElegida.current = true;
+  }, [cxcActivas]);
+  const cxcFiltrada = useMemo(function filtrarCxC() {
+    let rows = cxcVista.filter(c => monedaCxCDe(c) === monedaVista);
+    if (agingFilter) rows = rows.filter(c => saldoDe(c) > 0 && tramoAntiguedad(diasMoraDe(c)) === agingFilter);
+    if (fCliente.trim()) rows = rows.filter(c => [clienteDe(c), facturaNumeroDe(c), osNumeroDe(c)].join(' ').toLowerCase().includes(fCliente.trim().toLowerCase()));
+    if (fEstado === 'pendientes') rows = rows.filter(c => saldoDe(c) > 0 && !estadoTerminalCxC(c));
+    else if (fEstado) rows = rows.filter(c => estadoDe(c) === fEstado);
+    if (fVenceDesde) rows = rows.filter(c => (c.fecha_vencimiento || c.vence || '') >= fVenceDesde);
+    if (fVenceHasta) rows = rows.filter(c => (c.fecha_vencimiento || c.vence || '') <= fVenceHasta);
+    if (fGestor) rows = rows.filter(c => (c.gestor_cobranza_id || '') === fGestor);
+    if (fPeriodoEmision) rows = rows.filter(c => (c.fecha_emision || '').slice(0, 7) === fPeriodoEmision);
+    return [...rows].sort((a,b) => ordenarFilas({diasMora:diasMoraDe(a),vencimiento:a.fecha_vencimiento||a.vence},{diasMora:diasMoraDe(b),vencimiento:b.fecha_vencimiento||b.vence}));
+  }, [cxcVista, agingFilter, fCliente, fEstado, monedaVista, fVenceDesde, fVenceHasta, fGestor, fPeriodoEmision, today, gestionesCobranza]);
 
   const cobradoEsteMesPorMoneda = useMemo(() => {
-    const mes = fPeriodoEmision || today.slice(0, 7);
+    const mes = today.slice(0, 7);
 
     const cxcById = new Map(cxcVista.map(c => [c.id, c]));
     const cxcByFacturaId = new Map(cxcVista.filter(c => c.factura_id).map(c => [c.factura_id, c]));
@@ -825,30 +787,14 @@ function CxC() {
         const m = String(monedaCxCDe(c)).trim().toUpperCase();
         return { ...acc, [m]: (acc[m] || 0) + pagadoDeFallback(c) };
       }, {});
-  }, [cobrosHistorial, cxcVista, fPeriodoEmision, today]);
+  }, [cobrosHistorial, cxcVista, today]);
 
-  const seccionesMoneda = useMemo(() => MONEDAS_CXC.map(meta => {
-    const rows = cxcFiltrada.filter(c => monedaCxCDe(c) === meta.moneda);
-    const aging = fMoneda && fMoneda !== meta.moneda
-      ? AGING_BUCKETS_CXC.map(b => ({ ...b, monto: 0, count: 0 }))
-      : agingPorMoneda[meta.moneda] || [];
-    return {
-      ...meta,
-      rows,
-      aging,
-      mostrarRetencion: rows.some(c => retencionDe(c) > 0),
-      cobradoEsteMes: cobradoEsteMesPorMoneda[meta.moneda] || 0,
-    };
-  }), [cxcFiltrada, agingPorMoneda, fMoneda, cobradoEsteMesPorMoneda]);
-
-  const hayFiltros = !!(agingFilter||fCliente||fEstado||fMoneda||fVenceDesde||fVenceHasta||fMoraDesde||fMoraHasta||fGestor||fPeriodoEmision);
-
-  // ── Handlers ─────────────────────────────────────────────────────────
-  const abrirFicha = c => { setSelCxC(c.id); setFichaTab('resumen'); };
+  const abrirFicha = c => { setSelCxC(c.id); setFichaTab('resumen'); setConfirmMora(''); };
 
   const abrirCobro = (c, e) => {
     if (e) e.stopPropagation();
     setCobroSel(c);
+    setErroresCobro({}); setErrorServidorCobro('');
     const pendiente = pendienteSpotDe(c);
     const tipoInicial = normalBloqueadoPorDetraccionDe(c) ? 'detraccion' : 'normal';
     setFormCobro({ tipo_cobro:tipoInicial, cliente_pago_total_sin_detraer:false, detraccion_id:pendiente?.id || '', monto: String(tipoInicial === 'detraccion' ? pendiente?.monto_detraccion_origen || 0 : maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null, incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: tipoInicial === 'detraccion' ? 'Detraccion' : '', cuenta_bancaria: tipoInicial === 'detraccion' ? cuentaDetraccionUnicaDe(c) : '', numero_operacion: '', numero_constancia:'', notas: '' });
@@ -885,56 +831,24 @@ function CxC() {
   const guardarCobro = async e => {
     e.preventDefault();
     if (savingCobro) return;
-    if (!detraccionesCxcCargadas) {
-      setMontoError(detraccionesCxcError || 'No se pudieron cargar las detracciones. No se puede registrar el cobro normal hasta completar la carga.');
-      return;
-    }
     const monto = Number(formCobro.monto || 0);
     const saldo = saldoDe(cobroSel);
     const pendiente = pendienteSpotDe(cobroSel);
     const esDetraccion = formCobro.tipo_cobro === 'detraccion';
-    const maxNormal = maxNormalCobrableDe(cobroSel);
-    const esPagoTotalSinDetraer = !esDetraccion && formCobro.cliente_pago_total_sin_detraer === true;
-    if (!esDetraccion && normalBloqueadoPorDetraccionDe(cobroSel) && !esPagoTotalSinDetraer) {
-      setMontoError('No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.');
+    const validacionArchivo = archivoCobro ? storageService.validarArchivo(archivoCobro) : null;
+    const errores = validarCobroCxC(formCobro, {
+      saldo, maxNormal:maxNormalCobrableDe(cobroSel), pendiente,
+      normalBloqueado:normalBloqueadoPorDetraccionDe(cobroSel),
+      errorArchivo:archivoCobroError || (validacionArchivo && !validacionArchivo.ok ? validacionArchivo.error : ''),
+    });
+
+    setErroresCobro(errores);
+    setErrorServidorCobro('');
+    const primerError = Object.keys(errores)[0];
+    if (primerError) { e.currentTarget.querySelector(`[name="${primerError}"]`)?.focus(); return; }
+    if (!detraccionesCxcCargadas) {
+      setErrorServidorCobro(detraccionesCxcError || 'No se pudieron cargar las detracciones. No se puede registrar el cobro hasta completar la carga.');
       return;
-    }
-    if (esDetraccion && !formCobro.cuenta_bancaria) {
-      setMontoError('Seleccione una cuenta de detracciones PEN de la misma sociedad.');
-      return;
-    }
-    if (monto <= 0) return;
-    if (esDetraccion && (!pendiente || monto !== Number(pendiente.monto_detraccion_origen) || Number(formCobro.monto_deposito_soles) !== Number(pendiente.monto_detraccion_soles))) {
-      setMontoError('El cobro de detracción debe usar exactamente el monto de origen y depósito de la obligación pendiente.');
-      return;
-    }
-    if (esPagoTotalSinDetraer && (!pendiente || Math.abs(monto - saldo) > 0.005)) {
-      setMontoError('El pago total sin detraer debe cubrir exactamente el saldo completo de la CxC.');
-      return;
-    }
-    if (!esDetraccion && !esPagoTotalSinDetraer && monto > maxNormal) {
-      setMontoError(pendiente ? `Máximo cobrable ahora: ${moneySpotCurrency(maxNormal, cobroSel.moneda)}. El tramo reservado corresponde a la detracción pendiente.` : `El monto no puede superar el saldo pendiente de ${money(saldo)}.`);
-      return;
-    }
-    if (esDetraccion && monto > saldo) {
-      setMontoError(`El monto no puede superar el saldo pendiente de ${money(saldo)}.`);
-      return;
-    }
-    setMontoError('');
-    if (!formCobro.medio_pago) {
-      alert('Seleccione el medio de pago.');
-      return;
-    }
-    if (['Transferencia bancaria','Depósito'].includes(formCobro.medio_pago) && !formCobro.numero_operacion) {
-      alert('Ingrese el número de operación o referencia bancaria.');
-      return;
-    }
-    if (archivoCobro) {
-      const validacionArchivo = storageService.validarArchivo(archivoCobro);
-      if (!validacionArchivo.ok) {
-        setArchivoCobroError(validacionArchivo.error);
-        return;
-      }
     }
     setSavingCobro(true);
     try {
@@ -945,7 +859,7 @@ function CxC() {
       setArchivoCobro(null);
       setArchivoCobroError('');
     } catch (error) {
-      setMontoError(error?.message || 'No se pudo registrar el cobro. No se realizaron cambios.');
+      setErrorServidorCobro(error?.message || 'No se pudo registrar el cobro. No se realizaron cambios.');
     } finally {
       setSavingCobro(false);
     }
@@ -954,6 +868,7 @@ function CxC() {
   const abrirGestion = (c, e) => {
     if (e) e.stopPropagation();
     setGestionSel(c);
+    setErrorGestion(''); setErrorServidorGestion('');
     setFormGestion({ tipo_gestion:'', resultado:'', fecha_proxima_accion:'', fecha_acordada_pago:'', notas:'' });
     setPanelGestion(true);
   };
@@ -985,14 +900,20 @@ function CxC() {
 
   const guardarGestion = async e => {
     e.preventDefault();
+    if (savingGestion) return;
     const necesitaFecha = ['promesa_pago','pagara_en_fecha_acordada'].includes(formGestion.resultado);
     if (necesitaFecha && !formGestion.fecha_proxima_accion) {
-      alert('Debe ingresar la fecha de próxima acción para este resultado.');
+      setErrorGestion('Debe ingresar la fecha de próxima acción para este resultado.');
+      e.currentTarget.querySelector('[name=fecha_proxima_accion]')?.focus();
       return;
     }
-    await registrarGestionCobranza(gestionSel.id, formGestion);
-    setPanelGestion(false);
-    setGestionSel(null);
+    setErrorGestion(''); setErrorServidorGestion('');
+    setSavingGestion(true);
+    try {
+      await registrarGestionCobranza(gestionSel.id, formGestion);
+      setPanelGestion(false);
+      setGestionSel(null);
+    } catch (error) { setErrorServidorGestion(error?.message || 'No se pudo registrar la gestión.'); } finally { setSavingGestion(false); }
   };
 
   const exportarCSV = () => {
@@ -1021,313 +942,21 @@ function CxC() {
   if (selCxC) {
     const c = cxcVista.find(x => x.id === selCxC);
     if (!c) { setSelCxC(null); return null; }
-    const autodetraccionCxc = autodetraccionPendienteDe(c);
-    const dias     = diasMoraDe(c);
-    const interes  = interesMoraDe(c);
-    const saldo    = saldoDe(c);
-    const estado   = estadoDe(c);
+    const dias = diasMoraDe(c);
+    const interes = interesMoraDe(c);
+    const saldo = saldoDe(c);
+    const estado = estadoDe(c);
     const tasaEfectiva = c?.tasa_mora_diaria != null ? Number(c.tasa_mora_diaria) : TASA_MORA_DIARIA;
     const moraCondonada = c?.tasa_mora_diaria != null && Number(c.tasa_mora_diaria) === 0;
-    const tasa     = tasaEfectiva * 100;
-    const cobros   = (cobrosHistorial||[]).filter(cb=>cb.cxc_id===c.id).sort((a,b)=>a.fecha_cobro.localeCompare(b.fecha_cobro));
-    const gestiones= (gestionesCobranza||[]).filter(g=>g.cxc_id===c.id).sort((a,b)=>b.fecha_gestion.localeCompare(a.fecha_gestion));
-    const notasRelacionadas = (facturas||[])
-      .filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === c.factura_id)
-      .sort((a,b) => (b.fecha_emision||'').localeCompare(a.fecha_emision||''));
-    const proyMora = d => Math.round(saldo * tasaEfectiva * (dias+d) * 100) / 100;
-    const metaEst  = ESTADO_META[estado] || ESTADO_META.por_cobrar;
-    const fechaVencimientoActual = c?.fecha_vencimiento || c?.vence || '';
-    const vencimientoLabel = fechaVencimientoActual || '—';
-    const editandoVencimiento = editVencimiento?.id === c.id;
-    const fechaVencimientoEditada = editandoVencimiento ? editVencimiento.fecha : fechaVencimientoActual;
-    const vencimientoColor = dias > 0 ? 'var(--danger)' : dias === 0 ? 'var(--orange)' : 'var(--fg)';
-    const tituloEditarVencimiento = puedeEditarCxC ? 'Editar vencimiento' : 'Requiere permiso cxc:editar';
-    const TABS_FICHA = [
-      { id:'notas',    label:`Notas relacionadas (${notasRelacionadas.length})` },
-      { id:'detracciones', label:`Detracciones (${obligacionesCxcDe(c).length})` },
-      { id:'resumen',  label:'Resumen'                       },
-      { id:'pagos',    label:`Historial pagos (${cobros.length})` },
-      { id:'gestion',  label:`Gestión (${gestiones.length})` },
-      ...(dias > 0 || moraCondonada ? [{ id:'mora', label: moraCondonada ? 'Mora · Condonada' : 'Mora' }] : []),
-    ];
-
-    fichaJSX = (
-      <>
-        <div className="side-panel-backdrop" onClick={()=>setSelCxC(null)} />
-        <div className="side-panel">
-          <div className="side-panel-head">
-            <div>
-              <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>{clienteDe(c)} · Vence: {vencimientoLabel}</div>
-              <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-                <strong style={{fontSize:16}}>{facturaNumeroDe(c)}</strong>
-                <span className={'badge '+metaEst.cls}>{metaEst.label}</span>
-                {dias > 0 && !moraCondonada && <span style={{fontSize:11,fontWeight:600,color:'var(--danger)'}}>{dias}d mora</span>}
-                {moraCondonada && <span className="badge badge-green">✓ Condonada</span>}
-              </div>
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              {saldo > 0 && <button className="btn btn-secondary btn-sm" data-local-form="true" onClick={e=>abrirGestion(c,e)} title="Registrar gestión">{I.send}</button>}
-              {autodetraccionCxc && <button className="btn btn-primary btn-sm" data-local-form="true" onClick={e=>{e.stopPropagation();setAutodetraccionSel(autodetraccionCxc);setPanelAutodetraccion(true);}}>Registrar autodetracción</button>}
-              {saldo > 0 && <button className="btn btn-primary btn-sm" data-local-form="true" onClick={e=>abrirCobro(c,e)}>Cobrar</button>}
-              <button className="icon-btn" onClick={()=>setSelCxC(null)}>{I.x}</button>
-            </div>
-          </div>
-          <div className="tabs" style={{margin:'0 22px'}}>
-            {TABS_FICHA.map(t=><div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={()=>setFichaTab(t.id)}>{t.label}</div>)}
-          </div>
-          <div className="side-panel-body">
-
-        {/* Tab Resumen */}
-        {fichaTab === 'resumen' && (
-          <div style={{display:'flex',flexDirection:'column',gap:16}}>
-            <div className="card" style={{padding:20}}>
-                <div className="grid-2" style={{gap:16}}>
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Cliente</div>
-                    <button className="btn btn-ghost" style={{padding:0,fontSize:13,color:'var(--cyan)'}} onClick={()=>{setSelCxC(null);navigate('cuentas',{detail:c.cuenta_id});}}>{clienteDe(c)}</button>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Factura vinculada</div>
-                    {c.factura_id
-                      ? <button className="btn btn-ghost" style={{padding:0,fontSize:13,color:'var(--cyan)'}} onClick={()=>{setSelCxC(null);navigate('facturacion',{selFac:c.factura_id});}}>{facturaNumeroDe(c)}</button>
-                      : <span style={{fontSize:13,color:'var(--fg-muted)'}}>Sin factura vinculada</span>
-                    }
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>OS Cliente</div>
-                    <div style={{fontSize:13}}>{osNumeroDe(c)}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Emisión</div>
-                    <div style={{fontSize:13}}>{c?.fecha_emision||c?.emision||'—'}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Vencimiento</div>
-                    {editandoVencimiento ? (
-                      <div className="row" style={{gap:6,alignItems:'center',flexWrap:'wrap'}}>
-                        <input className="input" type="date" value={fechaVencimientoEditada} disabled={savingVencimiento} onChange={e=>setEditVencimiento(v=>({...v,fecha:e.target.value}))} style={{width:150}} autoFocus />
-                        <button className="icon-btn" title="Confirmar" disabled={savingVencimiento || !fechaVencimientoEditada} onClick={confirmarEdicionVencimiento}>{I.check}</button>
-                        <button className="icon-btn" title="Cancelar" disabled={savingVencimiento} onClick={cancelarEdicionVencimiento}>{I.x}</button>
-                      </div>
-                    ) : puedeEditarCxC ? (
-                      <button type="button" className="btn btn-ghost" title={tituloEditarVencimiento} onClick={e=>abrirEdicionVencimiento(c,e)} style={{padding:0,fontSize:13,fontWeight:600,color:vencimientoColor,display:'inline-flex',alignItems:'center',gap:6}}>
-                        <span>{vencimientoLabel}</span>
-                        <span style={{fontSize:11,color:'var(--cyan)'}}>{I.edit}</span>
-                      </button>
-                    ) : (
-                      <div title={tituloEditarVencimiento} style={{fontSize:13,fontWeight:600,color:vencimientoColor}}>{vencimientoLabel}</div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Gestor asignado</div>
-                    <div style={{fontSize:13}}>{c?.gestor_cobranza_id ? ((usuarios||[]).find(u=>u.id===c.gestor_cobranza_id)?.nombre||c.gestor_cobranza_id) : <span style={{color:'var(--fg-muted)'}}>Sin asignar</span>}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="card" style={{padding:20}}>
-                {Number(c.monto_retencion||0) > 0 ? (
-                  <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12,padding:'10px 14px',borderRadius:8,background:'rgba(251,191,36,0.05)',border:'1px solid rgba(251,191,36,0.25)'}}>
-                    <div style={{fontWeight:700,fontSize:12,color:'var(--warning)',marginBottom:4}}>⚠ Agente de Retención SUNAT</div>
-                    {[
-                      ['Total facturado', moneyCurrency(totalDe(c), c.moneda), null],
-                      ['Retención SUNAT', `- ${moneyCurrency(Number(c.monto_retencion), c.moneda)}`, 'var(--warning)'],
-                      ['Neto a cobrar', moneyCurrency(montoNetoCobrableDe(c), c.moneda), 'var(--cyan)'],
-                      ['Cobrado a la fecha', moneyCurrency(pagadoDe(c), c.moneda), 'var(--green)'],
-                      ['Saldo pendiente', moneyCurrency(saldo, c.moneda), saldo>0?'var(--orange)':'var(--fg)'],
-                    ].map(([label,val,color])=>(
-                      <div key={label} style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
-                        <span style={{color:'var(--fg-muted)'}}>{label}</span>
-                        <span style={{fontWeight:600,color:color||'var(--fg)'}}>{val}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,textAlign:'center',marginBottom:12}}>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total facturado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora'}}>{moneyCurrency(totalDe(c), c.moneda)}</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total pagado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:'var(--green)'}}>{moneyCurrency(pagadoDe(c), c.moneda)}</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Saldo pendiente</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:saldo>0?'var(--orange)':'var(--fg)'}}>{moneyCurrency(saldo, c.moneda)}</div></div>
-                  </div>
-                )}
-                {dias > 0 && (
-                  <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--border)',display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,textAlign:'center'}}>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,fontFamily:'Sora',color:'var(--danger)'}}>{dias}d</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Interés de mora</div><div style={{fontSize:22,fontWeight:700,fontFamily:'Sora',color:'var(--danger)'}}>{moneyDCurrency(interes, c.moneda)}</div></div>
-                  </div>
-                )}
-              </div>
-          </div>
-        )}
-
-        {fichaTab === 'detracciones' && (
-          <div className="card card-body">
-            {obligacionesCxcDe(c).length === 0 ? <div className="text-muted">No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Origen moneda CxC</th><th>Depósito PEN</th><th>Cuenta destino</th><th>Constancia</th><th></th></tr></thead><tbody>{obligacionesCxcDe(c).map(row => { const vencida = row.estado === 'por_autodetraer' && row.fecha_limite_deposito && row.fecha_limite_deposito < today; return <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className={'badge '+(row.estado === 'por_autodetraer' ? 'badge-orange' : 'badge-cyan')}>{row.estado === 'por_autodetraer' ? 'Por autodetraer' : row.estado}</span>{row.fecha_limite_deposito && row.estado === 'por_autodetraer' && <div style={{fontSize:11,color:vencida?'var(--danger)':'var(--fg-muted)',marginTop:3}}>Límite: {row.fecha_limite_deposito}{vencida ? ' · Vencida' : ''}</div>}</td><td>{row.origen}</td><td className="num">{moneySpotCurrency(row.monto_detraccion_origen, row.moneda_origen || c.moneda)}</td><td className="num">{moneySpot(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia || '—'}</td><td>{row.estado === 'por_autodetraer' && <button className="btn btn-primary btn-sm" onClick={()=>{setAutodetraccionSel(row);setPanelAutodetraccion(true);}}>Registrar</button>}</td></tr>; })}</tbody></table></div>}
-          </div>
-        )}
-
-        {/* Tab Notas relacionadas */}
-        {fichaTab === 'notas' && (
-          <div className="card card-body">
-            {notasRelacionadas.length === 0 ? (
-              <div style={{textAlign:'center',color:'var(--fg-muted)',fontSize:13,padding:24}}>No hay notas de crédito o débito relacionadas.</div>
-            ) : (
-              <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                {notasRelacionadas.map(nota => (
-                  <div key={nota.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
-                    <div style={{minWidth:0}}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{padding:0,color:'var(--cyan)',fontWeight:700}}
-                        onClick={() => { setSelCxC(null); navigate('facturacion',{selFac:nota.id}); }}
-                      >
-                        {nota.numero || nota.id}
-                      </button>
-                      <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>
-                        {nota.tipo_documento === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'} · {nota.fecha_emision || '—'} · Motivo: {nota.motivo_codigo || nota.motivo || '—'}
-                      </div>
-                    </div>
-                    <span className="num" style={{fontWeight:600,whiteSpace:'nowrap'}}>{moneyCurrency(nota.total || nota.monto, nota.moneda || c.moneda)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tab Historial de pagos */}
-        {fichaTab === 'pagos' && (
-          <div className="card mt-6">
-            {cobros.length === 0 ? (
-              <div style={{padding:40,textAlign:'center',color:'var(--fg-muted)'}}>No hay cobros registrados para esta CxC.</div>
-            ) : (
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Capital</th><th>Mora</th><th>Medio de pago</th><th>Referencia</th><th>Cuenta destino</th><th>Comprobante</th><th>Registrado por</th></tr></thead>
-                  <tbody>{cobros.map(cb=>(
-                    <tr key={cb.id}>
-                      <td>{cb.fecha_cobro}</td>
-                      <td className="num"><strong>{moneyCurrency(cb.monto_capital, c.moneda)}</strong></td>
-                      <td className="num text-muted">{cb.monto_mora>0?moneyCurrency(cb.monto_mora, c.moneda):'—'}</td>
-                      <td>{cb.medio_pago||'—'}</td>
-                      <td className="mono">{cb.numero_operacion||cb.referencia||'—'}</td>
-                      <td>{cb.cuenta_bancaria||'—'}</td>
-                      <td><DescargaAdjuntoPago registro={cb} empresaId={empresa?.id} entidadTipo="cobros_cxc"/></td>
-                      <td style={{fontSize:12,color:'var(--fg-muted)'}}>{cb.registrado_por||'—'}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tab Gestión de cobranza */}
-        {fichaTab === 'gestion' && (
-          <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:20}}>
-            {saldo > 0 && (
-              <div style={{display:'flex',justifyContent:'flex-end'}}>
-                <button className="btn btn-primary" data-local-form="true" onClick={e=>abrirGestion(c,e)}>{I.plus} Nueva gestión</button>
-              </div>
-            )}
-            {gestiones.length === 0 ? (
-              <div className="card" style={{padding:40,textAlign:'center',color:'var(--fg-muted)'}}>No hay gestiones de cobranza registradas.</div>
-            ) : gestiones.map(g=>(
-              <div key={g.id} className="card" style={{padding:16}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    <span className="badge badge-purple">{g.tipo_gestion.replace(/_/g,' ')}</span>
-                    <span className="badge badge-cyan">{g.resultado.replace(/_/g,' ')}</span>
-                  </div>
-                  <span style={{fontSize:12,color:'var(--fg-muted)',whiteSpace:'nowrap',marginLeft:12}}>{g.fecha_gestion}</span>
-                </div>
-                <div style={{fontSize:13,marginBottom:6}}>{g.notas}</div>
-                {g.fecha_acordada_pago && <div style={{fontSize:12,color:'var(--orange)',fontWeight:600}}>Pago acordado: {g.fecha_acordada_pago}</div>}
-                {g.fecha_proxima_accion && <div style={{fontSize:12,color:'var(--fg-muted)'}}>Próxima acción: {g.fecha_proxima_accion}</div>}
-                {g.usuario && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Registrado por: {g.usuario}</div>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Tab Mora */}
-        {fichaTab === 'mora' && (dias > 0 || moraCondonada) && (
-          <div style={{display:'flex',flexDirection:'column',gap:16,marginTop:20}}>
-
-            {/* Banner condonada */}
-            {moraCondonada && (
-              <div style={{padding:'14px 18px',borderRadius:8,border:'1px solid var(--green)',background:'rgba(76,175,80,0.06)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:14,color:'var(--green)',marginBottom:4}}>✓ Mora condonada</div>
-                  <div style={{fontSize:13,color:'var(--fg-muted)'}}>El interés por mora no aplica para esta CxC por acuerdo con el cliente.</div>
-                </div>
-                {puedeEditarCxC && (
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    disabled={savingCondonar}
-                    onClick={async () => {
-                      if (!window.confirm('¿Restaurar la tasa de mora al valor estándar (0.0833% diario)?')) return;
-                      setSavingCondonar(true);
-                      try { await restaurarMoraCxC(c.id); } finally { setSavingCondonar(false); }
-                    }}
-                  >
-                    {savingCondonar ? 'Restaurando...' : 'Restaurar tasa'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Cálculo (solo si hay días de mora y no está condonada) */}
-            {dias > 0 && !moraCondonada && (
-              <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:16}}>
-                <div className="card" style={{padding:20}}>
-                  <div className="grid-2" style={{gap:16}}>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Fecha de vencimiento</div><div style={{fontSize:14,fontWeight:600}}>{vencimientoLabel}</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,color:'var(--danger)'}}>{dias} días</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Tasa de mora diaria</div><div style={{fontSize:14}}>{tasa.toFixed(4)}%</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Interés acumulado</div><div style={{fontSize:14,fontWeight:700,color:'var(--danger)'}}>{moneyD(interes)}</div></div>
-                    <div style={{gridColumn:'1/-1'}}>
-                      <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Fórmula aplicada</div>
-                      <div style={{fontSize:12,fontFamily:'monospace',background:'var(--bg-subtle)',padding:'8px 12px',borderRadius:6}}>
-                        {money(saldo)} × {tasa.toFixed(4)}% × {dias} días = {moneyD(interes)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="card" style={{padding:20}}>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:12,fontWeight:600}}>Proyección de interés</div>
-                  {[30,60,90].map(d=>(
-                    <div key={d} className="row" style={{justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid var(--border-subtle)'}}>
-                      <span style={{fontSize:13}}>+{d} días adicionales</span>
-                      <span style={{fontWeight:700,color:'var(--danger)'}}>{moneyD(proyMora(d))}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Botón condonar (solo si hay mora y no está condonada) */}
-            {dias > 0 && !moraCondonada && puedeEditarCxC && (
-              <div style={{display:'flex',justifyContent:'flex-end'}}>
-                <button
-                  className="btn btn-secondary"
-                  disabled={savingCondonar}
-                  onClick={async () => {
-                    if (!window.confirm(`¿Condonar la mora de ${moneyD(interes)} para esta CxC? El interés dejará de calcularse. Esta acción queda registrada en el historial.`)) return;
-                    setSavingCondonar(true);
-                    try { await condonarMoraCxC(c.id); } finally { setSavingCondonar(false); }
-                  }}
-                >
-                  {savingCondonar ? 'Guardando...' : '✕ Condonar mora'}
-                </button>
-              </div>
-            )}
-
-          </div>
-        )}
-          </div>{/* end side-panel-body */}
-        </div>{/* end side-panel */}
-      </>
-    );
+    const cobros = (cobrosHistorial||[]).filter(cb=>cb.cxc_id===c.id).sort((a,b)=>a.fecha_cobro.localeCompare(b.fecha_cobro));
+    const gestiones = (gestionesCobranza||[]).filter(g=>g.cxc_id===c.id).sort((a,b)=>b.fecha_gestion.localeCompare(a.fecha_gestion));
+    const notas = (facturas||[]).filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === c.factura_id).sort((a,b) => (b.fecha_emision||'').localeCompare(a.fecha_emision||''));
+    const vencimiento = c?.fecha_vencimiento || c?.vence || '';
+    const editando = editVencimiento?.id === c.id;
+    fichaJSX = <CxCFicha c={c} panelRef={fichaRef} Adjunto={DescargaAdjuntoPago}
+      datos={{dias, interes, saldo, estado, moraCondonada, tasa:tasaEfectiva * 100, cobros, gestiones, notas, obligaciones:obligacionesCxcDe(c), proyMora:d => Math.round(saldo * tasaEfectiva * (dias+d) * 100) / 100, metaEst:ESTADO_META[estado] || ESTADO_META.por_cobrar, vencimiento, autodetraccion:autodetraccionPendienteDe(c), total:totalDe(c), pagado:pagadoDe(c), neto:montoNetoCobrableDe(c), retencion:retencionDe(c), cliente:clienteDe(c), factura:facturaNumeroDe(c), os:osNumeroDe(c), gestor:(usuarios||[]).find(u=>u.id===c.gestor_cobranza_id)?.nombre || (usuarios||[]).find(u=>u.id===c.gestor_cobranza_id)?.nombre_completo || 'Sin dato', moneda:monedaCxCDe(c), terminal:estadoTerminalCxC(c), puedeAnularFactura:facturaPuedeAnularseDe(c), moneyDCurrency, moneySpotCurrency, moneySpot}}
+      vista={{panelAbierto:panelCobro || panelGestion || panelAutodetraccion || !!confirmAnular || !!confirmAnularFacturaCxC, tab:fichaTab, puedeEditar:puedeEditarCxC, puedeAnular:puedeAnularCxC, editando, fechaEditada:editando ? editVencimiento.fecha : vencimiento, savingVencimiento, menu:menuFicha, confirmMora, savingCondonar, today, empresaId:empresa?.id}}
+      acciones={{cerrar:() => { setSelCxC(null); setMenuFicha(false); }, cambiarTab:t => { setFichaTab(t); setConfirmMora(''); }, cobrar:e => abrirCobro(c,e), gestion:e => { setMenuFicha(false); abrirGestion(c,e); }, autodetraer:row => { setAutodetraccionSel(row); setPanelAutodetraccion(true); }, editar:e => { setMenuFicha(false); setFichaTab('resumen'); abrirEdicionVencimiento(c,e); }, cambiarFecha:fecha => setEditVencimiento(v=>({...v,fecha})), guardarFecha:confirmarEdicionVencimiento, cancelarFecha:cancelarEdicionVencimiento, navegar:(ruta, params) => { setSelCxC(null); navigate(ruta,params); }, revertir:() => { setMenuFicha(false); setConfirmAnular(c); }, anular:() => { setMenuFicha(false); setMotivoAnularFacturaCxC(''); setConfirmAnularFacturaCxC(c); }, abrirMenu:() => setMenuFicha(v=>!v), confirmarMora:setConfirmMora, ejecutarMora:async () => { setSavingCondonar(true); try { if (confirmMora === 'restaurar') await restaurarMoraCxC(c.id); else await condonarMoraCxC(c.id); setConfirmMora(''); } finally { setSavingCondonar(false); } } }} />;
   }
 
   // ── Lista principal ───────────────────────────────────────────────────
@@ -1342,529 +971,36 @@ function CxC() {
     }
     return opts;
   })();
-  const labelCobradoMes = fPeriodoEmision
-    ? `Cobrado en ${periodoOptsEmision.find(o => o.v === fPeriodoEmision)?.l || fPeriodoEmision}`
-    : 'Cobrado este mes';
+  const labelCobradoMes = `Cobrado en ${new Intl.DateTimeFormat('es-PE', { month:'long' }).format(new Date(`${today}T00:00:00`)).toLocaleLowerCase('es-PE')}`;
+  const pendientesMoneda = cxcActivas.filter(c => monedaCxCDe(c) === monedaVista);
 
   return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Cuentas por Cobrar</h1>
-          <div className="page-sub" style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
-            <span>Total por cobrar: <strong>{money(totalPorCobrarPEN)}</strong>{totalPorCobrarUSD > 0 && <> · <strong>{money(totalPorCobrarUSD, 'US$')}</strong></>}</span>
-            {(totalVencidoPEN > 0 || totalVencidoUSD > 0) && (
-              <span style={{color:'var(--danger)',fontWeight:600}}>
-                · Vencido:{totalVencidoPEN > 0 && <> {money(totalVencidoPEN)}</>}{totalVencidoUSD > 0 && <> · {money(totalVencidoUSD, 'US$')}</>}
-              </span>
-            )}
-            {(totalEnGestionPEN > 0 || totalEnGestionUSD > 0) && (
-              <span style={{color:'var(--orange)',fontWeight:600}}>
-                · En gestión:{totalEnGestionPEN > 0 && <> {money(totalEnGestionPEN)}</>}{totalEnGestionUSD > 0 && <> · {money(totalEnGestionUSD, 'US$')}</>}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="row" style={{gap:8,alignItems:'center'}}>
-          <button className="btn btn-secondary" onClick={() => setCargaMasivaAbierta(true)}>{I.upload} Carga masiva</button>
-          <button className="btn btn-secondary" onClick={exportarCSV}>{I.download} Exportar</button>
-        </div>
-      </div>
-
-      {detraccionesCxcError && <div className="alert alert-danger" style={{marginBottom:16}}>No se pudieron cargar las detracciones. Actualiza la pantalla antes de registrar cobros.</div>}
-
-      {/* Aging — clickable */}
-      {/* Filtros movidos al interior de las tablas */}
-
-      {(() => {
-        const firstVisibleIdx = seccionesMoneda.findIndex(s => s.rows.length > 0);
-
-        const FiltersUI = (
-          <div className="card-head row" style={{gap:12, flexWrap:'wrap', alignItems:'center'}}>
-            <input className="input" placeholder="Buscar cliente..." value={fCliente} onChange={e=>setFCliente(e.target.value)} style={{flex:'1 1 200px'}} />
-            <select className="input" style={{flex:'1 1 140px'}} value={fPeriodoEmision} onChange={e=>setFPeriodoEmision(e.target.value)}>
-              <option value="">Todos los períodos</option>
-              {periodoOptsEmision.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-            </select>
-            <select className="input" style={{flex:'1 1 140px'}} value={fEstado} onChange={e=>setFEstado(e.target.value)}>
-              <option value="">Todos los estados</option>
-              {Object.entries(ESTADO_META).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-            </select>
-            <select className="input" style={{flex:'1 1 120px'}} value={fMoneda} onChange={e=>setFMoneda(e.target.value)}>
-              <option value="">Todas las monedas</option>
-              <option value="PEN">S/ Soles (PEN)</option>
-              <option value="USD">US$ Dólares (USD)</option>
-            </select>
-            <div style={{display:'flex', gap:8, alignItems:'center', flex:'1 1 240px'}}>
-              <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Vence:</span>
-              <input className="input" type="date" value={fVenceDesde} onChange={e=>setFVenceDesde(e.target.value)} style={{flex:1}} />
-              <span style={{fontSize:12, color:'var(--fg-muted)'}}>-</span>
-              <input className="input" type="date" value={fVenceHasta} onChange={e=>setFVenceHasta(e.target.value)} style={{flex:1}} />
-            </div>
-            <div style={{display:'flex', gap:8, alignItems:'center', flex:'1 1 160px'}}>
-              <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Mora:</span>
-              <input className="input" type="number" min="0" placeholder="Mín" value={fMoraDesde} onChange={e=>setFMoraDesde(e.target.value)} style={{flex:1}} />
-              <input className="input" type="number" min="0" placeholder="Máx" value={fMoraHasta} onChange={e=>setFMoraHasta(e.target.value)} style={{flex:1}} />
-            </div>
-            {hayFiltros && (
-              <button className="icon-btn" onClick={()=>{setFCliente('');setFEstado('');setFMoneda('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setFPeriodoEmision('');setAgingFilter(null);}} title="Limpiar filtros">
-                ✕
-              </button>
-            )}
-          </div>
-        );
-
-        if (firstVisibleIdx === -1) {
-          return (
-            <div className="card mt-6">
-              {FiltersUI}
-              <div style={{padding: 40, textAlign:'center', color:'var(--fg-muted)'}}>
-                No hay registros que coincidan con los filtros.
-              </div>
-            </div>
-          );
-        }
-
-        return seccionesMoneda.map((sec, index) => {
-        if (sec.rows.length === 0) return null;
-        return (
-        <React.Fragment key={sec.moneda}>
-          <div style={{marginTop:18,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-            <div>
-              <div className="eyebrow">CxC {sec.moneda}</div>
-              <h2 style={{fontSize:18,margin:0,fontWeight:700}}>{sec.titulo}</h2>
-            </div>
-            <div style={{fontSize:12,color:'var(--fg-muted)'}}>{sec.rows.length} {sec.rows.length===1?'registro':'registros'}</div>
-          </div>
-
-          <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)',marginTop:12}}>
-            {sec.aging.map(b=>(
-              <div key={`${sec.moneda}-${b.key}`} className="kpi-card" style={{cursor:'pointer',outline:agingFilter===b.key?'2px solid var(--cyan)':'none',transition:'outline 0.15s'}}
-                onClick={()=>setAgingFilter(agingFilter===b.key?null:b.key)}>
-                <div className="kpi-label" style={{ paddingRight: 40 }}>{b.label}</div>
-                <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-                  <span>{moneyCurrency(b.monto, sec.moneda)}</span>
-                </div>
-                <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:8}}>{b.count} {b.count===1?'factura':'facturas'}</div>
-                <div className={'kpi-icon '+b.color}>{I.clock}</div>
-              </div>
-            ))}
-            <div className="kpi-card">
-              <div className="kpi-label">{labelCobradoMes}</div>
-              <div className="kpi-value" style={{fontSize:20,color:'var(--green)'}}>{moneyCurrency(sec.cobradoEsteMes, sec.moneda)}</div>
-              <div className="kpi-icon green">{I.check}</div>
-            </div>
-          </div>
-
-          <div className="card mt-6">
-            {index === firstVisibleIdx && FiltersUI}
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Cliente</th>{mostrarBadgeSociedadCxC && <th>Sociedad</th>}<th>Factura</th><th>OS Cliente</th><th>Vencimiento</th>
-                    <th>Total</th><th>Saldo neto</th>{sec.mostrarRetencion && <th>Retencion SUNAT</th>}
-                    <th>Medio pago esp.</th><th>Estado</th><th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sec.rows.length ? sec.rows.map(c=>{
-                    const dias  = diasMoraDe(c);
-                    const est   = estadoDe(c);
-                    const meta  = ESTADO_META[est] || ESTADO_META.por_cobrar;
-                    const vence = c.fecha_vencimiento||c.vence||'--';
-                    const moneda = monedaCxCDe(c);
-                    const tieneCobros = cobrosRegistradosDe(c).length > 0;
-                    return (
-                      <tr key={c.id} style={{cursor:'pointer'}} onClick={()=>abrirFicha(c)}>
-                        <td>
-                          <strong>{clienteDe(c)}</strong>
-                          {retencionDe(c)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retencion SUNAT</span>}
-                          {pendienteSpotDe(c) && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Detracción pendiente</span>}
-                          {autodetraccionPendienteDe(c) && <span className="badge badge-red" style={{marginLeft:6,fontSize:10}}>Autodetracción pendiente</span>}
-                        </td>
-                        {mostrarBadgeSociedadCxC && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
-                        <td className="mono">{facturaNumeroDe(c)}</td>
-                        <td className="text-muted">{osNumeroDe(c)}</td>
-                        <td style={{color:dias>0?'var(--danger)':dias===0?'var(--orange)':'inherit',fontWeight:dias>0?600:400}}>{vence}</td>
-                        <td className="num">{moneyCurrency(totalDe(c), moneda)}</td>
-                        <td className="num"><strong>{moneyCurrency(saldoDe(c), moneda)}</strong></td>
-                        {sec.mostrarRetencion && <td className="num">{retencionDe(c)>0 ? moneyCurrency(retencionDe(c), moneda) : <span className="text-subtle">--</span>}</td>}
-                        <td style={{color:'var(--fg-muted)',fontSize:12}}>{c.medio_pago_esperado||<span className="text-subtle">--</span>}</td>
-                        <td><span className={'badge '+meta.cls}>{meta.label}</span></td>
-                        <td onClick={e=>e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
-                          {saldoDe(c)>0 && !estadoTerminalCxC(c) && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)} style={{marginRight:6}}>Cobrar</button>}
-                          {puedeEditarCxC && tieneCobros && !estadoTerminalCxC(c) && (
-                            <button className="icon-btn" title="Revertir cobros" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setConfirmAnular(c);}}>{I.trash}</button>
-                          )}
-                          {puedeAnularCxC && !tieneCobros && facturaPuedeAnularseDe(c) && !estadoTerminalCxC(c) && (
-                            <button className="icon-btn" title="Anular factura y CxC relacionada" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setMotivoAnularFacturaCxC('');setConfirmAnularFacturaCxC(c);}}>{I.trash}</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr><td colSpan={(sec.mostrarRetencion ? 10 : 9) + (mostrarBadgeSociedadCxC ? 1 : 0)} style={{textAlign:'center',padding:36,color:'var(--fg-muted)'}}>
-                      {hayFiltros ? 'Sin resultados con los filtros aplicados.' : 'Sin facturas en esta moneda.'}
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </React.Fragment>
-        );
-      });
-      })()}
+    <section className="dx-ui dx-cxc">
+      <CxCListado
+        rows={cxcFiltrada} todas={cxcVista} pendientes={cxcActivas} pendientesMoneda={pendientesMoneda}
+        moneda={monedaVista} cambiarMoneda={m => { monedaInicialElegida.current = true; setMonedaVista(m); setAgingFilter(null); }}
+        agingFilter={agingFilter} setAgingFilter={setAgingFilter} today={today}
+        filtros={{fCliente, fEstado, fPeriodoEmision, fGestor, fVenceDesde, fVenceHasta}}
+        setters={{setFCliente, setFEstado, setFPeriodoEmision, setFGestor, setFVenceDesde, setFVenceHasta}}
+        limpiar={() => { setFCliente(''); setFEstado('pendientes'); setFPeriodoEmision(''); setFGestor(''); setFVenceDesde(''); setFVenceHasta(''); setAgingFilter(null); }}
+        periodos={periodoOptsEmision} usuarios={usuarios || []} estados={ESTADO_META}
+        cobrado={cobradoEsteMesPorMoneda[monedaVista] || 0} labelCobrado={labelCobradoMes}
+        helpers={{saldoDe, totalDe, clienteDe, facturaNumeroDe, osNumeroDe, diasMoraDe, estadoDe, estadoTerminalCxC, monedaCxCDe, pendienteSpotDe, autodetraccionPendienteDe, retencionDe, cobrosRegistradosDe, facturaPuedeAnularseDe, moneyDCurrency}}
+        mostrarBadge={mostrarBadgeSociedadCxC} Badge={SociedadBadge} puedeEditar={puedeEditarCxC} puedeAnular={puedeAnularCxC}
+        abrirFicha={abrirFicha} abrirCobro={abrirCobro} abrirGestion={abrirGestion} editarVencimiento={abrirEdicionVencimiento}
+        revertir={setConfirmAnular} anular={c => { setMotivoAnularFacturaCxC(''); setConfirmAnularFacturaCxC(c); }}
+        cargaMasiva={() => setCargaMasivaAbierta(true)} exportar={exportarCSV} error={detraccionesCxcError}
+      />
 
       {fichaJSX}
 
-      {/* Modal: Anular factura y CxC relacionada */}
-      {confirmAnularFacturaCxC && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setConfirmAnularFacturaCxC(null)}/>
-          <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:1001,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:'min(500px,92vw)',boxShadow:'0 8px 32px rgba(0,0,0,0.24)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
-              <span style={{color:'var(--danger)',fontSize:22}}>{I.alert}</span>
-              <div style={{fontSize:17,fontWeight:700}}>Anular documento financiero</div>
-            </div>
-            <div className="card" style={{padding:14,marginBottom:16,background:'var(--bg-subtle)',display:'flex',flexDirection:'column',gap:8}}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Factura</span><strong>{facturaNumeroDe(confirmAnularFacturaCxC)}</strong></div>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Cliente</span><strong>{clienteDe(confirmAnularFacturaCxC)}</strong></div>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Total</span><strong>{moneyCurrency(totalDe(confirmAnularFacturaCxC), confirmAnularFacturaCxC.moneda)}</strong></div>
-            </div>
-            <div style={{fontSize:13,padding:'10px 12px',borderRadius:6,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',marginBottom:16}}>
-              <strong style={{color:'var(--danger)'}}>Antes de continuar:</strong>
-              <div style={{marginTop:4,color:'var(--fg-muted)'}}>La factura y la CxC relacionada quedarán anuladas. El registro se conservará para auditoría, dejará de generar saldo pendiente y no podrá cobrarse nuevamente.</div>
-              {confirmAnularFacturaCxC.valorizacion_id && <div style={{marginTop:6,color:'var(--fg-muted)'}}>Como proviene de una valorización, se aplicarán las reglas existentes de anulación para permitir su regularización.</div>}
-            </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const motivo = motivoAnularFacturaCxC.trim();
-              if (!motivo) return;
-              addNotificacion('Procesando anulación de factura y CxC...');
-              anularFactura(confirmAnularFacturaCxC.factura_id, motivo);
-              setConfirmAnularFacturaCxC(null);
-              setMotivoAnularFacturaCxC('');
-            }}>
-              <div className="input-group">
-                <label>Motivo obligatorio</label>
-                <textarea className="input" rows={3} value={motivoAnularFacturaCxC} onChange={e => setMotivoAnularFacturaCxC(e.target.value)} placeholder="Explica por qué se anula el documento..." autoFocus />
-              </div>
-              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:16}}>
-                <button type="button" className="btn btn-secondary" onClick={() => {setConfirmAnularFacturaCxC(null);setMotivoAnularFacturaCxC('');}}>Cancelar</button>
-                <button type="submit" className="btn btn-danger" disabled={!motivoAnularFacturaCxC.trim()}>Confirmar anulación</button>
-              </div>
-            </form>
-          </div>
-        </>
-      )}
-
-      {/* Modal: Revertir cobros de CxC */}
-      {confirmAnular && (
-        <>
-          <div className="side-panel-backdrop" onClick={()=>setConfirmAnular(null)}/>
-          <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:1001,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:'min(460px,92vw)',boxShadow:'0 8px 32px rgba(0,0,0,0.24)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
-              <span style={{color:'var(--danger)',fontSize:22}}>{I.trash}</span>
-              <div style={{fontSize:17,fontWeight:700}}>Revertir cobros por error</div>
-            </div>
-            <div className="card" style={{padding:14,marginBottom:16,background:'var(--bg-subtle)',display:'flex',flexDirection:'column',gap:8}}>
-              {[
-                ['Factura', facturaNumeroDe(confirmAnular)],
-                ['Cliente', clienteDe(confirmAnular)],
-                ['Total',   moneyCurrency(totalDe(confirmAnular), confirmAnular.moneda)],
-                ['Pagado',  moneyCurrency(pagadoDe(confirmAnular), confirmAnular.moneda)],
-              ].map(([k,v])=>(
-                <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
-                  <span style={{color:'var(--fg-muted)'}}>{k}</span><strong>{v}</strong>
-                </div>
-              ))}
-            </div>
-            {(() => {
-              const cobrosDeEsta = (cobrosHistorial||[]).filter(cb => cb.cxc_id === confirmAnular.id);
-              const cobrosIds = cobrosDeEsta.map(cb => cb.id);
-              const comisionesDeEsta = (comisiones||[]).filter(cm =>
-                cm.cxc_id === confirmAnular.id || cobrosIds.includes(cm.cobro_cxc_id)
-              );
-              const hayComisionPagada = comisionesDeEsta.some(cm => cm.estado === 'pagada');
-              const hayComisionPendiente = comisionesDeEsta.some(cm => cm.estado === 'pendiente_aprobacion' || cm.estado === 'aprobada');
-              return (
-                <>
-                  {hayComisionPagada ? (
-                    <div style={{fontSize:13,padding:'10px 12px',borderRadius:6,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',marginBottom:12}}>
-                      <strong style={{color:'var(--danger)'}}>Bloqueado: comisión ya pagada</strong>
-                      <div style={{marginTop:4,color:'var(--fg-muted)'}}>Existe una comisión pagada vinculada a este cobro. Realiza un ajuste manual en Comisiones antes de revertir.</div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{fontSize:13,marginBottom:12}}>
-                        <div style={{marginBottom:6,fontWeight:600}}>Qué se va a revertir:</div>
-                        <ul style={{margin:0,paddingLeft:18,color:'var(--fg-muted)',display:'flex',flexDirection:'column',gap:4}}>
-                          <li>Los cobros registrados serán eliminados</li>
-                          <li>La CxC vuelve a <strong>Por cobrar</strong> con saldo completo</li>
-                          <li>Las conciliaciones bancarias serán desvinculadas</li>
-                          {hayComisionPendiente && <li>Las comisiones pendientes/aprobadas serán <strong>rechazadas</strong></li>}
-                        </ul>
-                      </div>
-                      <div style={{fontSize:13,marginBottom:16,padding:'8px 12px',borderRadius:6,background:'rgba(16,185,129,0.08)',border:'1px solid var(--green)'}}>
-                        La factura y la valorización <strong>no se modifican</strong>. Podrás registrar el cobro nuevamente.
-                      </div>
-                    </>
-                  )}
-                  <div style={{fontSize:12,fontWeight:600,color:'var(--danger)',marginBottom:16}}>Esta acción no se puede deshacer.</div>
-                  <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-                    <button className="btn btn-secondary" onClick={()=>setConfirmAnular(null)}>Cancelar</button>
-                    {!hayComisionPagada && (
-                      <button className="btn btn-danger" onClick={()=>{addNotificacion('Procesando reversión de cobros y conciliaciones...');revertirCobroCxC(confirmAnular.id);setConfirmAnular(null);}}>Revertir cobros</button>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </>
-      )}
-
-      {/* Panel: Registrar cobro */}
-      {panelCobro && cobroSel && (
-        <>
-          <div className="side-panel-backdrop" onClick={()=>setPanelCobro(false)}/>
-          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Registrar cobro</div>
-                <div className="font-display" style={{fontSize:18,fontWeight:700}}>{facturaNumeroDe(cobroSel)}</div>
-              </div>
-              <button className="icon-btn" onClick={()=>setPanelCobro(false)}>{I.x}</button>
-            </div>
-            <form className="side-panel-body" onSubmit={guardarCobro}>
-              <div className="input-group">
-                <label>Tipo de cobro</label>
-                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, cliente_pago_total_sin_detraer:false, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : '', tipo_cambio_detraccion:tipo === 'detraccion' ? pendiente?.tipo_cambio ?? null : null, cuenta_bancaria:tipo === 'detraccion' ? cuentaDetraccionUnicaDe(cobroSel) : '', medio_pago:tipo === 'detraccion' ? 'Detraccion' : v.medio_pago === 'Detraccion' ? '' : v.medio_pago})); setMontoError(''); }}>
-                  <option value="normal" disabled={!detraccionesCxcCargadas}>Normal</option>
-                  <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Depósito de detracción recibido</option>
-                </select>
-              </div>
-              {formCobro.tipo_cobro === 'detraccion' && <div className="text-muted" style={{fontSize:12,marginTop:-6}}>Registra el depósito que el cliente hizo en tu cuenta de detracciones (Banco de la Nación). Usa la fecha del depósito.</div>}
-              {detraccionesCxcError && <div className="alert alert-danger">No se pudieron cargar las detracciones. El cobro normal está bloqueado hasta completar la carga.</div>}
-              {formCobro.tipo_cobro === 'normal' && pendienteSpotDe(cobroSel) && (
-                <div style={{marginTop:8,padding:'10px 12px',borderRadius:6,border:'1px solid var(--border-subtle)',background:'var(--bg-subtle)'}}>
-                  <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:13}}>
-                    <input type="checkbox" checked={formCobro.cliente_pago_total_sin_detraer} onChange={e => setFormCobro(v => ({ ...v, cliente_pago_total_sin_detraer:e.target.checked, monto:e.target.checked ? String(saldoDe(cobroSel)) : String(maxNormalCobrableDe(cobroSel)) }))} />
-                    El cliente pagó el total sin detraer
-                  </label>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:6}}>La empresa deberá depositar la detracción en su cuenta del Banco de la Nación dentro de 5 días hábiles.</div>
-                </div>
-              )}
-              {formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && !formCobro.cliente_pago_total_sin_detraer && <div className="alert alert-warning">No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.</div>}
-              {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneySpotCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {moneySpot(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
-              {(() => {
-                 const montoForm        = Number(formCobro.monto || 0);
-                 const pagadoPrev       = pagadoDe(cobroSel);
-                 const saldoActual      = saldoDe(cobroSel);
-                 const montoReservado   = montoReservadoSpotDe(cobroSel);
-                 const maxNormal        = maxNormalCobrableDe(cobroSel);
-                 const esDetraccion     = formCobro.tipo_cobro === 'detraccion';
-                 const montoAplicado    = esDetraccion ? montoForm : Math.min(montoForm, maxNormal);
-                 const saldoTras        = Math.max(0, saldoActual - montoAplicado);
-                const hayMonto         = montoForm > 0;
-                const retencionCxC     = Number(cobroSel.monto_retencion || 0);
-                const hayRetencion     = retencionCxC > 0;
-                const montoExcedeNeto  = hayRetencion && montoForm > saldoActual && montoForm > 0;
-                return (
-                  <div className="card" style={{padding:14,display:'flex',flexDirection:'column',gap:7}}>
-                    {[
-                      ['Cliente',          clienteDe(cobroSel),                                    null],
-                      ['Factura vinculada', facturaNumeroDe(cobroSel),                             null],
-                      ['Total facturado',  moneyCurrency(totalDe(cobroSel), cobroSel.moneda),      null],
-                    ].map(([label, val, color]) => (
-                      <div key={label} style={{display:'flex',justifyContent:'space-between'}}>
-                        <span style={{fontSize:13,color:'var(--fg-muted)'}}>{label}</span>
-                        <span style={{fontSize:13,fontWeight:600,color:color||'var(--fg)'}}>{val}</span>
-                      </div>
-                    ))}
-                    {hayRetencion && (
-                      <>
-                        <div style={{display:'flex',justifyContent:'space-between'}}>
-                          <span style={{fontSize:13,color:'var(--warning)'}}>Retención SUNAT</span>
-                          <span style={{fontSize:13,fontWeight:600,color:'var(--warning)'}}>- {moneyCurrency(retencionCxC, cobroSel.moneda)}</span>
-                        </div>
-                        <div style={{display:'flex',justifyContent:'space-between',paddingBottom:4,borderBottom:'1px dashed rgba(251,191,36,0.3)'}}>
-                          <span style={{fontSize:13,color:'var(--cyan)',fontWeight:600}}>Neto a cobrar</span>
-                          <span style={{fontSize:13,fontWeight:700,color:'var(--cyan)'}}>{moneyCurrency(saldoActual, cobroSel.moneda)}</span>
-                        </div>
-                      </>
-                    )}
-                     {montoExcedeNeto && (
-                      <div style={{fontSize:12,padding:'8px 10px',borderRadius:6,background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.35)',color:'var(--warning)'}}>
-                        ⚠ El monto ingresado supera el neto esperado. El cliente retiene {moneyCurrency(retencionCxC, cobroSel.moneda)} como Agente de Retención SUNAT — no transfiere el total facturado.
-                      </div>
-                     )}
-                     {!esDetraccion && montoReservado > 0 && (
-                       <>
-                         <div style={{display:'flex',justifyContent:'space-between'}}>
-                           <span style={{fontSize:13,color:'var(--warning)'}}>Reservado para detracción</span>
-                           <span style={{fontSize:13,fontWeight:600,color:'var(--warning)'}}>{moneySpotCurrency(montoReservado, cobroSel.moneda)}</span>
-                         </div>
-                         <div style={{display:'flex',justifyContent:'space-between'}}>
-                           <span style={{fontSize:13,color:'var(--cyan)',fontWeight:600}}>Máximo cobrable ahora</span>
-                           <span style={{fontSize:13,fontWeight:700,color:'var(--cyan)'}}>{moneySpotCurrency(maxNormal, cobroSel.moneda)}</span>
-                         </div>
-                       </>
-                     )}
-                    {pagadoPrev > 0 && (
-                      <div style={{display:'flex',justifyContent:'space-between'}}>
-                        <span style={{fontSize:13,color:'var(--fg-muted)'}}>Ya pagado</span>
-                        <span style={{fontSize:13,fontWeight:600,color:'var(--green)'}}>{montoReservado > 0 ? moneySpotCurrency(pagadoPrev, cobroSel.moneda) : moneyCurrency(pagadoPrev, cobroSel.moneda)}</span>
-                      </div>
-                    )}
-                    <div style={{display:'flex',justifyContent:'space-between'}}>
-                      <span style={{fontSize:13,color:'var(--fg-muted)'}}>Este cobro</span>
-                      <span style={{fontSize:13,fontWeight:600,color:hayMonto?'var(--cyan)':'var(--fg-muted)'}}>{hayMonto ? (montoReservado > 0 ? moneySpotCurrency(montoForm, cobroSel.moneda) : moneyCurrency(montoForm, cobroSel.moneda)) : '—'}</span>
-                    </div>
-                    <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--border-subtle)',paddingTop:7,marginTop:2}}>
-                      <span style={{fontSize:13,fontWeight:600}}>Saldo pendiente tras cobro</span>
-                      <span style={{fontSize:14,fontWeight:700,color:saldoTras>0?'var(--orange)':'var(--green)'}}>
-                         {hayMonto ? (montoReservado > 0 ? moneySpotCurrency(saldoTras, cobroSel.moneda) : moneyCurrency(saldoTras, cobroSel.moneda)) : (montoReservado > 0 ? moneySpotCurrency(saldoActual, cobroSel.moneda) : moneyCurrency(saldoActual, cobroSel.moneda))}
-                      </span>
-                    </div>
-                    {diasMoraDe(cobroSel) > 0 && (
-                      <div style={{display:'flex',justifyContent:'space-between'}}>
-                        <span style={{fontSize:13,color:'var(--fg-muted)'}}>Interés de mora</span>
-                        <span style={{fontSize:13,fontWeight:600,color:'var(--danger)'}}>{moneyDCurrency(interesMoraDe(cobroSel), cobroSel.moneda)}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <div className="grid-2 mt-6" style={{gap:12}}>
-                {formCobro.tipo_cobro === 'detraccion' ? <>
-                  <div className="input-group">
-                    <label>Se aplica a la CxC</label>
-                    <input className="input num" type="text" readOnly tabIndex={-1} value={moneySpotCurrency(formCobro.monto, cobroSel.moneda)} />
-                  </div>
-                  <div className="input-group">
-                    <label>Depósito en tu cuenta de detracciones</label>
-                    <input className="input num" type="text" readOnly tabIndex={-1} value={moneySpot(formCobro.monto_deposito_soles)} />
-                  </div>
-                  {montoError && <div style={{gridColumn:'1/-1',color:'var(--danger)',fontSize:12,marginTop:-4}}>{montoError}</div>}
-                </> : <div className="input-group">
-                  <label>Monto cobrado <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input num" type="number" min="0.01" step="0.01" max={montoReservadoSpotDe(cobroSel) > 0 ? maxNormalCobrableDe(cobroSel) : undefined} required value={formCobro.monto} onChange={e=>{setFormCobro(v=>({...v,monto:e.target.value}));setMontoError('');}} autoFocus/>
-                  {montoError && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{montoError}</div>}
-                </div>}
-                <div className="input-group">
-                  <label>Fecha de cobro <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" type="date" required max={today} value={formCobro.fecha_cobro} onChange={e=>setFormCobro(v=>({...v,fecha_cobro:e.target.value}))}/>
-                </div>
-              </div>
-
-              <div style={{marginTop:12,padding:'10px 12px',borderRadius:6,border:'1px solid var(--border-subtle)',background:'var(--bg-subtle)'}}>
-                <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:13}}>
-                  <input type="checkbox" checked={formCobro.incluye_mora} onChange={e=>setFormCobro(v=>({...v,incluye_mora:e.target.checked}))}/>
-                  Incluye interés de mora en este cobro
-                </label>
-                {formCobro.incluye_mora && (
-                  <div className="input-group" style={{marginTop:8}}>
-                    <label>Monto mora cobrado</label>
-                    <input className="input num" type="number" min="0" step="0.01"
-                      value={formCobro.monto_mora} onChange={e=>setFormCobro(v=>({...v,monto_mora:e.target.value}))}
-                      placeholder={diasMoraDe(cobroSel)>0 ? String(interesMoraDe(cobroSel).toFixed(2)) : '0.00'}/>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid-2 mt-6" style={{gap:12}}>
-                <div className="input-group">
-                  <label>Medio de pago <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" required disabled={formCobro.tipo_cobro === 'detraccion'} value={formCobro.medio_pago} onChange={e=>setFormCobro(v=>({...v,medio_pago:e.target.value}))}>
-                    <option value="">Seleccionar...</option>
-                    <option>Transferencia bancaria</option>
-                    <option>Depósito</option>
-                    {formCobro.tipo_cobro === 'detraccion' && <option value="Detraccion">Depósito de detracción recibido</option>}
-                    <option>Cheque</option>
-                    <option>Efectivo</option>
-                    <option>Otro</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Cuenta bancaria destino</label>
-                  {formCobro.tipo_cobro === 'detraccion' && cuentasDetraccionDe(cobroSel).length === 0 ? (
-                    <div style={{fontSize:12,color:'var(--fg-muted)',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-subtle)'}}>
-                      No hay una cuenta de detracciones configurada para esta sociedad. Márcala en Parámetros Generales → Cuentas (edita la cuenta del Banco de la Nación y activa 'Cuenta de detracciones')
-                    </div>
-                  ) : cuentasBancariasActivas.length > 0 ? (
-                    <select className="select" required={formCobro.tipo_cobro === 'detraccion'} value={formCobro.cuenta_bancaria} onChange={e=>setFormCobro(v=>({...v,cuenta_bancaria:e.target.value}))}>
-                      <option value="">Seleccionar cuenta...</option>
-                      {cuentasBancariasActivas.filter(cb => formCobro.tipo_cobro === 'detraccion' ? cb.es_cuenta_detracciones && cb.moneda === 'PEN' && cb.sociedad_id === cobroSel.sociedad_id : !cb.es_cuenta_detracciones).map(cb=>(
-                        <option key={cb.id} value={cb.id}>
-                          {cb.nombre} — {cb.banco} — {cb.moneda==='PEN'?'Soles':cb.moneda==='USD'?'Dólares':cb.moneda}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div style={{fontSize:12,color:'var(--fg-muted)',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-subtle)'}}>
-                      No hay cuentas bancarias configuradas.{' '}
-                      <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,color:'var(--cyan)'}} onClick={()=>navigate('parametros')}>Ve a Parámetros Generales para agregarlas.</button>
-                    </div>
-                  )}
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>N° operación / referencia {['Transferencia bancaria','Depósito'].includes(formCobro.medio_pago)&&<span style={{color:'var(--danger)'}}>*</span>}</label>
-                  <input className="input" value={formCobro.numero_operacion} onChange={e=>setFormCobro(v=>({...v,numero_operacion:e.target.value}))} placeholder="N° transferencia, depósito, cheque..."/>
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Notas <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
-                  <textarea className="input" rows={2} value={formCobro.notas} onChange={e=>setFormCobro(v=>({...v,notas:e.target.value}))}/>
-                </div>
-                {formCobro.tipo_cobro === 'detraccion' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Número de constancia <span className="text-muted">(opcional)</span></label><input className="input" value={formCobro.numero_constancia} onChange={e=>setFormCobro(v=>({...v,numero_constancia:e.target.value}))} /></div>}
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Comprobante de pago <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
-                  <input
-                    ref={archivoCobroRef}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed"
-                    style={{display:'none'}}
-                    onChange={event => {
-                      const archivo = event.target.files?.[0] || null;
-                      event.target.value = '';
-                      if (!archivo) return;
-                      const validacion = storageService.validarArchivo(archivo);
-                      if (!validacion.ok) {
-                        setArchivoCobro(null);
-                        setArchivoCobroError(validacion.error);
-                        return;
-                      }
-                      setArchivoCobro(archivo);
-                      setArchivoCobroError('');
-                    }}
-                  />
-                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={()=>archivoCobroRef.current?.click()} disabled={savingCobro}>
-                      {I.file} Adjuntar archivo
-                    </button>
-                    {archivoCobro && (
-                      <span style={{fontSize:12,display:'inline-flex',alignItems:'center',gap:6}}>
-                        {archivoCobro.name}
-                        <button type="button" className="icon-btn" title="Quitar archivo" onClick={()=>{setArchivoCobro(null);setArchivoCobroError('');}} disabled={savingCobro}>{I.x}</button>
-                      </span>
-                    )}
-                  </div>
-                  <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:5}}>PDF, imagen, Office o ZIP; máximo 20 MB.</div>
-                  {archivoCobroError && <div style={{fontSize:12,color:'var(--danger)',marginTop:4}}>{archivoCobroError}</div>}
-                </div>
-              </div>
-
-              <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
-                <button type="button" className="btn btn-secondary" onClick={()=>setPanelCobro(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingCobro || (formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && !formCobro.cliente_pago_total_sin_detraer) || (formCobro.tipo_cobro === 'detraccion' && cuentasDetraccionDe(cobroSel).length === 0)}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
-              </div>
-            </form>
-          </div>
-        </>
-      )}
+      {confirmAnularFacturaCxC && <CxCAnularFacturaModal c={confirmAnularFacturaCxC} factura={facturaNumeroDe(confirmAnularFacturaCxC)} cliente={clienteDe(confirmAnularFacturaCxC)} total={moneyDCurrency(totalDe(confirmAnularFacturaCxC), confirmAnularFacturaCxC.moneda)} motivo={motivoAnularFacturaCxC} setMotivo={setMotivoAnularFacturaCxC} cerrar={() => {setConfirmAnularFacturaCxC(null);setMotivoAnularFacturaCxC('');}} confirmar={motivo => {addNotificacion('Procesando anulación de factura y CxC...');anularFactura(confirmAnularFacturaCxC.factura_id, motivo);setConfirmAnularFacturaCxC(null);setMotivoAnularFacturaCxC('');}} />}
+      {confirmAnular && (() => {
+        const cobrosIds = (cobrosHistorial || []).filter(cb => cb.cxc_id === confirmAnular.id).map(cb => cb.id);
+        const relacionadas = (comisiones || []).filter(cm => cm.cxc_id === confirmAnular.id || cobrosIds.includes(cm.cobro_cxc_id));
+        return <CxCRevertirCobrosModal factura={facturaNumeroDe(confirmAnular)} cliente={clienteDe(confirmAnular)} total={moneyDCurrency(totalDe(confirmAnular), confirmAnular.moneda)} pagado={moneyDCurrency(pagadoDe(confirmAnular), confirmAnular.moneda)} comisionPagada={relacionadas.some(cm => cm.estado === 'pagada')} comisionPendiente={relacionadas.some(cm => cm.estado === 'pendiente_aprobacion' || cm.estado === 'aprobada')} cerrar={() => setConfirmAnular(null)} confirmar={() => {addNotificacion('Procesando reversión de cobros y conciliaciones...');revertirCobroCxC(confirmAnular.id);setConfirmAnular(null);}} />;
+      })()}
+      {panelCobro && cobroSel && <CxCCobroModal c={cobroSel} form={formCobro} setForm={setFormCobro} errores={erroresCobro} setErrores={setErroresCobro} errorServidor={errorServidorCobro} guardar={guardarCobro} cerrar={() => !savingCobro && setPanelCobro(false)} saving={savingCobro} saldo={saldoDe(cobroSel)} total={totalDe(cobroSel)} pagado={pagadoDe(cobroSel)} reservado={montoReservadoSpotDe(cobroSel)} maxNormal={maxNormalCobrableDe(cobroSel)} pendiente={pendienteSpotDe(cobroSel)} bloqueado={normalBloqueadoPorDetraccionDe(cobroSel)} cargadas={detraccionesCxcCargadas} errorCarga={detraccionesCxcError} cuentas={cuentasBancariasActivas} cuentasDetraccion={cuentasDetraccionDe(cobroSel)} cuentaUnica={cuentaDetraccionUnicaDe(cobroSel)} cliente={clienteDe(cobroSel)} factura={facturaNumeroDe(cobroSel)} formato={moneyDCurrency} formatoSpot={moneySpot} diasMora={diasMoraDe(cobroSel)} interes={interesMoraDe(cobroSel)} today={today} archivo={archivoCobro} setArchivo={setArchivoCobro} errorArchivo={archivoCobroError} setErrorArchivo={setArchivoCobroError} validarArchivo={storageService.validarArchivo} navigate={navigate} />}
 
       <AutodetraccionModal
         open={panelAutodetraccion}
@@ -1877,75 +1013,9 @@ function CxC() {
         onDone={async ()=>{await refrescarDetraccionesCxc();addNotificacion('Autodetracción registrada correctamente.');}}
       />
 
-      {/* Panel: Registrar gestión */}
-      {panelGestion && (
-        <>
-          <div className="side-panel-backdrop" onClick={()=>setPanelGestion(false)}/>
-          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Gestión de cobranza</div>
-                <div className="font-display" style={{fontSize:16,fontWeight:700}}>{clienteDe(gestionSel)} · {facturaNumeroDe(gestionSel)}</div>
-              </div>
-              <button className="icon-btn" onClick={()=>setPanelGestion(false)}>{I.x}</button>
-            </div>
-            <form className="side-panel-body" onSubmit={guardarGestion}>
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group">
-                  <label>Tipo de gestión <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" required value={formGestion.tipo_gestion} onChange={e=>setFormGestion(v=>({...v,tipo_gestion:e.target.value}))}>
-                    <option value="">Seleccionar...</option>
-                    <option value="llamada_telefonica">Llamada telefónica</option>
-                    <option value="email">Email</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="visita_presencial">Visita presencial</option>
-                    <option value="carta_notarial">Carta notarial</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Resultado <span style={{color:'var(--danger)'}}>*</span></label>
-                  <select className="select" required value={formGestion.resultado} onChange={e=>setFormGestion(v=>({...v,resultado:e.target.value}))}>
-                    <option value="">Seleccionar...</option>
-                    <option value="promesa_pago">Promesa de pago</option>
-                    <option value="no_contesta">No contesta</option>
-                    <option value="numero_equivocado">Número equivocado</option>
-                    <option value="cliente_solicita_plazo">Cliente solicita plazo</option>
-                    <option value="cliente_disputa_monto">Cliente disputa monto</option>
-                    <option value="pagara_en_fecha_acordada">Pagará en fecha acordada</option>
-                    <option value="sin_respuesta">Sin respuesta</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-              </div>
-
-              {['promesa_pago','pagara_en_fecha_acordada'].includes(formGestion.resultado) && (
-                <div className="input-group mt-6">
-                  <label>Fecha acordada de pago <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" type="date" value={formGestion.fecha_acordada_pago} onChange={e=>setFormGestion(v=>({...v,fecha_acordada_pago:e.target.value}))}/>
-                </div>
-              )}
-
-              <div className="input-group mt-6">
-                <label>Fecha próxima acción {['promesa_pago','pagara_en_fecha_acordada'].includes(formGestion.resultado)&&<span style={{color:'var(--danger)'}}>*</span>}</label>
-                <input className="input" type="date" value={formGestion.fecha_proxima_accion} onChange={e=>setFormGestion(v=>({...v,fecha_proxima_accion:e.target.value}))}/>
-              </div>
-
-              <div className="input-group mt-6">
-                <label>Notas <span style={{color:'var(--danger)'}}>*</span></label>
-                <textarea className="input" rows={4} required value={formGestion.notas} onChange={e=>setFormGestion(v=>({...v,notas:e.target.value}))} placeholder="Detalla la gestión realizada, quién atendió, acuerdos..."/>
-              </div>
-
-              <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
-                <button type="button" className="btn btn-secondary" onClick={()=>setPanelGestion(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">{I.check} Guardar gestión</button>
-              </div>
-            </form>
-          </div>
-        </>
-      )}
+      {panelGestion && gestionSel && <CxCGestionModal form={formGestion} setForm={setFormGestion} error={errorGestion} setError={setErrorGestion} errorServidor={errorServidorGestion} guardar={guardarGestion} cerrar={() => !savingGestion && setPanelGestion(false)} saving={savingGestion} cliente={clienteDe(gestionSel)} factura={facturaNumeroDe(gestionSel)} />}
       {cargaMasivaAbierta && <CargaMasivaCxC onClose={() => setCargaMasivaAbierta(false)} />}
-    </>
+    </section>
   );
 }
 
