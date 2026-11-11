@@ -12,7 +12,7 @@ const MAX_OUTPUT_TOKENS = 900;
 const CLAUDE_TIMEOUT_MS = 25_000;
 const CLAUDE_MAX_OUTPUT_TOKENS = 2_000;
 export const CLAUDE_MODELO_CHAT = "claude-haiku-5-5";
-// Modo experto: la persona pide ampliar una respuesta; usa un modelo más capaz y tiene cuota propia (aria_experto_cuota).
+// Modo experto: usa un modelo más capaz. Solo administradores, con una cuota mensual por empresa (aria_experto_cuota).
 export const CLAUDE_MODELO_EXPERTO = "claude-sonnet-5-5";
 export const EXPERTO_PROMPT = "MODO EXPERTO. La persona pidió ampliar la respuesta anterior. Responde como una consultora que domina el negocio y el sistema: explica para qué sirve el proceso y por qué se hace así, el recorrido completo entre pantallas con la ruta exacta de cada una, los requisitos y estados que condicionan cada paso, los errores frecuentes con su solución y qué ocurre después en los demás módulos. Consulta el manual las veces que haga falta (el proceso, cada pantalla y los conceptos) y, si la pregunta es de análisis, cruza las herramientas de datos necesarias y cierra con una conclusión y una recomendación. No repitas la respuesta anterior: profundízala. Usa subtítulos cortos y listas; hasta unas 600 palabras. Sigue sin inventar pantallas, botones, rutas ni cifras.";
 export const MODELOS_EVAL = ["claude-haiku-5-5", "claude-sonnet-5-5", "openai"] as const;
@@ -521,9 +521,13 @@ export function createHandler(deps: HandlerDeps) {
     if (experto) {
       if (!hasClaude) return errorReply(502, "El modo experto no está disponible en este momento.", origin, origins);
       const cuotaExperto = await safely(() => supabase.rpc("aria_experto_cuota", { p_empresa_id: body.empresa_id }));
-      const datosCuota = cuotaExperto.error ? null : cuotaExperto.data as { restantes?: number; limite?: number; puede_continuar?: boolean } | null;
+      const datosCuota = cuotaExperto.error ? null : cuotaExperto.data as { permitido?: boolean; restantes?: number; limite?: number; puede_continuar?: boolean } | null;
       if (!datosCuota || datosCuota.puede_continuar !== true) {
-        return reply(200, { respuesta: datosCuota ? `Hoy ya usaste tus ${Number(datosCuota.limite) || 10} consultas de modo experto; se renuevan a medianoche, hora de Lima. Puedo seguir ayudándote en el modo normal.` : "No pude verificar tu cuota de modo experto. Inténtalo de nuevo en un momento.", herramientas_usadas: [], experto: { restantes: 0, limite: Number(datosCuota?.limite) || 10 }, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}) }, origin, origins);
+        const limite = Number(datosCuota?.limite) || 150;
+        const aviso = !datosCuota ? "No pude verificar la cuota de modo experto. Inténtalo de nuevo en un momento."
+          : datosCuota.permitido !== true ? "El modo experto está disponible solo para los administradores de la empresa. Puedo seguir ayudándote en el modo normal."
+          : `Tu empresa ya usó sus ${limite} consultas de modo experto de este mes; se renuevan el día 1. Puedo seguir ayudándote en el modo normal.`;
+        return reply(200, { respuesta: aviso, herramientas_usadas: [], experto: { permitido: datosCuota?.permitido === true, restantes: 0, limite }, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}) }, origin, origins);
       }
       expertoRestantes = Math.max(0, (Number(datosCuota.restantes) || 1) - 1);
     }
@@ -646,7 +650,7 @@ export function createHandler(deps: HandlerDeps) {
       if (destino) payload.destino = destino;
       if (experto) {
         payload.herramientas_usadas = [...(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : []), "aria_modo_experto"];
-        payload.experto = { restantes: expertoRestantes ?? 0, limite: 10 };
+        payload.experto = { permitido: true, restantes: expertoRestantes ?? 0, limite: 150 };
       }
       if (!evalModel && usaMemoria) {
         // Avisos para el panel: lo guardado en este turno y lo que Aria aprendió sola desde el turno anterior.

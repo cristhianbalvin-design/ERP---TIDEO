@@ -5,7 +5,7 @@ import AriaMicrofono, { MAX_SEGUNDOS_DICTADO } from './AriaMicrofono.jsx';
 import { hablar } from '../lib/ariaHabla.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
-import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
+import { consultarAsistenteErp, mensajeErrorAsistente, cuotaModoExperto } from '../services/asistenteErpService.js';
 import { abrirConversacion, avisosDeRecuerdo, borrarRecuerdo, conversacionActual, destinoValido, etiquetaRetomada, mensajesDelPanel } from '../services/ariaMemoriaService.js';
 import AriaConversaciones from './AriaConversaciones.jsx';
 import AriaRecuerdos from './AriaRecuerdos.jsx';
@@ -93,7 +93,13 @@ function puedeAmpliar(mensaje) {
 export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false, onIr }) {
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
-  const [expertoRestantes, setExpertoRestantes] = useState(null);
+  // Modo experto: solo administradores, con cuota mensual de la empresa; se consulta al abrir el chat.
+  const [experto, setExperto] = useState(null);
+  useEffect(() => {
+    let vigente = true;
+    if (abierto && habilitado && empresaId) cuotaModoExperto(empresaId).then(info => { if (vigente) setExperto(info); });
+    return () => { vigente = false; };
+  }, [abierto, habilitado, empresaId]);
   const [pendientes, setPendientes] = useState(null);
   useEffect(() => {
     const recibir = event => setPendientes(event.detail ?? null);
@@ -203,7 +209,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
     setError(null); setConsultando(true);
     try {
       const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva }, conversacionId, modo: modoEnvio });
-      if (Number.isFinite(data?.experto?.restantes)) setExpertoRestantes(data.experto.restantes);
+      if (Number.isFinite(data?.experto?.restantes)) setExperto({ permitido: data.experto.permitido === true, restantes: data.experto.restantes, limite: data.experto.limite || 150 });
       if (typeof data?.conversacion_id === 'string') setConversacionId(data.conversacion_id);
       setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones), recuerdos: avisosDeRecuerdo(data?.recuerdos), destino: destinoValido(data?.destino) }]);
       if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
@@ -286,9 +292,9 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
               <button type="button" className="dx-asis-ir-b" onClick={() => irA(mensaje.destino)}><span>Ir a {mensaje.destino.titulo}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
               {mensaje.destino.donde && <small>{mensaje.destino.donde}</small>}
             </div>}
-            {mensaje.role === 'assistant' && index === mensajes.length - 1 && !consultando && !agotada && expertoRestantes !== 0 && puedeAmpliar(mensaje) && mensajes[index - 1]?.role === 'user' && <div className="dx-asis-exp">
+            {mensaje.role === 'assistant' && index === mensajes.length - 1 && !consultando && !agotada && experto?.permitido && experto.restantes > 0 && puedeAmpliar(mensaje) && mensajes[index - 1]?.role === 'user' && <div className="dx-asis-exp">
               <button type="button" className="dx-asis-exp-b" onClick={() => enviar(`Amplía en modo experto: ${String(mensajes[index - 1].content).replace(/^Amplía en modo experto:\s*/i, '')}`, false, 'experto')}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></svg><span>Ampliar con modo experto</span></button>
-              <small>{expertoRestantes === null ? 'Respuesta más profunda · 10 al día' : `Respuesta más profunda · te quedan ${expertoRestantes} hoy`}</small>
+              <small>Respuesta más profunda · quedan {experto.restantes} de {experto.limite} este mes en tu empresa</small>
             </div>}
             {mensaje.role === 'assistant' && (mensaje.recuerdos || []).map(r => <div className={`dx-asis-rec${r.tipo === 'automatico' ? ' auto' : ''}`} key={r.id} role="status">
               {r.borrado ? <span>Recuerdo borrado.</span> : <><span><b>{r.tipo === 'automatico' ? 'Aria recordó:' : 'Guardado en tu memoria:'}</b> {r.texto}</span>
