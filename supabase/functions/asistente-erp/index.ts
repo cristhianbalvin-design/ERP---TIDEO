@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAnonKey } from "../_shared/supabaseKeys.ts";
 import { opcionesDeEgreso, type OpcionesRespuesta } from "./opciones.ts";
-import { extraDelTurno, leerResumen, promptResumen, sistemaResumen, type TareaResumen } from "./memoria.ts";
+import { avisosRecuerdo, extraDelTurno, leerRecuerdos, leerResumen, MAX_RECUERDOS_CONTEXTO, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto, type AvisoRecuerdo, type TareaResumen } from "./memoria.ts";
 
 const ALLOWED_ORIGIN = "https://erp.tideo.tech";
 const MAX_BODY_BYTES = 32_000;
@@ -96,6 +96,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_resumen_os_clientes", desc: "Resume órdenes de servicio de clientes por estado normalizado, moneda y estado de producción. 'activa' (o 'activo') y 'en_ejecucion' son estados distintos; para 'en ejecución' usa estado en_ejecucion, para 'activas' usa activa; si la persona pide 'vigentes' o no precisa, presenta ambos estados por separado sin sumarlos; no sumes estados distintos. Presenta importes solo cuando estén disponibles por permiso y nunca mezcles monedas.", params: [society(), s("texto", 200, true)] },
   { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el resultado trae soporte_notificado, empieza exactamente con: 'Esto todavía no está en el manual de OPERA. Ya avisé al equipo de soporte para que lo documente; pronto estará disponible.' y luego da solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "aria_buscar_conversaciones", desc: "Busca en las conversaciones anteriores de esta persona con Aria (título, resumen y mensajes). Úsala cuando pregunte qué revisaron, consultaron o decidieron antes (ayer, la semana pasada, la vez anterior) o pida retomar un tema. Devuelve recuerdos, no datos vigentes: si necesita cifras actuales, vuelve a consultarlas con las herramientas de datos.", params: [s("texto", 100, true), n("limite", true)] },
+  { name: "aria_recuerdo_guardar", desc: "Guarda en la memoria de Aria un dato duradero sobre cómo trabaja esta persona. Úsala cuando lo pida ('recuerda que…', 'ten en cuenta que siempre…', 'de ahora en adelante…'). No es un registro del ERP ni requiere confirmación: guárdalo y avisa en una línea. texto: una sola frase clara en segunda persona (p. ej. 'Trabajas sobre todo con la Caja Chica Taller Ate.'). Nunca guardes montos, saldos, stock ni datos personales sensibles: esos se consultan. Estados: guardado o actualizado (confirma lo que recordarás); pausada (dile que su memoria está en pausa y que la activa en Conversaciones › Lo que Aria recuerda de ti); rechazado (explica que no guardas cifras ni textos vacíos); limite (ya tiene 100 recuerdos: debe borrar alguno). Para ver o borrar recuerdos, indícale esa misma pantalla.", params: [s("texto", 300)] },
   { name: "asistente_detalle_orden_compra", params: [id("oc_id"), society()] },
   { name: "asistente_buscar_recepciones", params: [id("orden_compra_id", true), d("desde", true), d("hasta", true), n("limite", true), society()] },
   { name: "asistente_buscar_materiales", params: [s("texto", 200, true), s("familia", 100, true), s("estado", 80, true), n("limite", true)] },
@@ -143,7 +144,8 @@ export type SupabaseLike = {
 };
 type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal, toolChoice?: string) => Promise<{ response: Response; data?: any }>;
 // waitUntil: deja terminar una tarea en segundo plano (resumen de la conversación) después de responder.
-export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; callClaude?: ModelCall; env: (name: string) => string | undefined; now?: () => number; waitUntil?: (tarea: Promise<unknown>) => void };
+// embeber: embedding del texto para la memoria de largo plazo; si falta o falla, los recuerdos se buscan por palabras.
+export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; callClaude?: ModelCall; env: (name: string) => string | undefined; now?: () => number; waitUntil?: (tarea: Promise<unknown>) => void; embeber?: (texto: string) => Promise<unknown> };
 
 // Adaptador Anthropic Messages <-> formato interno (estilo OpenAI) que usan las guardas y las pruebas.
 export function toAnthropicRequest(messages: Array<Record<string, unknown>>, tools: any[], model: string, toolChoice?: string, effort?: string): Record<string, unknown> {
@@ -534,25 +536,57 @@ export function createHandler(deps: HandlerDeps) {
     const dichosPorLaPersona = conversacion
       ? (Array.isArray(conversacion.dichos) ? conversacion.dichos : []).map((d: unknown) => String(d ?? ""))
       : (body.historial ?? []).filter((m: { role: string }) => m.role === "user").map((m: { content: string }) => String(m.content ?? ""));
+    // Solo guarda cuando el panel trae el campo conversacion_id (null = conversación nueva): un panel anterior no lo envía.
+    const usaMemoria = Object.prototype.hasOwnProperty.call(body, "conversacion_id");
+    // Memoria de largo plazo: recuerdos de la persona más afines a la pregunta. El embedding solo se calcula si hay más de los que caben.
+    const vectorDe = async (texto: string): Promise<string | null> => {
+      if (!deps.embeber) return null;
+      try { return vectorTexto(await deps.embeber(texto.slice(0, 1000))); } catch { return null; }
+    };
+    type ContextoRecuerdos = { pausada?: boolean; total?: number; por_avisar?: number; recuerdos?: unknown[] };
+    let recuerdosCtx: ContextoRecuerdos | null = null;
+    const recuerdosNuevos: AvisoRecuerdo[] = [];
+    if (usaMemoria && !evalModel) {
+      const pedir = async (embedding: string | null): Promise<ContextoRecuerdos | null> => {
+        const r = await safely(() => supabase.rpc("aria_recuerdos_contexto", { p_empresa_id: body.empresa_id, p_texto: body.pregunta, p_embedding: embedding, p_limite: MAX_RECUERDOS_CONTEXTO }));
+        return !r.error && r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data as ContextoRecuerdos : null;
+      };
+      recuerdosCtx = await pedir(null);
+      if (recuerdosCtx && !recuerdosCtx.pausada && Number(recuerdosCtx.total) > MAX_RECUERDOS_CONTEXTO) {
+        const vector = await vectorDe(body.pregunta);
+        if (vector) recuerdosCtx = (await pedir(vector)) ?? recuerdosCtx;
+      }
+    }
+    const aprende = Boolean(recuerdosCtx && !recuerdosCtx.pausada);
     // Guarda el turno y, si toca, resume la conversación en segundo plano (no demora la respuesta).
+    // Con la memoria activa, el mismo llamado propone hasta 2 recuerdos, que se guardan como automáticos.
     const resumirConversacion = async (id: string, tarea: TareaResumen) => {
-      const pedido = promptResumen(tarea);
+      const pedido = promptResumen(tarea, aprende);
       let datos: any;
       try {
         if (hasClaude) datos = (await deps.callClaude!(pedido, [], claudeModel, AbortSignal.timeout(CLAUDE_TIMEOUT_MS))).data;
         else if (hasOpenAI) datos = (await deps.callOpenAI(pedido, [], openaiModel, AbortSignal.timeout(OPENAI_TIMEOUT_MS))).data;
       } catch { return; }
-      const leido = leerResumen(datos?.choices?.[0]?.message?.content);
-      if (!leido) return;
-      await safely(() => supabase.rpc("aria_conversacion_guardar_resumen", { p_conversacion_id: id, p_titulo: leido.titulo, p_resumen: leido.resumen, p_hasta: tarea.hasta ?? 0 }));
+      const contenido = datos?.choices?.[0]?.message?.content;
+      const leido = leerResumen(contenido);
+      if (leido) await safely(() => supabase.rpc("aria_conversacion_guardar_resumen", { p_conversacion_id: id, p_titulo: leido.titulo, p_resumen: leido.resumen, p_hasta: tarea.hasta ?? 0 }));
+      if (!aprende) return;
+      for (const texto of leerRecuerdos(contenido)) {
+        const vector = await vectorDe(texto);
+        await safely(() => supabase.rpc("aria_recuerdo_guardar", { p_empresa_id: body.empresa_id, p_texto: texto, p_tipo: "automatico", p_conversacion_id: id, p_embedding: vector }));
+      }
     };
-    // Solo guarda cuando el panel trae el campo conversacion_id (null = conversación nueva): un panel anterior no lo envía.
-    const usaMemoria = Object.prototype.hasOwnProperty.call(body, "conversacion_id");
     const reply200 = async (payload: Record<string, unknown>) => {
       if (!evalModel && usaMemoria) {
+        // Avisos para el panel: lo guardado en este turno y lo que Aria aprendió sola desde el turno anterior.
+        if (Number(recuerdosCtx?.por_avisar) > 0) {
+          const pendientes = await safely(() => supabase.rpc("aria_recuerdos_por_avisar", { p_empresa_id: body.empresa_id }));
+          if (!pendientes.error) recuerdosNuevos.push(...avisosRecuerdo(pendientes.data));
+        }
+        if (recuerdosNuevos.length) payload.recuerdos = avisosRecuerdo(recuerdosNuevos);
         const registro = await safely(() => supabase.rpc("aria_conversacion_registrar", {
           p_empresa_id: body.empresa_id, p_conversacion_id: conversacionId, p_pregunta: body.pregunta, p_respuesta: String(payload.respuesta ?? ""),
-          p_extra: extraDelTurno(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : [], payload.opciones ?? null, payload.borrador ?? null),
+          p_extra: extraDelTurno(Array.isArray(payload.herramientas_usadas) ? payload.herramientas_usadas as string[] : [], payload.opciones ?? null, payload.borrador ?? null, payload.recuerdos ?? null),
         }));
         const datos = registro.data as { conversacion_id?: string; tarea?: TareaResumen | null } | null;
         if (!registro.error && datos?.conversacion_id) {
@@ -563,6 +597,9 @@ export function createHandler(deps: HandlerDeps) {
       return reply(200, payload, origin, origins);
     };
     const contextText = body.contexto ? `\nContexto de pantalla: ${safeJson(body.contexto)}` : "";
+    // Los recuerdos van justo antes de la pregunta para no romper el caché de la parte fija del prompt.
+    const recuerdosSistema = recuerdosCtx && !recuerdosCtx.pausada ? sistemaRecuerdos(recuerdosCtx.recuerdos) : null;
+    if (recuerdosSistema) messages.push({ role: "system", content: recuerdosSistema });
     messages.push({ role: "user", content: `${body.pregunta}${contextText}` });
     let rounds = 0;
     let guardActivated = false;
@@ -713,6 +750,9 @@ export function createHandler(deps: HandlerDeps) {
             delete mapped.p_periodo;
             delete mapped.p_ultimos_meses;
           }
+          if (spec.name === "aria_recuerdo_guardar") {
+            Object.assign(mapped, { p_tipo: "explicito", p_conversacion_id: conversacionId, p_embedding: await vectorDe(String(toolArgs.texto ?? "")) });
+          }
           toolsUsed.push(spec.name);
           const rpcArgs = { p_empresa_id: body.empresa_id, ...mapped };
           const rpc = await safely(() => supabase.rpc(spec.name, rpcArgs));
@@ -737,6 +777,7 @@ export function createHandler(deps: HandlerDeps) {
             const datos = rpc.data as Record<string, unknown> | null;
             if (spec.name === "asistente_preparar_egreso_caja_chica" && datos?.estado === "listo" && datos.borrador) borrador = datos.borrador;
             if (spec.name === "asistente_preparar_egreso_caja_chica") opciones = opcionesDeEgreso(datos);
+            if (spec.name === "aria_recuerdo_guardar" && (datos?.estado === "guardado" || datos?.estado === "actualizado")) recuerdosNuevos.push(...avisosRecuerdo([datos]));
           }
         }
       }
@@ -757,6 +798,15 @@ const handler = createHandler({
   }) as unknown as SupabaseLike,
   env: (name) => Deno.env.get(name),
   waitUntil: (tarea) => (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime?.waitUntil(tarea),
+  embeber: async (texto) => {
+    const clave = Deno.env.get("OPENAI_API_KEY");
+    if (!clave) return null;
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST", signal: AbortSignal.timeout(4000), headers: { Authorization: `Bearer ${clave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "text-embedding-3-small", input: texto }),
+    });
+    return response.ok ? (await response.json())?.data?.[0]?.embedding ?? null : null;
+  },
   callOpenAI: async (messages, tools, model, signal, toolChoice) => {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST", signal, headers: { Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`, "Content-Type": "application/json" },

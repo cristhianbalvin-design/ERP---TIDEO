@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { agruparPorFecha, horaCorta, listarConversaciones } from '../services/ariaMemoriaService.js';
+import { agruparPorFecha, horaCorta, listarConversaciones, listarRecuerdos } from '../services/ariaMemoriaService.js';
 
 // Lista de conversaciones anteriores con Aria, con buscador (título, resumen o mensajes).
 function Resaltado({ texto, termino }) {
@@ -25,8 +25,17 @@ function Fila({ c, activa, termino, onAbrir }) {
   </div>;
 }
 
-export default function AriaConversaciones({ empresaId, activaId, onAbrir, onNueva }) {
+export default function AriaConversaciones({ empresaId, activaId, onAbrir, onNueva, onRecuerdos }) {
   const [texto, setTexto] = useState('');
+  // Entrada a "Lo que Aria recuerda de ti": cuántos recuerdos hay y si la memoria está en pausa.
+  const [memoria, setMemoria] = useState(null);
+  useEffect(() => {
+    let vigente = true;
+    listarRecuerdos(empresaId).then(datos => { if (vigente) setMemoria({ total: Number(datos?.total) || 0, pausada: Boolean(datos?.pausada) }); }).catch(() => undefined);
+    return () => { vigente = false; };
+  }, [empresaId]);
+  const subMemoria = !memoria ? 'Mira y borra lo que Aria aprendió de ti'
+    : `${memoria.total === 0 ? 'Sin recuerdos todavía' : `${memoria.total} ${memoria.total === 1 ? 'recuerdo' : 'recuerdos'}`} · ${memoria.pausada ? 'memoria en pausa' : 'memoria activada'}`;
   const [estado, setEstado] = useState({ cargando: true, error: null, lista: [] });
   const consulta = useRef(0);
   useEffect(() => {
@@ -52,6 +61,11 @@ export default function AriaConversaciones({ empresaId, activaId, onAbrir, onNue
       </label>
       <button type="button" className="dx-asis-conv-nueva" onClick={onNueva}>+ Nueva</button>
     </div>
+    {onRecuerdos && !texto.trim() && <button type="button" className="dx-asis-mem-link" onClick={onRecuerdos}>
+      <span className="dx-asis-mem-link-ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></svg></span>
+      <span className="dx-asis-mem-link-tx"><b>Lo que Aria recuerda de ti</b><small>{subMemoria}</small></span>
+      <svg className="dx-asis-mem-link-go" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+    </button>}
     {estado.cargando && !estado.lista.length && <div className="dx-asis-tools"><span className="dx-asis-dots" aria-hidden="true"><span /><span /><span /></span><span role="status">Cargando conversaciones…</span></div>}
     {estado.error && <div className="dx-asis-err" role="alert">{estado.error}</div>}
     {!estado.cargando && !estado.error && !estado.lista.length && <div className="dx-asis-conv-empty" role="status">

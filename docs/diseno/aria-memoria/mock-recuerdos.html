@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aria · Lo que Aria recuerda de ti (mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A2B4A;--cyan:#00ACC1;--cyan-text:#0B4F5A;--cyan-bg:#E0F7FA;--muted:#6B7280;--line:#E4E7EB;--line-soft:#EEF0F3;--field:#C9CFD8;--page:#F4F6F8;--head:#F8F9FA;--card:#fff;--text:#1A2B4A;--user:#1A2B4A;--user-text:#fff;--amber:#8A4B00;--amber-bg:#FFF3E0;--vio:#5B3A8C;--vio-bg:#F0EAFB;--red:#A32020;--red-bg:#FDECEC}
+.dark{--navy:#E8EEF8;--cyan:#26C6DA;--cyan-text:#A5ECF5;--cyan-bg:#0E3A44;--muted:#9AA4B2;--line:#2A3447;--line-soft:#222B3B;--field:#3A465B;--page:#0F1624;--head:#18212F;--card:#141C2B;--text:#E8EEF8;--user:#26C6DA;--user-text:#06222A;--amber:#FFC27A;--amber-bg:#3A2A10;--vio:#CDB7F2;--vio-bg:#2A1F40;--red:#FF9C9C;--red-bg:#3B1717}
+*{box-sizing:border-box}body{margin:0;font-family:'DM Sans',sans-serif;background:#d9dee5;color:#1A2B4A;padding:24px}
+body.dark{background:#060a12;color:#E8EEF8}
+.top{display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap}.top h1{font-family:Sora;font-size:18px;margin:0}.top button{height:40px;padding:0 14px;border-radius:10px;border:1px solid #C9CFD8;background:#fff;font:inherit;cursor:pointer}
+.top span{font-size:13px;color:#5b6b80;max-width:760px;line-height:1.4}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.cap{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#5b6b80;margin:0 0 8px}
+.p{width:420px;height:760px;display:flex;flex-direction:column;overflow:hidden;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(26,43,74,.18);position:relative}
+.p.m{width:375px}
+.hd{flex:none;padding:14px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:10px;background:var(--head)}
+.av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#00ACC1,#1A2B4A);flex:none}
+.eb{color:var(--cyan-text);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.tt{font-family:Sora;font-size:18px;font-weight:600;margin-top:2px;line-height:1.2}
+.ib{width:44px;height:44px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer;flex:none;font-size:16px}
+.ib:hover{background:var(--line-soft)}
+.acts{margin-left:auto;display:flex;gap:2px}
+.bd{flex:1;min-height:0;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--page)}
+.msg{max-width:86%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}
+.me{align-self:flex-end;background:var(--user);color:var(--user-text);border-bottom-right-radius:4px}
+.ai{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+.ft{flex:none;padding:12px 16px;border-top:1px solid var(--line-soft);display:flex;gap:8px;background:var(--card)}
+.in{flex:1;height:44px;border:1px solid var(--field);border-radius:10px;padding:0 12px;background:var(--card);color:var(--muted);display:flex;align-items:center}
+.sq{width:44px;height:44px;border-radius:10px;border:1px solid var(--field);display:grid;place-items:center;color:var(--cyan-text);background:var(--card)}
+.sq.pri{background:var(--navy);border-color:var(--navy);color:var(--card)}
+/* aviso de recuerdo dentro del chat */
+.rec{align-self:flex-start;max-width:94%;display:flex;align-items:center;gap:6px;padding:4px 4px 4px 10px;border-radius:10px;background:var(--cyan-bg);color:var(--cyan-text);font-size:12.5px;line-height:1.35}
+.rec.auto{background:var(--vio-bg);color:var(--vio)}
+.rec b{font-weight:600}
+.rec button{flex:none;min-height:36px;padding:0 8px;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+/* lista de conversaciones (ya existe en producción) */
+.lh{display:flex;gap:8px;align-items:center}
+.search{height:40px;border:1px solid var(--field);border-radius:10px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--card);color:var(--muted);font-size:13.5px}
+.lh .search{flex:1}
+.nueva{height:40px;padding:0 12px;border-radius:10px;border:0;background:var(--navy);color:var(--card);font:inherit;font-weight:600;font-size:13px;white-space:nowrap;cursor:pointer}
+.grp{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 2px -4px;display:flex;align-items:center;min-height:32px}
+.row{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);text-align:left}
+.row.act{border-color:var(--cyan);box-shadow:inset 3px 0 0 var(--cyan)}
+.row .ic{width:32px;height:32px;border-radius:9px;background:var(--cyan-bg);color:var(--cyan-text);display:grid;place-items:center;flex:none;font-size:15px}
+.row b{display:block;font-size:13.5px;font-weight:600;line-height:1.3}
+.row p{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row .meta{margin-left:auto;text-align:right;font-size:11.5px;color:var(--muted);white-space:nowrap;padding-left:6px}
+/* NUEVO: enlace a los recuerdos */
+.link{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer;color:var(--text);text-align:left;font:inherit;width:100%}
+.link:hover{border-color:var(--cyan)}
+.link .ic{width:32px;height:32px;border-radius:9px;background:var(--vio-bg);color:var(--vio);display:grid;place-items:center;flex:none}
+.link b{display:block;font-size:13.5px;font-weight:600}.link .s{display:block;font-size:12.5px;color:var(--muted)}
+.link .go{margin-left:auto;color:var(--muted);font-size:18px}
+.note{font-size:12px;color:var(--muted);text-align:center;padding:4px 0 0;line-height:1.45}
+/* NUEVO: vista de recuerdos */
+.sw{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.sw b{display:block;font-size:13.5px;font-weight:600}.sw .s{font-size:12.5px;color:var(--muted);line-height:1.35;display:block}
+.tgw{margin-left:auto;flex:none;width:44px;height:44px;display:grid;place-items:center;border:0;background:none;cursor:pointer;padding:0}
+.tg{width:44px;height:26px;border-radius:999px;background:var(--cyan);position:relative;display:block}
+.tg:after{content:"";position:absolute;top:3px;left:21px;width:20px;height:20px;border-radius:50%;background:#fff}
+.tg.off{background:var(--field)}.tg.off:after{left:3px}
+.mem{display:flex;gap:6px;align-items:flex-start;padding:10px 4px 10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.mem .tx{font-size:13.5px;line-height:1.4}
+.mem .mt{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;font-size:11.5px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;background:var(--cyan-bg);color:var(--cyan-text);font-size:11px;font-weight:600}
+.pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.auto{background:var(--vio-bg);color:var(--vio)}
+.del{margin-left:auto;flex:none;width:44px;height:44px;border-radius:10px;border:0;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.del:hover{background:var(--red-bg);color:var(--red)}
+.txtbtn{margin-left:auto;min-height:32px;border:0;background:none;color:var(--red);font:inherit;font-size:12.5px;font-weight:600;text-transform:none;letter-spacing:0;cursor:pointer}
+.pausa{display:flex;gap:8px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--amber-bg);color:var(--amber);font-size:12.5px;line-height:1.35}
+.empty{margin:auto;text-align:center;color:var(--muted);font-size:13.5px;max-width:270px;line-height:1.45}.empty b{display:block;color:var(--text);font-family:Sora;font-size:15px;margin-bottom:4px}
+.ov{position:absolute;inset:0;background:rgba(10,18,32,.5);display:flex;align-items:flex-end}
+.sheet{width:100%;background:var(--card);border-radius:14px 14px 0 0;padding:18px 16px 16px}
+.sheet h3{font-family:Sora;font-size:16px;margin:0 0 6px}.sheet p{margin:0 0 14px;font-size:13.5px;color:var(--muted);line-height:1.45}
+.sheet .bt{display:flex;gap:8px}.sheet button{flex:1;height:40px;border-radius:10px;font:inherit;font-weight:600;font-size:13.5px;cursor:pointer}
+.sec{border:1px solid var(--field);background:var(--card);color:var(--text)}.dan{border:0;background:#A32020;color:#fff}
+</style>
+</head>
+<body>
+<div class="top"><h1>Aria · Memoria de largo plazo — mock para aprobación</h1>
+<button onclick="document.body.classList.toggle('dark');document.querySelectorAll('.p').forEach(p=>p.classList.toggle('dark'))">Claro / oscuro</button>
+<span>Todavía no existe ningún recuerdo en producción. Los ejemplos se arman con datos reales de tus conversaciones con Aria del 10 y 11/11/2026 (fondos, CECO y títulos); las horas de los recuerdos son ilustrativas. Anchos: 420 px (escritorio) y 375 px (celular).</span></div>
+
+<div class="grid">
+
+<!-- A -->
+<div><p class="cap">A · Chat: Aria guarda un recuerdo</p>
+<div class="p">
+ <div class="hd"><span class="av"></span><div><div class="eb">OPERA · Asistente</div><div class="tt">Aria</div></div>
+  <div class="acts"><button class="ib" aria-label="Conversaciones anteriores">🕘</button><button class="ib" aria-label="Nueva conversación">＋</button><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="msg me">recuerda que trabajo sobre todo con la Caja Chica Taller Ate</div>
+  <div class="msg ai">Anotado. Cuando preguntes por caja chica sin decir el fondo, empezaré por Taller Ate.</div>
+  <div class="rec"><span>✓ <b>Guardado en tu memoria:</b> trabajas sobre todo con la Caja Chica Taller Ate.</span><button>Deshacer</button></div>
+  <div class="msg me">registrar un egreso de guantes para el taller, CECO 1010 como siempre</div>
+  <div class="msg ai">Listo, preparo el borrador con el CECO 1010 · TALLER MECANICO - LH. ¿Cuál es el monto?</div>
+  <div class="rec auto"><span>✦ <b>Aria recordó:</b> para egresos del taller sueles usar el CECO 1010.</span><button>Deshacer</button></div>
+ </div>
+ <div class="ft"><div class="in">Pregúntale a Aria…</div><div class="sq">🎤</div><div class="sq pri">→</div></div>
+</div></div>
+
+<!-- B -->
+<div><p class="cap">B · Entrada desde Conversaciones</p>
+<div class="p">
+ <div class="hd"><button class="ib" aria-label="Volver al chat">←</button><div><div class="eb">Aria</div><div class="tt">Conversaciones</div></div>
+  <div class="acts"><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="lh"><div class="search">🔍 Buscar en tus conversaciones</div><button class="nueva">＋ Nueva</button></div>
+  <button class="link"><span class="ic">✦</span><span><b>Lo que Aria recuerda de ti</b><span class="s">3 recuerdos · memoria activada</span></span><span class="go">›</span></button>
+  <div class="grp">Hoy</div>
+  <div class="row act"><span class="ic">≡</span><div><b>Estado de cajas chicas activas</b><p>Tres cajas activas en soles; ninguna requiere reposición.</p></div><div class="meta">12:05 a. m.<br>2 mensajes</div></div>
+  <div class="row"><span class="ic">≡</span><div><b>Consulta de cajas chicas activas</b><p>La persona preguntó por lo revisado sobre caja chica en otra conversación…</p></div><div class="meta">12:04 a. m.<br>4 mensajes</div></div>
+  <div class="grp">Ayer</div>
+  <div class="row"><span class="ic">≡</span><div><b>Saldo de caja chica Taller Ate</b></div><div class="meta">11:35 p. m.<br>6 mensajes</div></div>
+  <div class="note">Se guardan 180 días · Solo tú ves tus conversaciones</div>
+ </div>
+</div></div>
+
+<!-- C -->
+<div><p class="cap">C · Lo que Aria recuerda de ti</p>
+<div class="p">
+ <div class="hd"><button class="ib" aria-label="Volver a conversaciones">←</button><div><div class="eb">Aria · Memoria</div><div class="tt">Lo que recuerdo de ti</div></div>
+  <div class="acts"><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="sw"><span><b>Memoria activada</b><span class="s">Aria usa estos recuerdos y aprende nuevos mientras conversan.</span></span><button class="tgw" role="switch" aria-checked="true" aria-label="Memoria activada"><span class="tg"></span></button></div>
+  <div class="search">🔍 Buscar en tus recuerdos</div>
+  <div class="grp">3 recuerdos <button class="txtbtn">Borrar todo</button></div>
+  <div class="mem"><div><div class="tx">Trabajas sobre todo con la Caja Chica Taller Ate.</div><div class="mt"><span class="pill">Me lo dijiste</span>hoy, 12:10 a. m.</div></div><button class="del" aria-label="Borrar este recuerdo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button></div>
+  <div class="mem"><div><div class="tx">Para egresos del taller sueles usar el CECO 1010 · TALLER MECANICO - LH.</div><div class="mt"><span class="pill auto">Lo aprendí</span>hoy, 12:11 a. m. · de «Egreso de guantes para taller»</div></div><button class="del" aria-label="Borrar este recuerdo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button></div>
+  <div class="mem"><div><div class="tx">Cuando preguntas por «Omar», te refieres a los pasajes que se pagan por caja chica.</div><div class="mt"><span class="pill auto">Lo aprendí</span>ayer, 1:56 p. m. · de «Pagos a Omar en octubre y noviembre»</div></div><button class="del" aria-label="Borrar este recuerdo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button></div>
+  <div class="note">Solo tú ves tus recuerdos · No guardo montos ni saldos: esos siempre los consulto en el ERP</div>
+ </div>
+</div></div>
+
+<!-- D -->
+<div><p class="cap">D · Celular (375 px): memoria en pausa y sin recuerdos</p>
+<div class="p m">
+ <div class="hd"><button class="ib" aria-label="Volver a conversaciones">←</button><div><div class="eb">Aria · Memoria</div><div class="tt">Lo que recuerdo de ti</div></div>
+  <div class="acts"><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="sw"><span><b>Memoria en pausa</b><span class="s">Aria no usa ni guarda recuerdos. Los que ya tienes se conservan.</span></span><button class="tgw" role="switch" aria-checked="false" aria-label="Memoria en pausa"><span class="tg off"></span></button></div>
+  <div class="pausa">⏸ Mientras esté en pausa, Aria responde sin tus recuerdos.</div>
+  <div class="empty"><b>Todavía no recuerdo nada de ti</b>Dime «recuerda que…» en el chat, o conversa normalmente y aprenderé cómo trabajas.</div>
+ </div>
+</div></div>
+
+<!-- E -->
+<div><p class="cap">E · Celular: confirmar «Borrar todo»</p>
+<div class="p m">
+ <div class="hd"><button class="ib" aria-label="Volver a conversaciones">←</button><div><div class="eb">Aria · Memoria</div><div class="tt">Lo que recuerdo de ti</div></div>
+  <div class="acts"><button class="ib" aria-label="Cerrar">✕</button></div></div>
+ <div class="bd">
+  <div class="sw"><span><b>Memoria activada</b><span class="s">Aria usa estos recuerdos y aprende nuevos mientras conversan.</span></span><button class="tgw" role="switch" aria-checked="true" aria-label="Memoria activada"><span class="tg"></span></button></div>
+  <div class="search">🔍 Buscar en tus recuerdos</div>
+  <div class="grp">3 recuerdos <button class="txtbtn">Borrar todo</button></div>
+  <div class="mem"><div><div class="tx">Trabajas sobre todo con la Caja Chica Taller Ate.</div><div class="mt"><span class="pill">Me lo dijiste</span>hoy, 12:10 a. m.</div></div><button class="del" aria-label="Borrar este recuerdo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button></div>
+ </div>
+ <div class="ov"><div class="sheet" role="alertdialog" aria-label="Borrar todos los recuerdos"><h3>¿Borrar los 3 recuerdos?</h3><p>Aria olvidará todo lo que aprendió de ti en esta empresa. Tus conversaciones no se borran. Esto no se puede deshacer.</p><div class="bt"><button class="sec">Cancelar</button><button class="dan">Borrar todo</button></div></div></div>
+</div></div>
+
+</div>
+</body></html>
