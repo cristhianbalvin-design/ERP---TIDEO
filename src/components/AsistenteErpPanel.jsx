@@ -23,6 +23,8 @@ const sugerenciasPorTipo = {
   os_cliente: ['¿En qué estado está esta orden de servicio?', '¿Qué avances tiene esta orden?', '¿Qué cotización la originó?'],
 };
 
+// En Aria experta cada pregunta gasta una consulta del mes: las sugerencias son de proceso y de análisis.
+const sugerenciasExperto = ['Explícame de punta a punta cómo paso de una cotización aprobada hasta cobrarla', '¿Qué clientes y órdenes de trabajo me dejan menos margen?', '¿Cómo está mi personal este mes: faltas, tardanzas y pendientes?', '¿Qué debería priorizar esta semana?'];
 const sugerenciasPredeterminadas = ['¿Cuánto hay en bancos?', '¿Qué fondos de caja chica debo reponer?', '¿Cuánto tengo vencido por cobrar?', '¿Qué debo pagar con prioridad alta?'];
 
 function etiquetaHerramienta(tool) {
@@ -32,6 +34,8 @@ function etiquetaHerramienta(tool) {
     [['consultar_manual'], 'Consulté el manual'],
     [['buscar_conversaciones'], 'Revisé tus conversaciones'],
     [['recuerdo_guardar'], 'Guardé un recuerdo'],
+    [['resumen_operaciones', 'buscar_ots', 'estado_ot'], 'Revisé Operaciones'], [['resumen_personal'], 'Revisé Personal'], [['resumen_planilla'], 'Revisé Planilla'],
+    [['resumen_financiamiento'], 'Revisé Financiamiento'], [['resumen_comisiones'], 'Revisé Comisiones'], [['resumen_transporte'], 'Revisé Transporte'],
     [['resumen_mensual'], 'Calculé el resumen mensual'],
     [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
@@ -132,7 +136,7 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
   const ultimaConsulta = useRef(null);
   const solicitudInicial = useRef(solicitudApertura);
   const solicitudEnviada = useRef(solicitudApertura);
-  const sugerencias = sugerenciasPorTipo[contexto?.tipo] || sugerenciasPredeterminadas;
+  const sugerencias = modo === 'experto' ? sugerenciasExperto : sugerenciasPorTipo[contexto?.tipo] || sugerenciasPredeterminadas;
   const primerNombre = String(nombreUsuario || '').trim().split(/\s+/)[0];
   const tituloContexto = contexto?.etiqueta || (contexto?.tipo ? `${contexto.tipo} ${contexto.id}` : '');
   const agotada = error?.status === 429 || cuotaRestante === 0;

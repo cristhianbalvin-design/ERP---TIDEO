@@ -1068,6 +1068,25 @@ Deno.test("un saludo con cómo no obliga a consultar el manual", async () => {
   equal(x.aiCalls.length, 1);
 });
 
+Deno.test("herramientas de operación y personal mapean sus parámetros a los RPC", async () => {
+  for (const nombre of ["asistente_resumen_operaciones", "asistente_buscar_ots", "asistente_estado_ot", "asistente_resumen_personal", "asistente_resumen_planilla", "asistente_resumen_financiamiento", "asistente_resumen_comisiones", "asistente_resumen_transporte"]) {
+    assert(OPENAI_TOOLS.some((tool: any) => tool.function.name === nombre), nombre);
+  }
+  let n = 0;
+  const x = setup({
+    rpc: () => ({ data: { filas: [], total_coincidencias: 0, respuesta: "ok", que_le_falta: [] }, error: null }),
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [
+        { id: "a", type: "function", function: { name: "asistente_buscar_ots", arguments: JSON.stringify({ solo_atrasadas: true, sin_parte_dias: 3, limite: 5 }) } },
+        { id: "b", type: "function", function: { name: "asistente_estado_ot", arguments: JSON.stringify({ numero: "OT-26-0741" }) } }] })
+      : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Qué órdenes de trabajo están atrasadas?" }))).status, 200);
+  const ots = x.calls.find(c => c.name === "asistente_buscar_ots")!;
+  equal(ots.args.p_empresa_id, EMPRESA); equal(ots.args.p_solo_atrasadas, true); equal(ots.args.p_sin_parte_dias, 3); equal(ots.args.p_limite, 5);
+  const estado = x.calls.find(c => c.name === "asistente_estado_ot")!;
+  equal(estado.args.p_numero, "OT-26-0741");
+});
+
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
   const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
   const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;
