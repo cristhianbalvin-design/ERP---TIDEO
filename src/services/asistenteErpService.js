@@ -32,6 +32,17 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
   return data;
 }
 
+// Modo experto: solo administradores, con una cuota mensual por empresa. Devuelve null si no se pudo consultar.
+export async function cuotaModoExperto(empresaId) {
+  if (!empresaId) return null;
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('aria_experto_cuota', { p_empresa_id: empresaId });
+    if (error || !data) return null;
+    return { permitido: data.permitido === true, restantes: Number(data.restantes) || 0, limite: Number(data.limite) || 150 };
+  } catch { return null; }
+}
+
 export function mensajeErrorAsistente(status) {
   if (status === 400) return 'No pude procesar la pregunta. Revísala e inténtalo de nuevo.';
   if (status === 401 || status === 403) return 'No tienes acceso para realizar esta consulta.';

@@ -1739,24 +1739,33 @@ Deno.test("con clave de Claude responde Haiku y audita el modelo", async () => {
 });
 
 Deno.test("modo experto responde con Sonnet, descuenta su cuota y lo marca en la respuesta", async () => {
-  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { usadas: 3, limite: 10, restantes: 7, puede_continuar: true }, error: null } : { data: { filas: [] }, error: null } });
+  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { permitido: true, usadas: 3, limite: 150, restantes: 147, puede_continuar: true }, error: null } : { data: { filas: [] }, error: null } });
   const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Amplía en modo experto: hola", modo: "experto" }))).json();
   equal(x.claudeCalls[0].model, "claude-sonnet-5-5");
   assert(x.claudeCalls[0].messages.some((m: any) => m.role === "system" && String(m.content).startsWith("MODO EXPERTO")));
   equal(x.historial()[0].p_modelo, "claude-sonnet-5-5");
-  equal(result.experto.restantes, 6);
+  equal(result.experto.restantes, 146);
+  equal(result.experto.limite, 150);
   assert(result.herramientas_usadas.includes("aria_modo_experto"));
 });
 
 Deno.test("modo experto sin cuota no llama al modelo y lo explica", async () => {
-  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { usadas: 10, limite: 10, restantes: 0, puede_continuar: false }, error: null } : { data: { filas: [] }, error: null } });
+  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { permitido: true, usadas: 150, limite: 150, restantes: 0, puede_continuar: false }, error: null } : { data: { filas: [] }, error: null } });
   const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Amplía en modo experto: hola", modo: "experto" }));
   equal(res.status, 200);
   const result = await res.json();
-  assert(result.respuesta.includes("10 consultas de modo experto"));
+  assert(result.respuesta.includes("150 consultas de modo experto de este mes"));
   equal(result.experto.restantes, 0);
   equal(x.claudeCalls.length, 0);
   equal(x.openaiCalls.length, 0);
+});
+
+Deno.test("modo experto solo para administradores: a los demás se les explica sin llamar al modelo", async () => {
+  const x = setupClaude({ rpc: name => name === "aria_experto_cuota" ? { data: { permitido: false, usadas: 2, limite: 150, restantes: 148, puede_continuar: false }, error: null } : { data: { filas: [] }, error: null } });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Amplía en modo experto: hola", modo: "experto" }))).json();
+  assert(result.respuesta.includes("solo para los administradores"));
+  equal(result.experto.permitido, false);
+  equal(x.claudeCalls.length, 0);
 });
 
 Deno.test("modo desconocido se rechaza y el chat normal no consulta la cuota de experto", async () => {
