@@ -1,0 +1,10 @@
+clave: salud_implementacion
+tipo: pantalla
+pantalla: tenants
+catalogo: admin/salud_implementacion
+titulo: Salud de implementación (plataforma)
+resumen: Estado de la implementación de las empresas, visto por el personal de la plataforma.
+componentes: src/pages_plataforma.jsx#SaludImplementacion
+huella: cf7ef1176b
+paso: 1 | pantalla=tenants | permiso=ninguno | Es una pantalla de consulta para el personal de la plataforma.
+paso: 2 | pantalla=tenants | permiso=ninguno | Muestra el avance de la implementación de las empresas; no registra información.

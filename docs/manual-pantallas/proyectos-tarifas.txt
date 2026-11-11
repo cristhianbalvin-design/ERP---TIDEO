@@ -1,0 +1,12 @@
+clave: proyectos_tarifas
+tipo: pantalla
+pantalla: contratos_alquiler
+catalogo: operaciones/proyectos
+titulo: Proyectos & Tarifas
+resumen: Proyectos y sus tarifas de equipo y de mano de obra.
+componentes: operaciones-app/src/zahory-mock/pages/ProyectosTarifasPage.jsx#ProyectosTarifasPage
+huella: 21ba55ea69
+paso: 1 | pantalla=contratos_alquiler | permiso=ninguno | Nuevo Proyecto crea un proyecto y Editar cambia sus datos; solo aparecen si tu rol puede editar.
+paso: 2 | pantalla=contratos_alquiler | permiso=ninguno | Nueva tarifa registra una tarifa de equipo o de mano de obra con Guardar tarifa.
+paso: 3 | pantalla=contratos_alquiler | permiso=ninguno | Eliminar borra un registro y pide confirmación.
+paso: 4 | pantalla=contratos_alquiler | permiso=ninguno | Contratos Rental lleva a los contratos de alquiler.

@@ -375,7 +375,7 @@
       "ruta": "recetas_actividad",
       "alias": [],
       "componente": "src/pages_recetas_actividad.jsx#RecetasActividad",
-      "permiso": null,
+      "permiso": "maestros",
       "tipo": "subpantalla",
       "estado": "activa"
     },
@@ -495,7 +495,7 @@
       "ruta": "notificaciones_config",
       "alias": [],
       "componente": "src/pages_notificaciones_config.jsx#NotificacionesConfig",
-      "permiso": null,
+      "permiso": "parametros",
       "tipo": "menu",
       "estado": "activa"
     },
@@ -543,7 +543,7 @@
       "ruta": "salud_implementacion_tenant",
       "alias": [],
       "componente": "src/pages_salud_tenant.jsx#SaludImplementacionTenant",
-      "permiso": null,
+      "permiso": "parametros",
       "tipo": "menu",
       "estado": "activa"
     },
@@ -879,7 +879,7 @@
       "ruta": "salud_implementacion",
       "alias": [],
       "componente": "src/pages_plataforma.jsx#SaludImplementacion",
-      "permiso": null,
+      "permiso": "tenants",
       "tipo": "subpantalla",
       "estado": "activa"
     },
@@ -1287,7 +1287,7 @@
       "ruta": "proyectos",
       "alias": [],
       "componente": "operaciones-app/src/zahory-mock/pages/ProyectosTarifasPage.jsx#ProyectosTarifasPage",
-      "permiso": null,
+      "permiso": "contratos_alquiler",
       "tipo": "menu",
       "estado": "activa"
     },
@@ -2492,7 +2492,7 @@
       "ruta": "catalogo",
       "alias": [],
       "componente": "operaciones-app/src/zahory-mock/pages/wms/CatalogoVentaPage.jsx#CatalogoVentaPage",
-      "permiso": null,
+      "permiso": "inventario",
       "tipo": "menu",
       "estado": "activa"
     },
