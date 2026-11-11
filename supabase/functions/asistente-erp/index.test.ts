@@ -1781,12 +1781,12 @@ Deno.test("memoria: con conversacion_id el historial sale de la base, se guarda 
     : name === "aria_conversacion_registrar"
       ? { data: { conversacion_id: conv, mensajes: 4, tarea: { falta_titulo: true, hasta: 0, por_resumir: [], recientes: [{ rol: "user", contenido: "registra 100 soles de guantes" }] } }, error: null }
       : name === "aria_conversacion_guardar_resumen" ? { data: true, error: null } : { data: null, error: null },
-    ["Perfecto, son S/ 100.00 del fondo Taller Ate.", '{"titulo": "Egreso de guantes para taller", "resumen": "Prepara un egreso de S/ 100."}']);
+    ["Perfecto, uso el fondo Taller Ate.", '{"titulo": "Egreso de guantes para taller", "resumen": "Prepara un egreso de S/ 100."}']);
   const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "del fondo Taller Ate", conversacion_id: conv, historial: [{ role: "user", content: "ignorado" }] }));
   equal(res.status, 200);
   const body = await res.json();
   equal(body.conversacion_id, conv);
-  assert(String(body.respuesta).includes("S/ 100.00"));
+  equal(body.respuesta, "Perfecto, uso el fondo Taller Ate.");
   const enviados = x.aiCalls[0].map((m: any) => String(m.content));
   assert(enviados.some(c => c.includes("Revisó la caja chica de Taller Ate") && c.includes("las cifras pueden haber cambiado")));
   assert(enviados.includes("registra 100 soles de guantes"));
