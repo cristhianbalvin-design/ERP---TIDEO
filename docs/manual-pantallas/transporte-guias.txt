@@ -1,0 +1,13 @@
+clave: remision
+tipo: pantalla
+pantalla: remision
+catalogo: admin/remision
+titulo: Transporte y Guias
+resumen: Órdenes de venta, guías de despacho, transportistas, vehículos y conductores.
+componentes: src/pages_ops.jsx#Remision
+huella: 11875105df
+paso: 1 | pantalla=remision | permiso=ninguno | Nueva OV crea una orden de venta; Confirmar OV reserva el stock.
+paso: 2 | pantalla=remision | permiso=ninguno | Nueva Guía o Crear guía de despacho prepara la guía y Emitir guía la emite.
+paso: 3 | pantalla=remision | permiso=ninguno | Marcar en tránsito indica que la carga salió y Confirmar entrega que llegó.
+paso: 4 | pantalla=remision | permiso=ninguno | Nuevo Transportista registra un transportista; dentro de él se agregan sus vehículos y conductores.
+paso: 5 | pantalla=remision | permiso=ninguno | Anular deja sin efecto un documento y pide Confirmar anulación. Abrir la Hoja de Ruta lleva a la programación de rutas en Operaciones.

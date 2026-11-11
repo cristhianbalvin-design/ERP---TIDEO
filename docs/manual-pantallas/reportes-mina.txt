@@ -1,0 +1,12 @@
+clave: reportes_mina
+tipo: pantalla
+pantalla: partes
+catalogo: operaciones/partes-mina, operaciones/nuevo-reporte
+titulo: Reportes Mina
+resumen: Reportes de trabajo en mina: registro, hallazgos, revisión y aprobación.
+componentes: operaciones-app/src/zahory-mock/pages/ReportesMinaPage.jsx#ReportesMinaPage
+huella: 58d1cb1a20
+paso: 1 | pantalla=partes | permiso=ninguno | Nuevo reporte abre el registro; Guardar borrador lo conserva y Continuar borrador lo retoma.
+paso: 2 | pantalla=partes | permiso=ninguno | Agregar hallazgo registra lo encontrado, que puede marcarse como Urgente; Agregar al backlog lo deja como requerimiento pendiente.
+paso: 3 | pantalla=partes | permiso=ninguno | Enviar a revisión manda el reporte a su revisor.
+paso: 4 | pantalla=partes | permiso=ninguno | Quien revisa usa Aprobar reporte u Observar; un reporte observado vuelve al técnico, que lo corrige con Corregir y reenviar.

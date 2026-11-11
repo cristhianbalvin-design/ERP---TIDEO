@@ -1,0 +1,12 @@
+clave: cot_compras
+tipo: pantalla
+pantalla: cot_compras
+catalogo: admin/cot_compras
+titulo: Cotizaciones de Compras
+resumen: Procesos de cotización con proveedores hasta generar la orden de compra o de servicio.
+componentes: src/pages_ops.jsx#CotizacionesCompras
+huella: 1618a00848
+paso: 1 | pantalla=cot_compras | permiso=ninguno | Inicia con Nuevo proceso de cotizacion y avanza con Siguiente; al confirmar, el proceso se crea y se envía a los proveedores.
+paso: 2 | pantalla=cot_compras | permiso=ninguno | Registrar respuesta anota lo que cotizó cada proveedor.
+paso: 3 | pantalla=cot_compras | permiso=ninguno | Seleccionar ganador elige la mejor oferta y Confirmar seleccion y generar OC / OS crea la orden de compra o la orden de servicio.
+paso: 4 | pantalla=cot_compras | permiso=ninguno | Ver proceso abre el detalle de un proceso.

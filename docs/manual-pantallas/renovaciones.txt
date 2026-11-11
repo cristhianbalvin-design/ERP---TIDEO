@@ -1,0 +1,10 @@
+clave: cs_renovaciones
+tipo: pantalla
+pantalla: cs_renovaciones
+catalogo: admin/cs_renovaciones
+titulo: Renovaciones
+resumen: Renovaciones de contratos de clientes y las oportunidades que generan.
+componentes: src/pages_cs.jsx#CSRenovaciones
+huella: 4ce1c80053
+paso: 1 | pantalla=cs_renovaciones | permiso=ninguno | Registra una renovación próxima con Nueva renovación.
+paso: 2 | pantalla=cs_renovaciones | permiso=ninguno | Generar oportunidad crea en el Pipeline la oportunidad de esa renovación.

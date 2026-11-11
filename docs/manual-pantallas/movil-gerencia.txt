@@ -1,0 +1,10 @@
+clave: movil_gerencia
+tipo: pantalla
+pantalla: campo
+catalogo: movil/gerencia
+titulo: Móvil — Gerencia
+resumen: Aprobaciones pendientes desde el celular.
+componentes: src/pages_mobile.jsx#GerenciaView
+huella: a2308d7303
+paso: 1 | pantalla=campo | permiso=ninguno | Aprobar pendientes muestra lo que espera tu decisión.
+paso: 2 | pantalla=campo | permiso=ninguno | Aprobar o Rechazar resuelve cada pendiente y pide confirmación; el comentario es obligatorio.

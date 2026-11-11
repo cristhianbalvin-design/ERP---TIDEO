@@ -1,0 +1,11 @@
+clave: certificaciones_activo
+tipo: pantalla
+pantalla: certificaciones_activo
+catalogo: operaciones/certificaciones-activo
+titulo: Certificaciones del Activo
+resumen: Certificaciones de los equipos y su renovación.
+componentes: operaciones-app/src/zahory-mock/pages/flota/CertificacionesActivoPage.jsx#CertificacionesActivoPage
+huella: e36b54098c
+paso: 1 | pantalla=certificaciones_activo | permiso=ninguno | Registrar certificación anota una certificación de un equipo.
+paso: 2 | pantalla=certificaciones_activo | permiso=ninguno | Renovar registra su renovación y Anular la deja sin efecto.
+paso: 3 | pantalla=certificaciones_activo | permiso=ninguno | Catálogo de tipos define los tipos de certificación: Nuevo tipo crea uno y Cargar tipos sugeridos trae una lista base.

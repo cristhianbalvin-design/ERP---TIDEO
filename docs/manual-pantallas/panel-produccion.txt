@@ -1,0 +1,12 @@
+clave: panel_produccion
+tipo: pantalla
+pantalla: os_cliente
+catalogo: admin/panel_produccion
+titulo: Panel de Producción
+resumen: Tablero de las órdenes de servicio en producción y sus atrasos.
+componentes: src/pages_produccion_os_cliente.jsx#PanelProduccionOSCliente
+huella: 25f708de95
+paso: 1 | pantalla=os_cliente | permiso=ninguno | Muestra las OS Cliente en Tablero o en Lista. Solo atrasadas filtra las que están fuera de plazo.
+paso: 2 | pantalla=os_cliente | permiso=ninguno | Nueva OS Cliente crea una orden: cliente y descripción son obligatorios y debes seleccionar o crear un activo.
+paso: 3 | pantalla=os_cliente | permiso=ninguno | Recepciones e Ir a Recepción de Activos llevan al ingreso de equipos al taller.
+paso: 4 | pantalla=os_cliente | permiso=ninguno | Una OS con registros asociados no se puede eliminar.

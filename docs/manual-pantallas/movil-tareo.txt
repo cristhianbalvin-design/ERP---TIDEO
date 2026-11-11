@@ -1,0 +1,10 @@
+clave: movil_tareo
+tipo: pantalla
+pantalla: campo
+catalogo: movil/administrativo
+titulo: Móvil — Tareo
+resumen: Registro de horas del día desde el celular.
+componentes: src/pages_mobile.jsx#AdministrativoView
+huella: 098b9894da
+paso: 1 | pantalla=campo | permiso=ninguno | Registrar anota tus horas: las horas y la descripción son obligatorias.
+paso: 2 | pantalla=campo | permiso=ninguno | Enviar registro del día manda tu jornada y pide confirmación.

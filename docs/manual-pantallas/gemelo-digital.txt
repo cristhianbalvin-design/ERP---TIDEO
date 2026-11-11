@@ -1,0 +1,12 @@
+clave: gemelo_digital
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-gemelo
+titulo: Gemelo digital
+resumen: Plano del almacén con sus posiciones, su stock y la ruta hacia cada ubicación.
+componentes: operaciones-app/src/zahory-mock/pages/gemelo/GemeloAlmacenPage.jsx#GemeloAlmacenPage
+huella: 94a9ef772e
+paso: 1 | pantalla=inventario | permiso=ninguno | Muestra el plano del almacén con las posiciones que tienen stock y las que están bajo su punto de reorden. Vista 3D cambia a la vista en tres dimensiones.
+paso: 2 | pantalla=inventario | permiso=ninguno | Ruta desde la puerta traza el camino hasta una posición.
+paso: 3 | pantalla=inventario | permiso=ninguno | Editor de plano o Dibujar el plano permite armar el plano; al guardarlo se crean, actualizan o desactivan las ubicaciones.
+paso: 4 | pantalla=inventario | permiso=ninguno | Ver con datos de ejemplo muestra un almacén de muestra y Volver a mis datos regresa al tuyo.

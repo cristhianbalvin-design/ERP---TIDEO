@@ -1,0 +1,10 @@
+clave: cs_onboarding
+tipo: pantalla
+pantalla: cs_onboarding
+catalogo: admin/cs_onboarding
+titulo: Onboarding
+resumen: Seguimiento de la puesta en marcha de los clientes nuevos.
+componentes: src/pages_cs.jsx#CSOnboarding
+huella: 6a67ec3d29
+paso: 1 | pantalla=cs_onboarding | permiso=ninguno | Inicia la puesta en marcha de un cliente con Nuevo onboarding.
+paso: 2 | pantalla=cs_onboarding | permiso=ninguno | Ver detalle muestra su avance.

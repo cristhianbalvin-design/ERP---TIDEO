@@ -1,0 +1,11 @@
+clave: tareo_admin
+tipo: pantalla
+pantalla: tareo_admin
+catalogo: admin/tareo_admin
+titulo: Tareo Administrativo
+resumen: Registro diario de las horas del personal administrativo.
+componentes: src/pages_ops.jsx#TareoAdmin
+huella: d77baa9ebb
+paso: 1 | pantalla=tareo_admin | permiso=ninguno | Muestra por persona las horas estimadas, las ejecutadas en OT y las horas libres, con su costo calculado.
+paso: 2 | pantalla=tareo_admin | permiso=ninguno | Registrar horas manuales agrega una entrada con su descripción, por ejemplo una reunión o gestión interna.
+paso: 3 | pantalla=tareo_admin | permiso=ninguno | Las horas que vienen de una OT son de solo lectura aquí: se gestionan desde la OT.

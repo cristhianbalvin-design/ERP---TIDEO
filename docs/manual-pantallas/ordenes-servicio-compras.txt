@@ -1,0 +1,11 @@
+clave: ordenes_servicio
+tipo: pantalla
+pantalla: ordenes_servicio
+catalogo: admin/ordenes_servicio
+titulo: Ordenes de Servicio
+resumen: Órdenes de servicio a proveedores y su conformidad.
+componentes: src/pages_ops.jsx#OrdenesServicio
+huella: 0144236b2a
+paso: 1 | pantalla=ordenes_servicio | permiso=ninguno | Crea una orden con Nueva OS: debes tener seleccionada una sociedad y elegir un CECO, que es obligatorio.
+paso: 2 | pantalla=ordenes_servicio | permiso=ninguno | Emitir OS la emite al proveedor.
+paso: 3 | pantalla=ordenes_servicio | permiso=ninguno | Conformidad registra que el servicio se recibió conforme.

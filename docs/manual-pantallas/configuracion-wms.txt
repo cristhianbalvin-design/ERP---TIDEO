@@ -1,0 +1,10 @@
+clave: configuracion_wms
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-config
+titulo: Configuración del WMS
+resumen: Opciones de funcionamiento del almacén.
+componentes: operaciones-app/src/zahory-mock/pages/wms/ConfiguracionWmsPage.jsx#ConfiguracionWmsPage
+huella: a3620ec951
+paso: 1 | pantalla=inventario | permiso=ninguno | Activa o desactiva las funciones del almacén y define el umbral de aprobación de los conteos, que debe ser cero o mayor.
+paso: 2 | pantalla=inventario | permiso=ninguno | Guardar cambios conserva la configuración; el menú de Almacén se actualiza al recargar la página.

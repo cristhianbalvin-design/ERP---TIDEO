@@ -1,0 +1,11 @@
+clave: cs_fidelizacion
+tipo: pantalla
+pantalla: cs_fidelizacion
+catalogo: admin/cs_fidelizacion
+titulo: Fidelizacion y NPS
+resumen: Encuestas de satisfacción y oportunidades que nacen de clientes satisfechos.
+componentes: src/pages_cs.jsx#CSFidelizacion
+huella: 7031d7e4c6
+paso: 1 | pantalla=cs_fidelizacion | permiso=ninguno | Enviar encuesta manda la encuesta de satisfacción a un cliente.
+paso: 2 | pantalla=cs_fidelizacion | permiso=ninguno | En los casos de éxito, Solicitar autorización al cliente pide su permiso para publicar el caso.
+paso: 3 | pantalla=cs_fidelizacion | permiso=ninguno | Convertir a lead crea un prospecto en Leads.

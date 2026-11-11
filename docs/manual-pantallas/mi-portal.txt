@@ -1,0 +1,13 @@
+clave: mi_portal
+tipo: pantalla
+pantalla: mi_portal
+catalogo: admin/mi_portal
+titulo: Mi portal
+resumen: Espacio personal del trabajador: boletas, documentos, contrato y solicitudes.
+componentes: src/pages_mi_portal.jsx#MiPortal
+huella: 8a66482254
+paso: 1 | pantalla=mi_portal | permiso=ninguno | Para abrir tus boletas primero debes registrar el consentimiento de entrega electrónica; la pantalla te lleva a Firma y consentimiento.
+paso: 2 | pantalla=mi_portal | permiso=ninguno | Abrir muestra una boleta y Me doy por enterado registra tu acuse.
+paso: 3 | pantalla=mi_portal | permiso=ninguno | Pedir vacaciones, Pedir permiso, Solicitar HE y Solicitar constancia envían tus solicitudes; las horas extra exigen completar todos los campos obligatorios.
+paso: 4 | pantalla=mi_portal | permiso=ninguno | Subir firmado carga tu contrato o documento firmado, que queda en revisión por RRHH. El archivo no puede estar vacío ni pasar de 20 MB.
+paso: 5 | pantalla=mi_portal | permiso=ninguno | Para pedir un cambio en tus datos, ingresa el nuevo valor propuesto y usa Enviar a RRHH.

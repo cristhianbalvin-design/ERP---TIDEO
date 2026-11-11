@@ -1,0 +1,12 @@
+clave: gestion_garantias
+tipo: pantalla
+pantalla: garantias_flota
+catalogo: operaciones/gestion-garantias
+titulo: Gestión de Garantías
+resumen: Garantías de los equipos y sus reclamos.
+componentes: operaciones-app/src/zahory-mock/pages/flota/GarantiasFlotaPage.jsx#GarantiasFlotaPage
+huella: 0d2ed03b84
+paso: 1 | pantalla=garantias_flota | permiso=ninguno | Registrar garantía anota una garantía; Renovar la extiende y Anular la deja sin efecto.
+paso: 2 | pantalla=garantias_flota | permiso=ninguno | Sobre una garantía vigente, Liberar y Ejecutar registran su liberación o su ejecución, cada una con su motivo.
+paso: 3 | pantalla=garantias_flota | permiso=ninguno | Registrar reclamo abre un reclamo y Actualizar estado lo hace avanzar; algunos estados exigen escribir la resolución.
+paso: 4 | pantalla=garantias_flota | permiso=ninguno | Catálogo de tipos define los tipos de garantía: Nuevo tipo crea uno y Cargar tipos sugeridos trae una lista base.

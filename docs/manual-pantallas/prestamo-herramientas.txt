@@ -1,0 +1,10 @@
+clave: prestamo_herramientas
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-herramientas
+titulo: Préstamo de herramientas
+resumen: Préstamo y devolución de herramientas del almacén.
+componentes: operaciones-app/src/zahory-mock/pages/wms/HerramientasPage.jsx#HerramientasPage
+huella: 8536c0bbd6
+paso: 1 | pantalla=inventario | permiso=ninguno | Prestar herramienta registra a quién se entrega con Registrar préstamo.
+paso: 2 | pantalla=inventario | permiso=ninguno | Recibir anota su regreso con Registrar devolución.

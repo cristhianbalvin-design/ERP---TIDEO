@@ -1,0 +1,10 @@
+clave: cs_planes
+tipo: pantalla
+pantalla: cs_planes
+catalogo: admin/cs_planes
+titulo: Planes de Exito
+resumen: Planes de éxito de los clientes y sus reuniones de seguimiento.
+componentes: src/pages_cs.jsx#CSPlanes
+huella: 47127ab65e
+paso: 1 | pantalla=cs_planes | permiso=ninguno | Crea un plan con Nuevo plan y ábrelo con Ver plan.
+paso: 2 | pantalla=cs_planes | permiso=ninguno | Nueva reunión registra una reunión de seguimiento con el cliente.

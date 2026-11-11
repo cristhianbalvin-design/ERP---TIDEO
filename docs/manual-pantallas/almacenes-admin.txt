@@ -1,0 +1,12 @@
+clave: inventario_admin
+tipo: pantalla
+pantalla: inventario
+catalogo: admin/inventario
+titulo: Almacenes
+resumen: Existencias, entradas, ajustes, transferencias y conteos del almacén desde Administración.
+componentes: src/pages_extra.jsx#Inventario
+huella: 71bf749470
+paso: 1 | pantalla=inventario | permiso=ninguno | Registrar Entrada ingresa material al almacén; Primera Entrada registra el stock inicial de un material.
+paso: 2 | pantalla=inventario | permiso=ninguno | Ajustar corrige una diferencia de stock y Transferir mueve material entre almacenes.
+paso: 3 | pantalla=inventario | permiso=ninguno | Iniciar Conteo abre un conteo físico: Escanear lee los códigos, Guardar avance permite continuar después y Cerrar Conteo genera los ajustes. Un código que no pertenece al conteo se rechaza.
+paso: 4 | pantalla=inventario | permiso=ninguno | Generar SOLPE crea la solicitud de compra y la envía a Compras.

@@ -1,0 +1,12 @@
+clave: movil_asistencia
+tipo: pantalla
+pantalla: campo
+catalogo: movil/asistencia
+titulo: Móvil — Asistencia
+resumen: Marcación de entrada, refrigerio y salida desde el celular.
+componentes: src/pages_mobile.jsx#AsistenciaMobileView
+huella: 823e538216
+paso: 1 | pantalla=campo | permiso=ninguno | Entrada y Salida registran tu marcación con la ubicación del celular; debes dar permiso de ubicación.
+paso: 2 | pantalla=campo | permiso=ninguno | Sin señal, la marcación se guarda en el celular y se sincroniza sola al recuperar la conexión.
+paso: 3 | pantalla=campo | permiso=ninguno | Si marcas la salida con un refrigerio sin cerrar, la pantalla pide confirmación.
+paso: 4 | pantalla=campo | permiso=ninguno | Si estás fuera de la geocerca puedes enviar un reporte con Enviar reporte, que queda para revisión.

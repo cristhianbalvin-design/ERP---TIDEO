@@ -1,0 +1,11 @@
+clave: cs_health
+tipo: pantalla
+pantalla: cs_health
+catalogo: admin/cs_health
+titulo: Health Score
+resumen: Puntaje de salud de cada cliente y planes de retención.
+componentes: src/pages_cs.jsx#CSHealthScore
+huella: 05155164d5
+paso: 1 | pantalla=cs_health | permiso=ninguno | La lista muestra el puntaje de salud de cada cliente; Ver detalle abre su desglose.
+paso: 2 | pantalla=cs_health | permiso=ninguno | Crear plan retención inicia un plan para un cliente en riesgo.
+paso: 3 | pantalla=cs_health | permiso=ninguno | Exportar descarga la lista.

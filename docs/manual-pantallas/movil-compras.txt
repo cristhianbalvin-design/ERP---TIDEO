@@ -1,0 +1,11 @@
+clave: movil_compras
+tipo: pantalla
+pantalla: campo
+catalogo: movil/compras
+titulo: Móvil — Compras
+resumen: Registro de un gasto con la foto del comprobante desde el celular.
+componentes: src/pages_mobile.jsx#ComprasView
+huella: 51d45cfa58
+paso: 1 | pantalla=campo | permiso=ninguno | Adjuntar foto del comprobante o Tomar captura la factura; también puedes usar Ingresar datos manualmente.
+paso: 2 | pantalla=campo | permiso=ninguno | El total de las líneas debe coincidir con el de la factura; Recalcular lo actualiza.
+paso: 3 | pantalla=campo | permiso=ninguno | Si la factura tiene más de 30 días, la pantalla pide confirmar antes de continuar.

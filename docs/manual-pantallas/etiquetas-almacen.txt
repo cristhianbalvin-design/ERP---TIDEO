@@ -1,0 +1,10 @@
+clave: etiquetas_almacen
+tipo: pantalla
+pantalla: inventario
+catalogo: operaciones/almacen-etiquetas
+titulo: Etiquetas
+resumen: Impresión de etiquetas del almacén.
+componentes: operaciones-app/src/zahory-mock/pages/wms/EtiquetasPage.jsx#EtiquetasPage
+huella: 3cbd212622
+paso: 1 | pantalla=inventario | permiso=ninguno | Marca las etiquetas que necesitas; debes marcar al menos una.
+paso: 2 | pantalla=inventario | permiso=ninguno | Descargar PDF genera el archivo para imprimir.

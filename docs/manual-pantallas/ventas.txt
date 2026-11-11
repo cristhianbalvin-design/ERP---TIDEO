@@ -1,0 +1,14 @@
+clave: ventas
+tipo: pantalla
+pantalla: ventas
+catalogo: admin/ventas
+titulo: Ventas
+resumen: Registro de ventas directas, su confirmación, su comprobante y sus cobros.
+componentes: src/pages_fin.jsx#Ventas
+huella: 9566fef6c9
+paso: 1 | pantalla=ventas | permiso=ninguno | Registra una venta con Registrar venta: el cliente y el concepto son obligatorios y el total debe ser mayor a cero. Agregar ítem suma líneas.
+paso: 2 | pantalla=ventas | permiso=ninguno | Si la venta es al crédito, indica entre 1 y 365 días de crédito.
+paso: 3 | pantalla=ventas | permiso=ninguno | Guardar borrador la conserva sin confirmar; Guardar y confirmar o Confirmar venta la dejan firme.
+paso: 4 | pantalla=ventas | permiso=ninguno | Emitir comprobante genera el comprobante de la venta.
+paso: 5 | pantalla=ventas | permiso=ninguno | Registrar cobro anota el pago: la fecha no puede ser futura y debes elegir la cuenta bancaria donde ingresó el dinero. Anular cobro lo revierte.
+paso: 6 | pantalla=ventas | permiso=ninguno | Anular venta deja la venta sin efecto.

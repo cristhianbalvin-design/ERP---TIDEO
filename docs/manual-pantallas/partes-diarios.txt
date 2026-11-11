@@ -1,0 +1,12 @@
+clave: partes
+tipo: pantalla
+pantalla: partes
+catalogo: admin/partes
+titulo: Partes Diarios
+resumen: Revisión y aprobación de los partes diarios de trabajo.
+componentes: src/pages_ops.jsx#Partes
+huella: 294d071ef7
+paso: 1 | pantalla=partes | permiso=ninguno | La lista muestra los partes diarios registrados; Limpiar quita los filtros.
+paso: 2 | pantalla=partes | permiso=ninguno | Enviar a revisión manda un parte a su revisor.
+paso: 3 | pantalla=partes | permiso=ninguno | Quien revisa usa Aprobar, Observar, que envía una observación al autor, o Rechazar; cada acción pide confirmación.
+paso: 4 | pantalla=partes | permiso=ninguno | Reabrir para editar devuelve un parte ya revisado para corregirlo.

@@ -1,0 +1,12 @@
+clave: agenda_comercial
+tipo: pantalla
+pantalla: agenda_comercial
+catalogo: admin/agenda_comercial
+titulo: Agenda Comercial
+resumen: Calendario de reuniones y visitas del equipo comercial.
+componentes: src/pages_core.jsx#AgendaComercial
+huella: 37a93e9e93
+paso: 1 | pantalla=agenda_comercial | permiso=ninguno | Agenda una reunión o visita con Nuevo evento y Crear evento.
+paso: 2 | pantalla=agenda_comercial | permiso=ninguno | Cambia la vista entre Día, Semana, Mes y Lista; Hoy vuelve a la fecha actual.
+paso: 3 | pantalla=agenda_comercial | permiso=ninguno | Cuando el evento ocurre usa Marcar realizado y crear actividad: queda como realizado y se registra la actividad comercial.
+paso: 4 | pantalla=agenda_comercial | permiso=ninguno | Eliminar evento lo borra y no se puede deshacer; solo aparece si tu rol puede eliminar eventos.

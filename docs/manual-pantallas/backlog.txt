@@ -1,0 +1,11 @@
+clave: backlog
+tipo: pantalla
+pantalla: backlog
+catalogo: admin/backlog
+titulo: Backlog
+resumen: Requerimientos pendientes que aún no son órdenes de trabajo.
+componentes: src/pages_ops.jsx#Backlog
+huella: 95cd76d187
+paso: 1 | pantalla=backlog | permiso=ninguno | Registra un pendiente con Nuevo requerimiento y Agregar requerimiento.
+paso: 2 | pantalla=backlog | permiso=ninguno | Puedes verlos en Kanban o en Lista y acotar con Filtros.
+paso: 3 | pantalla=backlog | permiso=ninguno | Convertir a OT crea la orden de trabajo a partir del requerimiento.

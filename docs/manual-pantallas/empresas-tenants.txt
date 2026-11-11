@@ -1,0 +1,11 @@
+clave: tenants
+tipo: pantalla
+pantalla: tenants
+catalogo: admin/tenants
+titulo: Empresas / Tenants
+resumen: Alta y mantenimiento de las empresas de la plataforma.
+componentes: src/pages_admin.jsx#Tenants
+huella: 859eca11fc
+paso: 1 | pantalla=tenants | permiso=ninguno | Crea una empresa con Nuevo grupo y Crear grupo.
+paso: 2 | pantalla=tenants | permiso=ninguno | Editar cambia sus datos y Eliminar la borra.
+paso: 3 | pantalla=tenants | permiso=ninguno | Reporte plataforma descarga el reporte general.

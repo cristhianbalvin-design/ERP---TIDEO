@@ -1,0 +1,10 @@
+clave: tarifas_transporte
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-tarifas-config
+titulo: Tarifas Transporte
+resumen: Tarifas del servicio de transporte.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/TarifasTransportePage.jsx#TarifasTransportePage
+huella: 4231d5fd58
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Nueva tarifa registra una tarifa; una tarifa también se puede anular.
+paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Resolver tarifa consulta qué tarifa aplica a un caso concreto.
