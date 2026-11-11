@@ -1,0 +1,18 @@
+clave: proceso_recepcion_entrega
+tipo: proceso
+pantalla: ninguna
+catalogo: operaciones/recepcion-activos, operaciones/diagnostico-tecnico, operaciones/crear-ot, operaciones/ots, operaciones/almacen-reservas, operaciones/taller, operaciones/cierre-conformidad
+titulo: De la recepción del equipo a la entrega con conformidad
+resumen: Sigue un trabajo de taller desde que ingresa el equipo del cliente hasta el acta de conformidad: recepción, diagnóstico, orden de trabajo, repuestos, partes diarios y cierre.
+componentes: operaciones-app/src/zahory-mock/pages/RecepcionActivosClientePage.jsx#RecepcionActivosClientePage, operaciones-app/src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx#DiagnosticoTecnicoPage, operaciones-app/src/zahory-mock/pages/CrearOTPage.jsx#CrearOTPage, operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#OTsListadoPage, operaciones-app/src/zahory-mock/pages/ReservaRepuestosPage.jsx#ReservaRepuestosPage, operaciones-app/src/zahory-mock/pages/pages3.jsx#ParteTallerPage, operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx#CierreConformidadPage
+huella: 4923fe7cdf e945eecb6f cb7f933511 b22cbde9d1 3d08475098 a7974170a2 b188e26ea6
+pantalla_recorrido: recepcion_activos_cliente,diagnostico_tecnico,ot,inventario,partes
+paso: 1 | pantalla=recepcion_activos_cliente | permiso=ninguno | Registra el ingreso del equipo con Nueva recepción: elige el cliente propietario, el activo (o Registrar como activo nuevo si aún no existe), el almacén de custodia y la fecha de ingreso. Puedes adjuntar fotos del estado en que llega.
+paso: 2 | pantalla=recepcion_activos_cliente | permiso=ninguno | Desde la recepción usa Abrir diagnóstico para empezar la evaluación técnica del equipo.
+paso: 3 | pantalla=diagnostico_tecnico | permiso=ninguno | En el Diagnóstico Técnico indica si el trabajo es de Mantenimiento o de Fabricación, registra lo encontrado con Agregar hallazgo y arma los trabajos con sus actividades; cada trabajo necesita al menos una actividad. Emitir diagnóstico lo cierra, e Informe al cliente prepara el informe.
+paso: 4 | pantalla=diagnostico_tecnico | permiso=ninguno | Con el diagnóstico listo usa Generar hoja de costeo para costear el trabajo. La cotización y la aprobación del cliente siguen el proceso Del prospecto a la cotización aprobada.
+paso: 5 | pantalla=ot | permiso=ninguno | Con el trabajo aprobado crea la orden de trabajo con Nueva OT: el asistente pide el contexto, el lugar, el cargo financiero, el técnico responsable y el centro de costo.
+paso: 6 | pantalla=ot | permiso=ninguno | En la Bandeja de OTs usa Iniciar para pasar la OT programada a ejecución. La OT debe tener técnico responsable y centro de costo.
+paso: 7 | pantalla=inventario | permiso=ninguno | En Reserva de Repuestos, almacén entrega al taller los repuestos de la OT con Despachar.
+paso: 8 | pantalla=partes | permiso=ninguno | Cada día el técnico registra su parte de taller con las actividades y sus tiempos, y lo manda con Enviar a revisión. El supervisor aprueba los partes; sin partes aprobados la OT no se puede cerrar.
+paso: 9 | pantalla=ot | permiso=ninguno | En Cierre & Conformidad emite el acta: la OT debe tener técnico responsable, al menos un parte aprobado y ningún parte pendiente. El acta recorre resumen, fotos, conformidad, firma del técnico y firma del cliente, y su resultado puede ser conforme, con observaciones o pendiente de firma.

@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 51 |
-| Operaciones | 120 | 8 (7 %) | 26 (22 %) | 0 | 88 |
+| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 49 |
+| Operaciones | 120 | 8 (7 %) | 26 (22 %) | 0 | 85 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 148 |
+| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 143 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -76,14 +76,14 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Dashboards | Dashboards (`dashboard`) | activa | — | — | — | — |
 | Inicio | Inicio (pendientes de hoy) (`inicio`) | activa | — | como_usar_aria | — | — |
 | Integraciones | API Keys (`api_keys`) | activa | — | — | — | — |
-| Logística | Almacenes (`inventario`) | activa | — | — | 8 | — |
+| Logística | Almacenes (`inventario`) | activa | — | proceso_recepcion_entrega | 8 | — |
 | Logística | Transporte y Guias (`remision`) | activa | — | — | 5 | — |
 | Logística | SOLPE Interna (`solpe`) | activa | solpe | proceso_solpe_pago | 3 | — |
 | Operaciones | Backlog (`backlog`) | activa | — | — | — | — |
 | Operaciones | Cierre y Calidad (`cierre`) | activa | — | — | — | — |
 | Operaciones | IA Operativa (`ia_operativa`) | legado | — | — | — | — |
-| Operaciones | Ordenes de Trabajo (`ot`) | activa | — | — | — | — |
-| Operaciones | Partes Diarios (`partes`) | activa | — | — | — | — |
+| Operaciones | Ordenes de Trabajo (`ot`) | activa | — | proceso_recepcion_entrega | — | — |
+| Operaciones | Partes Diarios (`partes`) | activa | — | proceso_recepcion_entrega | — | — |
 | Operaciones | Planner y Recursos (`planner`) | activa | — | — | — | — |
 | Operaciones | Soporte y Tickets (`tickets`) | activa | — | — | — | — |
 | Plataforma | Metricas SaaS (`metricas_saas`) | maqueta | — | — | — | — |
@@ -121,7 +121,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Inventario & Kardex (`almacen-inventario`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Minas y proyectos (`almacen-minas`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Valorizado y ABC (`almacen-reportes`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Reserva de Repuestos (`almacen-reservas`) | activa | reserva_repuestos | — | 8 | — |
+| Almacén & Repuestos | Reserva de Repuestos (`almacen-reservas`) | activa | reserva_repuestos | proceso_recepcion_entrega | 8 | — |
 | Almacén & Repuestos | Ubicaciones (`almacen-ubicaciones`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Vencimientos y lotes (`almacen-vencimientos`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
@@ -167,17 +167,17 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Operaciones | Indicadores de confiabilidad (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
 | Inicio | Inicio operativo (Aria) (`inicio`) | activa | inicio_operaciones | — | — | — |
 | Operaciones | Proveedores (operaciones) (`proveedores`) | placeholder | — | — | — | — |
-| Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | — | — | — | — |
-| Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | nueva_ot | — | — | — |
-| Órdenes de Trabajo | Diagnóstico Técnico (`diagnostico-tecnico`) | activa | — | — | — | — |
+| Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | — | proceso_recepcion_entrega | — | — |
+| Órdenes de Trabajo | Nueva OT (`crear-ot`) | activa | nueva_ot | proceso_recepcion_entrega | — | — |
+| Órdenes de Trabajo | Diagnóstico Técnico (`diagnostico-tecnico`) | activa | — | proceso_recepcion_entrega | — | — |
 | Órdenes de Trabajo | Nuevo reporte de mina (`nuevo-reporte`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Detalle de OT (`ot-detalle`) | maqueta | — | — | — | — |
-| Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | bandeja_ots | — | — | — |
+| Órdenes de Trabajo | Bandeja de OTs (`ots`) | activa | bandeja_ots | proceso_recepcion_entrega | — | — |
 | Órdenes de Trabajo | Reportes Mina (`partes-mina`) | activa | — | — | — | — |
 | Órdenes de Trabajo | Gestión de partes de taller (`partes-taller`) | activa | — | — | — | — |
-| Órdenes de Trabajo | Recepción de Activos (`recepcion-activos`) | activa | — | — | — | — |
+| Órdenes de Trabajo | Recepción de Activos (`recepcion-activos`) | activa | — | proceso_recepcion_entrega | — | — |
 | Órdenes de Trabajo | Planner (`scheduler-despacho`) | activa | — | — | — | — |
-| Órdenes de Trabajo | Partes Taller (`taller`) | activa | partes_taller | — | — | — |
+| Órdenes de Trabajo | Partes Taller (`taller`) | activa | partes_taller | proceso_recepcion_entrega | — | — |
 | Producción | Fabricación y Ensamble (`area-fabricacion`) | maqueta | — | — | — | — |
 | Producción | Ingeniería y Diseño (`area-ingenieria`) | maqueta | — | — | — | — |
 | Producción | Maestranza (`area-maestranza`) | maqueta | — | — | — | — |
