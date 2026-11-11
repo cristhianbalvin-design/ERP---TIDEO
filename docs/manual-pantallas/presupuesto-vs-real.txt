@@ -3,9 +3,15 @@ tipo: pantalla
 pantalla: presupuestos
 catalogo: admin/presupuestos
 titulo: Presupuesto vs Real
-resumen: Presupuestos por partida, su aprobación y su comparación con lo gastado.
+resumen: Presupuesto del mes por partida, su aprobación y su comparación con lo ejecutado (presupuesto contra real): qué partidas se excedieron y de dónde sale cada cifra.
 componentes: src/pages_fin.jsx#Presupuestos
-huella: 610c0f3670
+huella: 0f8e7923fc
 paso: 1 | pantalla=presupuestos | permiso=ninguno | Crea un presupuesto con Nuevo presupuesto y sus partidas con Agregar partida.
 paso: 2 | pantalla=presupuestos | permiso=ninguno | Agregar aprobador define quién debe aprobarlo, y Enviar a aprobación lo manda a revisión.
 paso: 3 | pantalla=presupuestos | permiso=ninguno | Los aprobadores usan Aprobar o Rechazar.
+paso: 4 | pantalla=presupuestos | permiso=ninguno | Para qué sirve: fijar cuánto se planea gastar en un mes, por partida (Materiales, Mano de obra, Logística y otras categorías), y ver cuánto se va ejecutando. Un presupuesto puede ser de toda la empresa o de un centro de costo, y en empresas con varias sociedades pertenece a una sociedad.
+paso: 5 | pantalla=presupuestos | permiso=ninguno | De dónde sale lo ejecutado: de las compras y gastos del mes con la misma categoría de la partida, de las cuentas por pagar de órdenes de compra emitidas en el mes, y del costo real de las órdenes de trabajo cerradas en el mes, que cuenta como Mano de obra. Solo se compara dentro de la misma moneda.
+paso: 6 | pantalla=presupuestos | permiso=ninguno | Cada partida muestra presupuestado, ejecutado, variación y porcentaje de ejecución; en rojo las excedidas, y arriba un aviso con cuántas partidas se pasaron. Haz clic en una partida para ver los registros que suman su ejecutado.
+paso: 7 | pantalla=presupuestos | permiso=ninguno | Si aparece gasto «sin partida», es gasto real del mes que no coincide con ninguna partida del presupuesto en esa moneda. Suele ser una categoría mal elegida al registrar el gasto o una partida que faltó presupuestar.
+paso: 8 | pantalla=presupuestos | permiso=ninguno | Si lo ejecutado no cuadra, revisa la categoría y la fecha del gasto, y si el presupuesto es de un centro de costo: una OT de otro centro no cuenta en él.
+paso: 9 | pantalla=presupuestos | permiso=ninguno | También puedes preguntarle a Aria cómo va el presupuesto del mes o qué partidas se excedieron: usa este mismo cálculo.

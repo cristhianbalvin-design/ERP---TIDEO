@@ -18,8 +18,8 @@ import { calcularTransferencia, obtenerTcSugerido } from './services/transferenc
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
 import { agruparDetallesPorTipoGasto } from './utils/erAgrupacionTipoGasto.js';
-import { crearResumenRealPresupuesto, crearTotalesConsolidadosReferencialesPEN, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
-import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
+import { crearTotalesConsolidadosReferencialesPEN, normalizarMonedaPresupuesto } from './services/presupuestoReal.js';
+import { crearRealDePresupuesto } from './services/presupuestoRealPantalla.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -11130,23 +11130,10 @@ function Presupuestos() {
     presActivo ? (presupuestoAprobaciones||[]).filter(a => a.presupuesto_id === presActivo.id).sort((a,b)=>a.orden-b.orden) : [],
     [presActivo, presupuestoAprobaciones]);
 
-  const sociedadDeOt = o => {
-    const ceco = (centrosCosto || []).find(c => c.id === o.centro_costo_id);
-    const cebe = (centrosBeneficio || []).find(c => c.id === o.centro_beneficio_id);
-    return ceco?.sociedad_id || cebe?.sociedad_id || null;
-  };
-  const perteneceASociedadActiva = row => {
-    if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD || !presActivo?.sociedad_id) return true;
-    return (row.sociedad_id || sociedadDeOt(row)) === presActivo.sociedad_id;
-  };
-
-  const filasRealCxp = useMemo(() => crearFilasRealPresupuestoCxp({
-    cxp: (cxp || []).filter(perteneceASociedadActiva), cxpDistribucionesCeco, comprasGastos, empresaId, periodo, efectivoCecos: null,
-  }), [cxp, cxpDistribucionesCeco, comprasGastos, empresaId, periodo, perfilSociedad, presActivo, centrosCosto, centrosBeneficio]);
-  const resumenReal = useMemo(() => crearResumenRealPresupuesto({
-    partidas, comprasGastos, ots, filasCxp: filasRealCxp, empresaId, periodo, efectivoCecos: null,
-    incluirRegistro: (registro, tipo) => tipo === 'cxp' || (perteneceASociedadActiva(registro) && (tipo !== 'ot' || otCompatibleConPresupuesto(registro, presActivo))),
-  }), [partidas, comprasGastos, ots, filasRealCxp, empresaId, periodo, perfilSociedad, presActivo, centrosCosto, centrosBeneficio]);
+  const resumenReal = useMemo(() => crearRealDePresupuesto({
+    presupuesto: presActivo, partidas, cxp, cxpDistribucionesCeco, comprasGastos, ots, centrosCosto, centrosBeneficio, empresaId, periodo,
+    sinMultisociedad: perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
+  }), [partidas, comprasGastos, ots, cxp, cxpDistribucionesCeco, empresaId, periodo, perfilSociedad, presActivo, centrosCosto, centrosBeneficio]);
   const resultadosPartidas = resumenReal.porPartida;
   const resultadosSinPartida = resumenReal.sinPartida;
   const hayMontosUSD = ['presupuestado', 'real', 'variacion'].some(clave => Number(resumenReal.totales[clave].USD || 0) !== 0);

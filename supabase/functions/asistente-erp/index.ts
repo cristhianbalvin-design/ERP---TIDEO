@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAnonKey } from "../_shared/supabaseKeys.ts";
 import { opcionesDeEgreso, type OpcionesRespuesta } from "./opciones.ts";
-import { estadoResultadosAria } from "./finanzas.ts";
+import { estadoResultadosAria, presupuestoRealAria } from "./finanzas.ts";
 import { avisosRecuerdo, destinosManual, elegirDestino, extraDelTurno, leerRecuerdos, leerResumen, MAX_RECUERDOS_CONTEXTO, pideManual, pideRecordar, promptResumen, sistemaRecuerdos, sistemaResumen, vectorTexto, type AvisoRecuerdo, type DestinoManual, type TareaResumen } from "./memoria.ts";
 
 const ALLOWED_ORIGIN = "https://erp.tideo.tech";
@@ -109,6 +109,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_vencimientos", desc: "Lo que vence pronto o ya venció fuera de cobros y pagos: contratos de alquiler de equipos vigentes, certificaciones y documentos de la flota (SOAT, revisión técnica, pólizas) y contratos o documentos del personal. dias admite 1–180 (por defecto 30); dias_restantes negativo significa vencido. Úsala para qué contratos vencen este mes, qué equipos tienen documentos por vencer o a quién se le vence el contrato. sin_permiso lista las secciones que la persona no puede ver: dilo sin inventar datos. Para facturas o pagos por vencer usa asistente_alertas.", params: [{ name: "dias", kind: "integer", max: 180, optional: true }, society(true)] },
   { name: "asistente_clientes_facturacion", desc: "Clientes por facturación: top_clientes_por_moneda (quiénes facturaron más en el periodo, con facturado bruto, notas de crédito y neto) y clientes_sin_compra (clientes con facturas anteriores que llevan más de dias_sin_compra días sin una nueva; por defecto 90). Úsala para mejores clientes por ventas, concentración de ingresos, o qué clientes dejaron de comprar. Sin fechas toma el año en curso. No es saldo por cobrar (para eso usa asistente_top_n o asistente_resumen_cxc). No mezcles monedas.", params: [d("desde", true), d("hasta", true), { name: "dias_sin_compra", kind: "integer", max: 730, optional: true }, n("limite", true), society(true)] },
   { name: "asistente_estado_resultados", desc: "Estado de Resultados (ganancias y pérdidas) de un mes, con el mismo cálculo que la pantalla Finanzas › Estado de Resultados: ingresos, costo de ventas, gastos operativos, gastos financieros y depreciación con sus conceptos principales, utilidad bruta, resultado operativo, EBITDA, resultado neto y márgenes, por moneda. periodo es AAAA-MM (el mes en curso si no lo indican). Úsala para utilidad, ganancia o pérdida, rentabilidad de la empresa, margen del mes o en qué se va el gasto; para comparar meses llámala una vez por mes. Es de la sociedad activa, no el consolidado del grupo. No conviertas ni sumes monedas.", params: [s("periodo", 7), society(true)] },
+  { name: "asistente_presupuesto_real", desc: "Presupuesto contra lo ejecutado de un mes, con el mismo cálculo que la pantalla Finanzas › Presupuestos: por cada presupuesto del periodo, lo presupuestado, lo ejecutado y la variación por moneda, y por partida su ejecución en porcentaje y si está excedida; ejecutado_sin_partida es gasto real que no calza con ninguna partida. periodo es AAAA-MM (el mes en curso si no lo indican). Úsala para cómo va el presupuesto, qué partidas se excedieron o cuánto falta por ejecutar. No mezcles monedas.", params: [s("periodo", 7), society(true)] },
   { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el resultado trae soporte_notificado, empieza exactamente con: 'Esto todavía no está en el manual de OPERA. Ya avisé al equipo de soporte para que lo documente; pronto estará disponible.' y luego da solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Cada ficha trae donde: la ruta exacta de sus pantallas (Aplicación › Módulo › Pantalla). Al indicar qué hacer di siempre esa ruta exacta, copiada tal cual, y el nombre del botón; nunca inventes una ruta. Si la respuesta es en_demostracion, di que esa pantalla todavía es una demostración sin datos reales, nombra las pantallas de pantallas_demostracion y no describas pasos ni botones. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "aria_diagnosticar_acceso", desc: "Úsala cuando la persona pregunte por qué no puede ver, entrar, crear, editar, aprobar, anular o exportar algo, por qué no le aparece una pantalla o un botón, o qué permisos tiene. pantalla es el nombre de la pantalla o la del contexto; accion es ver, crear, editar, anular, aprobar o exportar. Con el resultado explica si la causa es el permiso de su rol (di su rol y que lo cambia el administrador de la empresa en Roles y Permisos) o que la pantalla es una demostración. Si tiene el permiso, consulta el manual para ver qué condición del registro lo impide. Nunca ofrezcas cambiar permisos tú.", params: [s("pantalla", 100), s("accion", 30, true)] },
   { name: "aria_buscar_conversaciones", desc: "Busca en las conversaciones anteriores de esta persona con Aria (título, resumen y mensajes). Úsala cuando pregunte qué revisaron, consultaron o decidieron antes (ayer, la semana pasada, la vez anterior) o pida retomar un tema. Devuelve recuerdos, no datos vigentes: si necesita cifras actuales, vuelve a consultarlas con las herramientas de datos.", params: [s("texto", 100, true), n("limite", true)] },
@@ -161,7 +162,7 @@ export type SupabaseLike = {
 type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal, toolChoice?: string) => Promise<{ response: Response; data?: any }>;
 // waitUntil: deja terminar una tarea en segundo plano (resumen de la conversación) después de responder.
 // embeber: embedding del texto para la memoria de largo plazo; si falta o falla, los recuerdos se buscan por palabras.
-export type HandlerDeps = { createSupabase(token: string): SupabaseLike; estadoResultados?: (supabase: SupabaseLike, empresaId: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>; callOpenAI: ModelCall; callClaude?: ModelCall; env: (name: string) => string | undefined; now?: () => number; waitUntil?: (tarea: Promise<unknown>) => void; embeber?: (texto: string) => Promise<unknown> };
+export type HandlerDeps = { createSupabase(token: string): SupabaseLike; estadoResultados?: (supabase: SupabaseLike, empresaId: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>; presupuestoReal?: (supabase: SupabaseLike, empresaId: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>; callOpenAI: ModelCall; callClaude?: ModelCall; env: (name: string) => string | undefined; now?: () => number; waitUntil?: (tarea: Promise<unknown>) => void; embeber?: (texto: string) => Promise<unknown> };
 
 // Adaptador Anthropic Messages <-> formato interno (estilo OpenAI) que usan las guardas y las pruebas.
 export function toAnthropicRequest(messages: Array<Record<string, unknown>>, tools: any[], model: string, toolChoice?: string, effort?: string): Record<string, unknown> {
@@ -858,8 +859,9 @@ export function createHandler(deps: HandlerDeps) {
           }
           toolsUsed.push(spec.name);
           const rpcArgs = { p_empresa_id: body.empresa_id, ...mapped };
-          const rpc = spec.name === "asistente_estado_resultados"
-            ? await safely(async () => deps.estadoResultados ? await deps.estadoResultados(supabase, body.empresa_id, mapped) : { data: null, error: true })
+          const local = spec.name === "asistente_estado_resultados" ? deps.estadoResultados : spec.name === "asistente_presupuesto_real" ? deps.presupuestoReal : undefined;
+          const rpc = spec.name === "asistente_estado_resultados" || spec.name === "asistente_presupuesto_real"
+            ? await safely(async () => local ? await local(supabase, body.empresa_id, mapped) : { data: null, error: true })
             : await safely(() => supabase.rpc(spec.name, rpcArgs));
           if (rpc.error) {
             rpcFailed = true;
@@ -907,6 +909,7 @@ const handler = createHandler({
   }) as unknown as SupabaseLike,
   env: (name) => Deno.env.get(name),
   estadoResultados: estadoResultadosAria,
+  presupuestoReal: (cliente, empresaId, args) => presupuestoRealAria(cliente as unknown as Parameters<typeof presupuestoRealAria>[0], empresaId, args),
   waitUntil: (tarea) => (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime?.waitUntil(tarea),
   embeber: async (texto) => {
     const clave = Deno.env.get("OPENAI_API_KEY");

@@ -1,4 +1,4 @@
-// Copia a la Edge de Aria el cálculo del Estado de Resultados que usa la pantalla de Finanzas,
+// Copia a la Edge de Aria los cálculos del Estado de Resultados y del real del presupuesto que usan las pantallas de Finanzas,
 // para que Aria y la pantalla den las mismas cifras con el mismo código.
 //   node scripts/aria/er-compartido.mjs            regenera las copias
 //   node scripts/aria/er-compartido.mjs --verificar falla si una copia quedó desactualizada
@@ -13,6 +13,9 @@ export const FUENTES = [
   'src/services/cxpDistribucionCeco.js',
   'src/services/tipoCambioService.js',
   'src/lib/currency.js',
+  'src/services/presupuestoReal.js',
+  'src/services/presupuestoRealCxp.js',
+  'src/services/presupuestoRealPantalla.js',
 ];
 // La Edge no tiene el entorno del navegador: el cliente de Supabase y el modo de datos salen de er/entorno.js.
 const REEMPLAZOS = [
