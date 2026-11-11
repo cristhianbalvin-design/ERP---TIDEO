@@ -1,0 +1,15 @@
+clave: proceso_configuracion_inicial
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/parametros, admin/maestros, admin/servicios, admin/roles, admin/usuarios
+titulo: Configuración inicial de la empresa
+resumen: Recorre lo que se configura antes de empezar a operar: sociedades, series y cuentas, maestros base, catálogo de servicios, roles y usuarios.
+componentes: src/pages_admin.jsx#Parametros, src/pages_admin.jsx#Maestros, src/pages_admin.jsx#Servicios, src/pages_admin.jsx#Roles, src/pages_admin.jsx#Usuarios
+huella: 980cef576e 50855bc116 fb5e7f9dc7 0186d2d3a6 e59ec721a1
+pantalla_recorrido: parametros,maestros,servicios,roles,usuarios
+paso: 1 | pantalla=parametros | permiso=ninguno | En Parametros Generales registra cada sociedad con Nueva sociedad, las series de los documentos, las cuentas bancarias y el tipo de cambio. Los feriados se agregan con Agregar feriado.
+paso: 2 | pantalla=maestros | permiso=ninguno | En Maestros Base carga los datos comunes: centros de costo (CECO), centros de beneficio (CEBE), materiales y sus familias. Para cargas grandes usa Descargar plantilla e Importar Excel.
+paso: 3 | pantalla=servicios | permiso=ninguno | En Catalogo Servicios crea lo que la empresa vende con Nuevo servicio o con Importar Excel. Un servicio que se cobra todos los meses se marca como Recurrente mensual.
+paso: 4 | pantalla=roles | permiso=ninguno | En Roles y Permisos crea cada rol con Nuevo rol o parte de uno existente con Clonar, y define qué puede hacer con Guardar permisos. Como ve la app este rol? muestra la aplicación tal como la verá ese rol.
+paso: 5 | pantalla=usuarios | permiso=ninguno | Crea a cada persona con Nuevo usuario y elige su posición en el organigrama, que debe tener un rol de sistema configurado. Si su acceso es solo a algunas sociedades, selecciona al menos una.
+paso: 6 | pantalla=usuarios | permiso=ninguno | Definir contrasena temporal asigna una clave provisional; la persona deberá cambiarla en su próximo inicio de sesión.

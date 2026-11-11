@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 49 |
-| Operaciones | 120 | 8 (7 %) | 26 (22 %) | 0 | 85 |
+| Administración | 77 | 11 (14 %) | 21 (27 %) | 1 | 34 |
+| Operaciones | 120 | 8 (7 %) | 26 (22 %) | 0 | 75 |
 | Versión Móvil | 9 | 0 (0 %) | 0 (0 %) | 0 | 9 |
-| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 143 |
+| **Total** | 206 | 19 (9 %) | 47 (23 %) | 1 | 118 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_resumen_financiero`.
 
@@ -25,26 +25,26 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 |---|---|---|---|---|---|---|
 | Administración | Activos Fijos (`activos_fijos`) | activa | — | — | — | — |
 | Administración | Caja Chica (`caja`) | activa | caja | proceso_caja_chica | 4 | preparar_egreso_caja_chica |
-| Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | proceso_cotizacion_cobro | 4 | — |
-| Administración | Cuentas por Pagar (`cxp`) | activa | cxp | proceso_solpe_pago | 4 | — |
+| Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | proceso_cierre_mes, proceso_cotizacion_cobro | 4 | — |
+| Administración | Cuentas por Pagar (`cxp`) | activa | cxp | proceso_cierre_mes, proceso_solpe_pago | 4 | — |
 | Administración | Facturación (`facturacion`) | activa | facturacion | proceso_cotizacion_cobro | 4 | — |
 | Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | — | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
-| Administración | Presupuesto vs Real (`presupuestos`) | activa | — | — | — | — |
-| Administración | Estado Resultados (`resultados`) | activa | — | — | — | — |
-| Administración | Tesoreria / Match (`tesoreria`) | activa | tesoreria | proceso_cotizacion_cobro, proceso_solpe_pago | 3 | — |
+| Administración | Presupuesto vs Real (`presupuestos`) | activa | — | proceso_cierre_mes | — | — |
+| Administración | Estado Resultados (`resultados`) | activa | — | proceso_cierre_mes | — | — |
+| Administración | Tesoreria / Match (`tesoreria`) | activa | tesoreria | proceso_cierre_mes, proceso_cotizacion_cobro, proceso_solpe_pago | 3 | — |
 | Administración | Valorizaciones (`valorizacion`) | activa | — | — | — | — |
 | Administración | Ventas (`ventas`) | activa | — | — | — | — |
 | Comercial | Agenda Comercial (`agenda_comercial`) | activa | — | — | — | — |
 | Comercial | Variables de Costeo (`costeo_variables`) | activa | — | proceso_lead_cotizacion | — | — |
 | Comercial | Cotizaciones (`cotizaciones`) | activa | — | proceso_cotizacion_cobro, proceso_lead_cotizacion | 3 | — |
 | Comercial | Cuentas y Contactos (`cuentas`) | activa | — | — | 3 | — |
-| Comercial | Equipos de Clientes (`equipos_clientes`) | activa | — | proceso_cotizacion_cobro | 4 | — |
+| Comercial | Equipos de Clientes (`equipos_clientes`) | activa | — | proceso_cotizacion_cobro, proceso_fabricacion_of | 4 | — |
 | Comercial | Hoja de Costeo (`hoja_costeo`) | activa | — | proceso_lead_cotizacion | — | — |
 | Comercial | Hoja de Costeo — asistente de costeo (`hoja_costeo_wizard`) | activa | — | proceso_lead_cotizacion | — | — |
 | Comercial | IA Comercial (`ia_comercial`) | legado | — | — | — | — |
-| Comercial | OS Cliente (`os_cliente`) | activa | — | proceso_cotizacion_cobro | 4 | — |
-| Comercial | Panel de Producción (`panel_produccion`) | activa | — | proceso_cotizacion_cobro | 4 | — |
+| Comercial | OS Cliente (`os_cliente`) | activa | — | proceso_cotizacion_cobro, proceso_fabricacion_of | 4 | — |
+| Comercial | Panel de Producción (`panel_produccion`) | activa | — | proceso_cotizacion_cobro, proceso_fabricacion_of | 4 | — |
 | Comercial | Pipeline (`pipeline`) | activa | — | proceso_lead_cotizacion | 3 | — |
 | Comercial | Recetas de actividad (`recetas_actividad`) | activa | — | — | — | — |
 | Compras | Compras (vista anterior) (`compras`) | legado | — | — | — | — |
@@ -53,17 +53,17 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras | Ordenes de Compra (`ordenes_compra`) | activa | ordenes_compra | proceso_solpe_pago | 7 | — |
 | Compras | Ordenes de Servicio (`ordenes_servicio`) | activa | — | — | — | — |
 | Compras | Proveedores (`proveedores`) | activa | proveedores | — | 3 | — |
-| Compras | Recepciones (`recepciones`) | activa | recepciones | proceso_solpe_pago | 3 | — |
+| Compras | Recepciones (`recepciones`) | activa | recepciones | proceso_almacen, proceso_solpe_pago | 3 | — |
 | Compras | Bandeja de Sourcing (`sourcing_bandeja`) | activa | — | proceso_solpe_pago | 7 | — |
-| Configuración | Maestros Base (`maestros`) | activa | — | — | — | — |
+| Configuración | Maestros Base (`maestros`) | activa | — | proceso_configuracion_inicial | — | — |
 | Configuración | Notificaciones (`notificaciones_config`) | activa | — | — | — | — |
 | Configuración | Organigrama (`organigrama`) | activa | — | — | — | — |
-| Configuración | Parametros Generales (`parametros`) | activa | — | — | — | — |
-| Configuración | Roles y Permisos (`roles`) | activa | — | — | — | — |
+| Configuración | Parametros Generales (`parametros`) | activa | — | proceso_configuracion_inicial | — | — |
+| Configuración | Roles y Permisos (`roles`) | activa | — | proceso_configuracion_inicial | — | — |
 | Configuración | Salud Implementacion (`salud_implementacion_tenant`) | activa | — | — | — | — |
-| Configuración | Catalogo Servicios (`servicios`) | activa | — | — | — | — |
+| Configuración | Catalogo Servicios (`servicios`) | activa | — | proceso_configuracion_inicial | — | — |
 | Configuración | Tarifarios (`tarifarios`) | maqueta | — | — | — | — |
-| Configuración | Usuarios (`usuarios`) | activa | — | — | — | — |
+| Configuración | Usuarios (`usuarios`) | activa | — | proceso_configuracion_inicial | — | — |
 | CRM & Marketing | Actividades (`actividades`) | activa | — | — | — | — |
 | CRM & Marketing | Leads y Scoring (`leads`) | activa | — | proceso_lead_cotizacion | 3 | — |
 | CRM & Marketing | Marketing Automation (`marketing`) | activa | — | — | — | — |
@@ -76,7 +76,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Dashboards | Dashboards (`dashboard`) | activa | — | — | — | — |
 | Inicio | Inicio (pendientes de hoy) (`inicio`) | activa | — | como_usar_aria | — | — |
 | Integraciones | API Keys (`api_keys`) | activa | — | — | — | — |
-| Logística | Almacenes (`inventario`) | activa | — | proceso_recepcion_entrega | 8 | — |
+| Logística | Almacenes (`inventario`) | activa | — | proceso_almacen, proceso_recepcion_entrega | 8 | — |
 | Logística | Transporte y Guias (`remision`) | activa | — | — | 5 | — |
 | Logística | SOLPE Interna (`solpe`) | activa | solpe | proceso_solpe_pago | 3 | — |
 | Operaciones | Backlog (`backlog`) | activa | — | — | — | — |
@@ -90,39 +90,39 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Plataforma | Planes y Licencias (`planes`) | maqueta | — | — | — | — |
 | Plataforma | Salud de implementación (plataforma) (`salud_implementacion`) | activa | — | — | — | — |
 | Plataforma | Empresas / Tenants (`tenants`) | activa | — | — | — | — |
-| RRHH | Control de Asistencia (`asistencia`) | activa | — | — | — | — |
+| RRHH | Control de Asistencia (`asistencia`) | activa | — | proceso_asistencia | — | — |
 | RRHH | Comisiones (`comisiones`) | activa | — | — | — | — |
 | RRHH | Control de Horas (`control_horas`) | activa | — | — | — | — |
 | RRHH | Evaluación de Desempeño (`evaluaciones_desempeno`) | activa | — | — | — | — |
-| RRHH | Liquidación por Cese (`liquidaciones_cese`) | activa | — | — | — | — |
+| RRHH | Liquidación por Cese (`liquidaciones_cese`) | activa | — | proceso_planilla | — | — |
 | RRHH | Mi portal (`mi_portal`) | activa | — | — | — | — |
-| RRHH | Nomina (`nomina`) | activa | — | — | — | — |
+| RRHH | Nomina (`nomina`) | activa | — | proceso_cierre_mes, proceso_planilla | — | — |
 | RRHH | Prestamos al Personal (`prestamos_personal`) | activa | — | — | — | — |
-| RRHH | Reclutamiento (`reclutamiento`) | activa | — | — | — | — |
-| RRHH | Personal Administrativo (`rrhh_admin`) | activa | — | — | — | — |
-| RRHH | Personal Operativo (`rrhh_operativo`) | activa | — | — | — | — |
-| RRHH | Solicitudes (`solicitudes_rrhh`) | activa | — | — | — | — |
+| RRHH | Reclutamiento (`reclutamiento`) | activa | — | proceso_planilla | — | — |
+| RRHH | Personal Administrativo (`rrhh_admin`) | activa | — | proceso_planilla | — | — |
+| RRHH | Personal Operativo (`rrhh_operativo`) | activa | — | proceso_planilla | — | — |
+| RRHH | Solicitudes (`solicitudes_rrhh`) | activa | — | proceso_asistencia | — | — |
 | RRHH | Tareo Administrativo (`tareo_admin`) | activa | — | — | — | — |
-| RRHH | Turnos y Horarios (`turnos`) | activa | — | — | — | — |
+| RRHH | Turnos y Horarios (`turnos`) | activa | — | proceso_asistencia | — | — |
 
 ## Operaciones
 
 | Módulo | Pantalla | Estado | Ficha | Procesos | Datos | Registro |
 |---|---|---|---|---|---|---|
-| Almacén & Repuestos | Stock mínimos & reposición (`almacen-alertas`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Stock mínimos & reposición (`almacen-alertas`) | activa | — | proceso_almacen | 8 | — |
 | Almacén & Repuestos | Configuración del WMS (`almacen-config`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Conteos cíclicos (`almacen-conteos`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Conteos cíclicos (`almacen-conteos`) | activa | — | proceso_almacen | 8 | — |
 | Almacén & Repuestos | Custodia de terceros (`almacen-custodia`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Despachos (`almacen-despachos`) | activa | despachos_almacen | — | 8 | — |
-| Almacén & Repuestos | Devoluciones (`almacen-devoluciones`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Despachos (`almacen-despachos`) | activa | despachos_almacen | proceso_almacen | 8 | — |
+| Almacén & Repuestos | Devoluciones (`almacen-devoluciones`) | activa | — | proceso_almacen | 8 | — |
 | Almacén & Repuestos | Etiquetas (`almacen-etiquetas`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Gemelo digital (`almacen-gemelo`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Préstamo de herramientas (`almacen-herramientas`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Inventario & Kardex (`almacen-inventario`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Inventario & Kardex (`almacen-inventario`) | activa | — | proceso_almacen | 8 | — |
 | Almacén & Repuestos | Minas y proyectos (`almacen-minas`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Valorizado y ABC (`almacen-reportes`) | activa | — | — | 8 | — |
-| Almacén & Repuestos | Reserva de Repuestos (`almacen-reservas`) | activa | reserva_repuestos | proceso_recepcion_entrega | 8 | — |
-| Almacén & Repuestos | Ubicaciones (`almacen-ubicaciones`) | activa | — | — | 8 | — |
+| Almacén & Repuestos | Reserva de Repuestos (`almacen-reservas`) | activa | reserva_repuestos | proceso_almacen, proceso_recepcion_entrega | 8 | — |
+| Almacén & Repuestos | Ubicaciones (`almacen-ubicaciones`) | activa | — | proceso_almacen | 8 | — |
 | Almacén & Repuestos | Vencimientos y lotes (`almacen-vencimientos`) | activa | — | — | 8 | — |
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
 | Clientes & Activos | Clientes & Contratos (`clientes`) | maqueta | — | — | 3 | — |
@@ -132,7 +132,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras & Importación | Importaciones & DUA (`compras-importaciones`) | placeholder | — | — | — | — |
 | Compras & Importación | Órdenes de Compra (`compras-oc`) | puente | — | — | 7 | — |
 | Compras & Importación | Proveedores (`compras-proveedores`) | puente | — | — | 3 | — |
-| Compras & Importación | Recepciones (`compras-recepciones`) | activa | — | — | 3 | — |
+| Compras & Importación | Recepciones (`compras-recepciones`) | activa | — | proceso_almacen | 3 | — |
 | Confiabilidad | Backlog Operativo (`backlog`) | puente | — | — | — | — |
 | Confiabilidad | KPIs de Confiabilidad (`confiabilidad`) | maqueta | — | — | — | — |
 | Confiabilidad | Disponibilidad Mecánica (`disponibilidad-mecanica`) | maqueta | — | — | — | — |
@@ -146,12 +146,12 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Finanzas & Facturación | Tesorería (`finanzas-tesoreria`) | puente | — | — | 3 | — |
 | Finanzas & Facturación | Costos & Rentabilidad (`ots-costos`) | maqueta | — | — | — | — |
 | Flota & Alquileres | Certificaciones del Activo (`certificaciones-activo`) | activa | — | — | — | — |
-| Flota & Alquileres | Actas & Despachos (`checkout`) | activa | — | — | — | — |
-| Flota & Alquileres | Contratos Rental (`contratos-rental`) | activa | — | — | — | — |
+| Flota & Alquileres | Actas & Despachos (`checkout`) | activa | — | proceso_alquiler_flota | — | — |
+| Flota & Alquileres | Contratos Rental (`contratos-rental`) | activa | — | proceso_alquiler_flota | — | — |
 | Flota & Alquileres | Dashboard de Flota y Alquileres (`dashboard-rental`) | maqueta | — | — | — | — |
-| Flota & Alquileres | Panel de Flota (`flota`) | activa | — | — | — | — |
+| Flota & Alquileres | Panel de Flota (`flota`) | activa | — | proceso_alquiler_flota | — | — |
 | Flota & Alquileres | Gestión de Garantías (`gestion-garantias`) | activa | — | — | — | — |
-| Flota & Alquileres | Liquidación & DMR (`liquidacion`) | activa | — | — | — | — |
+| Flota & Alquileres | Liquidación & DMR (`liquidacion`) | activa | — | proceso_alquiler_flota | — | — |
 | Flota & Alquileres | Monitoreo Equipos (`monitoreo-equipos`) | placeholder | — | — | — | — |
 | Flota & Alquileres | Pasaporte de Equipos (`pasaporte-equipos`) | activa | — | — | — | — |
 | HSE — SEGURIDAD | Análisis de Riesgo (ATS) (`analisis-riesgo-ats`) | maqueta | — | — | — | — |
@@ -196,7 +196,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Producción | Taladrado / Mandrinado (`mae-taladrado`) | maqueta | — | — | — | — |
 | Producción | Torneado (`mae-torneado`) | maqueta | — | — | — | — |
 | Producción | Lista de Materiales (BOM) (`maestranza-bom`) | maqueta | — | — | — | — |
-| Producción | Órdenes de Fab. (OF) (`maestranza-of`) | activa | — | — | — | — |
+| Producción | Órdenes de Fab. (OF) (`maestranza-of`) | activa | — | proceso_fabricacion_of | — | — |
 | Producción | Control de Producción (`maestranza-piso`) | maqueta | — | — | — | — |
 | Producción | Control de Calidad (`of-calidad`) | maqueta | — | — | — | — |
 | Producción | Informes y Certificados (`of-informes`) | placeholder | — | — | — | — |
@@ -205,8 +205,8 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Producción | Planificación de OF (`of-planificacion`) | maqueta | — | — | — | — |
 | Producción | Tiempos y MTM (`of-tiempos-mtm`) | maqueta | — | — | — | — |
 | Producción | Trazabilidad de OF (`of-trazabilidad`) | placeholder | — | — | — | — |
-| Producción | Nueva OF (`produccion-crear-of`) | activa | — | — | — | — |
-| Producción | Detalle de OF (`produccion-detalle-of`) | activa | — | — | — | — |
+| Producción | Nueva OF (`produccion-crear-of`) | activa | — | proceso_fabricacion_of | — | — |
+| Producción | Detalle de OF (`produccion-detalle-of`) | activa | — | proceso_fabricacion_of | — | — |
 | Producción | Garantías de producción (`produccion-garantias`) | maqueta | — | — | — | — |
 | Producción | Ingeniería y BOM (`produccion-ingenieria`) | maqueta | — | — | — | — |
 | Producción | Pasaporte de componente (`produccion-pasaporte`) | maqueta | — | — | — | — |
@@ -216,15 +216,15 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Producción | MIG / TIG / SMAW (`sol-mig-tig`) | maqueta | — | — | — | — |
 | Producción | Recargue y Recuperación (`sol-recargue`) | maqueta | — | — | — | — |
 | Transporte Comercial | Dashboard de Transporte (`dashboard-transporte`) | maqueta | — | — | — | — |
-| Transporte Comercial | Nueva orden de viaje (`transporte-crear-ov`) | activa | — | — | — | — |
+| Transporte Comercial | Nueva orden de viaje (`transporte-crear-ov`) | activa | — | proceso_viaje_transporte | — | — |
 | Transporte Comercial | Flota (`transporte-flota`) | activa | — | — | — | — |
 | Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | maqueta | — | — | — | — |
 | Transporte Comercial | Lugares (`transporte-lugares`) | activa | — | — | — | — |
-| Transporte Comercial | Hoja de Ruta (`transporte-ruta`) | activa | — | — | — | — |
+| Transporte Comercial | Hoja de Ruta (`transporte-ruta`) | activa | — | proceso_viaje_transporte | — | — |
 | Transporte Comercial | Maestro de Rutas (`transporte-tarifas`) | activa | — | — | — | — |
 | Transporte Comercial | Tarifas Transporte (`transporte-tarifas-config`) | activa | — | — | — | — |
-| Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | — | — | — | — |
-| Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | monitor_viajes | — | — | — |
+| Transporte Comercial | Detalle de viaje (`transporte-viaje`) | activa | — | proceso_viaje_transporte | — | — |
+| Transporte Comercial | Monitor de Viajes (`transporte-viajes`) | activa | monitor_viajes | proceso_viaje_transporte | — | — |
 | Venta de Repuestos | Catálogo de venta (`catalogo`) | activa | — | — | — | — |
 | Venta de Repuestos | Catálogo de precios (`catalogo-precios`) | maqueta | — | — | — | — |
 | Venta de Repuestos | Dashboard de Repuestos (`dashboard-repuestos`) | maqueta | — | — | — | — |

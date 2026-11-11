@@ -1,0 +1,15 @@
+clave: proceso_cierre_mes
+tipo: proceso
+pantalla: ninguna
+catalogo: admin/tesoreria, admin/cxc, admin/cxp, admin/nomina, admin/presupuestos, admin/resultados
+titulo: Cierre de mes
+resumen: Recorre lo que se revisa al cerrar el mes: conciliación bancaria, cuentas por cobrar y por pagar, cierre de la nómina, presupuesto y Estado de Resultados.
+componentes: src/pages_fin.jsx#Tesoreria, src/pages_fin.jsx#CxC, src/pages_fin.jsx#CxP, src/pages_ops.jsx#Nomina, src/pages_fin.jsx#Presupuestos, src/pages_fin.jsx#Resultados
+huella: b0397fbc8c 06993c9c6e d66ee1335d 21d2972451 610c0f3670 07b83d2f9d
+pantalla_recorrido: tesoreria,cxc,cxp,nomina,presupuestos,resultados
+paso: 1 | pantalla=tesoreria | permiso=ninguno | Carga el extracto del banco con Importar extracto y concilia en Match Bancario cada movimiento del sistema con el del banco, hasta no dejar partidas sin conciliar.
+paso: 2 | pantalla=cxc | permiso=ninguno | Revisa las cuentas por cobrar con su saldo y vencimiento, registra los cobros pendientes con Cobrar y deja el seguimiento de lo vencido con Nueva gestión.
+paso: 3 | pantalla=cxp | permiso=ninguno | Revisa las cuentas por pagar y sus vencimientos para confirmar qué quedó pagado y qué pasa al mes siguiente.
+paso: 4 | pantalla=nomina | permiso=ninguno | Cierra el período de nómina con Confirmar cierre; el período debe estar procesado. Al cerrar se generan los egresos de la planilla.
+paso: 5 | pantalla=presupuestos | permiso=ninguno | En Presupuesto vs Real compara lo gastado con lo presupuestado. Un presupuesto se crea con Nuevo presupuesto y sus partidas, y se manda con Enviar a aprobación; los aprobadores usan Aprobar o Rechazar.
+paso: 6 | pantalla=resultados | permiso=ninguno | En Estado Resultados revisa el resultado del período, abre el detalle de una línea para ver sus gastos y descarga el reporte con PDF.
