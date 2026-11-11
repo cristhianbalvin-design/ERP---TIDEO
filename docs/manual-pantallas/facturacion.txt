@@ -3,7 +3,7 @@ tipo: pantalla
 pantalla: facturacion
 catalogo: admin/facturacion
 titulo: Facturación
-resumen: Emite y consulta los comprobantes de venta, genera su cuenta por cobrar, registra cobros y autodetracciones, y emite notas de crédito o débito.
+resumen: Emite y consulta los comprobantes de venta, genera su cuenta por cobrar, registra cobros y autodetracciones, emite notas de crédito o débito y permite la carga masiva de facturas desde Excel.
 componentes: src/pages_fin.jsx#Facturacion
 huella: e697a23316
 paso: 1 | pantalla=facturacion | permiso=facturacion:crear | Emite un comprobante desde una valorización, desde una venta o como comprobante directo eligiendo cliente y partidas. El número es obligatorio y se necesita al menos una partida; no se emite a un cliente con la cuenta bloqueada, y la pantalla pide confirmar un número repetido o un monto que excede el saldo de la OS.
@@ -12,3 +12,4 @@ paso: 3 | pantalla=facturacion | permiso=ninguno | Registrar cobro deja constanc
 paso: 4 | pantalla=facturacion | permiso=ninguno | Nota de Crédito y Nota de Débito emiten un ajuste vinculado al comprobante original. Una nota de crédito por devolución puede generar la cuenta por pagar al cliente si tienes permiso de cuentas por pagar.
 paso: 5 | pantalla=facturacion | permiso=facturacion:editar | Editar permite corregir datos del comprobante; Anular lo deja sin efecto con confirmación, y Restaurar lo devuelve a emitido.
 paso: 6 | pantalla=facturacion | permiso=ninguno | Ver OS y Ver valorización abren la orden de servicio o la valorización que originó la factura. Puedes adjuntar archivos al comprobante.
+paso: 7 | pantalla=facturacion | permiso=facturacion:crear | Para subir muchas facturas de clientes a la vez usa Carga masiva, en la lista de Facturación: descarga la plantilla de Excel, complétala con las facturas que tienen saldo pendiente y sube el archivo. La pantalla muestra una revisión antes de importar; cada fila crea la factura y su cuenta por cobrar, y crea al cliente si no existía. El mismo botón está en Cuentas por cobrar.
