@@ -275,6 +275,12 @@ body:has(.dx-asis-fab[aria-expanded="true"]) .dxi-root .dxi-fab { visibility:hid
 .dx-asis-ir-b:hover { filter:brightness(.97); }
 .dx-asis-ir-b:focus-visible { outline:2px solid var(--dx-asis-cyan); outline-offset:2px; }
 .dx-asis-ir small { font-size:11.5px; color:var(--dx-asis-muted); }
+/* Botón "Ampliar con modo experto": respuesta más profunda con cuota diaria propia */
+.dx-asis-exp { margin:6px 0 4px 32px; display:grid; gap:4px; justify-items:start; }
+.dx-asis-exp-b { display:inline-flex; align-items:center; gap:8px; min-height:40px; max-width:100%; padding:8px 14px; border:1px solid var(--dx-asis-vio); border-radius:10px; background:var(--dx-asis-vio-bg); color:var(--dx-asis-vio); font:inherit; font-size:13px; font-weight:600; text-align:left; cursor:pointer; }
+.dx-asis-exp-b:hover { filter:brightness(.97); }
+.dx-asis-exp-b:focus-visible { outline:2px solid var(--dx-asis-vio); outline-offset:2px; }
+.dx-asis-exp small { font-size:11.5px; color:var(--dx-asis-muted); }
 /* Memoria de conversación: acciones de cabecera, franja de conversación retomada y lista de conversaciones */
 .dx-asis-head-acts { margin-left:auto; display:flex; gap:2px; }
 .dx-asis-head-acts .dx-asis-x, .dx-asis-x.dx-asis-back { margin-left:0; flex:none; }

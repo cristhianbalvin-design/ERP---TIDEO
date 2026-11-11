@@ -28,6 +28,7 @@ const sugerenciasPredeterminadas = ['¿Cuánto hay en bancos?', '¿Qué fondos d
 function etiquetaHerramienta(tool) {
   const nombre = String(tool || '').toLowerCase().replace(/^asistente_/, '');
   const grupos = [
+    [['modo_experto'], 'Modo experto'],
     [['consultar_manual'], 'Consulté el manual'],
     [['buscar_conversaciones'], 'Revisé tus conversaciones'],
     [['recuerdo_guardar'], 'Guardé un recuerdo'],
@@ -75,9 +76,16 @@ function opcionesValidas(opciones) {
   return items.length ? { titulo: opciones.titulo.slice(0, 80), items } : null;
 }
 
+// El modo experto amplía respuestas que Aria dio consultando el manual o los datos; no aplica a registros ni a elecciones pendientes.
+function puedeAmpliar(mensaje) {
+  const usadas = mensaje.herramientas || [];
+  return usadas.length > 0 && !usadas.includes('aria_modo_experto') && !usadas.includes('aria_recuerdo_guardar') && !mensaje.borrador && !mensaje.opciones;
+}
+
 export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false, onIr }) {
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
+  const [expertoRestantes, setExpertoRestantes] = useState(null);
   const [pendientes, setPendientes] = useState(null);
   useEffect(() => {
     const recibir = event => setPendientes(event.detail ?? null);
@@ -173,19 +181,21 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
   // Botón "Ir a…": abre la pantalla exacta; en pantallas angostas el chat se cierra para dejarla ver.
   const irA = destino => { if (window.matchMedia?.('(max-width: 900px)').matches) { callar(); setAbierto(false); } onIr?.(destino); };
   const nuevaConversacion = () => { callar(); porVoz.current = false; setAvisoVoz(null); setMensajes([]); setPregunta(''); setError(null); setCuotaRestante(null); ultimaConsulta.current = null; setConversacionId(null); setRetomada(null); setVista('chat'); requestAnimationFrame(() => campoRef.current?.focus()); };
-  const enviar = async (texto = pregunta, reintento = false) => {
+  const enviar = async (texto = pregunta, reintento = false, modo = null) => {
     const contenido = String(texto || '').trim().slice(0, 1000);
     if (!contenido || consultando || agotada) return;
     const base = reintento ? mensajes : [...mensajes, { role: 'user', content: contenido }];
     const historial = (reintento ? mensajes.slice(0, -1) : mensajes).slice(-10).map(m => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
     const leerRespuesta = reintento ? Boolean(ultimaConsulta.current?.porVoz) : porVoz.current;
     porVoz.current = false;
-    ultimaConsulta.current = { contenido, base, porVoz: leerRespuesta };
+    const modoEnvio = reintento ? ultimaConsulta.current?.modo ?? null : modo;
+    ultimaConsulta.current = { contenido, base, porVoz: leerRespuesta, modo: modoEnvio };
     if (!reintento) { setMensajes(base); setPregunta(''); setAvisoVoz(null); }
     callar();
     setError(null); setConsultando(true);
     try {
-      const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva }, conversacionId });
+      const data = await consultarAsistenteErp({ empresaId, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva }, conversacionId, modo: modoEnvio });
+      if (Number.isFinite(data?.experto?.restantes)) setExpertoRestantes(data.experto.restantes);
       if (typeof data?.conversacion_id === 'string') setConversacionId(data.conversacion_id);
       setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [], borrador: data?.borrador?.id ? data.borrador : null, opciones: opcionesValidas(data?.opciones), recuerdos: avisosDeRecuerdo(data?.recuerdos), destino: destinoValido(data?.destino) }]);
       if (leerRespuesta && data?.respuesta) leerEnVozAlta(String(data.respuesta));
@@ -267,6 +277,10 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
             {mensaje.role === 'assistant' && mensaje.destino && onIr && <div className="dx-asis-ir">
               <button type="button" className="dx-asis-ir-b" onClick={() => irA(mensaje.destino)}><span>Ir a {mensaje.destino.titulo}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
               {mensaje.destino.donde && <small>{mensaje.destino.donde}</small>}
+            </div>}
+            {mensaje.role === 'assistant' && index === mensajes.length - 1 && !consultando && !agotada && expertoRestantes !== 0 && puedeAmpliar(mensaje) && mensajes[index - 1]?.role === 'user' && <div className="dx-asis-exp">
+              <button type="button" className="dx-asis-exp-b" onClick={() => enviar(`Amplía en modo experto: ${String(mensajes[index - 1].content).replace(/^Amplía en modo experto:\s*/i, '')}`, false, 'experto')}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></svg><span>Ampliar con modo experto</span></button>
+              <small>{expertoRestantes === null ? 'Respuesta más profunda · 10 al día' : `Respuesta más profunda · te quedan ${expertoRestantes} hoy`}</small>
             </div>}
             {mensaje.role === 'assistant' && (mensaje.recuerdos || []).map(r => <div className={`dx-asis-rec${r.tipo === 'automatico' ? ' auto' : ''}`} key={r.id} role="status">
               {r.borrado ? <span>Recuerdo borrado.</span> : <><span><b>{r.tipo === 'automatico' ? 'Aria recordó:' : 'Guardado en tu memoria:'}</b> {r.texto}</span>

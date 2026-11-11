@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../lib/supabaseClient.js';
 // Toda pantalla con clave de permiso viaja como contexto: el manual la usa para ordenar sus fichas.
 const esPantallaValida = pantalla => typeof pantalla === 'string' && /^[a-z][a-z0-9_]{1,59}$/.test(pantalla);
 
-export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, historial, contexto, conversacionId }) {
+export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, historial, contexto, conversacionId, modo }) {
   const supabase = await getSupabaseClient();
   const body = {
     empresa_id: empresaId,
@@ -14,6 +14,8 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
     })),
   };
   if (sociedadId) body.sociedad_id = sociedadId;
+  // Modo experto: respuesta ampliada con un modelo más capaz y cuota diaria propia.
+  if (modo === 'experto') body.modo = 'experto';
   // Con conversación guardada, la Edge lee el historial de la base; el del navegador queda solo como respaldo.
   body.conversacion_id = conversacionId || null;
   if ((contexto?.tipo && contexto?.id) || esPantallaValida(contexto?.pantalla)) body.contexto = {
