@@ -1151,6 +1151,27 @@ Deno.test("el presupuesto contra real usa el cálculo de la pantalla con los dat
   assert(OPENAI_TOOLS.some((tool: any) => tool.function.name === "asistente_presupuesto_real"));
 });
 
+Deno.test("preparar una cuenta envía todos los datos al RPC y devuelve el borrador para la tarjeta", async () => {
+  let n = 0;
+  const borrador = { id: "11111111-1111-4111-8111-111111111111", tipo: "cuenta", razon_social: "GRUPO DEMO S.A.C.", ruc: "20608522060", tipo_cuenta: "prospecto", vence_en: "2026-11-12T06:00:00Z" };
+  const x = setup({
+    rpc: (name: string) => ({ data: name === "asistente_preparar_cuenta" ? { estado: "listo", borrador } : { respuesta: "ok" }, error: null }),
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "a", type: "function", function: { name: "asistente_preparar_cuenta", arguments: JSON.stringify({ razon_social: "GRUPO DEMO S.A.C.", ruc: "20608522060", tipo: "prospecto", contacto_nombre: "Ana Ruiz", limite_credito: 5000, moneda: "PEN" }) } }] })
+      : completion({ role: "assistant", content: "Dejé el borrador en la tarjeta para que lo revises y confirmes." }) });
+  const res = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Crea el prospecto GRUPO DEMO S.A.C. con RUC 20608522060 y contacto Ana Ruiz" }));
+  equal(res.status, 200);
+  const cuerpo = await res.json();
+  equal(cuerpo.borrador.tipo, "cuenta"); equal(cuerpo.borrador.id, borrador.id);
+  const llamada = x.calls.find(c => c.name === "asistente_preparar_cuenta")!;
+  equal(llamada.args.p_razon_social, "GRUPO DEMO S.A.C."); equal(llamada.args.p_ruc, "20608522060"); equal(llamada.args.p_tipo, "prospecto");
+  equal(llamada.args.p_contacto_nombre, "Ana Ruiz"); equal(llamada.args.p_limite_credito, 5000);
+  assert(!x.calls.some(c => c.name.includes("confirmar_borrador")));
+  assert(OPENAI_TOOLS.some((tool: any) => tool.function.name === "asistente_preparar_lead"));
+  assert(!OPENAI_TOOLS.some((tool: any) => tool.function.name.includes("confirmar_borrador")));
+  assert(ESCRITURA_PROMPT.includes("asistente_preparar_lead") && ESCRITURA_PROMPT.includes("asistente_preparar_cuenta"));
+});
+
 Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
   const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
   const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;

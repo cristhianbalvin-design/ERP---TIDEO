@@ -12,10 +12,10 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
-| Administración | 77 | 73 (95 %) | 30 (39 %) | 1 | 3 |
-| Operaciones | 120 | 49 (41 %) | 46 (38 %) | 0 | 58 |
+| Administración | 77 | 73 (95 %) | 30 (39 %) | 3 | 3 |
+| Operaciones | 120 | 49 (41 %) | 46 (38 %) | 1 | 58 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 131 (64 %) | 76 (37 %) | 1 | 61 |
+| **Total** | 206 | 131 (64 %) | 76 (37 %) | 4 | 61 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_estado_resultados`, `asistente_presupuesto_real`, `asistente_resumen_financiero`.
 
@@ -38,7 +38,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Comercial | Agenda Comercial (`agenda_comercial`) | activa | agenda_comercial | — | — | — |
 | Comercial | Variables de Costeo (`costeo_variables`) | activa | costeo_variables | concepto_costeo, proceso_lead_cotizacion | — | — |
 | Comercial | Cotizaciones (`cotizaciones`) | activa | cotizaciones | proceso_cotizacion_cobro, proceso_lead_cotizacion | 3 | — |
-| Comercial | Cuentas y Contactos (`cuentas`) | activa | cuentas | — | 3 | — |
+| Comercial | Cuentas y Contactos (`cuentas`) | activa | cuentas | — | 3 | preparar_cuenta |
 | Comercial | Equipos de Clientes (`equipos_clientes`) | activa | equipos_clientes | proceso_cotizacion_cobro, proceso_fabricacion_of | 4 | — |
 | Comercial | Hoja de Costeo (`hoja_costeo`) | activa | hoja_costeo_lista | proceso_lead_cotizacion | — | — |
 | Comercial | Hoja de Costeo — asistente de costeo (`hoja_costeo_wizard`) | activa | hoja_costeo | concepto_costeo, proceso_lead_cotizacion | — | — |
@@ -65,7 +65,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Configuración | Tarifarios (`tarifarios`) | maqueta | — | — | — | — |
 | Configuración | Usuarios (`usuarios`) | activa | usuarios | proceso_configuracion_inicial | — | — |
 | CRM & Marketing | Actividades (`actividades`) | activa | actividades | — | — | — |
-| CRM & Marketing | Leads y Scoring (`leads`) | activa | leads | proceso_lead_cotizacion | 3 | — |
+| CRM & Marketing | Leads y Scoring (`leads`) | activa | leads | proceso_lead_cotizacion | 3 | preparar_lead |
 | CRM & Marketing | Marketing Automation (`marketing`) | activa | marketing | — | — | — |
 | Customer Success | BI Customer Success (`bi_cs`) | activa | bi_cs | — | — | — |
 | Customer Success | Fidelizacion y NPS (`cs_fidelizacion`) | activa | cs_fidelizacion | — | — | — |
@@ -125,7 +125,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Almacén & Repuestos | Ubicaciones (`almacen-ubicaciones`) | activa | ubicaciones_almacen | proceso_almacen | 8 | — |
 | Almacén & Repuestos | Vencimientos y lotes (`almacen-vencimientos`) | activa | vencimientos_lotes | — | 8 | — |
 | Almacén & Repuestos | Solicitudes SOLPE (`solicitudes`) | puente | — | — | 3 | — |
-| Clientes & Activos | Clientes & Contratos (`clientes`) | maqueta | — | — | 3 | — |
+| Clientes & Activos | Clientes & Contratos (`clientes`) | maqueta | — | — | 3 | preparar_cuenta |
 | Clientes & Activos | Equipos & Activos (`equipos`) | maqueta | — | — | — | — |
 | Clientes & Activos | Proyectos & Tarifas (`proyectos`) | activa | proyectos_tarifas | — | 1 | — |
 | Compras & Importación | Cotizaciones Compra (`compras-cotizaciones`) | puente | — | — | 2 | — |
