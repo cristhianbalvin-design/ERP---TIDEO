@@ -1,0 +1,63 @@
+/* Financiamiento y Deuda — listado (sistema dx-ui, prefijo dx-fin-) */
+.dx-fin .dx-fin-cols {
+  --dx-ui-cols:minmax(200px,2fr) minmax(170px,1.5fr) minmax(120px,1fr) minmax(120px,1fr) minmax(160px,1.3fr) minmax(110px,.9fr) 16px
+}
+.dx-fin .dx-ui-row > * { min-width:0 }
+.dx-fin .dx-fin-num { text-align:right; white-space:nowrap }
+.dx-fin .dx-fin-monto { display:block; color:var(--dx-ui-navy); font:700 14px Sora,sans-serif; white-space:nowrap }
+.dx-fin .dx-fin-small { display:block; margin-top:2px; overflow:hidden; color:var(--dx-ui-gray); font-size:12px; text-overflow:ellipsis; white-space:nowrap }
+.dx-fin .dx-fin-texto { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.dx-fin .dx-fin-label { display:none }
+.dx-fin .dx-fin-quien { display:flex; align-items:center; gap:12px; min-width:0 }
+.dx-fin .dx-fin-quien > div { min-width:0 }
+.dx-fin .dx-fin-quien strong { display:block; overflow:hidden; color:var(--dx-ui-navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap }
+.dx-fin .dx-fin-grupo { background:var(--dx-ui-head) }
+.dx-fin .dx-fin-grupo .dx-fin-quien strong { font:700 15px Sora,sans-serif }
+.dx-fin .dx-fin-hijo .dx-fin-quien { padding-left:46px }
+.dx-fin .dx-fin-chev { color:var(--dx-ui-gray); font-size:12px }
+.dx-fin .dx-ui-pill { max-width:100%; overflow:hidden; text-overflow:ellipsis }
+.dx-fin .dx-fin-tabs { margin:0 }
+.dx-fin .dx-ui-toolbar h2 { margin:0 }
+.dx-fin .dx-ui-count { margin-right:auto }
+.dx-fin .dx-fin-aviso { margin-bottom:16px; padding:10px 12px; border-radius:10px; background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); font-size:13px }
+.dx-fin .dx-fin-foot { padding:12px 20px; border-top:1px solid var(--dx-ui-line); color:var(--dx-ui-gray); font-size:12px }
+
+/* KPI con montos: valor arriba, etiqueta abajo (SISTEMA_DISENO.md §10) */
+.dx-fin .dx-fin-kpis { container-type:inline-size }
+.dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:repeat(5,minmax(0,1fr)) }
+.dx-fin .dx-fin-kpis .dx-ui-kpi { flex-direction:column; align-items:flex-start; justify-content:center; gap:0; min-width:0 }
+.dx-fin .dx-fin-kpis strong { line-height:22px; white-space:nowrap }
+.dx-fin .dx-fin-kpis span { max-width:100%; line-height:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.dx-fin .dx-fin-kpis .dx-fin-kpi-vacio { color:var(--dx-ui-gray); font:400 13px 'DM Sans',sans-serif }
+.dx-fin .dx-fin-kpi-alerta strong { color:var(--dx-ui-red-fg) }
+@container (max-width:1000px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:repeat(3,minmax(0,1fr)) } }
+@container (max-width:640px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@container (max-width:360px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:1fr } }
+
+@container (max-width:1100px) {
+  .dx-fin .dx-fin-cols {
+    --dx-ui-cols:minmax(170px,1.8fr) minmax(140px,1.3fr) minmax(105px,1fr) minmax(105px,1fr) minmax(140px,1.2fr) minmax(100px,.9fr) 14px
+  }
+  .dx-fin .dx-fin-hijo .dx-fin-quien { padding-left:0 }
+}
+@container (max-width:760px) {
+  .dx-fin .dx-ui-head.dx-fin-cols { display:none }
+  .dx-fin .dx-ui-row.dx-fin-cols { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:10px; padding-block:14px }
+  .dx-fin .dx-fin-quien { grid-column:1/-1 }
+  .dx-fin .dx-fin-num { text-align:left }
+  .dx-fin .dx-fin-label { display:block; margin-bottom:2px; color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase }
+  .dx-fin .dx-ui-row > .dx-ui-arrow { display:none }
+  .dx-fin .dx-fin-chev { position:absolute; right:16px; top:18px }
+  .dx-fin .dx-fin-grupo { position:relative }
+  .dx-fin .dx-ui-search { flex:1 1 220px; width:auto }
+}
+@container (max-width:420px) {
+  .dx-fin .dx-ui-row.dx-fin-cols { grid-template-columns:1fr }
+}
+@media (max-width:760px) {
+  .dx-fin .dx-ui-head-page { flex-direction:column; align-items:flex-start }
+  .dx-fin .dx-ui-actions { width:100%; margin-left:0 }
+}
+@media (max-width:420px) {
+  .dx-fin .dx-ui-actions .dx-btn { flex:1 1 100% }
+}
