@@ -5,6 +5,8 @@ import { formatCurrencyTotals, formatMoney, sumByCurrency } from './lib/currency
 import { SociedadFormField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import FinanciamientoListado from './pages/financiamiento/FinanciamientoListado.jsx';
+import FinanciamientoDetalle from './pages/financiamiento/FinanciamientoDetalle.jsx';
+import { cargarAdjuntos, eliminarAdjunto } from './services/storageService.js';
 import {
   buildEgresoTesoreria,
   buildDebtSummary,
@@ -18,7 +20,6 @@ import {
   eliminarFinanciamientoRpc,
   impactoLocalEliminarFinanciamiento,
   generarAmortizacion as generarAmortizacionService,
-  isCapitalPayment,
   nextCuota,
   recalcularTabla as recalcularTablaService,
   registrarPagoFinanciamientoRpc,
@@ -28,8 +29,6 @@ const tipoLabel = { bancario:'Bancario', tercero:'Tercero', leasing:'Leasing', l
 const fmtMoney = (moneda, monto) => formatMoney(monto, moneda);
 const finMoney = (f, monto) => fmtMoney(f?.moneda || 'PEN', monto);
 const fmtDate = date => date ? new Date(date + 'T00:00:00').toLocaleDateString('es-PE') : '-';
-const badgeEstado = estado => estado === 'vigente' ? 'badge-green' : estado === 'atrasado' ? 'badge-red' : estado === 'en_gracia' ? 'badge-orange' : 'badge-gray';
-const badgeCuota = estado => estado === 'pagada' ? 'badge-green' : estado === 'pendiente' ? 'badge-orange' : estado === 'cancelada' ? 'badge-red' : 'badge-gray';
 
 function moneyByCurrency(totals) {
   return formatCurrencyTotals(totals);
@@ -157,7 +156,6 @@ export function FinanciamientoDeuda() {
   const modoVistaSociedad = resolverFiltroSociedadesVista({ multisociedadHabilitado: empresa?.multisociedad_habilitado, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles });
   const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear un financiamiento.';
   const [tab, setTab] = useState('todos');
-  const [detalleTab, setDetalleTab] = useState('resumen');
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [pagoOpen, setPagoOpen] = useState(null);
   const [guardandoFinanciamiento, setGuardandoFinanciamiento] = useState(false);
@@ -292,7 +290,16 @@ export function FinanciamientoDeuda() {
     const financiamiento = eliminarOpen.financiamiento;
     setEliminarOpen(v => ({ ...v, cargando: true, error: '' }));
     try {
-      if (dataSource.mode === 'supabase') await eliminarFinanciamientoRpc({ empresa, id: financiamiento.id, ejecutar: true });
+      if (dataSource.mode === 'supabase') {
+        await eliminarFinanciamientoRpc({ empresa, id: financiamiento.id, ejecutar: true });
+        // Documentos adjuntos del préstamo: se borran del almacenamiento junto con él.
+        try {
+          const docs = await cargarAdjuntos({ empresaId: empresa.id, entidadTipo: 'financiamientos', entidadId: financiamiento.id });
+          await Promise.all(docs.map(doc => eliminarAdjunto(doc)));
+        } catch (errorDocs) {
+          console.warn('[financiamiento] no se pudieron borrar los documentos adjuntos:', errorDocs?.message || errorDocs);
+        }
+      }
       setFinanciamientos(prev => prev.filter(f => f.id !== financiamiento.id));
       setMovimientosTesoreria(prev => prev.filter(m => !(m.vinculo_tipo === 'financiamiento' && m.vinculo_id === financiamiento.id)));
       setComprasGastos(prev => prev.filter(g => g.financiamiento_id !== financiamiento.id));
@@ -351,25 +358,18 @@ export function FinanciamientoDeuda() {
   };
 
   if (detalle) {
-    const primerAbono = [...(detalle.pagos_realizados || [])].filter(isCapitalPayment).sort((a,b)=>(a.fecha_pago || '').localeCompare(b.fecha_pago || ''))[0];
-    const tablaDetalle = primerAbono ? recalcularTablaService(detalle, detalle.tabla_amortizacion || [], detalle.saldo_pendiente, primerAbono.fecha_pago) : (detalle.tabla_amortizacion || []);
-    const detalleVista = { ...detalle, tabla_amortizacion:tablaDetalle };
-    const cuota = nextCuota(detalleVista);
-    const pagosTabla = [...(detalle.pagos_realizados || []), ...tablaDetalle.filter(c => c.estado === 'pagada' && !(detalle.pagos_realizados || []).some(p => p.cuota_numero === c.numero)).map(c => ({ id:`hist_${c.numero}`, fecha_pago:c.fecha_pago_real, tipo:'cuota', cuota_numero:c.numero, capital:c.capital, interes:c.interes, total:c.total, moneda:detalle.moneda || 'PEN', cuenta_bancaria:detalle.cuenta_bancaria_destino || '-', registrado_por:'Admin' }))].sort((a,b)=>(a.fecha_pago || '').localeCompare(b.fecha_pago || ''));
-    const pagoPorCuota = new Map(pagosTabla.filter(p => p.tipo === 'cuota' && p.cuota_numero).map(p => [p.cuota_numero, p]));
-    const eventos = pagosTabla.filter(isCapitalPayment).map(p => ({ tipo_fila:'abono', id:`abono_${p.id}`, fecha:p.fecha_pago, capital:p.capital, interes:0, total:p.total, saldo:p.saldo_despues ?? detalle.saldo_pendiente, descripcion:p.tipo === 'capital_total' ? 'Cancelacion anticipada de capital' : 'Abono a capital' }));
-    const filas = [...tablaDetalle.map(c => { const p = pagoPorCuota.get(c.numero); return p ? { tipo_fila:'cuota', ...c, capital:p.capital, interes:p.interes, total:p.total, estado:'pagada', id:`cuota_${c.numero}` } : { tipo_fila:'cuota', ...c, id:`cuota_${c.numero}` }; }), ...eventos].sort((a,b) => (a.fecha || '').localeCompare(b.fecha || '') || (a.tipo_fila === 'cuota' ? -1 : 1));
-    const capitalPagado = detalle.monto_original - detalle.saldo_pendiente;
     return (
       <>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('financiamiento')}>Volver a Financiamiento y Deuda</button>
-        <div className="page-header mt-4"><div><h1 className="page-title">{detalle.entidad}</h1><div className="page-sub">{detalle.codigo} · {detalle.moneda || 'PEN'} · Desembolsado: {fmtDate(detalle.fecha_desembolso)}</div></div><div className="row"><span className={'badge '+badgeEstado(detalle.estado)}>{detalle.estado}</span><button className="btn btn-ghost btn-sm" data-local-form="true" disabled={!puedeEditar} title={puedeEditar ? 'Editar financiamiento' : 'No tienes permiso para editar financiamientos'} onClick={()=>abrirEdicion(detalle)}>{I.edit} Editar</button><button className="btn btn-ghost btn-sm" data-local-form="true" disabled={!puedeEliminar} title={puedeEliminar ? 'Eliminar financiamiento' : 'No tienes permiso para eliminar financiamientos'} style={{color:'var(--red, #dc2626)'}} onClick={()=>setEliminarOpen({ financiamiento:detalle, paso:1 })}>{I.trash} Eliminar</button><button className="btn btn-primary" data-local-form="true" onClick={()=>setPagoOpen({ financiamiento:detalleVista, cuota })}>Registrar pago / abono</button></div></div>
-        <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}><div className="kpi-card"><div className="kpi-label">Monto original</div><div className="kpi-value">{finMoney(detalle, detalle.monto_original)}</div></div><div className="kpi-card"><div className="kpi-label">Capital pagado</div><div className="kpi-value">{finMoney(detalle, capitalPagado)}</div></div><div className="kpi-card"><div className="kpi-label">Saldo pendiente</div><div className="kpi-value">{finMoney(detalle, detalle.saldo_pendiente)}</div></div><div className="kpi-card"><div className="kpi-label">Intereses pagados</div><div className="kpi-value">{finMoney(detalle, detalle.intereses_pagados_total)}</div></div></div>
-        <div className="tabs">{[['resumen','Resumen'],['amortizacion','Tabla de amortizacion'],['pagos','Pagos realizados'],['documentos','Documentos']].map(([k,l]) => <div key={k} className={'tab '+(detalleTab===k?'active':'')} onClick={()=>setDetalleTab(k)}>{l}</div>)}</div>
-        {detalleTab === 'resumen' && <div className="card"><div className="card-head"><h3>Datos del financiamiento</h3><span className="badge badge-cyan">Proxima cuota {cuota ? fmtDate(cuota.fecha) : '-'}</span></div><div className="card-body grid-2"><div><p><strong>Entidad:</strong> {detalle.entidad}</p><p><strong>Moneda:</strong> {detalle.moneda || 'PEN'}</p><p><strong>Tipo:</strong> {tipoLabel[detalle.tipo]}</p><p><strong>Tasa:</strong> {detalle.tasa_anual}% {detalle.tipo_tasa}</p><p><strong>Plazo:</strong> {detalle.plazo_meses || 'Revolvente'} meses</p></div><div><p><strong>Cuotas pagadas:</strong> {detalle.cuotas_pagadas} de {detalle.plazo_meses}</p><p><strong>Proxima cuota:</strong> {cuota ? `${fmtDate(cuota.fecha)} · ${finMoney(detalle, cuota.total)}` : '-'}</p>{cuota && <p className="text-muted">Capital: {finMoney(detalle, cuota.capital)} · Intereses: {finMoney(detalle, cuota.interes)}</p>}</div></div></div>}
-        {detalleTab === 'amortizacion' && <div className="card"><div className="card-head"><h3>Tabla de amortizacion</h3><button className="btn btn-primary btn-sm" data-local-form="true" onClick={()=>setPagoOpen({financiamiento:detalleVista, cuota})}>Pagar / abonar capital</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>N</th><th>Fecha</th><th>Cuota total</th><th>Capital</th><th>Interes</th><th>Saldo</th><th>Estado</th><th></th></tr></thead><tbody>{filas.map(c => c.tipo_fila === 'abono' ? <tr key={c.id} style={{background:'rgba(0,188,212,0.06)'}}><td className="mono">ABO</td><td>{fmtDate(c.fecha)}</td><td className="num">{finMoney(detalle,c.total)}</td><td className="num"><strong>{finMoney(detalle,c.capital)}</strong></td><td className="num">{finMoney(detalle,c.interes)}</td><td className="num"><strong>{finMoney(detalle,c.saldo)}</strong></td><td><span className="badge badge-cyan">{c.descripcion}</span></td><td></td></tr> : <tr key={c.id}><td>{c.numero}</td><td>{fmtDate(c.fecha)}</td><td className="num">{finMoney(detalle,c.total)}</td><td className="num">{finMoney(detalle,c.capital)}</td><td className="num">{finMoney(detalle,c.interes)}</td><td className="num">{finMoney(detalle,c.saldo)}</td><td><span className={'badge '+badgeCuota(c.estado)}>{c.estado}</span></td><td>{c.estado !== 'pagada' && c.estado !== 'cancelada' && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={()=>setPagoOpen({financiamiento:detalleVista, cuota:c})}>Pagar</button>}</td></tr>)}</tbody></table></div><div className="card-body row" style={{justifyContent:'flex-end', gap:24}}><strong>Total cuotas futuras: {finMoney(detalle, tablaDetalle.filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada').reduce((s,c)=>s+c.total,0))}</strong><strong>Intereses futuros: {finMoney(detalle, tablaDetalle.filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada').reduce((s,c)=>s+c.interes,0))}</strong></div></div>}
-        {detalleTab === 'pagos' && <div className="card"><div className="card-head"><h3>Pagos realizados</h3><button className="btn btn-primary btn-sm" data-local-form="true" onClick={()=>setPagoOpen({financiamiento:detalleVista, cuota})}>Registrar pago / abono</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Fecha pago</th><th>Tipo</th><th>N cuota</th><th>Capital</th><th>Interes</th><th>Total</th><th>Banco / Cuenta</th><th>Registrado por</th></tr></thead><tbody>{pagosTabla.map(p => <tr key={p.id}><td>{fmtDate(p.fecha_pago)}</td><td>{p.tipo === 'cuota' ? 'Cuota' : p.tipo === 'capital_total' ? 'Cancelacion capital' : 'Abono capital'}</td><td>{p.cuota_numero || '-'}</td><td className="num">{finMoney(detalle,p.capital)}</td><td className="num">{finMoney(detalle,p.interes)}</td><td className="num">{finMoney(detalle,p.total)}</td><td>{p.cuenta_bancaria || '-'}</td><td>{p.registrado_por}</td></tr>)}</tbody></table></div></div>}
-        {detalleTab === 'documentos' && <div className="card"><div className="card-head"><h3>Documentos</h3><button className="btn btn-secondary btn-sm">{I.plus} Adjuntar</button></div><div className="card-body text-muted">Sin documentos adjuntos para este financiamiento.</div></div>}
+        <FinanciamientoDetalle
+          financiamiento={detalle}
+          empresaId={empresa.id}
+          puedeEditar={puedeEditar}
+          puedeEliminar={puedeEliminar}
+          onVolver={() => navigate('financiamiento')}
+          onEditar={() => abrirEdicion(detalle)}
+          onEliminar={() => setEliminarOpen({ financiamiento:detalle, paso:1 })}
+          onPagar={cuota => setPagoOpen({ financiamiento:detalle, cuota: cuota || nextCuota(detalle) })}
+        />
         {pagoOpen && <PagoModal data={pagoOpen} onClose={()=>{ setPagoOpen(null); setErrorPago(''); }} onConfirm={registrarPago} isSubmitting={guardandoPago} error={errorPago}/>}
         {edicionOpen && <NuevoFinanciamientoPanel edicion={edicionOpen} form={form} setForm={setForm} onClose={()=>{ setEdicionOpen(null); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarEdicion} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
         {eliminarOpen && <EliminarFinanciamientoModal data={eliminarOpen} onClose={()=>setEliminarOpen(null)} onContinuar={continuarEliminar} onConfirmar={confirmarEliminar}/>}
@@ -394,7 +394,7 @@ export function FinanciamientoDeuda() {
           puedeCrear={modoVistaSociedad.permiteEscritura}
           mensajeSinEscritura={mensajeSeleccionSociedad}
           onNuevo={abrirNuevo}
-          onAbrir={id => { setDetalleTab('resumen'); navigate('financiamiento', { detail: id }); }}
+          onAbrir={id => navigate('financiamiento', { detail: id })}
           onReporte={() => setTab('reporte')}
         />
         {modales}
