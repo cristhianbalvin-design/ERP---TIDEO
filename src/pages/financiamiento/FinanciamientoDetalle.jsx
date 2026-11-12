@@ -32,7 +32,7 @@ function construirMovimientos(f, hoy) {
   const pendientes = tabla.filter(impaga).sort((a, b) => a.fecha.localeCompare(b.fecha));
   const proxima = pendientes.find(c => c.fecha >= hoy);
   const porPagar = pendientes.filter(c => c.fecha < hoy || c === proxima).map(c => {
-    const e = estadoCuota(c, hoy);
+    const e = c === proxima ? { tone: 'amber', text: 'Por pagar' } : estadoCuota(c, hoy);
     return {
       key: `p_${c.numero}`, fecha: c.fecha, estado: e.tone === 'red' ? 'vencido' : 'pendiente',
       titulo: interesSaldo ? `Interés de ${mesAnio(c.fecha)}` : `Cuota ${c.numero}`,
@@ -149,6 +149,7 @@ export default function FinanciamientoDetalle({
 }) {
   const [tab, setTab] = useState('movimientos');
   const [nDocs, setNDocs] = useState(null);
+  const [verPagadas, setVerPagadas] = useState(false);
   const hoy = hoyLima();
   const moneda = f.moneda || 'PEN';
   const money = v => formatMoney(v, moneda);
@@ -160,6 +161,11 @@ export default function FinanciamientoDetalle({
   const interesesPagados = (f.pagos_realizados || []).reduce((s, p) => s + Number(p.interes || 0), 0) || Number(f.intereses_pagados_total || 0);
   const movimientos = construirMovimientos(f, hoy);
   const tabla = [...(f.tabla_amortizacion || [])].sort((a, b) => Number(a.numero) - Number(b.numero));
+  // Préstamos largos: se pliegan las cuotas pagadas y se muestran solo las 3 últimas.
+  const pagadasTabla = tabla.filter(c => !impaga(c));
+  const ocultas = !verPagadas && pagadasTabla.length > 6 ? pagadasTabla.slice(0, -3) : [];
+  const ocultasIds = new Set(ocultas.map(c => c.numero));
+  const tablaVisible = tabla.filter(c => !ocultasIds.has(c.numero));
   const tm = tasaMensualFinanciamiento(f);
   const proxEtiqueta = prox
     ? (prox.fecha < hoy ? `Vencido hace ${plural(dias(prox.fecha, hoy), 'día', 'días')}` : `${interesSaldo ? 'Interés' : `Cuota ${prox.numero}`} · vence ${fecha(prox.fecha)}`)
@@ -236,7 +242,16 @@ export default function FinanciamientoDetalle({
                   </tr>
                 </thead>
                 <tbody>
-                  {tabla.map(c => {
+                  {ocultas.length > 0 && (
+                    <tr className="dx-fin-plegadas">
+                      <td colSpan={interesSaldo ? 6 : 7}>
+                        <button type="button" className="dx-fin-volver" onClick={() => setVerPagadas(true)}>
+                          Mostrar {plural(ocultas.length, 'cuota pagada anterior', 'cuotas pagadas anteriores')}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {tablaVisible.map(c => {
                     const e = estadoCuota(c, hoy);
                     const pagable = impaga(c) && puedeEditar;
                     return (
