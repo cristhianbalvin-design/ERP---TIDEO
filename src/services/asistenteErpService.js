@@ -76,6 +76,14 @@ export async function confirmarBorradorEgreso({ borradorId, comprobanteUrl, numC
   return data;
 }
 
+// Lead o cuenta preparados por Aria: solo la persona los confirma desde la tarjeta.
+export async function confirmarBorradorCrm(borradorId) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('asistente_confirmar_borrador_crm', { p_borrador_id: borradorId });
+  if (error) throw new Error(mensajeErrorEgreso(error).replace('el egreso', 'el registro'));
+  return data;
+}
+
 export async function cancelarBorradorEgreso(borradorId) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase.rpc('asistente_cancelar_borrador', { p_borrador_id: borradorId });

@@ -1,6 +1,7 @@
 import AriaFab from './AriaFab.jsx';
 import AriaLogo from './AriaLogo.jsx';
 import AriaTarjetaEgreso from './AriaTarjetaEgreso.jsx';
+import AriaTarjetaCrm from './AriaTarjetaCrm.jsx';
 import AriaMicrofono, { MAX_SEGUNDOS_DICTADO } from './AriaMicrofono.jsx';
 import { hablar } from '../lib/ariaHabla.js';
 import React, { useEffect, useRef, useState } from 'react';
@@ -35,7 +36,7 @@ function etiquetaHerramienta(tool) {
     [['buscar_conversaciones'], 'Revisé tus conversaciones'],
     [['recuerdo_guardar'], 'Guardé un recuerdo'],
     [['resumen_operaciones', 'buscar_ots', 'estado_ot'], 'Revisé Operaciones'], [['resumen_personal'], 'Revisé Personal'], [['resumen_planilla'], 'Revisé Planilla'],
-    [['resumen_financiamiento'], 'Revisé Financiamiento'], [['resumen_comisiones'], 'Revisé Comisiones'], [['resumen_transporte'], 'Revisé Transporte'], [['vencimientos'], 'Revisé vencimientos'], [['estado_resultados'], 'Calculé el Estado de Resultados'], [['presupuesto_real'], 'Revisé Presupuestos'], [['clientes_facturacion'], 'Revisé clientes'],
+    [['resumen_financiamiento'], 'Revisé Financiamiento'], [['resumen_comisiones'], 'Revisé Comisiones'], [['resumen_transporte'], 'Revisé Transporte'], [['vencimientos'], 'Revisé vencimientos'], [['preparar_lead'], 'Preparé el lead'], [['preparar_cuenta'], 'Preparé la cuenta'], [['estado_resultados'], 'Calculé el Estado de Resultados'], [['presupuesto_real'], 'Revisé Presupuestos'], [['clientes_facturacion'], 'Revisé clientes'],
     [['resumen_mensual'], 'Calculé el resumen mensual'],
     [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
@@ -94,7 +95,7 @@ function puedeAmpliar(mensaje) {
   return usadas.length > 0 && !usadas.includes('aria_modo_experto') && !usadas.includes('aria_recuerdo_guardar') && !mensaje.borrador && !mensaje.opciones;
 }
 
-export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false, onIr }) {
+export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, habilitado, pantallaActiva, ocultarFab = false, onIr, onRegistrado }) {
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
   // Modo experto: solo administradores, con cuota mensual de la empresa; se consulta al abrir el chat.
@@ -310,8 +311,11 @@ export function AsistenteErpPanelBase({ empresaId, sociedadId, nombreUsuario, ha
           {!mensajes.length && <><div className="dx-asis-hello"><h3>{modo === 'experto' ? 'Aria experta' : primerNombre ? `Hola, ${primerNombre}. Soy Aria.` : 'Hola. Soy Aria.'}</h3><p>{modo === 'experto' ? 'Estás en Aria experta. Pregúntame cómo funciona un proceso de punta a punta o pídeme un análisis del negocio: respondo a fondo. Cada pregunta usa una de las consultas expertas del mes de tu empresa.' : 'Te ayudo a ver tus números de tesorería, caja chica, cobros y pagos, compras y stock. También registro gastos de caja chica, siempre con tu confirmación.'}</p></div><div className="dx-asis-sug-label">Prueba preguntando</div><div className="dx-asis-sugs" role="list">{sugerencias.map(texto => <button className="dx-asis-sug" type="button" role="listitem" key={texto} onClick={() => enviar(texto)}>{texto}<span aria-hidden="true">›</span></button>)}</div></>}
           {mensajes.map((mensaje, index) => <React.Fragment key={`${index}-${mensaje.role}`}>
             <div className={`dx-asis-message ${mensaje.role === 'user' ? 'me' : 'ai'}`}>{mensaje.role === 'assistant' && <span className="dx-asis-mini" aria-hidden="true"><AriaLogo size={24} /></span>}<div className={`dx-asis-msg ${mensaje.role === 'user' ? 'me' : 'ai'}`}><TextoSeguro texto={mensaje.content} /></div></div>
-            {mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresaId} estadoInicial={mensaje.borradorEstado}
-              onCambio={info => setMensajes(prev => prev.map((item, posicion) => posicion === index ? { ...item, borradorEstado: info } : item))} />}
+            {mensaje.role === 'assistant' && mensaje.borrador && (mensaje.borrador.tipo === 'lead' || mensaje.borrador.tipo === 'cuenta')
+              ? <AriaTarjetaCrm borrador={mensaje.borrador} estadoInicial={mensaje.borradorEstado} onRegistrado={onRegistrado} onIr={onIr ? irA : undefined}
+                  onCambio={info => setMensajes(prev => prev.map((item, posicion) => posicion === index ? { ...item, borradorEstado: info } : item))} />
+              : mensaje.role === 'assistant' && mensaje.borrador && <AriaTarjetaEgreso borrador={mensaje.borrador} empresaId={empresaId} estadoInicial={mensaje.borradorEstado}
+                  onCambio={info => setMensajes(prev => prev.map((item, posicion) => posicion === index ? { ...item, borradorEstado: info } : item))} />}
             {mensaje.role === 'assistant' && mensaje.opciones && index === mensajes.length - 1 && !consultando && <div className="dx-asis-opciones" role="group" aria-label={mensaje.opciones.titulo}>
               <span className="dx-asis-opciones-t">{mensaje.opciones.titulo}</span>
               <div className="dx-asis-opciones-l">{mensaje.opciones.items.map(item => <button type="button" key={item.valor} className="dx-asis-opcion" disabled={agotada} onClick={() => enviar(item.valor)}>
