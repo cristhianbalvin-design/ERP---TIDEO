@@ -30,9 +30,12 @@
 .dx-fin .dx-fin-kpis span { max-width:100%; line-height:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .dx-fin .dx-fin-kpis .dx-fin-kpi-vacio { color:var(--dx-ui-gray); font:400 13px 'DM Sans',sans-serif }
 .dx-fin .dx-fin-kpi-alerta strong { color:var(--dx-ui-red-fg) }
-@container (max-width:1000px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:repeat(3,minmax(0,1fr)) } }
-@container (max-width:640px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)) } }
-@container (max-width:360px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:1fr } }
+/* 5 KPI en una fila desde 900 px; debajo, dos columnas sin KPI huérfana (la última ocupa la fila); una columna bajo 300 px */
+@container (max-width:899px) {
+  .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .dx-fin .dx-fin-kpis .dx-ui-kpi:last-child { grid-column:1/-1 }
+}
+@container (max-width:299px) { .dx-fin .dx-fin-kpis .dx-ui-kpi-row { grid-template-columns:1fr } }
 
 @container (max-width:1100px) {
   .dx-fin .dx-fin-cols {
@@ -49,6 +52,7 @@
   .dx-fin .dx-ui-row > .dx-ui-arrow { display:none }
   .dx-fin .dx-fin-chev { position:absolute; right:16px; top:18px }
   .dx-fin .dx-fin-grupo { position:relative }
+  .dx-fin .dx-fin-grupo .dx-fin-quien { padding-right:28px }
   .dx-fin .dx-ui-search { flex:1 1 220px; width:auto }
 }
 @container (max-width:420px) {

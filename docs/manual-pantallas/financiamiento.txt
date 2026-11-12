@@ -5,7 +5,7 @@ catalogo: admin/financiamiento
 titulo: Financiamiento y Deuda
 resumen: Registra los préstamos, leasing y líneas de crédito de la empresa, agrupados por acreedor, con su cronograma, sus pagos y el reporte de deuda por moneda.
 componentes: src/pages_fin_deuda.jsx#FinanciamientoDeuda, src/pages/financiamiento/FinanciamientoListado.jsx#FinanciamientoListado
-huella: a9fcf37fa2 115320b937
+huella: a9fcf37fa2 28c6bf4edc
 paso: 1 | pantalla=financiamiento | permiso=ninguno | Revisa arriba el capital pendiente, lo que vence este mes, los intereses del mes, lo vencido y los préstamos activos; los importes se muestran por moneda. Los préstamos se agrupan por acreedor: toca un acreedor para ver u ocultar sus préstamos, usa Vigentes, Cancelados o Todos y busca por acreedor, código o banco.
 paso: 2 | pantalla=financiamiento | permiso=financiamiento:crear | Usa Nuevo préstamo para registrar un préstamo con su entidad, monto, moneda, tasa, plazo, meses de gracia, día de pago y tipo de cuota; la vista previa muestra la cuota estimada y al guardar se genera la tabla de amortización.
 paso: 3 | pantalla=financiamiento | permiso=ninguno | Toca un préstamo para abrir su resumen, la tabla de amortización, los pagos realizados y los documentos. Un préstamo vencido sin pagar aparece como Atrasado con los días de atraso.

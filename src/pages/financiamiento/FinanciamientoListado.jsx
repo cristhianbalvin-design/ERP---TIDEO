@@ -12,6 +12,14 @@ const tasa = n => `${Number(n || 0).toLocaleString('es-PE', { maximumFractionDig
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const iniciales = s => String(s || '?').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 
+const MODALIDAD_BASE = { interes_saldo: 'Interés sobre saldo', aleman: 'Cuota decreciente', bullet: 'Solo intereses', frances: 'Cuota fija' };
+const modalidadGrupo = filas => {
+  const textos = [...new Set(filas.map(modalidadTexto))];
+  if (textos.length === 1) return textos[0];
+  const bases = [...new Set(filas.map(f => MODALIDAD_BASE[f.tipo_cuota] || 'Cuota fija'))];
+  return bases.length === 1 ? `${bases[0]} · tasas distintas` : 'Varias modalidades';
+};
+
 export const modalidadTexto = f => {
   if (f.tipo_cuota === 'interes_saldo') return `Interés sobre saldo · ${tasa(f.tasa_anual)} mensual`;
   const tasaTxt = `${f.tipo_tasa || 'TEA'} ${tasa(f.tasa_anual)}`;
@@ -104,7 +112,6 @@ export default function FinanciamientoListado({
     if (n.has(clave)) n.delete(clave); else n.add(clave);
     return n;
   });
-  const mesLargo = new Intl.DateTimeFormat('es-PE', { month: 'long' }).format(new Date(`${hoy}T12:00:00Z`));
   const acreedoresActivos = new Set(resumen.activos.map(f => norm(f.entidad))).size;
 
   const celdas = (f, hoyRef) => {
@@ -136,8 +143,8 @@ export default function FinanciamientoListado({
       <div className="dx-fin-kpis">
         <div className="dx-ui-kpi-row">
           <Kpi totales={resumen.deudaTotalPorMoneda} etiqueta="Capital pendiente" />
-          <Kpi totales={resumen.cuotasMesPorMoneda} etiqueta={`Vence en ${mesLargo}`} vacio="Nada" />
-          <Kpi totales={resumen.interesesMesPorMoneda} etiqueta={`Intereses de ${mesLargo}`} vacio="Nada" />
+          <Kpi totales={resumen.cuotasMesPorMoneda} etiqueta="Vence este mes" vacio="Nada" />
+          <Kpi totales={resumen.interesesMesPorMoneda} etiqueta="Intereses del mes" vacio="Nada" />
           <Kpi totales={resumen.vencidoPorMoneda} etiqueta={resumen.atrasados ? `Vencido · ${plural(resumen.atrasados, 'préstamo', 'préstamos')}` : 'Cuotas o intereses vencidos'} alerta vacio="Ninguno" />
           <div className="dx-ui-kpi">
             <strong>{resumen.activos.length}</strong>
@@ -177,6 +184,7 @@ export default function FinanciamientoListado({
             return acc;
           }, {}));
           const modalidades = [...new Set(g.filas.map(modalidadTexto))];
+          const modalidad = modalidadGrupo(g.filas);
           const peor = datos.find(d => d.e.tone === 'red') || datos.find(d => d.e.tone === 'green') || datos[0];
           const proximoGrupo = datos.filter(d => d.p.fecha).sort((a, b) => a.p.fecha.localeCompare(b.p.fecha))[0];
           const monedas = [...new Set(g.filas.map(f => f.moneda || 'PEN'))].join(' · ');
@@ -204,7 +212,7 @@ export default function FinanciamientoListado({
                 <div>
                   <span className="dx-fin-label">Modalidad</span>
                   <span className={`dx-ui-pill ${f0.tipo_cuota === 'interes_saldo' ? 'is-violet' : 'is-cyan'}`} title={modalidades.join(' / ')}>
-                    {modalidades.length === 1 ? modalidades[0] : 'Varias modalidades'}
+                    {modalidad}
                   </span>
                 </div>
                 <div className="dx-fin-num">
