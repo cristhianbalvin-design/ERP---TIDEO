@@ -6587,7 +6587,7 @@ function CajaChica() {
   const fondosActivos = fondosVista.filter(f => f.estado === 'activo');
   const fondosAlerta = fondosActivos.filter(f => f.requiere_reposicion);
   const saldoTotalPorMoneda = sumByCurrency(fondosActivos, f => f.saldo_disponible, f => f.moneda || 'PEN');
-  const asignadoTotalPorMoneda = sumByCurrency(fondosActivos, f => f.monto_asignado, f => f.moneda || 'PEN');
+  const asignadoTotalPorMoneda = sumByCurrency(fondosActivos, f => f.monto_fondeado ?? f.monto_asignado, f => f.moneda || 'PEN');
   const egresosMesPorMoneda = sumByCurrency(
     movimientosVista.filter(m => m.tipo_movimiento === 'egreso' && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7)),
     m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
@@ -6612,6 +6612,10 @@ function CajaChica() {
   };
 
   const esMovActivo = m => !['anulado', 'anulada'].includes(String(m?.estado || '').toLowerCase());
+  const TIPOS_INGRESO_CAJA = ['aporte', 'reposicion', 'transferencia_entrada'];
+  const TIPOS_EGRESO_CAJA = ['egreso', 'transferencia_salida'];
+  const ETIQUETA_TIPO_MOV_CAJA = { transferencia_entrada: 'transferencia recibida', transferencia_salida: 'transferencia enviada' };
+  const etiquetaTipoMovCaja = tipo => ETIQUETA_TIPO_MOV_CAJA[tipo] || tipo;
   const puedeEditarEgreso = (m, fondo) => m.tipo_movimiento === 'egreso' && esMovActivo(m) && !m.bloqueado_rendicion
     && fondo?.estado === 'activo' && (puedeEditar || esResponsable(fondo));
   const puedeAnularMov = (m, fondo) => {
@@ -6625,6 +6629,7 @@ function CajaChica() {
     const estado = String(m?.estado || '').toLowerCase();
     if (['anulado', 'anulada'].includes(estado)) return m.motivo_anulacion ? `Anulado: ${m.motivo_anulacion}` : 'Anulado: no admite cambios';
     if (m?.tipo_movimiento === 'reposicion') return 'Viene de una rendición aprobada; no se edita';
+    if (['transferencia_entrada', 'transferencia_salida'].includes(m?.tipo_movimiento)) return 'Transferencia entre cajas; no se edita';
     if (m?.tipo_movimiento === 'egreso' && m.bloqueado_rendicion) {
       const r = m.rendicion_bloqueo;
       const estadoR = String(r?.estado || '').toLowerCase();
@@ -6894,8 +6899,8 @@ function CajaChica() {
     if (fCeco && (m.ceco_id || m.centro_costo_id) !== fCeco) return false;
     return true;
   });
-  const movimientosIngresos = movsFiltrados.filter(m => ['aporte', 'reposicion'].includes(m.tipo_movimiento));
-  const movimientosEgresos = movsFiltrados.filter(m => m.tipo_movimiento === 'egreso');
+  const movimientosIngresos = movsFiltrados.filter(m => TIPOS_INGRESO_CAJA.includes(m.tipo_movimiento));
+  const movimientosEgresos = movsFiltrados.filter(m => TIPOS_EGRESO_CAJA.includes(m.tipo_movimiento));
   const totalIngresosPorMoneda = sumByCurrency(
     movimientosIngresos,
     m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
@@ -6908,8 +6913,8 @@ function CajaChica() {
   );
   const movimientosVisibles = movimientosTab === 'ingresos' ? movimientosIngresos : movimientosEgresos;
   const historialFondo = fondoSel ? movimientosVista.filter(m => m.fondo_id === fondoSel.id) : [];
-  const historialIngresos = historialFondo.filter(m => ['aporte', 'reposicion'].includes(m.tipo_movimiento));
-  const historialEgresos = historialFondo.filter(m => m.tipo_movimiento === 'egreso');
+  const historialIngresos = historialFondo.filter(m => TIPOS_INGRESO_CAJA.includes(m.tipo_movimiento));
+  const historialEgresos = historialFondo.filter(m => TIPOS_EGRESO_CAJA.includes(m.tipo_movimiento));
   const totalHistorialIngresosPorMoneda = sumByCurrency(
     historialIngresos.filter(m => !['anulado', 'anulada'].includes(String(m.estado || '').toLowerCase())),
     m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
@@ -6979,7 +6984,7 @@ function CajaChica() {
                       {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdCajaDe(f)} /></td>}
                       <td className="text-muted">{responsable?.nombre || responsable?.email || 'Sin asignar'}</td>
                       <td className="text-muted">{origenFondoLabel(f)}</td>
-                      <td className="num">{moneyDCurrency(f.monto_asignado, f.moneda)}</td>
+                      <td className="num">{moneyDCurrency(f.monto_fondeado ?? f.monto_asignado, f.moneda)}</td>
                       <td className="num"><strong style={{color:f.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyDCurrency(f.saldo_disponible, f.moneda)}</strong></td>
                       <td>{moneyDCurrency(f.monto_minimo, f.moneda)}</td>
                       <td><span className={`badge ${f.estado === 'activo' ? 'badge-green' : f.estado === 'cerrado' ? 'badge-gray' : 'badge-orange'}`}>{f.estado}</span></td>
@@ -7052,7 +7057,7 @@ function CajaChica() {
                       <td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td>
                       {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdMovimientoCajaDe(m)} /></td>}
                       <td>{m.fondo_nombre || fondos.find(f => f.id === m.fondo_id)?.nombre || 'Legacy sin fondo'}</td>
-                      <td><span className={`badge ${['reposicion', 'aporte'].includes(tipo) ? 'badge-green' : 'badge-cyan'}`}>{tipo}</span></td>
+                      <td><span className={`badge ${TIPOS_INGRESO_CAJA.includes(tipo) ? 'badge-green' : 'badge-cyan'}`}>{etiquetaTipoMovCaja(tipo)}</span></td>
                       <td>{m.concepto || m.descripcion}</td>
                       <td className="text-muted">{ceco?.nombre || '-'}</td>
                       <td className="mono text-muted">
@@ -7083,7 +7088,16 @@ function CajaChica() {
             <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:16}}>
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
                 <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Disponible</div><div className="kpi-value" style={{fontSize:24,color:fondoSel.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyDCurrency(fondoSel.saldo_disponible, fondoSel.moneda)}</div></div>
-                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Asignado</div><div className="kpi-value" style={{fontSize:20}}>{moneyDCurrency(fondoSel.monto_asignado, fondoSel.moneda)}</div></div>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}>
+                  <div className="kpi-label">Asignado</div>
+                  <div className="kpi-value" style={{fontSize:20}}>{moneyDCurrency(fondoSel.monto_fondeado ?? fondoSel.monto_asignado, fondoSel.moneda)}</div>
+                  <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,lineHeight:1.4}}>
+                    <div>Apertura {moneyDCurrency(fondoSel.monto_asignado, fondoSel.moneda)}</div>
+                    {Number(fondoSel.monto_aportado || 0) > 0 && <div>+ Aportes {moneyDCurrency(fondoSel.monto_aportado, fondoSel.moneda)}</div>}
+                    {Number(fondoSel.monto_recibido || 0) > 0 && <div>+ Transferencias recibidas {moneyDCurrency(fondoSel.monto_recibido, fondoSel.moneda)}</div>}
+                    {Number(fondoSel.monto_repuesto || 0) > 0 && <div>+ Reposiciones {moneyDCurrency(fondoSel.monto_repuesto, fondoSel.moneda)}</div>}
+                  </div>
+                </div>
                 <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Minimo</div><div className="kpi-value" style={{fontSize:20}}>{moneyDCurrency(fondoSel.monto_minimo, fondoSel.moneda)}</div></div>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,fontSize:13}}>
@@ -7188,7 +7202,7 @@ function CajaChica() {
                   <table className="tbl">
                     <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
                     <tbody>{historialVisibles.length ? historialVisibles.map(m => (
-                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray" title={m.motivo_anulacion ? `Motivo: ${m.motivo_anulacion}` : (m.bloqueado_rendicion ? 'Incluido en una rendición: no se puede modificar' : undefined)}>{m.estado || 'registrado'}</span>{motivoBloqueoMov(m) && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,maxWidth:170,lineHeight:1.3}}>{motivoBloqueoMov(m)}</div>}{(puedeEditarEgreso(m, fondoSel) || puedeAnularMov(m, fondoSel)) && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>{puedeEditarEgreso(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px'}} title="Editar egreso" aria-label="Editar egreso" onClick={() => abrirEditarEgreso(m)}>{I.edit} Editar</button>}{puedeAnularMov(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px',color:'var(--danger)'}} title={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} aria-label={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} onClick={() => abrirAnularMov(m)}>{I.trash} Anular</button>}</div>}</td></tr>
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${TIPOS_INGRESO_CAJA.includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{etiquetaTipoMovCaja(m.tipo_movimiento)}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray" title={m.motivo_anulacion ? `Motivo: ${m.motivo_anulacion}` : (m.bloqueado_rendicion ? 'Incluido en una rendición: no se puede modificar' : undefined)}>{m.estado || 'registrado'}</span>{motivoBloqueoMov(m) && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,maxWidth:170,lineHeight:1.3}}>{motivoBloqueoMov(m)}</div>}{(puedeEditarEgreso(m, fondoSel) || puedeAnularMov(m, fondoSel)) && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>{puedeEditarEgreso(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px'}} title="Editar egreso" aria-label="Editar egreso" onClick={() => abrirEditarEgreso(m)}>{I.edit} Editar</button>}{puedeAnularMov(m, fondoSel) && <button type="button" className="btn btn-secondary" style={{fontSize:12,padding:'3px 8px',color:'var(--danger)'}} title={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} aria-label={m.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso'} onClick={() => abrirAnularMov(m)}>{I.trash} Anular</button>}</div>}</td></tr>
                     )) : <tr><td colSpan="6" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
                 </div>
