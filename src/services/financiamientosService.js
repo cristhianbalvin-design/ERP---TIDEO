@@ -3,7 +3,41 @@ import { createSupabaseRepository } from './createSupabaseRepository.js';
 import { isSupabaseMode } from '../lib/dataMode.js';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
-const round2 = value => +Number(value || 0).toFixed(2);
+const round2 = value => Math.round(Number(value || 0) * 100) / 100;
+
+// Modalidades de pago. 'interes_saldo': cada mes se paga tasa mensual x saldo de capital al
+// corte; el capital se amortiza cuando se puede; sin plazo. El cronograma lo genera el servidor.
+export const MODALIDADES_FINANCIAMIENTO = [
+  { value: 'frances', label: 'Cuota fija', ayuda: 'Misma cuota cada mes (francés). Préstamos bancarios.' },
+  { value: 'aleman', label: 'Cuota decreciente', ayuda: 'Capital fijo más un interés que baja (alemán).' },
+  { value: 'bullet', label: 'Solo intereses con vencimiento', ayuda: 'Interés mensual y todo el capital al final del plazo.' },
+  { value: 'interes_saldo', label: 'Interés sobre saldo, sin plazo', ayuda: 'Cada mes se paga un % del capital que se debe; el capital se amortiza cuando se puede.' },
+];
+export const esInteresSaldo = f => (f?.tipo_cuota || f?.tipoCuota) === 'interes_saldo';
+
+// Tasa efectiva mensual (fracción). Igual que public.fin_tasa_mensual en el servidor.
+export function tasaMensualDe(tasa, tipoTasa = 'TEA') {
+  const t = Number(tasa || 0) / 100;
+  const tipo = String(tipoTasa || 'TEA').toUpperCase();
+  if (tipo === 'TEM') return t;
+  if (tipo === 'TNA') return t / 12;
+  return Math.pow(1 + t, 1 / 12) - 1;
+}
+export const tasaMensualFinanciamiento = f =>
+  f?.tasa_mensual != null && f.tasa_mensual !== '' ? Number(f.tasa_mensual) : tasaMensualDe(f?.tasa_anual, f?.tipo_tasa);
+// Tasa anual efectiva equivalente (para mostrar junto a una tasa mensual).
+export const teaEquivalente = tasaMensual => Math.pow(1 + Number(tasaMensual || 0), 12) - 1;
+
+// Fecha de corte del período n: mismo día del desembolso (o el día pactado), ajustado al fin de mes.
+// Igual que public.fin_fecha_periodo en el servidor.
+export function fechaPeriodo(fechaDesembolso, dia, n) {
+  const [y, m, d] = String(fechaDesembolso || '').split('-').map(Number);
+  if (!y || !m) return null;
+  const base = new Date(Date.UTC(y, m - 1 + Number(n || 0), 1));
+  const ultimo = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  base.setUTCDate(Math.min(Number(dia || d || 1), ultimo));
+  return base.toISOString().slice(0, 10);
+}
 
 export const nextCuota = financiamiento =>
   (financiamiento?.tabla_amortizacion || []).find(c => c.estado === 'pendiente') ||
@@ -12,12 +46,7 @@ export const nextCuota = financiamiento =>
 export const isCapitalPayment = pago =>
   pago?.tipo === 'capital_parcial' || pago?.tipo === 'capital_total';
 
-export const paymentDate = (date, months, day) => {
-  const d = new Date(`${date || '2026-04-01'}T00:00:00`);
-  d.setMonth(d.getMonth() + Number(months || 0));
-  d.setDate(Number(day || 5));
-  return d.toISOString().slice(0, 10);
-};
+export const paymentDate = (date, months, day) => fechaPeriodo(date, day, months);
 
 export function generarAmortizacion({
   monto,
@@ -27,8 +56,12 @@ export function generarAmortizacion({
   fechaDesembolso,
   diaPago,
   tipoCuota,
+  tipoTasa = 'TEA',
 }) {
-  const tasaMensual = Number(tasaAnual || 0) / 100 / 12;
+  if (tipoCuota === 'interes_saldo') {
+    return proyectarPeriodosInteresSaldo({ monto, tasa: tasaAnual, fechaDesembolso, diaPago, periodos: 1 });
+  }
+  const tasaMensual = tasaMensualDe(tasaAnual, tipoTasa);
   const montoBase = Number(monto || 0);
   const plazo = Math.max(1, Number(plazoMeses || 1));
   const gracia = Math.max(0, Number(mesesGracia || 0));
@@ -67,8 +100,26 @@ export function generarAmortizacion({
   });
 }
 
+// Vista previa de la modalidad interés sobre saldo (el servidor genera los períodos reales).
+export function proyectarPeriodosInteresSaldo({ monto, tasa, fechaDesembolso, diaPago, periodos = 1 }) {
+  const saldo = round2(monto);
+  const interes = round2(saldo * tasaMensualDe(tasa, 'TEM'));
+  return Array.from({ length: Math.max(1, Number(periodos || 1)) }, (_, idx) => ({
+    numero: idx + 1,
+    tipo: 'interes',
+    fecha: fechaPeriodo(fechaDesembolso, diaPago, idx + 1),
+    capital: 0,
+    interes,
+    total: interes,
+    saldo,
+    saldo_base: saldo,
+    estado: idx === 0 ? 'pendiente' : 'futura',
+  }));
+}
+
 export function recalcularTabla(financiamiento, tablaBase, nuevoSaldo, desdeFecha = null) {
-  const tasaMensual = Number(financiamiento?.tasa_anual || 0) / 100 / 12;
+  if (esInteresSaldo(financiamiento)) return tablaBase || [];
+  const tasaMensual = tasaMensualFinanciamiento(financiamiento);
   const debeRecalcular = cuota =>
     (!desdeFecha || cuota.fecha >= desdeFecha) &&
     cuota.estado !== 'pagada' &&
@@ -135,8 +186,10 @@ export function buildFinanciamiento({ form, empresa, sequence = 1 }) {
     fechaDesembolso: form.fecha_desembolso,
     diaPago: form.dia_pago,
     tipoCuota: form.tipo_cuota,
+    tipoTasa: form.tipo_tasa,
   });
   const codigo = `FIN-${String(sequence).padStart(3, '0')}`;
+  const interesSaldo = form.tipo_cuota === 'interes_saldo';
 
   return {
     id: `fin_${Date.now().toString(36)}`,
@@ -145,12 +198,13 @@ export function buildFinanciamiento({ form, empresa, sequence = 1 }) {
     ...form,
     monto_original: Number(form.monto_original || 0),
     tasa_anual: Number(form.tasa_anual || 0),
-    plazo_meses: Number(form.plazo_meses || 0),
-    meses_gracia: Number(form.meses_gracia || 0),
+    tipo_tasa: interesSaldo ? 'TEM' : (form.tipo_tasa || 'TEA'),
+    plazo_meses: interesSaldo ? null : Number(form.plazo_meses || 0),
+    meses_gracia: interesSaldo ? 0 : Number(form.meses_gracia || 0),
     dia_pago: Number(form.dia_pago || 0),
     cuota_mensual: tabla[0]?.total || 0,
     fecha_primer_pago: tabla[0]?.fecha,
-    fecha_ultimo_pago: tabla[tabla.length - 1]?.fecha,
+    fecha_ultimo_pago: interesSaldo ? null : tabla[tabla.length - 1]?.fecha,
     saldo_pendiente: Number(form.monto_original || 0),
     cuotas_pagadas: 0,
     intereses_pagados_total: 0,
@@ -160,39 +214,76 @@ export function buildFinanciamiento({ form, empresa, sequence = 1 }) {
   };
 }
 
-export async function crearFinanciamientoConAmortizacion({ empresa, nuevo }) {
+// Alta en el servidor (crear_financiamiento_v2): valida la cuenta de Tesorería, registra el
+// ingreso del desembolso si se pide y, en interés sobre saldo, genera los períodos.
+export async function crearFinanciamientoConAmortizacion({ empresa, nuevo, registrarIngreso = false, tcAplicado = null, referencia = null }) {
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase.rpc('crear_financiamiento', {
+  const datos = {
+    id: nuevo.id,
+    codigo: nuevo.codigo,
+    tipo: nuevo.tipo,
+    entidad: nuevo.entidad,
+    tipo_entidad: nuevo.tipo_entidad || null,
+    contacto_nombre: nuevo.contacto_nombre || null,
+    contacto_telefono: nuevo.contacto_telefono || null,
+    contacto_email: nuevo.contacto_email || null,
+    monto_original: nuevo.monto_original,
+    moneda: nuevo.moneda || 'PEN',
+    tasa_anual: nuevo.tasa_anual || 0,
+    tipo_tasa: nuevo.tipo_tasa || 'TEA',
+    plazo_meses: nuevo.plazo_meses || null,
+    meses_gracia: nuevo.meses_gracia || 0,
+    dia_pago: nuevo.dia_pago || null,
+    tipo_cuota: nuevo.tipo_cuota || 'frances',
+    cuota_mensual: nuevo.cuota_mensual || 0,
+    fecha_desembolso: nuevo.fecha_desembolso || null,
+    fecha_primer_pago: nuevo.fecha_primer_pago || null,
+    fecha_ultimo_pago: nuevo.fecha_ultimo_pago || null,
+    proposito: nuevo.proposito || null,
+    centro_costo: nuevo.centro_costo || null,
+    cuenta_bancaria_id: nuevo.cuenta_bancaria_id || null,
+    cuenta_bancaria_destino: nuevo.cuenta_bancaria_destino || null,
+    notas: nuevo.notas || null,
+    sociedad_id: nuevo.sociedad_id || null,
+    registrar_ingreso: Boolean(registrarIngreso),
+    tc_aplicado: tcAplicado || null,
+    referencia: referencia || null,
+  };
+  const { data, error } = await supabase.rpc('crear_financiamiento_v2', {
     p_empresa_id: empresa.id,
-    p_id: nuevo.id,
-    p_codigo: nuevo.codigo,
-    p_tipo: nuevo.tipo,
-    p_entidad: nuevo.entidad,
-    p_monto_original: nuevo.monto_original,
-    p_cuotas: nuevo.tabla_amortizacion,
-    p_tipo_entidad: nuevo.tipo_entidad || null,
-    p_contacto_nombre: nuevo.contacto_nombre || null,
-    p_contacto_telefono: nuevo.contacto_telefono || null,
-    p_contacto_email: nuevo.contacto_email || null,
-    p_moneda: nuevo.moneda || 'PEN',
-    p_tasa_anual: nuevo.tasa_anual || 0,
-    p_tipo_tasa: nuevo.tipo_tasa || 'TEA',
-    p_plazo_meses: nuevo.plazo_meses || null,
-    p_meses_gracia: nuevo.meses_gracia || 0,
-    p_dia_pago: nuevo.dia_pago || null,
-    p_tipo_cuota: nuevo.tipo_cuota || 'frances',
-    p_cuota_mensual: nuevo.cuota_mensual || 0,
-    p_fecha_desembolso: nuevo.fecha_desembolso || null,
-    p_fecha_primer_pago: nuevo.fecha_primer_pago || null,
-    p_fecha_ultimo_pago: nuevo.fecha_ultimo_pago || null,
-    p_proposito: nuevo.proposito || null,
-    p_centro_costo: nuevo.centro_costo || null,
-    p_cuenta_bancaria_destino: nuevo.cuenta_bancaria_destino || null,
-    p_notas: nuevo.notas || null,
-    p_sociedad_id: nuevo.sociedad_id || null,
+    p_datos: datos,
+    p_cuotas: esInteresSaldo(nuevo) ? [] : nuevo.tabla_amortizacion,
   });
   if (error) throw error;
-  return { ...data, sociedad_id: nuevo.sociedad_id || null, pagos_realizados: [] };
+  return { ...data, pagos_realizados: data?.pagos_realizados || [] };
+}
+
+// Pago de la modalidad interés sobre saldo: interés del período, capital o ambos.
+// El servidor calcula el interés, el saldo, el egreso de Tesorería y el gasto financiero.
+export async function registrarPagoInteresSaldoRpc({ empresa, financiamientoId, datos }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('registrar_pago_interes_saldo', {
+    p_empresa_id: empresa.id,
+    p_id: financiamientoId,
+    p_datos: {
+      fecha: datos.fecha,
+      periodo_numero: datos.periodo_numero ?? null,
+      capital: Number(datos.capital || 0),
+      cuenta_bancaria_id: datos.cuenta_bancaria_id,
+      tc_aplicado: datos.tc_aplicado || null,
+      referencia: datos.referencia || null,
+      comprobante: datos.comprobante || null,
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Genera los períodos vencidos y el siguiente de los préstamos de interés sobre saldo.
+export async function sincronizarPeriodosFinanciamientoRpc({ empresaId }) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.rpc('sincronizar_periodos_financiamiento', { p_empresa_id: empresaId });
+  if (error) throw error;
 }
 
 export function buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo }) {
@@ -224,7 +315,9 @@ export function buildGastoIntereses({ financiamiento, cuota, interes, fecha, emp
     empresa_id: empresa.id,
     sociedad_id: financiamiento.sociedad_id || null,
     tipo: 'gasto',
-    descripcion: `Intereses ${financiamiento.entidad} - Cuota ${cuota.numero}/${financiamiento.plazo_meses}`,
+    descripcion: financiamiento.plazo_meses
+      ? `Intereses ${financiamiento.entidad} - Cuota ${cuota.numero}/${financiamiento.plazo_meses}`
+      : `Intereses ${financiamiento.entidad} - Período ${cuota.numero}`,
     categoria: 'Gastos financieros',
     subcategoria: 'Intereses de prestamos',
     monto: round2(interes),
@@ -249,6 +342,8 @@ export function buildEgresoTesoreria({ financiamiento, pago, datos, empresa }) {
     moneda: financiamiento.moneda || 'PEN',
     fecha: datos.fecha,
     cuenta_bancaria: datos.cuenta_bancaria,
+    cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
+    tc_aplicado: datos.tc_aplicado || null,
     referencia: datos.referencia,
     vinculo_tipo: 'financiamiento',
     vinculo_id: financiamiento.id,
@@ -295,30 +390,71 @@ export function sumFinanciamientosByCurrency(financiamientos = [], valueGetter =
   }, {});
 }
 
-export function buildDebtSummary(financiamientos = []) {
-  const activos = financiamientos.filter(f => f.estado === 'vigente');
+const hoyLima = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+const impaga = c => c && c.estado !== 'pagada' && c.estado !== 'cancelada';
+
+// Estado visible: 'cancelado', 'atrasado' (alguna cuota o interés vencido sin pagar) o 'vigente'.
+export function estadoFinanciamiento(financiamiento, hoy = hoyLima()) {
+  if (financiamiento?.estado === 'cancelado') return { estado: 'cancelado', vencidas: [], diasAtraso: 0, montoVencido: 0 };
+  const vencidas = (financiamiento?.tabla_amortizacion || []).filter(c => impaga(c) && c.fecha && c.fecha < hoy);
+  const primera = vencidas.reduce((min, c) => (!min || c.fecha < min ? c.fecha : min), null);
+  const diasAtraso = primera ? Math.round((new Date(`${hoy}T00:00:00Z`) - new Date(`${primera}T00:00:00Z`)) / 86400000) : 0;
+  return {
+    estado: vencidas.length ? 'atrasado' : 'vigente',
+    vencidas,
+    diasAtraso,
+    montoVencido: round2(vencidas.reduce((s, c) => s + Number(c.total || 0), 0)),
+  };
+}
+
+const sumarEn = (totals, moneda, valor) => {
+  if (!valor) return totals;
+  return { ...totals, [moneda]: round2((totals[moneda] || 0) + Number(valor || 0)) };
+};
+
+export function buildDebtSummary(financiamientos = [], hoy = hoyLima()) {
+  const activos = financiamientos.filter(f => f.estado !== 'cancelado');
+  const mes = hoy.slice(0, 7);
+  const anio = hoy.slice(0, 4);
   const cuotasPorFinanciamiento = activos
     .map(financiamiento => ({ financiamiento, cuota: nextCuota(financiamiento) }))
     .filter(item => item.cuota);
 
-  const deudaTotalPorMoneda = sumFinanciamientosByCurrency(activos, f => f.saldo_pendiente);
-  const interesesPagadosPorMoneda = sumFinanciamientosByCurrency(activos, f => f.intereses_pagados_total);
-  const cuotasMesPorMoneda = cuotasPorFinanciamiento.reduce((totals, item) => {
-    const moneda = item.financiamiento.moneda || 'PEN';
-    return { ...totals, [moneda]: (totals[moneda] || 0) + Number(item.cuota.total || 0) };
-  }, {});
-  const interesesMesPorMoneda = cuotasPorFinanciamiento.reduce((totals, item) => {
-    const moneda = item.financiamiento.moneda || 'PEN';
-    return { ...totals, [moneda]: (totals[moneda] || 0) + Number(item.cuota.interes || 0) };
-  }, {});
+  let cuotasMesPorMoneda = {};
+  let interesesMesPorMoneda = {};
+  let vencidoPorMoneda = {};
+  let interesesPagadosAnioPorMoneda = {};
+  let atrasados = 0;
+  activos.forEach(f => {
+    const moneda = f.moneda || 'PEN';
+    (f.tabla_amortizacion || []).forEach(c => {
+      if (!impaga(c)) return;
+      if (c.fecha?.slice(0, 7) === mes) {
+        cuotasMesPorMoneda = sumarEn(cuotasMesPorMoneda, moneda, c.total);
+        interesesMesPorMoneda = sumarEn(interesesMesPorMoneda, moneda, c.interes);
+      }
+      if (c.fecha && c.fecha < hoy) vencidoPorMoneda = sumarEn(vencidoPorMoneda, moneda, c.total);
+    });
+    if (estadoFinanciamiento(f, hoy).estado === 'atrasado') atrasados += 1;
+  });
+  financiamientos.forEach(f => {
+    (f.pagos_realizados || []).forEach(p => {
+      if (String(p.fecha_pago || '').slice(0, 4) === anio) {
+        interesesPagadosAnioPorMoneda = sumarEn(interesesPagadosAnioPorMoneda, p.moneda || f.moneda || 'PEN', p.interes);
+      }
+    });
+  });
 
   return {
     activos,
+    atrasados,
     cuotasPorFinanciamiento,
-    deudaTotalPorMoneda,
+    deudaTotalPorMoneda: sumFinanciamientosByCurrency(activos, f => f.saldo_pendiente),
     cuotasMesPorMoneda,
     interesesMesPorMoneda,
-    interesesPagadosPorMoneda,
+    vencidoPorMoneda,
+    interesesPagadosPorMoneda: sumFinanciamientosByCurrency(activos, f => f.intereses_pagados_total),
+    interesesPagadosAnioPorMoneda,
   };
 }
 
@@ -393,6 +529,27 @@ export function construirEdicionFinanciamiento(financiamiento, form) {
 
   if (!String(form.entidad || '').trim()) return { error: 'La entidad es obligatoria.' };
   if (!(monto > 0)) return { error: 'El monto recibido debe ser mayor a cero.' };
+  if (form.tipo_cuota === 'interes_saldo' || esInteresSaldo(financiamiento)) {
+    const cambiaModalidad = (form.tipo_cuota === 'interes_saldo') !== esInteresSaldo(financiamiento);
+    if (tienePagos && cambiaModalidad) return { error: 'No se puede cambiar entre interés sobre saldo y cuotas: el préstamo ya tiene pagos.' };
+    if (tienePagos && (form.moneda || 'PEN') !== (financiamiento.moneda || 'PEN')) return { error: 'No se puede cambiar la moneda de un financiamiento con pagos registrados.' };
+    if (monto < capitalPagado) return { error: `El monto no puede ser menor al capital ya pagado (${capitalPagado.toFixed(2)}).` };
+  }
+  if (form.tipo_cuota === 'interes_saldo') {
+    // El servidor regenera los períodos impagos; aquí solo se arma la cabecera.
+    const nuevoSaldoSaldo = round2(monto - capitalPagado);
+    return {
+      datos: {
+        tipo: form.tipo, entidad: String(form.entidad).trim(), moneda: form.moneda || 'PEN',
+        sociedad_id: form.sociedad_id || null, monto_original: monto, tasa_anual: Number(form.tasa_anual || 0),
+        tipo_tasa: 'TEM', tipo_cuota: 'interes_saldo', dia_pago: Number(form.dia_pago || 0),
+        fecha_desembolso: form.fecha_desembolso || null, contacto_nombre: form.contacto_nombre || '',
+        cuenta_bancaria_id: form.cuenta_bancaria_id || null, proposito: form.proposito || '', notas: form.notas || '',
+        saldo_pendiente: nuevoSaldoSaldo,
+      },
+      tabla: [], nuevoSaldo: nuevoSaldoSaldo, capitalPagado, tienePagos, cuotasPagadas: pagadas.length,
+    };
+  }
   if (!(plazo >= 1)) return { error: 'El plazo debe ser de al menos 1 mes.' };
   if (plazo < maxPagada) return { error: `El plazo no puede ser menor a ${maxPagada} meses: la cuota ${maxPagada} ya está pagada.` };
   if (monto < capitalPagado) return { error: `El monto no puede ser menor al capital ya pagado (${capitalPagado.toFixed(2)}).` };
@@ -404,6 +561,7 @@ export function construirEdicionFinanciamiento(financiamiento, form) {
     fechaDesembolso: form.fecha_desembolso,
     diaPago: form.dia_pago,
     tipoCuota: form.tipo_cuota,
+    tipoTasa: form.tipo_tasa || financiamiento?.tipo_tasa || 'TEA',
   };
   const base = generarAmortizacion({ ...parametros, monto, plazoMeses: plazo });
   const nuevoSaldo = round2(monto - capitalPagado);
@@ -436,6 +594,7 @@ export function construirEdicionFinanciamiento(financiamiento, form) {
     sociedad_id: form.sociedad_id || null,
     monto_original: monto,
     tasa_anual: Number(form.tasa_anual || 0),
+    tipo_tasa: form.tipo_tasa || financiamiento?.tipo_tasa || 'TEA',
     plazo_meses: plazo,
     meses_gracia: gracia,
     dia_pago: Number(form.dia_pago || 0),
@@ -443,6 +602,7 @@ export function construirEdicionFinanciamiento(financiamiento, form) {
     fecha_desembolso: form.fecha_desembolso || null,
     contacto_nombre: form.contacto_nombre || '',
     cuenta_bancaria_destino: form.cuenta_bancaria_destino || '',
+    ...(form.cuenta_bancaria_id !== undefined ? { cuenta_bancaria_id: form.cuenta_bancaria_id || null } : {}),
     proposito: form.proposito || '',
     notas: form.notas || '',
     cuota_mensual: proxima?.total ?? tabla[0]?.total ?? 0,

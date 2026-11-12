@@ -775,6 +775,13 @@ export function AppProvider({ children }) {
       );
 
       const scoped = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
+      // Préstamos de interés sobre saldo: genera los períodos vencidos y el siguiente antes de leer.
+      try {
+        const { error: errorPeriodos } = await supabase.rpc('sincronizar_periodos_financiamiento', { p_empresa_id: empresaId });
+        if (errorPeriodos) console.warn('[financiamiento] sincronizar períodos:', errorPeriodos.message);
+      } catch (errorPeriodos) {
+        console.warn('[financiamiento] sincronizar períodos:', errorPeriodos?.message || errorPeriodos);
+      }
       const [
         financiamientosData,
         amortizacion,
