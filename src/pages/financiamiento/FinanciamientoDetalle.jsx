@@ -258,13 +258,13 @@ export default function FinanciamientoDetalle({
                       <tr key={c.id || c.numero} className={pagable ? 'is-pagable' : ''} tabIndex={pagable ? 0 : undefined} role={pagable ? 'button' : undefined}
                         aria-label={pagable ? `Pagar ${interesSaldo ? 'interés' : 'cuota'} ${c.numero}` : undefined}
                         onClick={pagable ? () => onPagar?.(c) : undefined} onKeyDown={pagable ? activar(() => onPagar?.(c)) : undefined}>
-                        <td>{interesSaldo ? mesAnio(c.fecha) : c.numero}</td>
-                        <td>{fecha(c.fecha)}</td>
-                        <td className="dx-fin-num">{money(interesSaldo ? (c.saldo_base ?? c.saldo) : c.capital)}</td>
-                        <td className="dx-fin-num">{money(c.interes)}</td>
-                        <td className="dx-fin-num"><strong>{money(c.total)}</strong></td>
-                        {!interesSaldo && <td className="dx-fin-num">{money(c.saldo)}</td>}
-                        <td><span className={`dx-ui-pill is-${e.tone}`}><i />{e.text}</span></td>
+                        <td data-label={interesSaldo ? 'Período' : 'N.º'} className="dx-fin-c-num">{interesSaldo ? mesAnio(c.fecha) : `Cuota ${c.numero}`}</td>
+                        <td data-label="Vence">{fecha(c.fecha)}</td>
+                        <td data-label={interesSaldo ? 'Saldo al corte' : 'Capital'} className="dx-fin-num">{money(interesSaldo ? (c.saldo_base ?? c.saldo) : c.capital)}</td>
+                        <td data-label="Interés" className="dx-fin-num">{money(c.interes)}</td>
+                        <td data-label="Total" className="dx-fin-num"><strong>{money(c.total)}</strong></td>
+                        {!interesSaldo && <td data-label="Saldo" className="dx-fin-num">{money(c.saldo)}</td>}
+                        <td data-label="Estado" className="dx-fin-c-estado"><span className={`dx-ui-pill is-${e.tone}`}><i />{e.text}</span></td>
                       </tr>
                     );
                   })}

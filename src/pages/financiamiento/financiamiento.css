@@ -119,3 +119,22 @@
 }
 .dx-fin .dx-fin-plegadas td { padding:8px 14px; background:var(--dx-ui-head); text-align:center }
 .dx-fin .dx-fin-plegadas .dx-fin-volver { margin:0 }
+/* Cronograma en tarjetas cuando la tabla no cabe (sin desplazamiento horizontal) */
+@container (max-width:780px) {
+  .dx-fin .dx-fin-tbl thead { display:none }
+  .dx-fin .dx-fin-tbl, .dx-fin .dx-fin-tbl tbody { display:block }
+  .dx-fin .dx-fin-tbl tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 14px; padding:12px 16px; border-bottom:1px solid var(--dx-ui-line-soft) }
+  .dx-fin .dx-fin-tbl td { display:flex; flex-direction:column; gap:2px; min-width:0; padding:0; border:0; white-space:normal }
+  .dx-fin .dx-fin-tbl td::before { content:attr(data-label); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase }
+  .dx-fin .dx-fin-tbl td.dx-fin-num { text-align:left }
+  .dx-fin .dx-fin-tbl td.dx-fin-c-num { font-weight:700; color:var(--dx-ui-navy) }
+  .dx-fin .dx-fin-tbl td.dx-fin-c-num::before, .dx-fin .dx-fin-tbl td.dx-fin-c-estado::before { display:none }
+  .dx-fin .dx-fin-tbl td.dx-fin-c-estado { align-items:flex-end; justify-content:center }
+  .dx-fin .dx-fin-plegadas { display:block !important }
+  .dx-fin .dx-fin-plegadas td { display:block }
+  .dx-fin .dx-fin-plegadas td::before { display:none }
+}
+@container (max-width:380px) {
+  .dx-fin .dx-fin-tbl tr { grid-template-columns:minmax(0,1fr) }
+  .dx-fin .dx-fin-tbl td.dx-fin-c-estado { align-items:flex-start }
+}
