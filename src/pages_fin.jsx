@@ -7142,7 +7142,8 @@ function CajaChica() {
                 </div>
               )}
               {modMov && (
-                <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => { if (!savingModMov) setModMov(null); }}>
+                <div className="modal" style={{width:'min(560px,94vw)',padding:18,overflowY:'auto'}} onClick={e => e.stopPropagation()}>
                   <div style={{fontWeight:700,marginBottom:4}}>{modMov.accion === 'editar' ? 'Editar egreso' : (modMov.mov.tipo_movimiento === 'aporte' ? 'Anular aporte' : 'Anular egreso')}</div>
                   <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:10}}>{String(modMov.mov.fecha || '').slice(0,10)} · {modMov.mov.concepto} · {moneyCurrency(Math.abs(Number(modMov.mov.monto || 0)), modMov.mov.moneda || fondoSel.moneda)}</div>
                   {modMov.accion === 'editar' ? (
@@ -7168,6 +7169,7 @@ function CajaChica() {
                     <button className="btn btn-secondary" style={{fontSize:12}} disabled={savingModMov} onClick={() => setModMov(null)}>Cancelar</button>
                     <button className={`btn ${modMov.accion === 'editar' ? 'btn-primary' : 'btn-danger'}`} style={{fontSize:12}} disabled={savingModMov} onClick={guardarModMov}>{savingModMov ? 'Guardando…' : (modMov.accion === 'editar' ? 'Guardar cambios' : 'Anular')}</button>
                   </div>
+                </div>
                 </div>
               )}
               <div>
