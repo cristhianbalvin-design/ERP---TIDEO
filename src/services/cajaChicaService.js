@@ -156,6 +156,36 @@ async function obtenerFondoAbierto(supabase, fondoId) {
   return fondo;
 }
 
+// Cada transferencia entre cajas aparece dos veces en el historial: como
+// ingreso en el fondo destino y como salida en el fondo origen.
+export function movimientosDeTransferencias(transferencias = [], fondoNombre = new Map()) {
+  return transferencias.flatMap(t => {
+    const base = {
+      ...t,
+      fecha_movimiento: t.fecha || t.creado_en,
+      num_comprobante: t.referencia || null,
+    };
+    return [
+      {
+        ...base,
+        fondo_id: t.fondo_destino_id,
+        tipo_movimiento: 'transferencia_entrada',
+        fondo_nombre: fondoNombre.get(t.fondo_destino_id) || null,
+        concepto: `Transferencia recibida de ${fondoNombre.get(t.fondo_origen_id) || 'otra caja'}`,
+        monto_movimiento: Number(t.monto || 0),
+      },
+      {
+        ...base,
+        fondo_id: t.fondo_origen_id,
+        tipo_movimiento: 'transferencia_salida',
+        fondo_nombre: fondoNombre.get(t.fondo_origen_id) || null,
+        concepto: `Transferencia enviada a ${fondoNombre.get(t.fondo_destino_id) || 'otra caja'}`,
+        monto_movimiento: -Number(t.monto || 0),
+      },
+    ];
+  });
+}
+
 export function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqueos = [], aportes = [], transferencias = []) {
   return fondos.map(fondo => {
     const egresosFondo = egresos.filter(e => e.fondo_id === fondo.id && isActivo(e));
@@ -180,6 +210,14 @@ export function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqu
     const transferido = transferenciasSalientes.reduce((s, t) => s + Number(t.monto || 0), 0);
     const recibido = transferenciasEntrantes.reduce((s, t) => s + Number(t.monto || 0), 0);
     const montoDevuelto = Number(fondo.monto_devuelto || 0);
+    // Total fondeado: todo lo que entró al fondo (apertura + aportes vigentes +
+    // reposiciones + transferencias recibidas). Disponible = fondeado - salidas.
+    const fondeado = redondearMoneda(
+      Number(fondo.monto_asignado || 0)
+      + aportado
+      + repuesto
+      + recibido,
+    );
     const disponible = redondearMoneda(
       Number(fondo.monto_asignado || 0)
       + aportado
@@ -198,6 +236,7 @@ export function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqu
     return {
       ...fondo,
       saldo_disponible: disponible,
+      monto_fondeado: fondeado,
       monto_gastado: gastado,
       monto_aportado: aportado,
       monto_repuesto: repuesto,
@@ -269,11 +308,12 @@ export const cajaChicaService = {
 
   async listarMovimientos(empresaId) {
     const supabase = await getSupabaseClient();
-    const [egresos, rendiciones, aportes, fondos] = await Promise.all([
+    const [egresos, rendiciones, aportes, fondos, transferencias] = await Promise.all([
       supabase.from('caja_chica').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: false }),
       supabase.from('caja_chica_rendiciones').select('*').eq('empresa_id', empresaId).order('creado_en', { ascending: false }),
       supabase.from('caja_chica_aportes').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: false }),
       supabase.from('caja_chica_fondos').select('id, nombre').eq('empresa_id', empresaId),
+      listarTransferenciasPaginadas(supabase, empresaId).catch(() => []),
     ]);
     if (egresos.error) throw egresos.error;
     const fondoNombre = new Map((fondos.data || []).map(f => [f.id, f.nombre]));
@@ -303,6 +343,7 @@ export const cajaChicaService = {
         fecha_movimiento: a.fecha || a.creado_en,
         monto_movimiento: Number(a.monto || 0),
       }))),
+      ...movimientosDeTransferencias(transferencias || [], fondoNombre),
     ];
     return rows.sort((a, b) => String(b.fecha_movimiento || '').localeCompare(String(a.fecha_movimiento || '')));
   },

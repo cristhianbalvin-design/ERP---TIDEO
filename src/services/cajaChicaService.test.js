@@ -4,6 +4,7 @@ import {
   buildCierreFondoRpcArgs,
   calcularFondos,
   listarTransferenciasPaginadas,
+  movimientosDeTransferencias,
   traducirErrorCategoriaEgreso,
   validarCategoriaEgresoFondo,
 } from './cajaChicaService.js';
@@ -201,4 +202,38 @@ test('la paginación de transferencias ordena por fecha e id y no duplica ni omi
   assert.equal(result.at(-1).id, 'cct_0000');
   assert.equal(new Set(result.map(row => row.id)).size, rows.length);
   assert.equal(result.length, rows.length);
+});
+
+test('calcularFondos expone monto_fondeado: apertura + aportes vigentes + transferencias recibidas', () => {
+  // Caso WHYNCO: apertura 4,500 + aporte 2,000 (otro de 1,000 anulado) + transferencia 50.58 - egresos 6,014.58
+  const [fondo] = calcularFondos(
+    [fondoBase({ monto_asignado: 4500, monto_minimo: 0 })],
+    [{ fondo_id: 'fondo-test', monto: 6014.58, moneda: 'PEN', estado: 'registrado' }],
+    [],
+    [],
+    [
+      { fondo_id: 'fondo-test', monto: 2000, moneda: 'PEN', estado: 'registrado' },
+      { fondo_id: 'fondo-test', monto: 1000, moneda: 'PEN', estado: 'anulado' },
+    ],
+    [transferencia({ monto: 50.58 })],
+  );
+  assert.equal(fondo.monto_fondeado, 6550.58);
+  assert.equal(fondo.monto_aportado, 2000);
+  assert.equal(fondo.monto_recibido, 50.58);
+  assert.equal(fondo.saldo_disponible, 536);
+  assert.equal(Number((fondo.monto_fondeado - fondo.monto_gastado).toFixed(2)), fondo.saldo_disponible);
+});
+
+test('movimientosDeTransferencias genera entrada en destino y salida en origen', () => {
+  const nombres = new Map([['fondo-test', 'Caja A'], ['otro-fondo', 'Caja B']]);
+  const rows = movimientosDeTransferencias([transferencia({ monto: 50.58, fecha: '2026-11-10' })], nombres);
+  assert.equal(rows.length, 2);
+  const entrada = rows.find(r => r.tipo_movimiento === 'transferencia_entrada');
+  const salida = rows.find(r => r.tipo_movimiento === 'transferencia_salida');
+  assert.equal(entrada.fondo_id, 'fondo-test');
+  assert.equal(entrada.monto_movimiento, 50.58);
+  assert.equal(entrada.concepto, 'Transferencia recibida de Caja B');
+  assert.equal(salida.fondo_id, 'otro-fondo');
+  assert.equal(salida.monto_movimiento, -50.58);
+  assert.equal(salida.concepto, 'Transferencia enviada a Caja A');
 });
