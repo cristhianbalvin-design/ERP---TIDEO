@@ -324,11 +324,13 @@ export default function FinanciamientoAsistente({
                     </div>
                   </fieldset>
                   <div className="dx-ui-form-grid">
-                    <Campo id="fin-moneda" label="Moneda" requerido hint={conPagos ? 'No se puede cambiar: tiene pagos.' : undefined}>
-                      <select className="dx-ui-select" {...inputProps('moneda', { disabled: conPagos })}>
-                        <option value="PEN">Soles (PEN)</option>
-                        <option value="USD">Dólares (USD)</option>
-                      </select>
+                    <Campo id="fin-moneda" label="Moneda" requerido={!conPagos} hint={conPagos ? 'No se puede cambiar: tiene pagos.' : undefined}>
+                      {conPagos ? <span className="dx-fin-solo-lectura">{moneda === 'USD' ? 'Dólares (USD)' : 'Soles (PEN)'}</span> : (
+                        <select className="dx-ui-select" {...inputProps('moneda')}>
+                          <option value="PEN">Soles (PEN)</option>
+                          <option value="USD">Dólares (USD)</option>
+                        </select>
+                      )}
                     </Campo>
                     <Campo id="fin-monto_original" label="Monto recibido" requerido error={errores.monto_original}>
                       <input {...inputProps('monto_original', { type: 'number', min: 0, step: '0.01', inputMode: 'decimal' })} />
@@ -448,13 +450,18 @@ export default function FinanciamientoAsistente({
 
           <aside className="dx-ui-card dx-fin-aside" aria-label="Resumen del préstamo">
             <h3>Resumen</h3>
-            <dl className="dx-fin-dl">
-              {resumen.map(([k, v]) => <React.Fragment key={k}><dt>{k}</dt><dd>{v}</dd></React.Fragment>)}
-            </dl>
-            {totalPagar != null && (
-              <div className="dx-fin-total"><span>Total por pagar</span><strong>{money(totalPagar)}</strong></div>
+            {calculoEdicion?.error ? (
+              <p className="dx-fin-nota dx-ui-field-error" role="status">{calculoEdicion.error}</p>
+            ) : (
+              <>
+                <dl className="dx-fin-dl">
+                  {resumen.map(([k, v]) => <React.Fragment key={k}><dt>{k}</dt><dd>{v}</dd></React.Fragment>)}
+                </dl>
+                {totalPagar != null && (
+                  <div className="dx-fin-total"><span>Total por pagar</span><strong>{money(totalPagar)}</strong></div>
+                )}
+              </>
             )}
-            {calculoEdicion?.error && paso >= 1 && <p className="dx-fin-nota dx-ui-field-error">{calculoEdicion.error}</p>}
           </aside>
         </div>
       </div>

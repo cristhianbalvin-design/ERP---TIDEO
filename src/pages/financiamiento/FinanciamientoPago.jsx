@@ -224,7 +224,7 @@ export default function FinanciamientoPago({ financiamiento: f, cuotaInicial = n
           <div className="dx-ui-dialog-foot">
             {errorServidor && <div className="dx-fin-barra-error" role="alert">{errorServidor}</div>}
             <button type="button" className="dx-btn" onClick={onCerrar} disabled={guardando}>Cancelar</button>
-            <button type="button" className="dx-btn primary" onClick={confirmar} disabled={guardando || !(res.total > 0)}>{guardando ? 'Registrando…' : `Registrar pago de ${money(res.total)}`}</button>
+            <button type="button" className="dx-btn primary" onClick={confirmar} disabled={guardando}>{guardando ? 'Registrando…' : res.total > 0 ? `Registrar pago de ${money(res.total)}` : 'Registrar pago'}</button>
           </div>
         </div>
       </div>

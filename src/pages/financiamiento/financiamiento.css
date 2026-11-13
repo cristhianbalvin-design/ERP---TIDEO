@@ -176,6 +176,9 @@
 .dx-fin .dx-fin-revision .dx-fin-tbl-wrap { border:1px solid var(--dx-ui-line); border-radius:10px }
 .dx-fin .dx-fin-barra { position:sticky; z-index:5; bottom:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:16px; padding:12px 16px; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 -6px 18px rgba(15,27,48,.06) }
 .dx-fin .dx-fin-barra-sep { flex:1 }
+.dx-fin .dx-fin-solo-lectura { display:flex; align-items:center; min-height:40px; color:var(--dx-ui-ink); font-size:14px; font-weight:600 }
+/* Deja libre la esquina del botón flotante de Aria */
+@media (min-width:761px) { .dx-fin .dx-fin-barra { padding-right:128px } }
 .dx-fin .dx-fin-barra-error { flex:1 1 100%; padding:10px 12px; border-radius:10px; background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); font-size:13px }
 .dx-fin .dx-fin-link { align-self:flex-start; padding:0; border:0; background:transparent; color:var(--dx-ui-cyan-fg); font:600 12px 'DM Sans',sans-serif; cursor:pointer }
 .dx-fin .dx-fin-link:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px }
@@ -208,7 +211,7 @@
 .dx-fin .dx-fin-pago-resumen strong { color:var(--dx-ui-navy); font:700 16px Sora,sans-serif; white-space:nowrap }
 .dx-fin .dx-fin-pago-resumen .is-total { border-color:var(--dx-ui-cyan); background:var(--dx-ui-cyan-bg) }
 .dx-fin .dx-fin-pago-resumen .is-total strong { color:var(--dx-ui-cyan-fg) }
-.dx-fin .dx-fin-pago .dx-ui-dialog-head .dx-btn.sm { width:32px; padding:0; font-size:18px }
+.dx-fin-pago .dx-ui-dialog-head .dx-btn.sm { flex:none; width:32px; padding:0; font-size:20px; line-height:1 }
 @container (max-width:640px) {
   .dx-fin .dx-fin-pago-body .dx-ui-form-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
   .dx-fin .dx-fin-pago-resumen { grid-template-columns:repeat(2,minmax(0,1fr)) }
