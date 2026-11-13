@@ -5,7 +5,7 @@ catalogo: operaciones/transporte-viaje
 titulo: Detalle de viaje
 resumen: Asignación, despacho y reprogramación de un viaje.
 componentes: operaciones-app/src/zahory-mock/pages/transporte/ViajeDetallePage.jsx#ViajeDetallePage
-huella: 42c87dc48a
+huella: 3be3705461
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Asignar y despachar define la unidad y el conductor y da la salida del viaje.
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Cambiar asignación reemplaza la unidad o el conductor, y Reprogramar cambia la fecha.
 paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Desde el detalle puedes ir a la Hoja de Ruta o volver al Monitor de Viajes.
@@ -15,3 +15,4 @@ paso: 6 | pantalla=transporte_comercial | permiso=ninguno | En otros casos deja 
 paso: 7 | pantalla=transporte_comercial | permiso=ninguno | Guardar asignación deja la unidad y el conductor definidos sin dar la salida, y queda anotado en la bitácora del viaje. Agregar nota suma una nota a la bitácora sin cambiar el estado. Cancelar viaje pide confirmación.
 paso: 8 | pantalla=transporte_comercial | permiso=ninguno | El sistema no recibe GPS de las unidades: la posición y la hora de llegada que muestra un viaje en ruta son estimadas por el tiempo transcurrido desde la salida. Un incidente deja el viaje en estado con incidente.
 paso: 9 | pantalla=transporte_comercial | permiso=ninguno | Si no puedes despachar, lo más frecuente es un brevete o un MTC vencido: actualiza su vigencia en Transporte › Flota.
+paso: 10 | pantalla=transporte_comercial | permiso=ninguno | Cuando un viaje comercial queda entregado, Liquidar te lleva a Liquidación de transporte, en la pestaña Por liquidar. Si el viaje ya está en una liquidación, Ver liquidación abre la lista de liquidaciones.
