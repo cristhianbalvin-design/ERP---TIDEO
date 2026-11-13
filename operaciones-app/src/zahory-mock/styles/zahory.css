@@ -8212,6 +8212,11 @@ width:20px;height:20px}
 
 /* ===== Órdenes de Fabricación · Avance por partes F3b (dx-ofd-) ===== */
 .dx-ofd-kpis.dx-ui { margin-bottom:0; }
+.dx-ofd-kpis .dx-ui-kpi strong { white-space:nowrap; }
+/* Los formularios de los modales de la OF van en 2 columnas (la regla base .dx-ui .dx-ui-form-grid los deja en 1 bajo 760 px). */
+.dx-ofd-modal > .dx-ui .dx-ui-form-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.dx-ofd-partes { container-type:inline-size; }
+.dx-ofd-partes .dx-ofd-k { display:none; }
 .dx-ofd-op.is-prod { grid-template-columns:28px minmax(130px,1.4fr) minmax(100px,1fr) 104px minmax(120px,1.1fr) minmax(110px,1fr) 112px; column-gap:10px; }
 .dx-ofd-progress { display:flex; align-items:center; gap:8px; min-width:0; }
 .dx-ofd-progress b { flex:none; min-width:38px; color:var(--n); font-size:12px; }
@@ -8238,10 +8243,15 @@ width:20px;height:20px}
 .dx-ofd-tag.is-gray { background:var(--grb2); color:var(--grf2); }
 @container (max-width:1100px) {
   .dx-ofd-op.is-prod { grid-template-columns:28px minmax(110px,1.4fr) minmax(80px,1fr) 92px minmax(90px,1fr) minmax(90px,1fr) 104px; }
-  .dx-ofd-parte { grid-template-columns:minmax(100px,.9fr) minmax(120px,1.4fr) minmax(90px,1fr) 56px 64px 104px 76px; }
 }
 @container (max-width:760px) {
   .dx-ofd-op.is-prod { grid-template-columns:28px minmax(0,1fr) auto; grid-template-areas:'seq tar st' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah'; }
+}
+/* La lista de partes responde a su propio ancho (.dx-ofd-partes), no al de la página. */
+@container (max-width:820px) {
+  .dx-ofd-parte { grid-template-columns:minmax(96px,.9fr) minmax(120px,1.4fr) minmax(90px,1fr) 52px 60px 104px 76px; }
+}
+@container (max-width:700px) {
   .dx-ofd-parte { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'num st' 'op op' 'tec tec' 'hh av' 'acc acc'; row-gap:6px; }
   .dx-ofd-parte.is-head { display:none; }
   .dx-ofd-p-num { grid-area:num; }
@@ -8252,6 +8262,10 @@ width:20px;height:20px}
   .dx-ofd-p-st { grid-area:st; justify-self:end; }
   .dx-ofd-p-acc { grid-area:acc; justify-content:flex-start; }
   .dx-ofd-p-acc:empty { display:none; }
+  .dx-ofd-partes .dx-ofd-k { display:inline; }
+}
+@container (max-width:480px) {
+  .dx-ofd-modal > .dx-ui .dx-ui-form-grid { grid-template-columns:minmax(0,1fr); }
 }
 
 /* Catálogo de venta (dx-wcat): popover de materiales, resumen del producto y filas editables */

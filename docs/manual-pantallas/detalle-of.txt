@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
 resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación con reserva de stock y SOLPE, registro y revisión de avance por partes, costo real y calidad.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
-huella: 9d45607da0
+huella: 56692b0bea
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
