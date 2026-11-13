@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 73 (95 %) | 30 (39 %) | 3 | 3 |
-| Operaciones | 120 | 49 (41 %) | 46 (38 %) | 1 | 58 |
+| Operaciones | 120 | 50 (42 %) | 46 (38 %) | 1 | 58 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 131 (64 %) | 76 (37 %) | 4 | 61 |
+| **Total** | 206 | 132 (64 %) | 76 (37 %) | 4 | 61 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_estado_resultados`, `asistente_presupuesto_real`, `asistente_resumen_financiero`.
 
@@ -218,7 +218,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Transporte Comercial | Dashboard de Transporte (`dashboard-transporte`) | maqueta | — | — | 1 | — |
 | Transporte Comercial | Nueva orden de viaje (`transporte-crear-ov`) | activa | orden_viaje | proceso_viaje_transporte | 1 | — |
 | Transporte Comercial | Flota (`transporte-flota`) | activa | flota_transporte | — | 1 | — |
-| Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | maqueta | — | — | 1 | — |
+| Transporte Comercial | Liquidación de transporte (`transporte-liquidacion`) | activa | transporte_liquidacion | — | 1 | — |
 | Transporte Comercial | Lugares (`transporte-lugares`) | activa | lugares_transporte | — | 1 | — |
 | Transporte Comercial | Hoja de Ruta (`transporte-ruta`) | activa | hoja_ruta | proceso_viaje_transporte | 1 | — |
 | Transporte Comercial | Maestro de Rutas (`transporte-tarifas`) | activa | maestro_rutas | — | 1 | — |

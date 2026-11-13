@@ -5,9 +5,10 @@ catalogo: operaciones/transporte-tarifas-config
 titulo: Tarifas Transporte
 resumen: Tarifas del servicio de transporte.
 componentes: operaciones-app/src/zahory-mock/pages/transporte/TarifasTransportePage.jsx#TarifasTransportePage
-huella: 4231d5fd58
+huella: 69722f9abe
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Nueva tarifa registra una tarifa; una tarifa también se puede anular.
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Resolver tarifa consulta qué tarifa aplica a un caso concreto.
 paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Para qué sirve: la tarifa dice cuánto se cobra por un viaje en una ruta, según el tipo de unidad, la modalidad y la moneda. Hay dos niveles: la tarifa base de la ruta y la tarifa acordada con un cliente. Al crear un viaje se usa primero la del cliente y, si no tiene, la base.
 paso: 4 | pantalla=transporte_comercial | permiso=ninguno | Cada tarifa tiene un periodo de vigencia y dos tarifas iguales no pueden estar vigentes a la vez. Si la que estás guardando se cruza con otra, la pantalla lo avisa y ofrece Editar esa tarifa para cerrar la anterior.
 paso: 5 | pantalla=transporte_comercial | permiso=ninguno | El simulador ¿Cuánto cobro? responde qué tarifa se aplicaría a un caso concreto antes de crear el viaje.
+paso: 6 | pantalla=transporte_comercial | permiso=ninguno | En la tarifa puedes indicar las horas libres de espera por parada (carga y descarga) y el precio por hora de espera; si dejas vacías las horas libres, no se cobra espera. Marca Peajes si la tarifa ya los incluye; si no, se cobran según los tickets del conductor. Estos datos se usan en la liquidación.
