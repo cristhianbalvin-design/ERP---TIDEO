@@ -9,7 +9,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { raiz } from './inventario-codigo.mjs';
-import { extraerPantalla } from './extraer.mjs';
+import { extraerDeCodigo } from './extraer.mjs';
+import { codigoComponente } from './huella.mjs';
 
 export const COBERTURA_MINIMA = 0.8;
 export const PASOS_MINIMOS = 5;
@@ -77,7 +78,7 @@ export function leerFichasPantalla(root = raiz) {
 export function evaluarTodas(root = raiz) {
   return leerFichasPantalla(root).map(ficha => {
     let botones = [];
-    try { botones = extraerPantalla(ficha.componentes, root).botones; } catch { botones = []; }
+    try { botones = extraerDeCodigo(ficha.componentes.map(ref => codigoComponente(ref, root, { soloInterfaz: true })).join('\n\n')).botones; } catch { botones = []; }
     return { ficha, ...evaluarFicha(ficha, botones) };
   });
 }
