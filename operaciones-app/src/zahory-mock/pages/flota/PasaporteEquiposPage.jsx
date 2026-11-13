@@ -15,8 +15,9 @@ export function PasaporteEquiposPage() {
   useEffect(()=>{loadPassport();},[sesion.empresaId,activoId]);
   const visible=useMemo(()=>equipos.filter(e=>(propiedad==='Todos'||e.propietario_tipo===propiedad)&&(!fecha||e.fecha_alta===fecha)&&normaliza([e.codigo,e.nombre,e.marca,e.modelo,e.placa_serie,e['año_fabricacion'],e['año_overhaul'],e.propietario_tipo,e.cliente_propietario_id,e.cliente_propietario_nombre,e.horometro_actual,e.ubicacion,e.estado,e.estado_flota].join(' ')).includes(normaliza(q))),[equipos,propiedad,fecha,q]);
   const equipo=passport?.activo||equipos.find(a=>a.id===activoId);const timeline=[...(passport?.contratos||[]).map(c=>({fecha:c.fecha_inicio,tipo:'Contrato',titulo:`Contrato ${c.numero}`,detalle:`${c.estado} · hasta ${c.fecha_fin}`})),...(passport?.lecturas||[]).map(l=>({fecha:l.fecha_lectura,tipo:'Horómetro',titulo:`${Number(l.valor).toLocaleString('es-PE')} ${l.unidad||'h'}`,detalle:l.origen||''})),...(passport?.documentos||[]).map(d=>({fecha:d.created_at?.slice(0,10),tipo:'Documento',titulo:d.nombre,detalle:etiquetaTipo(d.tipo)}))].filter(x=>x.fecha).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
-  const fichaRef=useRef(null);
-  const seleccionarEquipo=id=>{setActivoId(id);requestAnimationFrame(()=>fichaRef.current?.scrollIntoView({behavior:'smooth',block:'start'}));};
+  const fichaRef=useRef(null);const desplazamientoPendiente=useRef(false);const [seleccion,setSeleccion]=useState(0);
+  useEffect(()=>{if(desplazamientoPendiente.current&&!passportLoading&&fichaRef.current){fichaRef.current.scrollIntoView({behavior:'smooth',block:'start'});desplazamientoPendiente.current=false;}},[passportLoading,activoId,equipo,seleccion]);
+  const seleccionarEquipo=id=>{desplazamientoPendiente.current=true;if(id!==activoId)setPassportLoading(true);setActivoId(id);setSeleccion(n=>n+1);};
   const [documentoEquipoId,setDocumentoEquipoId]=useState('');
   const abrirEdicion=doc=>{setEditingId(doc.id);setDocumentoEquipoId(activoId||'');setTipo(doc.tipo);setNombre(doc.nombre);setEmision(doc.fecha_emision||'');setVencimiento(doc.fecha_vencimiento||'');setNotas(doc.notas||'');setFile(null);setModal(true);};
   const abrirNuevoDocumento=()=>{setEditingId(null);setDocumentoEquipoId(activoId||'');setTipo('ficha_tecnica');setNombre('');setEmision('');setVencimiento('');setNotas('');setFile(null);setModal(true);};
