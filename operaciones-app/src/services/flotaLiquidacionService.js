@@ -10,21 +10,13 @@ const datos = ({ data, error }) => {
 const rpc = async (nombre, args) => datos(await db().rpc(nombre, args));
 export async function permisosLiquidacionFlota(empresaId) {
   const acciones = ["ver", "crear", "editar", "aprobar", "anular"];
-  const valores = await Promise.all(
-    acciones.map(async (accion) => {
-      try {
-        const { data, error } = await db().rpc("usuario_puede", {
-          target_empresa_id: empresaId,
-          target_pantalla: "liquidacion_flota",
-          target_accion: accion,
-        });
-        return !error && Boolean(data);
-      } catch {
-        return false;
-      }
-    }),
-  );
-  return Object.fromEntries(acciones.map((x, i) => [x, valores[i]]));
+  const { data, error } = await db().rpc("flota_permisos_pantalla", {
+    p_empresa_id: empresaId,
+    p_pantalla: "liquidacion_flota",
+  });
+  if (error) throw new Error(error.message || "No se pudieron cargar los permisos.");
+  if (data == null) throw new Error("No se recibieron los permisos de Liquidación & DMR.");
+  return Object.fromEntries(acciones.map((accion) => [accion, data[accion] === true]));
 }
 export async function cargarContratosLiquidacion(empresaId) {
   const filas =

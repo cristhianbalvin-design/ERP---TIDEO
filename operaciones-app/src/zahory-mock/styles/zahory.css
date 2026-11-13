@@ -6407,7 +6407,7 @@ width:20px;height:20px}
 .dx-liqf-calc .dx-liqf-total { color:var(--dx-ui-navy); font-size:15px; }
 .dx-liqf-history { padding:12px 16px; }
 @media (max-width:900px) {
-  .dx-liqf .dx-liqf-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+
   .dx-liqf .dx-liqf-table { display:none; }
   .dx-liqf .dx-liqf-cards { display:block; }
   .dx-liqf-detailgrid { grid-template-columns:minmax(0,1fr); }
@@ -10166,3 +10166,12 @@ width:20px;height:20px}
 @container (max-width: 880px) { .dx-opsi-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 600px) { .dx-opsi-head { align-items: flex-start; } .dx-opsi-head h1 { font-size: 22px; } }
 @container (max-width: 420px) { .dx-opsi-kpis, .dx-opsi-quick { grid-template-columns: 1fr; } .dx-opsi-alert { grid-template-columns: auto minmax(0, 1fr); } .dx-opsi-alert .dx-opsi-btn { grid-column: 2; justify-self: start; } }
+
+/* Ajustes de Pasaporte y KPI de Liquidacion. */
+.dx-pasaporte .dx-pasaporte-confirm-body { padding:14px 20px; margin:0; }
+.dx-liqf { container:liquidacion / inline-size; }
+.dx-liqf .dx-liqf-kpis .dx-ui-kpi { min-width:0; flex-direction:column; align-items:flex-start; gap:0; overflow:hidden; }
+.dx-liqf .dx-liqf-kpis .dx-ui-kpi strong { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dx-liqf .dx-liqf-kpis .dx-ui-kpi span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@container liquidacion (max-width:900px) { .dx-liqf .dx-liqf-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container liquidacion (max-width:440px) { .dx-liqf .dx-liqf-kpis { grid-template-columns:minmax(0,1fr); } }

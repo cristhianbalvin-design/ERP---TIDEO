@@ -4,7 +4,7 @@ import { nuevoId } from '../../../services/actaConformidadService.js';
 import {
   ahoraLocalInput, anularActa, cargarActas, cargarChecklist, cargarDetalleActa, cargarEquiposDeContratos, cargarEstadoEquipos,
   cargarGuias, cargarRequisitos, hoyLocal, cargarSugeridos, descartarArchivo, formatoFecha, formatoFechaHora, guardarActa, guardarChecklistItem,
-  normalizar, permisosPantalla, subirFirmaActa, subirFotoActa, tomarPreseleccionActa,
+  normalizar, permisosPantalla, subirDocumento, subirFirmaActa, subirFotoActa, tomarPreseleccionActa,
 } from '../../../services/flotaRentalService.js';
 import { FirmaTrazo } from '../FirmaTrazo.jsx';
 import { Campo, Dato, Dialogo, ErrorPie, LineaTiempo, MotivoForm, Pill, contar, enfocarPrimerError, filaTeclado } from './flotaUi.jsx';
@@ -161,7 +161,10 @@ function DetalleActa({ empresaId, acta, permisos, onCerrar, onContinuar, onAnula
         <div>
           <h3>Evidencia</h3>
           {!info ? <p className="dx-flotab-muted">Cargando…</p> : info.evidencias.length
-            ? <div className="dx-flotab-thumbs">{info.evidencias.map(e => e.url ? <a key={e.id} href={e.url} target="_blank" rel="noreferrer"><img src={e.url} alt={e.descripcion || 'Foto del equipo'} /></a> : <span key={e.id} className="dx-flotab-muted">Foto no disponible</span>)}</div>
+            ? <div className="dx-flotab-thumbs">{info.evidencias.map(e => e.url
+              ? <a key={e.id} href={e.url} target="_blank" rel="noreferrer">{e.tipo === 'documento'
+                ? e.descripcion || 'Abrir documento PDF' : <img src={e.url} alt={e.descripcion || 'Foto del equipo'} />}</a>
+              : <span key={e.id} className="dx-flotab-muted">{e.tipo === 'documento' ? 'Documento' : 'Foto'} no disponible</span>)}</div>
             : <p className="dx-flotab-muted">Sin fotos.</p>}
           <h3>Firmas</h3>
           {!info ? null : info.firmas.length ? <div className="dx-flotab-signs">{info.firmas.map(f =>
@@ -185,6 +188,7 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
   const [opciones, setOpciones] = useState([]);
   const [estados, setEstados] = useState(new Map());
   const [guias, setGuias] = useState([]);
+  const [errorGuias, setErrorGuias] = useState('');
   const [plantilla, setPlantilla] = useState([]);
   const [form, setForm] = useState(() => ({
     tipo: borrador?.tipo || inicial.tipo || 'despacho',
@@ -211,9 +215,14 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
     let vivo = true;
     (async () => {
       try {
-        const [ops, est, gs, items] = await Promise.all([cargarEquiposDeContratos(empresaId), cargarEstadoEquipos(empresaId), cargarGuias(empresaId).catch(() => []), cargarChecklist(empresaId)]);
+        const [ops, est, resultadoGuias, items] = await Promise.all([
+          cargarEquiposDeContratos(empresaId), cargarEstadoEquipos(empresaId),
+          cargarGuias(empresaId).then(data => ({ data })).catch(error => ({ error })), cargarChecklist(empresaId),
+        ]);
         if (!vivo) return;
-        setOpciones(ops); setEstados(est); setGuias(gs); setPlantilla(items.filter(i => i.activo));
+        setOpciones(ops); setEstados(est); setGuias(resultadoGuias.data || []);
+        setErrorGuias(resultadoGuias.error ? `No se pudieron cargar las guías: ${resultadoGuias.error.message}` : '');
+        setPlantilla(items.filter(i => i.activo));
         if (!borrador && inicial.activoId) {
           const candidatos = ops.filter(o => o.equipo_id === inicial.activoId && disponibleParaActa(o, est.get(o.equipo_id), inicial.tipo || 'despacho'));
           if (candidatos.length === 1) setForm(f => ({ ...f, contrato_equipo_id: candidatos[0].id }));
@@ -310,6 +319,20 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
     if (subidasNuevas.current.includes(foto.storage_path)) await descartarArchivo(foto.storage_path);
   };
 
+  const agregarDocumentos = async archivos => {
+    if (!archivos?.length) return;
+    setSubiendo(true); setErrores(e => ({ ...e, documentos: '' }));
+    try {
+      for (const archivo of archivos) {
+        if (archivo.type !== 'application/pdf') throw new Error('Adjunta únicamente documentos PDF.');
+        const storage_path = await subirDocumento({ empresaId, carpeta: `actas/${carpeta}`, archivo });
+        subidasNuevas.current.push(storage_path);
+        setFotos(actual => [...actual, { tipo: 'documento', storage_path, descripcion: archivo.name }]);
+      }
+    } catch (e) { setErrores(er => ({ ...er, documentos: e.message || 'No se pudo subir el documento.' })); }
+    finally { setSubiendo(false); }
+  };
+
   const cancelar = async () => {
     await Promise.all(subidasNuevas.current.map(descartarArchivo));
     onCerrar();
@@ -359,7 +382,7 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
       <button type="button" className="dx-btn" onClick={cancelar} disabled={guardando}>Cancelar</button>
       {paso > 0 && <button type="button" className="dx-btn" onClick={() => setPaso(p => p - 1)} disabled={guardando}>Atrás</button>}
       {form.contrato_equipo_id && <button type="button" className="dx-btn" onClick={() => guardar(false)} disabled={guardando || subiendo}>Guardar borrador</button>}
-      {paso < 4 ? <button type="button" className="dx-btn primary" onClick={avanzar} disabled={guardando || (paso === 1 && (bloqueado || !requisitos))} title={paso === 1 && bloqueado ? 'Renueva las certificaciones obligatorias para despachar.' : ''}>Avanzar</button>
+      {paso < 4 ? <button type="button" className="dx-btn primary" onClick={avanzar} disabled={guardando || subiendo || (paso === 1 && (bloqueado || !requisitos))} title={paso === 1 && bloqueado ? 'Renueva las certificaciones obligatorias para despachar.' : ''}>Avanzar</button>
         : <button type="button" className="dx-btn primary" onClick={() => guardar(true)} disabled={guardando || subiendo || bloqueado}>{guardando ? 'Confirmando…' : 'Confirmar acta'}</button>}
     </>
   );
@@ -463,10 +486,17 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
                   <input data-campo="fotos" type="file" accept="image/jpeg,image/png,image/webp" multiple capture="environment" disabled={subiendo}
                     onChange={e => { agregarFotos([...e.target.files]); e.target.value = ''; }} />
                 </Campo>
-                {subiendo && <p className="dx-flotab-muted dx-flotab-span" role="status">Subiendo fotos…</p>}
+                <Campo etiqueta="Documentos PDF" ancho error={errores.documentos} ayuda="Opcional · hasta 10 MB por archivo.">
+                  <input type="file" accept="application/pdf,.pdf" multiple disabled={subiendo}
+                    onChange={e => { agregarDocumentos([...e.target.files]); e.target.value = ''; }} />
+                </Campo>
+                {subiendo && <p className="dx-flotab-muted dx-flotab-span" role="status">Subiendo archivos…</p>}
                 {fotos.length > 0 && <div className="dx-flotab-thumbs dx-flotab-span">{fotos.map(f => (
-                  <figure key={f.storage_path}>{f.url ? <img src={f.url} alt="Foto del equipo" /> : <span className="dx-flotab-muted">Foto guardada</span>}
-                    <button type="button" className="dx-btn" aria-label="Quitar foto" onClick={() => quitarFoto(f)}>Quitar</button></figure>
+                  <figure key={f.storage_path}>{f.tipo === 'documento'
+                    ? <span>{f.descripcion || 'Documento PDF'}</span>
+                    : f.url ? <img src={f.url} alt="Foto del equipo" /> : <span className="dx-flotab-muted">Foto guardada</span>}
+                    <button type="button" className="dx-btn" aria-label={f.tipo === 'documento' ? 'Quitar documento' : 'Quitar foto'}
+                      onClick={() => quitarFoto(f)}>Quitar</button></figure>
                 ))}</div>}
                 <Campo etiqueta="Guía de remisión" requerido error={errores.guia_modo}>
                   <select data-campo="guia_modo" className="dx-ui-select" value={form.guia_modo} onChange={e => set('guia_modo', e.target.value)}>
@@ -475,7 +505,8 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
                     <option value="no">Este traslado no la exige</option>
                   </select>
                 </Campo>
-                {form.guia_modo === 'guia' && <Campo etiqueta="Guía" requerido error={errores.guia_remision_id} ayuda={guias.length ? undefined : 'No hay guías disponibles o no tienes permiso para verlas.'}>
+                {form.guia_modo === 'guia' && errorGuias && <p className="dx-ui-error dx-flotab-span" role="alert">{errorGuias}</p>}
+                {form.guia_modo === 'guia' && <Campo etiqueta="Guía" requerido error={errores.guia_remision_id} ayuda={guias.length || errorGuias ? undefined : 'No hay guías disponibles o no tienes permiso para verlas.'}>
                   <select data-campo="guia_remision_id" className="dx-ui-select" value={form.guia_remision_id} onChange={e => set('guia_remision_id', e.target.value)}>
                     <option value="">Seleccionar…</option>
                     {guias.map(g => <option key={g.id} value={g.id}>{g.numero_completo} · {formatoFecha(g.fecha_emision)}{g.destinatario_razon_social ? ` · ${g.destinatario_razon_social}` : ''}</option>)}
@@ -515,7 +546,7 @@ function AsistenteActa({ empresaId, inicial, onCerrar, onTerminar }) {
                 })}
                 <div className="dx-flotab-span dx-flotab-summary">
                   <b>Resumen</b>
-                  <span>{TIPOS[form.tipo][0]} · {seleccion ? `${seleccion.contrato.numero} · ${equipoEtiqueta(seleccion)}` : 'sin equipo'} · horómetro {form.horometro || 'Sin dato'} h · {contar(fotos.length, 'foto', 'fotos')} · checklist {checklist.filter(c => c.ok === true).length}/{checklist.length} conforme.</span>
+                  <span>{TIPOS[form.tipo][0]} · {seleccion ? `${seleccion.contrato.numero} · ${equipoEtiqueta(seleccion)}` : 'sin equipo'} · horómetro {form.horometro || 'Sin dato'} h · {contar(fotos.filter(f => f.tipo === 'foto').length, 'foto', 'fotos')} · checklist {checklist.filter(c => c.ok === true).length}/{checklist.length} conforme.</span>
                 </div>
               </div>
             )}

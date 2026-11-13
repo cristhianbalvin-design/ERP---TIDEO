@@ -106,7 +106,9 @@ const dmrTono = (valor, meta) =>
 export function LiquidacionFlotaPage() {
   const sesion = useSesionOperativa();
   const empresaId = sesion.empresaId;
-  const [permisos, setPermisos] = useState(null);
+  const [permisos, setPermisos] = useState({ ver: false, crear: false, editar: false, aprobar: false, anular: false });
+  const [permisosResueltos, setPermisosResueltos] = useState(false);
+  const [errorPermisos, setErrorPermisos] = useState("");
   const [contratos, setContratos] = useState([]);
   const [equipos, setEquipos] = useState([]);
   const [partes, setPartes] = useState([]);
@@ -153,7 +155,16 @@ export function LiquidacionFlotaPage() {
   }, [empresaId, mes]);
   useEffect(() => {
     if (!empresaId) return;
-    permisosLiquidacionFlota(empresaId).then(setPermisos);
+    let vigente = true;
+    setPermisos({ ver: false, crear: false, editar: false, aprobar: false, anular: false });
+    setPermisosResueltos(false);
+    setErrorPermisos("");
+    permisosLiquidacionFlota(empresaId).then((p) => {
+      if (vigente) { setPermisos(p); setPermisosResueltos(true); }
+    }).catch((e) => {
+      if (vigente) { setErrorPermisos(e.message || "No se pudieron cargar los permisos."); setPermisosResueltos(true); }
+    });
+    return () => { vigente = false; };
   }, [empresaId]);
   useEffect(() => {
     recargar();
@@ -316,15 +327,7 @@ export function LiquidacionFlotaPage() {
       setBusy(false);
     }
   };
-  if (!permisos || cargando)
-    return (
-      <section className="dx-ui dx-flotab dx-liqf">
-        <div className="dx-ui-empty">
-          {permisos ? "Cargando contratos, partes y liquidaciones…" : "Cargando permisos…"}
-        </div>
-      </section>
-    );
-  if (!permisos.ver)
+  if (permisosResueltos && !permisos.ver && !errorPermisos)
     return (
       <section className="dx-ui dx-flotab dx-liqf">
         <div className="dx-ui-empty">No tienes permiso para ver Liquidación &amp; DMR.</div>
@@ -345,6 +348,8 @@ export function LiquidacionFlotaPage() {
         </p>
       )}
       {actualizando && <span className="dx-liqf-refresh" role="status">Actualizando…</span>}
+      {cargando && <span className="dx-liqf-refresh" role="status">Cargando datos…</span>}
+      {errorPermisos && <p className="dx-ui-error" role="alert">{errorPermisos}</p>}
       {error && (
         <p className="dx-ui-error" role="alert">
           {error}
@@ -394,35 +399,35 @@ export function LiquidacionFlotaPage() {
               <input className="dx-ui-control" type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
             </label>
             <span className="dx-liqf-grow" />
-            {permisos.crear && (
+            {(permisos.crear || !permisosResueltos || errorPermisos) && (
               <button
                 className="dx-btn primary"
-                disabled={!equipoId || liqBloquea}
+                disabled={!permisos.crear || !equipoId || liqBloquea}
                 onClick={() => abrirParte(faltan[0]?.fecha || hoy())}
               >
                 ＋ Nuevo parte
               </button>
             )}
           </div>
-          <div className="dx-ui-summary dx-liqf-kpis">
-            <div className="dx-ui-chip">
-              <b>
+          <div className="dx-ui-kpi-row dx-liqf-kpis">
+            <div className="dx-ui-kpi">
+              <strong>
                 {nf(kpisPartes.operadas)} / {nf(kpisPartes.programadas)} h
-              </b>
+              </strong>
               <span>Horas operadas de programadas</span>
             </div>
-            <div className="dx-ui-chip">
-              <b className={`dx-liqf-${dmrTono(dmr, contrato?.meta_dmr)}`}>{dmr == null ? "—" : `${nf(dmr)} %`}</b>
+            <div className="dx-ui-kpi">
+              <strong className={`dx-liqf-${dmrTono(dmr, contrato?.meta_dmr)}`}>{dmr == null ? "—" : `${nf(dmr)} %`}</strong>
               <span>DMR del mes · meta {nf(contrato?.meta_dmr)} %</span>
             </div>
-            <div className="dx-ui-chip">
-              <b>{nf(kpisPartes.proveedor)} h</b>
+            <div className="dx-ui-kpi">
+              <strong>{nf(kpisPartes.proveedor)} h</strong>
               <span>
                 Paradas del proveedor <small>{nf(kpisPartes.cliente)} h del cliente</small>
               </span>
             </div>
-            <div className="dx-ui-chip">
-              <b>{faltan.length} días</b>
+            <div className="dx-ui-kpi">
+              <strong>{faltan.length} días</strong>
               <span>
                 Sin parte{" "}
                 {faltan.length
@@ -571,37 +576,37 @@ export function LiquidacionFlotaPage() {
               </select>
             </label>
         <span className="dx-liqf-grow" />
-            {permisos.crear && (
-              <button className="dx-btn primary" onClick={() => setCrearOpen(true)}>
+            {(permisos.crear || !permisosResueltos || errorPermisos) && (
+              <button className="dx-btn primary" disabled={!permisos.crear} onClick={() => setCrearOpen(true)}>
                 ＋ Liquidar un mes
               </button>
             )}
           </div>
-          <div className="dx-ui-summary dx-liqf-kpis">
-            <div className="dx-ui-chip">
-              <b>
+          <div className="dx-ui-kpi-row dx-liqf-kpis">
+            <div className="dx-ui-kpi">
+              <strong>
                 {moneda(
                   kpiLiq.reduce((s, l) => s + Number(l.total || 0), 0),
                   kpiLiq[0]?.moneda,
                 )}
-              </b>
+              </strong>
               <span>Por liquidar</span>
             </div>
-            <div className="dx-ui-chip">
-              <b>{nf(kpiLiq.reduce((s, l) => s + Number(l.horas_operadas || 0), 0))} h</b>
+            <div className="dx-ui-kpi">
+              <strong>{nf(kpiLiq.reduce((s, l) => s + Number(l.horas_operadas || 0), 0))} h</strong>
               <span>Horas operadas</span>
             </div>
-            <div className="dx-ui-chip">
-              <b>
+            <div className="dx-ui-kpi">
+              <strong>
                 {moneda(
                   kpiLiq.reduce((s, l) => s + Number(l.penalidad || 0), 0),
                   kpiLiq[0]?.moneda,
                 )}
-              </b>
+              </strong>
               <span>Penalidades DMR</span>
             </div>
-            <div className="dx-ui-chip">
-              <b>{kpiLiq.reduce((s, l) => s + Number(l.dias_faltantes || 0), 0)}</b>
+            <div className="dx-ui-kpi">
+              <strong>{kpiLiq.reduce((s, l) => s + Number(l.dias_faltantes || 0), 0)}</strong>
               <span>Días sin parte</span>
             </div>
           </div>

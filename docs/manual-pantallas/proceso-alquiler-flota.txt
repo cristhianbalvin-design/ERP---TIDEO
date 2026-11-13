@@ -5,7 +5,7 @@ catalogo: operaciones/flota, operaciones/contratos-rental, operaciones/checkout,
 titulo: Alquiler de equipos: del contrato a la liquidación
 resumen: Sigue un alquiler de equipo: registro del equipo, contrato, acta de despacho y de recepción, partes diarios y liquidación mensual.
 componentes: operaciones-app/src/zahory-mock/pages/flota/FlotaPanelPage.jsx#FlotaPanelPage, operaciones-app/src/zahory-mock/pages/flota/ContratosRentalPage.jsx#ContratosRentalPage, operaciones-app/src/zahory-mock/pages/flota/ActasDespachosPage.jsx#ActasDespachosPage, operaciones-app/src/zahory-mock/pages/flota/LiquidacionFlotaPage.jsx#LiquidacionFlotaPage
-huella: a4bc77e2dd b8f7626900 b079728c36 a3c150a93e
+huella: a4bc77e2dd b8f7626900 b0f416afdf fa96e9f580
 pantalla_recorrido: flota_panel,contratos_alquiler,actas_despachos,liquidacion_flota
 paso: 1 | pantalla=flota_panel | permiso=ninguno | El equipo propio se da de alta en el Panel de Flota con Registrar equipo.
 paso: 2 | pantalla=contratos_alquiler | permiso=ninguno | El alquiler se formaliza en Contratos Rental con Nuevo contrato. Si la tarifa cambia, Cambiar tarifa guarda una nueva versión del contrato.
