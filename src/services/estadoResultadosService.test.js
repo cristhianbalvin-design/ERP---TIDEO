@@ -18,6 +18,14 @@ test('un gasto excluido no entra al ER y un gasto normal sí entra', () => {
   assert.deepEqual(filtrarComprasGastosParaEr(gastos).map(g => g.id), ['normal']);
 });
 
+test('el gasto espejo de un pago de préstamo no entra al ER (el interés se toma de pagos_financiamiento)', () => {
+  const gastos = [
+    { id: 'gasto_int_fin_1_1', monto: 300, categoria: 'Gastos financieros', financiamiento_id: 'fin_1', estado: 'registrado' },
+    { id: 'comision', monto: 15, categoria: 'Gastos financieros', financiamiento_id: null, estado: 'registrado' },
+  ];
+  assert.deepEqual(filtrarComprasGastosParaEr(gastos).map(g => g.id), ['comision']);
+});
+
 test('una CxP pendiente con no_devengar_er no se devenga en el ER', () => {
   const cxp = { estado: 'por_pagar', monto_total: 70, moneda: 'PEN', no_devengar_er: true };
   assert.equal(cxpCanDevengarEr(cxp), false);

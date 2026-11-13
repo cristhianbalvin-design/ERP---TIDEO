@@ -323,8 +323,10 @@ export const cxpCanDevengarEr = cxp => {
   return cxpDevengoAmount(cxp) > 0;
 };
 
+// Los intereses de préstamos entran al ER desde pagos_financiamiento ("Intereses de financiamiento");
+// el gasto espejo que crea cada pago (compras_gastos.financiamiento_id) se omite para no contarlos dos veces.
 export const filtrarComprasGastosParaEr = comprasGastos =>
-  (comprasGastos || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
+  (comprasGastos || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er && !g.financiamiento_id);
 
 export const filtrarCajaChicaSinGastoVinculado = filas =>
   (filas || []).filter(r => r.gasto_id == null);
@@ -572,7 +574,7 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds,
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('compras_gastos')
-    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, orden_compra_id, excluir_de_er, periodo_nomina_id, origen_registro, sociedad_id')
+    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, orden_compra_id, excluir_de_er, periodo_nomina_id, origen_registro, sociedad_id, financiamiento_id')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next);
