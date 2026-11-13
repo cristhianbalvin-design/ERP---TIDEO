@@ -5,7 +5,7 @@ catalogo: admin/cotizaciones, admin/os_cliente, admin/facturacion, admin/cxc, ad
 titulo: De la cotización aprobada al cobro
 resumen: Sigue un servicio vendido desde la cotización aprobada hasta que el cobro queda conciliado en el banco: orden de servicio, órdenes de trabajo, valorización, factura y cobranza.
 componentes: src/pages_extra.jsx#Cotizaciones, src/pages_core.jsx#OSCliente, src/pages_fin.jsx#Facturacion, src/pages_fin.jsx#CxC, src/pages_fin.jsx#Tesoreria
-huella: 2e3ef06c5d 90315ca39a e697a23316 06993c9c6e b0397fbc8c
+huella: 2e3ef06c5d 90315ca39a cb6e3aaada 06993c9c6e b0397fbc8c
 pantalla_recorrido: cotizaciones,os_cliente,facturacion,cxc,tesoreria
 paso: 1 | pantalla=cotizaciones | permiso=ninguno | Con la cotización aprobada usa Crear OS Cliente: puedes Crear nueva OS o Agregar a OS existente. Las cotizaciones aprobadas que aún no tienen OS aparecen en el indicador Por convertir.
 paso: 2 | pantalla=os_cliente | permiso=ninguno | En la OS Cliente crea el trabajo con Crear OT, o con Crear OF si es fabricación. Antes de crear órdenes de trabajo la OS debe tener CEBE asignado, y cada OT necesita un servicio y un centro de costo.

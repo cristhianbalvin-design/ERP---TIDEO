@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { hoyLima } from './lib/transporteLogistica.js';
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
@@ -6821,7 +6822,7 @@ export function AppProvider({ children }) {
         igv: datos.igv || 0,
         total: datos.total,
         moneda: facOrigen.moneda || 'PEN',
-        fecha_emision: datos.fecha_emision || new Date().toISOString().split('T')[0],
+        fecha_emision: datos.fecha_emision || hoyLima(),
         notas: datos.notas || null,
         concepto: datos.concepto || null,
       });
@@ -6851,7 +6852,7 @@ export function AppProvider({ children }) {
     const ncCount = facturas.filter(f => f.tipo_documento === 'nota_credito').length + 1;
     const numero = `NC01-${String(ncCount).padStart(4,'0')}`;
     const totalAcreditar = Number(datos.total || 0);
-    const now = new Date().toISOString().split('T')[0];
+    const now = hoyLima();
 
     const ncFac = {
       id: generateId('fac'),
@@ -6943,7 +6944,7 @@ export function AppProvider({ children }) {
         igv: datos.igv || 0,
         total: datos.total,
         moneda: facOrigen.moneda || 'PEN',
-        fecha_emision: datos.fecha_emision || new Date().toISOString().split('T')[0],
+        fecha_emision: datos.fecha_emision || hoyLima(),
         notas: datos.notas || null,
         concepto: datos.concepto || null,
       });
@@ -6959,7 +6960,7 @@ export function AppProvider({ children }) {
     const ndCount = facturas.filter(f => f.tipo_documento === 'nota_debito').length + 1;
     const numero = `ND01-${String(ndCount).padStart(4,'0')}`;
     const totalND = Number(datos.total || 0);
-    const now = new Date().toISOString().split('T')[0];
+    const now = hoyLima();
 
     const ndFac = {
       id: generateId('fac'),

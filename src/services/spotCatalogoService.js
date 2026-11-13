@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { hoyLima } from '../lib/transporteLogistica.js';
 
-export const hoyPeru = () => new Date().toISOString().slice(0, 10);
+export const hoyPeru = hoyLima;
 
 export async function listarSpotCatalogoVigente(fecha = hoyPeru()) {
   const supabase = await getSupabaseClient();

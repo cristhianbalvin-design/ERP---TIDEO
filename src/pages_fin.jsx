@@ -47,7 +47,12 @@ import {
 import CargaMasivaCxC from './components/CargaMasivaCxC.jsx';
 import FacturacionListado from './pages/facturacion/FacturacionListado.jsx';
 import FacturacionEmisionModal from './pages/facturacion/FacturacionEmisionModal.jsx';
+import FacturacionFicha from './pages/facturacion/FacturacionFicha.jsx';
+import { ModalRegistrarCobro, ModalAnularComprobante, ModalEditarComprobante, ModalNotaAfectacion }
+  from './pages/facturacion/FacturacionAccionModales.jsx';
 import { calcularTotalesEmision, estimarDetraccion, primerCampoConError, validarEmision } from './pages/facturacion/facturacionEmision.js';
+import { hoyLima } from './lib/transporteLogistica.js';
+import { monedaInicialFicha } from './pages/facturacion/facturacionFicha.js';
 import * as storageService from './services/storageService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
@@ -57,7 +62,6 @@ import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './compo
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista, resolverSociedadUnicaId } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { participacionCecoCxP, resumirCecosCxP } from './services/cxpDistribucionCeco.js';
-import NotaAfectacionForm from './components/NotaAfectacionForm.jsx';
 import { SearchSelect } from './components/SearchSelect.jsx';
 import * as XLSX from 'xlsx';
 
@@ -4495,7 +4499,6 @@ function FacturacionLegacy() {
   );
 }
 
-const TIPO_DOC_LABELS = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de Crédito', nota_debito: 'Nota de Débito' };
 const CONDICION_PAGO_OPTIONS = [
   { value:'contado', label:'Contado' },
   { value:'anticipado', label:'Anticipado' },
@@ -4505,23 +4508,6 @@ const CONDICION_PAGO_OPTIONS = [
   { value:'60 días', label:'60 días' },
   { value:'90 días', label:'90 días' },
 ];
-const CONDICION_LABELS = {
-  contado:'Contado',
-  anticipado:'Anticipado',
-  '15 días':'15 días',
-  '30 días':'30 días',
-  '45 días':'45 días',
-  '60 días':'60 días',
-  '90 días':'90 días',
-  '0':'Contado',
-  '15':'15 días',
-  '30':'30 días',
-  '45':'45 días',
-  '60':'60 días',
-  '90':'90 días',
-};
-const FAC_BADGE_CLASS = { emitida:'badge-cyan', cobro_parcial:'badge-orange', cobrada:'badge-green', vencida:'badge-red', anulada:'badge-gray' };
-const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobrada:'Cobrada', vencida:'Vencida', anulada:'Anulada' };
 const TIPOS_DOCUMENTO_BASE = ['factura', 'boleta'];
 const impactoIngresoDocumento = factura => {
   const total = Number(factura?.total || factura?.monto || 0);
@@ -4532,8 +4518,8 @@ const impactoIngresoDocumento = factura => {
 
 function Facturacion() {
   const {
-    facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, cuentasBancarias, seriesDocumentarias, centrosBeneficio, empresa,
-    emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
+    facturas, valorizaciones, osClientes, cuentas, cxc, cxp, ventas, cuentasBancarias, seriesDocumentarias, centrosBeneficio, empresa,
+    emitirFacturaConCxC, actualizarDatosFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, registrarAutodetraccion, generarCxC, crearCxP, addNotificacion, navigate, activeParams, searchQuery,
     empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], supabaseStatus,
   } = useApp();
@@ -4552,7 +4538,7 @@ function Facturacion() {
     [facturas, modoVistaSociedadFacturacion.sinFiltro, sociedadesIdsVistaFacturacionKey],
   );
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = hoyLima();
   const condicionPagoDefecto = empresaConfig?.condicion_pago_defecto || CONDICION_PAGO_DEFECTO_CXC;
   const condicionPagoInicial = resolverCondicionPagoCxC({ condicionFallback: condicionPagoDefecto }).condicion_pago;
   const fechaVencimientoInicial = calcularFechaVencimientoCxC(today, condicionPagoInicial, condicionPagoDefecto);
@@ -4570,7 +4556,7 @@ function Facturacion() {
   const [valSel, setValSel] = useState('');
   const [cuentaSel, setCuentaSel] = useState('');
   const [osSel, setOsSel] = useState('');
-  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id:'' });
+  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:monedaInicialFicha({ empresa }), centro_beneficio_id:'', sociedad_id:'' });
   const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'', spot_catalogo_id:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
@@ -4646,15 +4632,8 @@ function Facturacion() {
   const [autodetraccionFacturaSel, setAutodetraccionFacturaSel] = useState(null);
   const [fichaTab, setFichaTab] = useState('detalle');
   const [modalAnularFac, setModalAnularFac] = useState(false);
-  const [motivoAnularFac, setMotivoAnularFac] = useState('');
   const [modalPago, setModalPago] = useState(false);
-  const [montoPago, setMontoPago] = useState('');
-  const [fechaPago, setFechaPago] = useState(today);
-  const [refPago, setRefPago] = useState('');
-  const [editEmisionFac, setEditEmisionFac] = useState(null);
-  const [savingEmisionFac, setSavingEmisionFac] = useState(false);
-  const [panelEditFac, setPanelEditFac] = useState(null);   // { id, items, igvPct, form }
-  const [savingEditFac, setSavingEditFac] = useState(false);
+  const [modalEditarFac, setModalEditarFac] = useState(false);
   const [generandoCxC, setGenerandoCxC] = useState(false);
 
   useEffect(() => {
@@ -4701,19 +4680,10 @@ function Facturacion() {
     }
   };
 
-  // Archivos anteriores: se conservan para que los PDF/ZIP ya cargados sigan disponibles.
-  const handleEliminarArchivoFac = async (facturaId, tipo) => {
-    if (!window.confirm(`¿Eliminar el archivo ${tipo.toUpperCase()}?`)) return;
-    try {
-      await eliminarArchivoFactura(facturaId, tipo);
-    } catch(e) {
-      alert('Error al eliminar: ' + (e?.message || 'intenta de nuevo'));
-    }
-  };
-
   // ── NC / ND form state ────────────────────────────────────────────────
   const [ncndForm, setNcndForm] = useState(null); // null | 'nc' | 'nd'
   const [ncndFacId, setNcndFacId] = useState(null);
+  const [devolucionesPendientes, setDevolucionesPendientes] = useState({});
   const [ncMotivo, setNcMotivo] = useState('');
   const [ncPartidasSel, setNcPartidasSel] = useState([]);
   const [ncNotas, setNcNotas] = useState('');
@@ -4958,35 +4928,11 @@ function Facturacion() {
     });
     return () => { cancelado = true; };
   }, [mode, cuentaSel, form.fecha_emision, form.moneda]);
-  const permisosEditarFacturacion = role?.permisos?.editar;
-  const puedeEditarFacturacion = Boolean(role?.permisos?.todo || permisosEditarFacturacion === true || permisosEditarFacturacion?.includes?.('facturacion'));
-
   // Detecta si una factura anulada lo fue directamente (sin NC) — permite restaurarla
   const tieneNC = (fac) =>
     facturas.some(nc => nc.tipo_documento === 'nota_credito' && nc.factura_origen_id === fac.id) ||
     String(fac.motivo_anulacion || '').startsWith('NC emitida');
   const esAnuladaSinNC = (fac) => fac.estado === 'anulada' && !tieneNC(fac);
-
-  const abrirEdicionEmisionFactura = (factura, e) => {
-    if (e) e.stopPropagation();
-    if (!puedeEditarFacturacion) return;
-    setEditEmisionFac({ id: factura.id, fecha: factura.fecha_emision || today });
-  };
-
-  const cancelarEdicionEmisionFactura = () => {
-    setEditEmisionFac(null);
-  };
-
-  const confirmarEdicionEmisionFactura = async () => {
-    if (!editEmisionFac?.id || !editEmisionFac?.fecha) return;
-    setSavingEmisionFac(true);
-    try {
-      await actualizarFechaEmisionFactura(editEmisionFac.id, editEmisionFac.fecha);
-      setEditEmisionFac(null);
-    } finally {
-      setSavingEmisionFac(false);
-    }
-  };
 
   // ── Form change helper (auto-update fecha_vencimiento y numero al cambiar tipo) ────
   const handleFormChange = (field, value) => {
@@ -5027,7 +4973,7 @@ function Facturacion() {
     setValSel(''); setCuentaSel(''); setOsSel('');
     setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     setIgvPct(18);
-    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id: sociedadUnicaIdEmision || '' });
+    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:monedaInicialFicha({ empresa }), centro_beneficio_id:'', sociedad_id: sociedadUnicaIdEmision || '' });
     setVencimientoManual(false);
     setCondicionManual(false);
     setConfirmarExcesoFac(false);
@@ -5069,7 +5015,7 @@ function Facturacion() {
       const nuevaCondicion = condicionManual ? f.condicion_pago : condicion;
       return {
         ...f,
-        moneda: v?.moneda || os?.moneda || 'PEN',
+        moneda: monedaInicialFicha({ origen: v?.moneda || os?.moneda, cliente: cuenta?.moneda, empresa }),
         condicion_pago: nuevaCondicion,
         fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, nuevaCondicion),
         centro_beneficio_id: os?.centro_beneficio_id || '',
@@ -5094,7 +5040,7 @@ function Facturacion() {
     setVencimientoManual(false);
     setForm(f => ({
       ...f,
-      moneda: params.moneda || 'PEN',
+      moneda: monedaInicialFicha({ origen: params.moneda, cliente: cuenta?.moneda, empresa }),
       condicion_pago: condicion,
       fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
     }));
@@ -5144,7 +5090,7 @@ function Facturacion() {
       ...f,
       condicion_pago: condicion,
       fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
-      moneda: cuenta?.moneda || 'PEN',
+      moneda: monedaInicialFicha({ origen: ventaContextId ? f.moneda : null, cliente: cuenta?.moneda, empresa }),
       centro_beneficio_id: '',
     }));
     setClienteRetencion({
@@ -5173,7 +5119,7 @@ function Facturacion() {
     setOsSel(osId);
     setConfirmarExcesoFac(false);
     setDuplicadoEmision(null);
-    setForm(f => ({ ...f, centro_beneficio_id: getOs(osId)?.centro_beneficio_id || '' }));
+    setForm(f => ({ ...f, moneda: monedaInicialFicha({ origen: getOs(osId)?.moneda || (ventaContextId ? f.moneda : null), cliente: getCuenta(cuentaSel)?.moneda, empresa }), centro_beneficio_id: getOs(osId)?.centro_beneficio_id || '' }));
     limpiarErrorEmision('cebe', 'sociedad');
   };
   // Misma regla que usuario_puede(empresa, 'facturacion', 'crear') en el servidor: admin de empresa,
@@ -5327,308 +5273,90 @@ function Facturacion() {
     }
   };
 
-  // ── Panel editar factura (compartido entre ficha y lista) ────────────
-  const renderPanelEditFac = () => {
-    if (!panelEditFac) return null;
-    const ef = panelEditFac;
-    const esDirecta = ef.esDirecta;
-    const subtotalEd = (ef.items||[]).reduce((s,p) => s + Number(p.cantidad||0)*Number(p.precio_unitario||0), 0);
-    const igvEd = Math.round(subtotalEd * (ef.igvPct/100) * 100) / 100;
-    const totalEd = subtotalEd + igvEd;
-    const setEfForm = upd => setPanelEditFac(prev => ({...prev, form: {...prev.form, ...upd}}));
-    const setEfItems = upd => setPanelEditFac(prev => ({...prev, items: typeof upd === 'function' ? upd(prev.items) : upd}));
-
-    const handleSaveEdit = async () => {
-      if (esDirecta && (ef.items||[]).every(p => !p.descripcion && !p.precio_unitario)) {
-        alert('Agrega al menos una partida.'); return;
-      }
-      if (!ef.form.numero?.trim()) { alert('El número de factura es obligatorio.'); return; }
-      setSavingEditFac(true);
-      try {
-        await actualizarDatosFactura(ef.id, {
-          numero: ef.form.numero,
-          fecha_emision: ef.form.fecha_emision,
-          condicion_pago: ef.form.condicion_pago,
-          fecha_vencimiento: ef.form.fecha_vencimiento,
-          moneda: ef.form.moneda,
-          glosa: ef.form.glosa,
-          notas: ef.form.notas,
-          ...(esDirecta && { items: ef.items, subtotal: subtotalEd, igv: igvEd, total: totalEd }),
-        });
-        setPanelEditFac(null);
-      } finally {
-        setSavingEditFac(false);
-      }
+  // ── Nota de Crédito form ──────────────────────────────────────────────
+  const datosDevolucion = (nota, datos, facOrigen) => {
+    const fecha = hoyLima();
+    const vencimiento = new Date(`${fecha}T00:00:00Z`);
+    vencimiento.setUTCDate(vencimiento.getUTCDate() + 15);
+    return {
+      tipo_beneficiario: 'colectivo',
+      sociedad_id: facOrigen?.sociedad_id || null,
+      cuenta_id: facOrigen?.cuenta_id,
+      concepto: `Devolución NC — ${facOrigen?.numero || datos.facturaOrigenId} — ${cuentaNombre(facOrigen?.cuenta_id)}`,
+      factura_numero: `NC/${facOrigen?.numero || datos.facturaOrigenId}`,
+      fecha_emision: fecha,
+      fecha_vencimiento: vencimiento.toISOString().split('T')[0],
+      monto_total: datos.total,
+      moneda: facOrigen?.moneda || 'PEN',
+      estado: 'por_pagar',
+      origen: 'nc_devolucion',
+      motivo_cxp: 'devolucion_nc',
+      nc_id: nota.id,
+      mecanismo_origen: 'nc_devolucion',
     };
-
-    return (
-      <>
-        <div className="side-panel-backdrop" onClick={() => setPanelEditFac(null)}/>
-        <div className="side-panel" style={{width:'min(580px,96vw)'}}>
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Editar factura · {esDirecta ? 'Directa' : 'Desde valorización'}</div>
-              <div className="font-display" style={{fontSize:18,fontWeight:700}}>{ef.form.numero}</div>
-            </div>
-            <button className="icon-btn" onClick={() => setPanelEditFac(null)}>{I.x}</button>
-          </div>
-          <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:16}}>
-
-            {!esDirecta && (
-              <div style={{fontSize:13,padding:'8px 12px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)'}}>
-                Esta factura fue generada desde una <strong>Valorización</strong>. Los montos solo se pueden corregir mediante <strong>Nota de Crédito</strong> o <strong>Nota de Débito</strong>.
-              </div>
-            )}
-
-            <div className="grid-2" style={{gap:12}}>
-              <div className="input-group">
-                <label>N° Factura <span style={{color:'var(--danger)'}}>*</span></label>
-                <input className="input" value={ef.form.numero} onChange={e => setEfForm({numero: e.target.value})} placeholder="F001-0001" />
-              </div>
-              <div className="input-group">
-                <label>Fecha de emisión</label>
-                <input className="input" type="date" value={ef.form.fecha_emision} onChange={e => {
-                  const fe = e.target.value;
-                  setEfForm({ fecha_emision: fe, fecha_vencimiento: calcularVencimientoForm(fe, ef.form.condicion_pago) });
-                }} />
-              </div>
-            </div>
-
-            <div className="grid-2" style={{gap:12}}>
-              <div className="input-group">
-                <label>Condición de pago</label>
-                <select className="select" value={ef.form.condicion_pago} onChange={e => {
-                  const condicion = e.target.value;
-                  setEfForm({ condicion_pago: condicion, fecha_vencimiento: calcularVencimientoForm(ef.form.fecha_emision, condicion) });
-                }}>
-                  {['contado','anticipado','15 días','30 días','45 días','60 días','90 días'].map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Fecha vencimiento</label>
-                <input className="input" type="date" value={ef.form.fecha_vencimiento} onChange={e => setEfForm({fecha_vencimiento: e.target.value})} />
-              </div>
-              <div className="input-group">
-                <label>Moneda</label>
-                <select className="select" value={ef.form.moneda} onChange={e => setEfForm({moneda: e.target.value})}>
-                  <option value="PEN">S/ Soles</option>
-                  <option value="USD">US$ Dólares</option>
-                </select>
-              </div>
-              {esDirecta && (
-                <div className="input-group">
-                  <label>IGV %</label>
-                  <input className="input num" type="number" min="0" max="30" step="1" value={ef.igvPct} onChange={e => setPanelEditFac(prev => ({...prev, igvPct: Number(e.target.value)}))} />
-                </div>
-              )}
-            </div>
-
-            {esDirecta && (
-              <div>
-                <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Partidas</div>
-                {(ef.items||[]).map((p,i) => (
-                  <div key={p.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,marginBottom:8,alignItems:'end'}}>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      {i === 0 && <label>Descripción</label>}
-                      <input className="input" value={p.descripcion||''} onChange={e => setEfItems(prev => prev.map(x => x.id===p.id ? {...x,descripcion:e.target.value} : x))} placeholder="Descripción del servicio..." />
-                    </div>
-                    <div className="input-group">
-                      {i === 0 && <label>Cant.</label>}
-                      <input className="input num" type="number" min="0" step="any" value={p.cantidad} onChange={e => setEfItems(prev => prev.map(x => x.id===p.id ? {...x,cantidad:e.target.value} : x))} style={{width:70}} />
-                    </div>
-                    <div className="input-group">
-                      {i === 0 && <label>Precio unit.</label>}
-                      <input className="input num" type="number" min="0" step="any" value={p.precio_unitario} onChange={e => setEfItems(prev => prev.map(x => x.id===p.id ? {...x,precio_unitario:e.target.value} : x))} style={{width:110}} />
-                    </div>
-                    {(ef.items||[]).length > 1 && (
-                      <button className="icon-btn" style={{color:'var(--danger)',alignSelf:'flex-end',marginBottom:2}} onClick={() => setEfItems(prev => prev.filter(x => x.id!==p.id))}>{I.x}</button>
-                    )}
-                  </div>
-                ))}
-                <button className="btn btn-ghost" style={{fontSize:12}} onClick={() => setEfItems(prev => [...prev, {id:Date.now(),descripcion:'',cantidad:1,precio_unitario:''}])}>{I.plus} Agregar partida</button>
-                <div className="card" style={{padding:12,marginTop:12}}>
-                  {[['Subtotal', subtotalEd],['IGV', igvEd],['Total', totalEd]].map(([k,v]) => (
-                    <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:k==='Total'?700:400,marginTop:k==='Total'?6:0,paddingTop:k==='Total'?6:0,borderTop:k==='Total'?'1px solid var(--border)':'none'}}>
-                      <span style={{color:'var(--fg-muted)'}}>{k}</span>
-                      <span>{moneyCurrency(v, ef.form.moneda)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="grid-2" style={{gap:12}}>
-              <div className="input-group">
-                <label>Glosa</label>
-                <input className="input" value={ef.form.glosa} onChange={e => setEfForm({glosa:e.target.value})} placeholder="Referencia interna..." />
-              </div>
-              <div className="input-group">
-                <label>Notas</label>
-                <input className="input" value={ef.form.notas} onChange={e => setEfForm({notas:e.target.value})} placeholder="Observaciones..." />
-              </div>
-            </div>
-
-            <div style={{display:'flex',gap:10,justifyContent:'flex-end',paddingTop:8}}>
-              <button className="btn btn-secondary" onClick={() => setPanelEditFac(null)} disabled={savingEditFac}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSaveEdit} disabled={savingEditFac}>
-                {savingEditFac ? 'Guardando...' : <>{I.check} Guardar cambios</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      </>
-    );
+  };
+  const reintentarDevolucion = async id => {
+    const pendiente = devolucionesPendientes[id];
+    if (!pendiente) return;
+    let existe;
+    if (isSupabaseMode()) {
+      if (!empresa?.id) throw new Error('No se pudo identificar la empresa.');
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.from('cxp').select('id')
+        .eq('empresa_id', empresa.id).eq('nc_id', id).limit(1);
+      if (error) throw error;
+      existe = data?.length > 0;
+    } else {
+      existe = (cxp || []).some(row => row.empresa_id === empresa?.id && row.nc_id === id);
+    }
+    if (!existe) await crearCxP(pendiente.datos);
+    setDevolucionesPendientes(prev => {
+      const siguiente = { ...prev };
+      delete siguiente[id];
+      return siguiente;
+    });
+  };
+  const onCancelNota = () => {
+    setNcndForm(null);
+    setNcndFacId(null);
+    if (mode) setMode(null);
+  };
+  const onEmitNota = async datos => {
+    if (ncndForm === 'nc' && datos.devolucion) {
+      const puedeCrear = Boolean(role?.permisos?.todo || role?.permisos?.crear?.includes?.('cxp')
+        || role?.permisos?.crear?.includes?.('facturacion') || role?.permisos?.editar?.includes?.('facturacion'));
+      if (!puedeCrear) throw new Error('No tienes permiso para registrar la devolución por nota de crédito.');
+    }
+    const nota = ncndForm === 'nc'
+      ? await emitirNotaCredito(datos.facturaOrigenId, datos)
+      : await emitirNotaDebito(datos.facturaOrigenId, datos);
+    if (ncndForm === 'nc' && datos.devolucion && nota?.id) {
+      const origen = (facturas || []).find(f => f.id === datos.facturaOrigenId);
+      const payload = datosDevolucion(nota, datos, origen);
+      try {
+        await crearCxP(payload);
+      } catch (error) {
+        setDevolucionesPendientes(prev => ({ ...prev, [nota.id]: { datos: payload, error } }));
+      }
+    }
+    setNcndForm(null);
+    setNcndFacId(null);
+    if (mode) setMode(null);
+    else setSelFac(nota?.id || datos.facturaOrigenId);
   };
 
-  // ── Nota de Crédito form ──────────────────────────────────────────────
-  if ((ncndForm === 'nc' || ncndForm === 'nd')) {
-    const tipoNota = ncndForm === 'nc' ? 'nota_credito' : 'nota_debito';
-    const onCancelNota = () => {
-      setNcndForm(null);
-      setNcndFacId(null);
-      if (mode) setMode(null);
-      else setSelFac(ncndFacId);
-    };
-    const onEmitNota = async datos => {
-      if (ncndForm === 'nc' && datos.devolucion) {
-        const puedeCrearCxPNc = Boolean(role?.permisos?.todo
-          || role?.permisos?.crear?.includes?.('cxp')
-          || role?.permisos?.crear?.includes?.('facturacion')
-          || role?.permisos?.editar?.includes?.('facturacion'));
-        if (!puedeCrearCxPNc) {
-          addNotificacion('No tienes permiso para registrar la CxP de la devolucion por Nota de Credito.');
-          return;
-        }
-      }
-      const nota = ncndForm === 'nc'
-        ? await emitirNotaCredito(datos.facturaOrigenId, datos)
-        : await emitirNotaDebito(datos.facturaOrigenId, datos);
-      if (ncndForm === 'nc' && datos.devolucion && nota) {
-        const facOrigen = (facturas || []).find(f => f.id === datos.facturaOrigenId);
-        const fecha = new Date().toISOString().split('T')[0];
-        const fechaVencimiento = new Date(`${fecha}T00:00:00`);
-        fechaVencimiento.setDate(fechaVencimiento.getDate() + 15);
-        await crearCxP({
-          // cxp no admite 'cliente' en producción; una NC de devolución
-          // se registra como colectivo, conservando nc_id y el concepto.
-          tipo_beneficiario: 'colectivo',
-          sociedad_id: facOrigen?.sociedad_id || null,
-          cuenta_id: facOrigen?.cuenta_id,
-          concepto: `Devolución NC — ${facOrigen?.numero || datos.facturaOrigenId} — ${cuentaNombre(facOrigen?.cuenta_id)}`,
-          factura_numero: `NC/${facOrigen?.numero || datos.facturaOrigenId}`,
-          fecha_emision: fecha,
-          fecha_vencimiento: fechaVencimiento.toISOString().split('T')[0],
-          monto_total: datos.total,
-          moneda: facOrigen?.moneda || 'PEN',
-          estado: 'por_pagar',
-          origen: 'nc_devolucion',
-          motivo_cxp: 'devolucion_nc',
-          nc_id: nota.id || null,
-          mecanismo_origen: 'nc_devolucion',
-        });
-      }
-      setNcndForm(null);
-      setNcndFacId(null);
-      if (mode) setMode(null);
-      else setSelFac(nota?.id || datos.facturaOrigenId);
-    };
-    return (
-      <NotaAfectacionForm
-        tipoDocumento={tipoNota}
-        facturas={facturasVista}
-        cuentaNombre={cuentaNombre}
-        facturaInicialId={ncndFacId}
-        onCancel={onCancelNota}
-        onEmit={onEmitNota}
-        saving={saving}
-      />
-    );
-  }
-
-  // ── Ficha detail view ─────────────────────────────────────────────────
   let fichaFac = null;
   if (selFac) {
     const f = facturasVista.find(x => x.id === selFac);
     if (f) {
 
     const cuenta = getCuenta(f.cuenta_id);
-    const clienteNombreFac = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
     const osVinc = getOs(f.os_cliente_id);
     const valVinc = getVal(f.valorizacion_id);
-    const cxcVinc = (cxc||[]).find(c => c.factura_id === f.id);
+    const cxcVinc = (cxc || []).find(c => c.factura_id === f.id);
     const autodetraccionFactura = detraccionesFactura.find(row => row.direccion === 'venta' && row.estado === 'por_autodetraer');
-    const facOrigen = f.factura_origen_id ? (facturas||[]).find(x => x.id === f.factura_origen_id) : null;
-    const notasRelacionadas = (facturas||[])
-      .filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === f.id)
-      .sort((a,b) => (b.fecha_emision||'').localeCompare(a.fecha_emision||''));
-    const items = f.items || [];
-    const fechaEmisionLabel = f.fecha_emision || '—';
-    const editandoEmisionFac = editEmisionFac?.id === f.id;
-    const fechaEmisionEditada = editandoEmisionFac ? editEmisionFac.fecha : (f.fecha_emision || today);
-    const tituloEditarEmision = puedeEditarFacturacion ? 'Editar emisión' : 'Requiere permiso facturacion:editar';
-
-    // Días para vencer / días vencida
-    const diasVencer = (() => {
-      if (!f.fecha_vencimiento) return null;
-      return Math.ceil((new Date(f.fecha_vencimiento) - new Date(today)) / (1000*60*60*24));
-    })();
-
-    // Historial construido desde datos disponibles
-    const movsCxC = cxcVinc ? (movimientosTesoreria||[]).filter(m => m.vinculo_id === cxcVinc.id || m.vinculo_tipo === 'cxc' && m.vinculo_id === cxcVinc.id).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'')) : [];
-    const historialFac = [
-      { tipo: 'emision', fecha: f.fecha_emision || '—', texto: `Factura emitida — ${TIPO_DOC_LABELS[f.tipo_documento]||'Factura'}` },
-      ...movsCxC.map(m => ({ tipo: 'cobro', fecha: m.fecha||'—', texto: `Cobro registrado: ${moneyCurrency(m.monto, m.moneda || cxcVinc?.moneda || f.moneda)} — Ref: ${m.referencia||'—'}` })),
-      ...(f.estado === 'anulada' ? [{ tipo: 'anulacion', fecha: '—', texto: `Anulada${f.motivo_anulacion ? ': '+f.motivo_anulacion : ''}` }] : []),
-    ];
-    const abrirNotaRelacionada = nota => {
-      setSelFac(nota.id);
-      setFichaTab('detalle');
-    };
-    const panelNotasRelacionadas = (
-      <div className="card" style={{padding:16}}>
-        <div style={{fontSize:11,color:'var(--cyan)',fontWeight:600,marginBottom:10,textTransform:'uppercase',letterSpacing:0.5}}>
-          Notas relacionadas ({notasRelacionadas.length})
-        </div>
-        {notasRelacionadas.length === 0 ? (
-          <div style={{fontSize:12,color:'var(--fg-muted)'}}>No hay notas de crédito o débito relacionadas.</div>
-        ) : (
-          <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            {notasRelacionadas.map(nota => (
-              <div key={nota.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
-                <div style={{minWidth:0}}>
-                  <button type="button" className="btn btn-ghost" style={{padding:0,color:'var(--cyan)',fontWeight:700}} onClick={() => abrirNotaRelacionada(nota)}>
-                    {nota.numero || nota.id}
-                  </button>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>
-                    {TIPO_DOC_LABELS[nota.tipo_documento] || nota.tipo_documento} · {nota.fecha_emision || '—'} · Motivo: {nota.motivo_codigo || nota.motivo || '—'}
-                  </div>
-                </div>
-                <span className="num" style={{fontWeight:600,whiteSpace:'nowrap'}}>{moneyCurrency(nota.total || nota.monto, nota.moneda || f.moneda)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-
-    const TABS_FAC = [
-      { id:'detalle', label:'Detalle' },
-      { id:'vinculaciones', label:'Vinculaciones' },
-      { id:'archivos', label:'Archivos' },
-      { id:'historial', label:`Historial (${historialFac.length})` },
-    ];
-
-    const handleRegistrarPago = async () => {
-      if (!cxcVinc || !montoPago) return;
-      await registrarCobroCxC(cxcVinc.id, Number(montoPago), { fecha: fechaPago, referencia: refPago });
-      setModalPago(false); setMontoPago(''); setRefPago(''); setFechaPago(today);
-    };
-
-    const handleAnular = () => {
-      if (!motivoAnularFac.trim()) return;
-      anularFactura(f.id, motivoAnularFac.trim());
-      setModalAnularFac(false); setMotivoAnularFac(''); setSelFac(null);
-    };
+    const facOrigen = f.factura_origen_id ? (facturas || []).find(x => x.id === f.factura_origen_id) : null;
+    const notasRelacionadas = (facturas || []).filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === f.id);
 
     const handleNcNd = tipo => {
       const tipoForm = tipo === 'nota_credito' ? 'nc' : 'nd';
@@ -5645,6 +5373,7 @@ function Facturacion() {
 
     fichaFac = (
       <>
+        <div data-ffi-modal={panelAutodetraccionFactura ? "true" : undefined} style={{position:"relative",zIndex:1200}}>
         <AutodetraccionModal
           open={panelAutodetraccionFactura}
           obligation={autodetraccionFacturaSel}
@@ -5656,348 +5385,51 @@ function Facturacion() {
           onDone={async ()=>{await refrescarDetraccionesFactura();addNotificacion('Autodetracción registrada correctamente.');}}
         />
 
-        {/* Modal anular */}
+        </div>
         {modalAnularFac && (
-          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div className="card" style={{width:440,padding:28}}>
-              <h3 style={{margin:'0 0 8px'}}>Anular Factura</h3>
-              <div style={{fontSize:13,color:'var(--fg-muted)',marginBottom:16}}>
-                Esta acción anulará la factura y la CxC vinculada si está pendiente de cobro.
-              </div>
-              <div className="input-group">
-                <label>Motivo <span style={{color:'var(--danger)'}}>*</span></label>
-                <textarea className="input" rows={3} value={motivoAnularFac} onChange={e => setMotivoAnularFac(e.target.value)} placeholder="Describe el motivo..." autoFocus />
-              </div>
-              <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'flex-end'}}>
-                <button className="btn btn-secondary" onClick={() => { setModalAnularFac(false); setMotivoAnularFac(''); }}>Cancelar</button>
-                <button className="btn btn-danger" disabled={!motivoAnularFac.trim()} onClick={handleAnular}>Confirmar anulación</button>
-              </div>
-            </div>
-          </div>
+          <ModalAnularComprobante
+            onClose={() => setModalAnularFac(false)}
+            onGuardar={async motivo => {
+              await anularFactura(f.id, motivo);
+              setSelFac(null);
+            }}
+          />
+        )}
+        {modalPago && cxcVinc && (
+          <ModalRegistrarCobro
+            factura={f}
+            cxc={cxcVinc}
+            hoy={today}
+            onClose={() => setModalPago(false)}
+            onGuardar={(monto, datos) => registrarCobroCxC(cxcVinc.id, monto, datos)}
+          />
+        )}
+        {modalEditarFac && (
+          <ModalEditarComprobante
+            factura={f}
+            hoy={today}
+            calcularVencimiento={calcularVencimientoForm}
+            onClose={() => setModalEditarFac(false)}
+            onGuardar={datos => actualizarDatosFactura(f.id, datos)}
+          />
         )}
 
-        {/* Modal registrar pago */}
-        {modalPago && (
-          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div className="card" style={{width:420,padding:28}}>
-              <h3 style={{margin:'0 0 8px'}}>Registrar cobro</h3>
-              {cxcVinc && (
-                <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:16}}>
-                  Saldo pendiente: <strong style={{color:'var(--orange)'}}>{money(cxcVinc.saldo||cxcVinc.monto_total||0)}</strong>
-                </div>
-              )}
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group">
-                  <label>Monto cobrado <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input num" type="number" min="0" step="0.01" value={montoPago} onChange={e => setMontoPago(e.target.value)} autoFocus />
-                </div>
-                <div className="input-group">
-                  <label>Fecha</label>
-                  <input className="input" type="date" value={fechaPago} onChange={e => setFechaPago(e.target.value)} />
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Referencia / Número de operación</label>
-                  <input className="input" value={refPago} onChange={e => setRefPago(e.target.value)} placeholder="N° transferencia, cheque, etc." />
-                </div>
-              </div>
-              <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'flex-end'}}>
-                <button className="btn btn-secondary" onClick={() => { setModalPago(false); setMontoPago(''); setRefPago(''); }}>Cancelar</button>
-                <button className="btn btn-primary" disabled={!montoPago} onClick={handleRegistrarPago}>{I.check} Registrar cobro</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="side-panel-backdrop" onClick={() => setSelFac(null)} />
-        <div className="side-panel">
-        {/* Header */}
-        <div className="side-panel-head">
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-              {clienteNombreFac}{osVinc && <> · OS: {osVinc.numero}</>}{diasVencer !== null && <span style={{color:diasVencer<0?'var(--danger)':diasVencer<=7?'var(--orange)':'inherit'}}> · {diasVencer<0?`${Math.abs(diasVencer)}d vencida`:diasVencer===0?'Vence hoy':`${diasVencer}d para vencer`}</span>}
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-              <strong style={{fontSize:16}}>{f.numero}</strong>
-              <span style={{fontSize:12,color:'var(--fg-muted)',fontWeight:400}}>{TIPO_DOC_LABELS[f.tipo_documento]||'Factura'}</span>
-              <span className={'badge '+(FAC_BADGE_CLASS[f.estado]||'badge-cyan')}>{FAC_BADGE_LABEL[f.estado]||f.estado}</span>
-              {f.aplica_retencion && <span className="badge badge-orange" style={{fontSize:10}}>Retención SUNAT</span>}
-            </div>
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-            {['emitida','cobro_parcial'].includes(f.estado) && (
-              <button className="btn btn-primary btn-sm" onClick={() => setModalPago(true)}>Registrar pago</button>
-            )}
-            <button className="icon-btn" onClick={() => setSelFac(null)}>{I.x}</button>
-          </div>
-        </div>
-        <div className="side-panel-body">
-          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
-            {f.estado === 'emitida' && puedeEditarFacturacion && (
-              <button className="btn btn-secondary btn-sm" onClick={() => { const igvDerived = f.subtotal > 0 ? Math.round(((f.igv||0)/f.subtotal)*100) : 18; setPanelEditFac({ id: f.id, esDirecta: !f.valorizacion_id, form: { numero: f.numero||'', fecha_emision: f.fecha_emision||today, condicion_pago: f.condicion_pago||'30 días', fecha_vencimiento: f.fecha_vencimiento||'', moneda: f.moneda||'PEN', glosa: f.glosa||'', notas: f.notas||'' }, items: (f.items||[]).length > 0 ? f.items.map((it,i) => ({...it, id: it.id||`ep_${i}`})) : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }], igvPct: igvDerived }); }}>{I.edit} Editar</button>
-            )}
-            {f.estado === 'emitida' && <button className="btn btn-secondary btn-sm" onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>}
-            {f.estado === 'emitida' && <button className="btn btn-secondary btn-sm" onClick={() => handleNcNd('nota_debito')}>Nota de Débito</button>}
-            {f.estado === 'cobro_parcial' && <button className="btn btn-secondary btn-sm" onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>}
-            {f.estado === 'emitida' && <button className="btn btn-secondary btn-sm" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnularFac(true)}>Anular</button>}
-            {esAnuladaSinNC(f) && puedeEditarFacturacion && (
-              <button className="btn btn-secondary btn-sm" style={{color:'var(--green)',borderColor:'var(--green)'}} onClick={() => { if (window.confirm(`¿Restaurar ${f.numero} a emitida?`)) restaurarFacturaPorError(f.id); }}>{I.check} Restaurar</button>
-            )}
-          </div>
-          {facOrigen && (
-            <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13,padding:'8px 12px',borderRadius:6,background:'color-mix(in srgb,var(--cyan) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--cyan) 25%,transparent)',marginBottom:12}}>
-              <span style={{color:'var(--fg-muted)'}}>Vinculada a:</span>
-              <button type="button" className="btn btn-ghost" style={{padding:0,fontWeight:700,color:'var(--cyan)',fontSize:13}} onClick={() => setSelFac(facOrigen.id)}>{facOrigen.numero}</button>
-              <span className={'badge '+(FAC_BADGE_CLASS[facOrigen.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[facOrigen.estado]||facOrigen.estado}</span>
-            </div>
-          )}
-          {esAnuladaSinNC(f) && (
-            <div style={{fontSize:13,padding:'8px 14px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)',marginBottom:12}}>
-              Anulada directamente (sin NC). Puedes restaurar si fue un error.
-            </div>
-          )}
-          {/* Info cards */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12,marginBottom:16}}>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Cliente</div>
-            <div style={{fontWeight:600,fontSize:13}}>{clienteNombreFac}</div>
-            <div style={{fontSize:12,color:'var(--fg-muted)'}}>RUC: {cuenta?.ruc||'—'}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Condición de pago</div>
-            <div style={{fontWeight:600}}>{CONDICION_LABELS[f.condicion_pago]||f.condicion_pago||'—'}</div>
-            <div style={{fontSize:12,color:'var(--fg-muted)'}}>Moneda: {f.moneda||'PEN'}</div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>CxC</div>
-            <div style={{fontWeight:600}}>{cxcVinc ? moneyCurrency(cxcVinc.saldo||0, f.moneda) : '—'}</div>
-            <div style={{fontSize:12,color:'var(--fg-muted)'}}>
-              {cxcVinc ? (FAC_BADGE_LABEL[cxcVinc.estado]||cxcVinc.estado) : 'Sin CxC'}
-            </div>
-          </div>
-          <div className="card" style={{padding:'14px 18px'}}>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total</div>
-            <div style={{fontWeight:700,fontSize:18,fontFamily:'Sora',color:'var(--cyan)'}}>{moneyCurrency(f.total||0, f.moneda)}</div>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:2}}>IGV: {moneyCurrency(f.igv||0, f.moneda)}</div>
-          </div>
-        </div>
-
-        <div className="card" style={{padding:16,marginBottom:16}}>
-          <div style={{fontWeight:700,marginBottom:10}}>Detracción</div>
-          {detraccionesFacturaError ? <div className="alert alert-danger">No se pudieron cargar las detracciones.</div> : !detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className={'badge '+(row.estado === 'por_autodetraer' ? 'badge-orange' : 'badge-cyan')}>{row.estado === 'por_autodetraer' ? 'Por autodetraer' : row.estado}</span>{row.estado === 'por_autodetraer' && row.fecha_limite_deposito && <div style={{fontSize:11,color:row.fecha_limite_deposito < today ? 'var(--danger)' : 'var(--fg-muted)',marginTop:3}}>Límite: {row.fecha_limite_deposito}</div>}</td><td>{row.origen}</td><td className="num">{moneySpotCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{moneySpot(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
-        </div>
-
-        {autodetraccionFactura && (
-          <div className="card" style={{padding:16,marginBottom:16,border:'1px solid var(--orange)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-              <div>
-                <div style={{fontWeight:700,color:'var(--orange)'}}>Por autodetraer</div>
-                <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:4}}>Fecha límite de depósito: {autodetraccionFactura.fecha_limite_deposito || '—'}</div>
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={()=>{setAutodetraccionFacturaSel(autodetraccionFactura);setPanelAutodetraccionFactura(true);}}>Registrar autodetracción</button>
-            </div>
-          </div>
-        )}
-
-        {f.estado === 'anulada' && f.motivo_anulacion && (
-          <div style={{marginBottom:16,padding:'12px 16px',borderRadius:8,border:'1px solid var(--danger)',background:'color-mix(in srgb, var(--danger) 6%, transparent)'}}>
-            <div style={{fontWeight:600,fontSize:13,color:'var(--danger)',marginBottom:4}}>Motivo de anulación</div>
-            <div style={{fontSize:13}}>{f.motivo_anulacion}</div>
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div style={{display:'flex',borderBottom:'2px solid var(--border)',marginBottom:16,gap:0}}>
-          {TABS_FAC.map(t => (
-            <button key={t.id} className="btn btn-ghost"
-              onClick={() => setFichaTab(t.id)}
-              style={{borderRadius:0,padding:'10px 20px',fontWeight:fichaTab===t.id?700:400,
-                borderBottom:fichaTab===t.id?'2px solid var(--cyan)':'2px solid transparent',
-                marginBottom:-2,color:fichaTab===t.id?'var(--cyan)':'var(--fg-muted)'}}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab: Detalle */}
-        {fichaTab === 'detalle' && (
-          <div className="card">
-            {items.length > 0 ? (
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Descripción</th>
-                      <th style={{width:80}} className="num">Cant.</th>
-                      <th style={{width:140}} className="num">P. Unitario</th>
-                      <th style={{width:140}} className="num">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item,i) => (
-                      <tr key={i}>
-                        <td>{item.descripcion||'—'}</td>
-                        <td className="num">{item.cantidad}</td>
-                        <td className="num">{moneyCurrency(item.precio_unitario, f.moneda)}</td>
-                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(item.cantidad)*Number(item.precio_unitario), f.moneda)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="card-body" style={{textAlign:'center',color:'var(--fg-muted)',fontSize:13}}>Sin partidas registradas.</div>
-            )}
-            <div style={{padding:'12px 16px',borderTop:'1px solid var(--border)'}}>
-              <div style={{width:280,marginLeft:'auto'}}>
-                <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
-                  <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
-                  <span className="num">{moneyCurrency(f.subtotal, f.moneda)}</span>
-                </div>
-                <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
-                  <span className="text-muted" style={{fontSize:13}}>IGV</span>
-                  <span className="num">{moneyCurrency(f.igv, f.moneda)}</span>
-                </div>
-                <div className="row" style={{justifyContent:'space-between',paddingTop:6,borderTop:'1px solid var(--border)',fontWeight:700,fontSize:15,fontFamily:'Sora'}}>
-                  <span>Total facturado</span>
-                  <span className="num">{moneyCurrency(f.total, f.moneda)}</span>
-                </div>
-                {f.aplica_retencion && (
-                  <>
-                    <div className="row" style={{justifyContent:'space-between',marginTop:8,paddingTop:6,borderTop:'1px dashed rgba(251,191,36,0.4)'}}>
-                      <span style={{fontSize:13,color:'var(--warning)',fontWeight:600}}>Retención SUNAT</span>
-                      <span style={{fontSize:13,fontWeight:700,color:'var(--warning)'}}>- {moneyCurrency(f.monto_retencion||0, f.moneda)}</span>
-                    </div>
-                    <div className="row" style={{justifyContent:'space-between',paddingTop:6,borderTop:'1px solid var(--border)',fontWeight:700,fontSize:15,fontFamily:'Sora',color:'var(--cyan)'}}>
-                      <span>Neto a cobrar</span>
-                      <span className="num">{moneyCurrency(f.monto_neto_cobrable ?? (f.total-(f.monto_retencion||0)), f.moneda)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-            {(f.glosa||f.notas) && (
-              <div style={{padding:'12px 16px',borderTop:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:10}}>
-                {f.glosa && <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Glosa: </span><span style={{fontSize:13}}>{f.glosa}</span></div>}
-                {f.notas && <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Notas: </span><span style={{fontSize:13,whiteSpace:'pre-wrap'}}>{f.notas}</span></div>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tab: Vinculaciones */}
-         {fichaTab === 'vinculaciones' && (
-           <div className="card card-body" style={{display:'flex',flexDirection:'column',gap:12}}>
-            {facOrigen && (
-              <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid color-mix(in srgb,var(--cyan) 30%,transparent)',background:'color-mix(in srgb,var(--cyan) 5%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontSize:11,color:'var(--cyan)',fontWeight:600,marginBottom:4,textTransform:'uppercase',letterSpacing:0.5}}>Factura origen</div>
-                  <div style={{fontWeight:700,fontSize:15}}>{facOrigen.numero}</div>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:3,display:'flex',gap:12,alignItems:'center'}}>
-                    <span>Total: <strong>{moneyCurrency(facOrigen.total, facOrigen.moneda)}</strong></span>
-                    <span>Emitida: {facOrigen.fecha_emision||'—'}</span>
-                    <span className={'badge '+(FAC_BADGE_CLASS[facOrigen.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[facOrigen.estado]||facOrigen.estado}</span>
-                  </div>
-                </div>
-                <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => setSelFac(facOrigen.id)}>Ver factura</button>
-              </div>
-            )}
-            <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Valorización vinculada</div>
-                <div style={{fontWeight:600}}>{valVinc?.numero||'—'}</div>
-                {valVinc && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>Estado: {valVinc.estado} · Total: {moneyCurrency(valVinc.total, valVinc.moneda || f.moneda)}</div>}
-              </div>
-              {valVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('valorizaciones',{detail:valVinc.id})}>Ver valorización</button>}
-              {!valVinc && <span style={{fontSize:12,color:'var(--fg-muted)'}}>Sin valorización</span>}
-            </div>
-            <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>OS Cliente</div>
-                <div style={{fontWeight:600}}>{osVinc?.numero||'—'}</div>
-                {osVinc && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>Monto aprobado: {moneyCurrency(osVinc.monto_aprobado, osVinc.moneda || f.moneda)}</div>}
-              </div>
-              {osVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('os_clientes',{detail:osVinc.id})}>Ver OS</button>}
-              {!osVinc && <span style={{fontSize:12,color:'var(--fg-muted)'}}>Sin OS vinculada</span>}
-            </div>
-            <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Cuenta por Cobrar</div>
-                {cxcVinc ? (
-                  <>
-                    <div style={{fontWeight:600}}>{moneyCurrency(cxcVinc.monto_total||0, cxcVinc.moneda || f.moneda)}</div>
-                    <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2,display:'flex',gap:12}}>
-                      <span>Pagado: {moneyCurrency(cxcVinc.monto_pagado||0, cxcVinc.moneda || f.moneda)}</span>
-                      <span>Saldo: <strong style={{color:'var(--orange)'}}>{moneyCurrency(cxcVinc.saldo||0, cxcVinc.moneda || f.moneda)}</strong></span>
-                      <span className={'badge '+(FAC_BADGE_CLASS[cxcVinc.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[cxcVinc.estado]||cxcVinc.estado}</span>
-                    </div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Vence: {cxcVinc.fecha_vencimiento||'—'}</div>
-                  </>
-                ) : (
-                  <div>
-                    <div style={{fontWeight:400,color:'var(--fg-muted)',marginBottom:8}}>Sin CxC generada</div>
-                    {f.estado !== 'anulada' && (
-                      <button
-                        className="btn btn-primary btn-sm"
-                        disabled={generandoCxC}
-                        onClick={() => generarCxCDesdeFac(f)}
-                      >
-                        {generandoCxC ? 'Generando...' : '+ Generar CxC'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              {cxcVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cxc')}>Ver CxC</button>}
-             </div>
-             {panelNotasRelacionadas}
-           </div>
-         )}
-
-        {/* Tab: Archivos */}
-        {fichaTab === 'archivos' && (
-          <div style={{display:'flex', flexDirection:'column', gap:12}}>
-            <FileUpload
-              entidadTipo="facturas"
-              entidadId={f.id}
-              empresaId={empresa?.id}
-              categoria="comprobante_factura"
-              descripcion={`Adjunto de la factura ${f.numero}`}
-              multiple
-              readOnly={!puedeEditarFacturacion || f.estado === 'anulada'}
-              adjuntosExternos={[
-                { id:'factura-pdf-historico', tipo:'pdf', nombre_original:'PDF de factura', categoria:'Archivo histórico', url:f.archivo_pdf_url, externo:true },
-                { id:'factura-zip-historico', tipo:'zip', nombre_original:'ZIP de factura', categoria:'Archivo histórico', url:f.archivo_zip_url, externo:true },
-              ].filter(adjunto => adjunto.url)}
-              onEliminarAdjuntoExterno={adjunto => handleEliminarArchivoFac(f.id, adjunto.tipo)}
-            />
-          </div>
-        )}
-
-        {/* Tab: Historial */}
-         {fichaTab === 'historial' && (
-           <div style={{display:'flex',flexDirection:'column',gap:12}}>
-             {panelNotasRelacionadas}
-             <div className="card card-body">
-               {historialFac.length === 0 ? (
-                 <div style={{textAlign:'center',color:'var(--fg-muted)',fontSize:13,padding:24}}>Sin eventos registrados.</div>
-               ) : historialFac.map((h,i) => (
-                 <div key={i} style={{display:'flex',gap:14,padding:'10px 0',borderBottom:i<historialFac.length-1?'1px solid var(--border)':'none'}}>
-                   <div style={{
-                     width:8,height:8,borderRadius:'50%',marginTop:5,flexShrink:0,
-                     background: h.tipo==='cobro' ? 'var(--green)' : h.tipo==='anulacion' ? 'var(--danger)' : 'var(--cyan)',
-                   }}/>
-                   <div style={{flex:1}}>
-                     <div style={{fontWeight:600,fontSize:13}}>{h.texto}</div>
-                     <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>{h.fecha}</div>
-                   </div>
-                 </div>
-               ))}
-             </div>
-           </div>
-         )}
-        {renderPanelEditFac()}
-        </div>{/* end side-panel-body */}
-        </div>{/* end side-panel */}
+        <FacturacionFicha ctx={{
+          f, cuenta, empresa, role, sociedad: sociedadesDisponibles.find(s => s.id === f.sociedad_id),
+          cxc: cxcVinc, os: osVinc, val: valVinc, origen: facOrigen, notas: notasRelacionadas,
+          detracciones: detraccionesFactura, detraccionesError: detraccionesFacturaError,
+          autodetraccion: autodetraccionFactura, ventas, cuentasBancarias, centrosBeneficio, tab: fichaTab, setTab: setFichaTab, hoy: today,
+          onClose: () => setSelFac(null), onCobro: () => setModalPago(true),
+          devolucionPendiente: devolucionesPendientes[f.id],
+          onReintentarDevolucion: () => reintentarDevolucion(f.id),
+          onEditar: () => setModalEditarFac(true),
+          onNota: handleNcNd, onAnular: () => setModalAnularFac(true), restaurable: esAnuladaSinNC(f),
+          onRestaurar: () => restaurarFacturaPorError(f.id),
+          onGenerarCxC: () => generarCxCDesdeFac(f), generandoCxC,
+          onAutodetraccion: () => { setAutodetraccionFacturaSel(autodetraccionFactura); setPanelAutodetraccionFactura(true); },
+          onEliminarArchivo: eliminarArchivoFactura,
+          onAbrirFactura: id => { setSelFac(id); setFichaTab('detalle'); }, navigate,
+        }} />
       </>
     );
     } // end if (f)
@@ -6141,8 +5573,14 @@ function Facturacion() {
       {fichaFac}
       <FacturacionListado facturas={facturasVista} cxc={cxc || []} cuentaNombre={cuentaNombre} vals={valsParaFacturar.length} abrir={id => { setSelFac(id); setFichaTab('detalle'); }} openMode={openMode} abrirCarga={() => setCargaMasivaAbierta(true)} mostrarBadge={mostrarBadgeSociedadFacturacion} Badge={SociedadBadge} searchQuery={searchQuery} loading={supabaseStatus?.loading} puedeCrear={puedeCrearFacturacion} />
       {ctxEmision && <FacturacionEmisionModal ctx={ctxEmision} />}
+      {ncndForm && (
+        <ModalNotaAfectacion
+          tipoDocumento={ncndForm === 'nc' ? 'nota_credito' : 'nota_debito'}
+          facturas={facturasVista} cuentaNombre={cuentaNombre} facturaInicialId={ncndFacId}
+          cxc={cxc || []} onClose={onCancelNota} onEmit={onEmitNota}
+        />
+      )}
       {cargaMasivaAbierta && <CargaMasivaCxC onClose={() => setCargaMasivaAbierta(false)} />}
-      {renderPanelEditFac()}
     </>
   );
 }
