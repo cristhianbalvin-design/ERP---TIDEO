@@ -8210,6 +8210,45 @@ width:20px;height:20px}
   .dx-ofd-modal-actions > button { flex:1; }
 }
 
+/* ===== Órdenes de Fabricación · Avance por partes F3b (dx-ofd-) ===== */
+.dx-ofd-kpis.dx-ui { margin-bottom:0; }
+.dx-ofd-op.is-prod { grid-template-columns:28px minmax(130px,1.4fr) minmax(100px,1fr) 104px minmax(120px,1.1fr) minmax(110px,1fr) 112px; column-gap:10px; }
+.dx-ofd-progress { display:flex; align-items:center; gap:8px; min-width:0; }
+.dx-ofd-progress b { flex:none; min-width:38px; color:var(--n); font-size:12px; }
+.dx-ofd-bar { position:relative; flex:1; height:6px; min-width:40px; overflow:hidden; border-radius:999px; background:var(--grb2); }
+.dx-ofd-bar i { position:absolute; inset:0 auto 0 0; border-radius:999px; background:var(--cy); }
+.dx-ofd-parte { display:grid; grid-template-columns:minmax(110px,.9fr) minmax(150px,1.5fr) minmax(110px,1fr) 64px 72px 112px 80px; column-gap:10px; align-items:center; padding:12px 14px; border-top:1px solid var(--line2); }
+.dx-ofd-parte:first-child { border-top:0; }
+.dx-ofd-parte.is-head { padding-block:8px; background:var(--hd); color:var(--gr); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ofd-parte .is-r { text-align:right; }
+.dx-ofd-p-acc { display:flex; justify-content:flex-end; }
+.dx-ofd-mono { color:var(--n); font:700 12px ui-monospace,Menlo,monospace; }
+.dx-ofd-opst.is-p-en_revision { background:var(--amb); color:var(--amf); }
+.dx-ofd-opst.is-p-aprobado { background:var(--grb); color:var(--grf); }
+.dx-ofd-opst.is-p-observado { background:var(--rdb); color:var(--rdf); }
+.dx-ofd-mini { display:inline-flex; height:32px; align-items:center; padding:0 12px; border:0; border-radius:8px; background:#1A2B4A; color:#fff; font-size:12px; font-weight:700; }
+.dark .dx-ofd-mini, [data-theme='dark'] .dx-ofd-mini { background:#00ACC1; color:#02161A; }
+.dx-ofd-mini:focus-visible { outline:2px solid var(--cy); outline-offset:2px; }
+.dx-ofd-note { margin:10px 0 0; white-space:normal; }
+.dx-ofd-cmp-gap { margin-bottom:16px; }
+@container (max-width:1100px) {
+  .dx-ofd-op.is-prod { grid-template-columns:28px minmax(110px,1.4fr) minmax(80px,1fr) 92px minmax(90px,1fr) minmax(90px,1fr) 104px; }
+  .dx-ofd-parte { grid-template-columns:minmax(100px,.9fr) minmax(120px,1.4fr) minmax(90px,1fr) 56px 64px 104px 76px; }
+}
+@container (max-width:760px) {
+  .dx-ofd-op.is-prod { grid-template-columns:28px minmax(0,1fr) auto; grid-template-areas:'seq tar st' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah'; }
+  .dx-ofd-parte { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'num st' 'op op' 'tec tec' 'hh av' 'acc acc'; row-gap:6px; }
+  .dx-ofd-parte.is-head { display:none; }
+  .dx-ofd-p-num { grid-area:num; }
+  .dx-ofd-p-op { grid-area:op; }
+  .dx-ofd-p-tec { grid-area:tec; }
+  .dx-ofd-p-hh { grid-area:hh; text-align:left !important; }
+  .dx-ofd-p-av { grid-area:av; }
+  .dx-ofd-p-st { grid-area:st; justify-self:end; }
+  .dx-ofd-p-acc { grid-area:acc; justify-content:flex-start; }
+  .dx-ofd-p-acc:empty { display:none; }
+}
+
 /* Catálogo de venta (dx-wcat): popover de materiales, resumen del producto y filas editables */
 .dx-wms .dx-wcat-buscar { position:relative; }
 .dx-wms .dx-wcat-pop { position:absolute; top:calc(18px + 6px + 40px + 4px); left:0; right:0; z-index:5; max-height:240px; overflow:auto; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); box-shadow:0 10px 24px rgba(15,27,48,.16); }

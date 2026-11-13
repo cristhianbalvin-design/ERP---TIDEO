@@ -624,7 +624,8 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
 
   const [otsR, partesR, backlogR, plannerR, cierresR, tareasR, avanceHistR] = await Promise.all([
     q('ordenes_trabajo').order('created_at', { ascending: false }),
-    q('partes_diarios').order('created_at', { ascending: false }),
+    // Los partes de una OF se gestionan en su ficha (F3b); aquí solo los de OT.
+    q('partes_diarios').not('orden_trabajo_id', 'is', null).order('created_at', { ascending: false }),
     q('backlog').order('created_at', { ascending: false }),
     q('planner_asignaciones').neq('estado', 'cancelado').order('fecha', { ascending: true }),
     q('cierres_tecnicos').order('created_at', { ascending: false }),

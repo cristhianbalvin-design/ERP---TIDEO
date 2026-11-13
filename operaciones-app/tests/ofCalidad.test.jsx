@@ -17,6 +17,10 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   medirCalidadOF: mocks.medir,
   abrirNoConformidadOF: vi.fn(),
   cerrarNoConformidadOF: vi.fn(),
+  obtenerCatalogoAvanceOF: vi.fn(() => Promise.resolve({ puede_registrar: false, puede_revisar: false, tecnicos: [] })),
+  listarPartesOF: vi.fn(() => Promise.resolve([])),
+  registrarParteOF: vi.fn(),
+  revisarParteOF: vi.fn(),
 }));
 
 import { DetalleOFPage } from '../src/zahory-mock/pages/of/DetalleOFPage.jsx';

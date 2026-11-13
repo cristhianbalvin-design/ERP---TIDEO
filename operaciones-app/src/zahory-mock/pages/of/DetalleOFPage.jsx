@@ -2,14 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { useCompactWorkMode } from '../../../useCompactWorkMode.js';
 import {
-  aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, obtenerCalidadOF, obtenerCatalogoEdicionOF, obtenerOF,
-  quitarMaterialOF, quitarOperacionOF,
+  aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, listarPartesOF, obtenerCalidadOF, obtenerCatalogoAvanceOF,
+  obtenerCatalogoEdicionOF, obtenerOF, quitarMaterialOF, quitarOperacionOF, registrarParteOF, revisarParteOF,
 } from '../../../services/ordenFabricacionService.js';
 import { ETIQUETA_ESTADO_OF, formatearFecha, formatearMonto } from './ofBandejaLogic.js';
 import { agruparRuta, textoHoras } from './ofCrearLogic.js';
 import { admiteNoPlanificado, esEditable, materialDesdeLinea, resumenAprobacion, tareaDesdeOperacion, textoStock } from './ofFichaLogic.js';
 import { ConfirmarModal, MaterialModal, TareaModal } from './OFModales.jsx';
 import { OFCalidadPanel } from './OFCalidadPanel.jsx';
+import { AvanceModal, RevisarParteModal } from './OFAvanceModales.jsx';
+import { ESTADOS_AVANCE, ESTADOS_PARTES, ETIQUETA_PARTE, resumenProduccion } from './ofAvanceLogic.js';
 import { ESTADOS_CON_CALIDAD, ESTADOS_ENVIO, normalizarCalidad, resumenCalidad } from './ofCalidadLogic.js';
 
 const LINEA_TIEMPO = [
@@ -50,6 +52,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const [modal, setModal] = useState(null);
   const [aviso, setAviso] = useState('');
   const [calidad, setCalidad] = useState(null);
+  const [avanceCat, setAvanceCat] = useState(null);
+  const [partes, setPartes] = useState([]);
 
   useEffect(() => {
     if (estadoSesion !== 'listo') return undefined;
@@ -63,6 +67,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     setCatalogo(null);
     setMaterialesCat([]);
     setCalidad(null);
+    setAvanceCat(null);
+    setPartes([]);
     obtenerOF(id)
       .then(fila => { if (vivo) { setOf(fila); if (!fila) setError('La OF no existe o no tienes acceso a ella.'); } })
       .catch(err => { if (vivo) setError(err?.message || 'No se pudo cargar la OF.'); })
@@ -71,6 +77,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     obtenerCatalogoEdicionOF(id).then(c => { if (vivo) setCatalogo(c); }).catch(() => {});
     // F4 · Calidad: si falla, la pestaña muestra el aviso y el resto de la ficha sigue igual.
     obtenerCalidadOF(id).then(c => { if (vivo) setCalidad(normalizarCalidad(c)); }).catch(() => {});
+    // F3b · Avance: técnicos, permisos y partes. Si fallan, la ficha sigue sin registrar avance.
+    obtenerCatalogoAvanceOF(id).then(c => { if (vivo) setAvanceCat(c); }).catch(() => {});
+    listarPartesOF(id).then(l => { if (vivo) setPartes(l); }).catch(() => {});
     setCargandoMateriales(true);
     listarMaterialesOF(id)
       .then(lista => { if (vivo) setMaterialesCat(lista); })
@@ -86,12 +95,14 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   }, [aviso]);
 
   const recargar = async mensaje => {
-    const [fila, cal] = await Promise.all([obtenerOF(id), obtenerCalidadOF(id).catch(() => null)]);
+    const [fila, cal, lista] = await Promise.all([obtenerOF(id), obtenerCalidadOF(id).catch(() => null), listarPartesOF(id).catch(() => null)]);
     setOf(fila);
     if (cal) setCalidad(normalizarCalidad(cal));
+    if (lista) setPartes(lista);
     if (mensaje) setAviso(mensaje);
   };
   const resumenQ = useMemo(() => resumenCalidad(calidad || {}), [calidad]);
+  const prod = useMemo(() => resumenProduccion(of, partes), [of, partes]);
   const stockPorMaterial = useMemo(() => new Map(materialesCat.map(m => [m.id, m.disponible])), [materialesCat]);
   const materialPorId = useMemo(() => new Map(materialesCat.map(m => [m.id, m])), [materialesCat]);
 
@@ -131,6 +142,10 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const puedeEnviarCalidad = ESTADOS_ENVIO.includes(of.estado) && Boolean(calidad?.puedeEnviar);
   const puedeLiberar = of.estado === 'en_calidad' && Boolean(calidad?.puedeLiberar);
   const verCalidad = ESTADOS_ENVIO.includes(of.estado) || ESTADOS_CON_CALIDAD.includes(of.estado);
+  const puedeRegistrar = ESTADOS_AVANCE.includes(of.estado) && Boolean(avanceCat?.puede_registrar) && of.operaciones.some(o => o.estado !== 'terminada');
+  const puedeRevisar = ESTADOS_AVANCE.includes(of.estado) && Boolean(avanceCat?.puede_revisar);
+  const verPartes = ESTADOS_PARTES.includes(of.estado);
+  const enProduccion = verPartes && (of.estado !== 'aprobada' || partes.length > 0);
   const cerrarModal = () => setModal(null);
   const abrirTarea = (operacion = null, preset = {}) => setModal({ tipo: 'tarea', operacion: operacion && { ...operacion, _form: tareaDesdeOperacion(operacion) }, preset });
   const abrirMaterial = (linea = null) => setModal({ tipo: 'material', linea: linea && { ...linea, _form: materialDesdeLinea(linea) } });
@@ -160,8 +175,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </h1>
             <p className="dx-ofd-sub">{[of.descripcion, of.cliente].filter(Boolean).join(' · ') || 'Sin descripción'}</p>
           </div>
-          {(puedeAprobar || puedeEnviarCalidad || puedeLiberar) && (
+          {(puedeAprobar || puedeRegistrar || puedeEnviarCalidad || puedeLiberar) && (
             <div className="dx-ofd-hdr-actions">
+              {puedeRegistrar && <button type="button" className={puedeEnviarCalidad ? 'dx-ofd-ghost' : 'dx-ofd-primary'} onClick={() => setModal({ tipo: 'avance' })}><IcoMas />Registrar avance</button>}
               {puedeAprobar && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'aprobar' })}><IcoCheck />Aprobar OF</button>}
               {puedeEnviarCalidad && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'enviar-calidad' })}><IcoEnviar />Enviar a calidad</button>}
               {puedeLiberar && (
@@ -176,7 +192,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           <div className="dx-ofd-notice"><IcoInfo /><div>Revisa la ruta y los materiales. Al <b>aprobar</b>, la ruta queda fija y después solo se agregan materiales no planificados.</div></div>
         )}
         {of.estado === 'aprobada' && (
-          <div className="dx-ofd-notice"><IcoInfo /><div>La OF está <b>aprobada</b>: la ruta ya no se edita. La reserva de stock y el registro de avance llegan en las siguientes entregas.</div></div>
+          <div className="dx-ofd-notice"><IcoInfo /><div>La OF está <b>aprobada</b>: la ruta ya no se edita. Pasa a <b>En producción</b> con el primer parte aprobado.</div></div>
         )}
         {of.estado === 'en_calidad' && calidad && (
           <div className={`dx-ofd-notice${resumenQ.liberable ? ' is-ok' : resumenQ.fuera || resumenQ.ncAbiertas ? ' is-warn' : ''}`}><IcoInfo /><div>
@@ -203,6 +219,17 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </ol>
           )}
 
+        {enProduccion && (
+          <div className="dx-ui dx-ofd-kpis">
+            <div className="dx-ui-kpi-row">
+              <div className="dx-ui-kpi"><strong>{prod.avance} %</strong><span>Avance (por horas estimadas)</span></div>
+              <div className="dx-ui-kpi"><strong>{prod.horasReales} h</strong><span>Horas reales de {prod.horasEstimadas} h estimadas</span></div>
+              <div className="dx-ui-kpi"><strong>{formatearMonto(of.costo_real, moneda)}</strong><span>Costo real a la fecha</span></div>
+              <div className="dx-ui-kpi"><strong>{prod.porAprobar}</strong><span>{prod.porAprobar === 1 ? 'Parte por aprobar' : 'Partes por aprobar'}</span></div>
+            </div>
+          </div>
+        )}
+
         <div className="dx-ofd-grid">
           <div className="dx-ofd-card dx-ofd-main">
             <dl className="dx-ofd-fields">
@@ -219,6 +246,11 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                 <button type="button" role="tab" aria-selected={pestana === 'materiales'} className={pestana === 'materiales' ? 'is-on' : ''} onClick={() => setPestana('materiales')}>
                   Materiales · {of.materiales.length}
                 </button>
+                {verPartes && (
+                  <button type="button" role="tab" aria-selected={pestana === 'partes'} className={pestana === 'partes' ? 'is-on' : ''} onClick={() => setPestana('partes')}>
+                    Partes · {partes.length}{prod.porAprobar ? <b>{prod.porAprobar} por aprobar</b> : null}
+                  </button>
+                )}
                 {verCalidad && (
                   <button type="button" role="tab" aria-selected={pestana === 'calidad'} className={pestana === 'calidad' ? 'is-on' : ''} onClick={() => setPestana('calidad')}>
                     Calidad{resumenQ.ncAbiertas ? <b>{resumenQ.ncAbiertas}</b> : null}
@@ -248,8 +280,23 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                   {t.actividades.map(a => (
                     <div key={a.nombre}>
                       <div className="dx-ofd-act">Actividad · {a.nombre}</div>
-                      <div className={`dx-ofd-op is-head${editable ? ' is-edit' : ''}`} aria-hidden="true"><span>#</span><span>Tarea</span><span>Cargo</span><span>Horas</span><span>Equipo</span><span>Bahía</span><span className="is-r">{editable ? 'Costo' : 'Estado'}</span>{editable && <span />}</div>
-                      {a.operaciones.map(op => (
+                      {enProduccion
+                        ? <div className="dx-ofd-op is-head is-prod" aria-hidden="true"><span>#</span><span>Tarea</span><span>Cargo</span><span>Horas reales</span><span>Equipo · bahía</span><span>Avance</span><span className="is-r">Estado</span></div>
+                        : <div className={`dx-ofd-op is-head${editable ? ' is-edit' : ''}`} aria-hidden="true"><span>#</span><span>Tarea</span><span>Cargo</span><span>Horas</span><span>Equipo</span><span>Bahía</span><span className="is-r">{editable ? 'Costo' : 'Estado'}</span>{editable && <span />}</div>}
+                      {enProduccion && a.operaciones.map(op => (
+                        <div className="dx-ofd-op is-prod" key={op.id}>
+                          <span className="dx-ofd-o-seq dx-ofd-seq">{op.secuencia}</span>
+                          <span className="dx-ofd-o-tar dx-ofd-strong">{op.tarea}</span>
+                          <span className="dx-ofd-o-car dx-ofd-muted"><span className="dx-ofd-k">Cargo</span>{op.cargo || 'Sin dato'}</span>
+                          <span className="dx-ofd-o-hh"><span className="dx-ofd-k">Horas</span>{op.horas_reales} h de {op.horas} h</span>
+                          <span className="dx-ofd-o-eq dx-ofd-muted"><span className="dx-ofd-k">Equipo</span>{op.equipo || 'Sin equipo'} · {op.bahia || 'Planner'}</span>
+                          <span className="dx-ofd-o-bah dx-ofd-progress" aria-label={`Avance ${Math.round(op.avance_pct)} %`}>
+                            <b>{Math.round(op.avance_pct)} %</b><span className="dx-ofd-bar"><i style={{ width: `${Math.min(100, Math.max(0, op.avance_pct))}%` }} /></span>
+                          </span>
+                          <span className="dx-ofd-o-st"><span className={`dx-ofd-opst is-${op.estado}`}><i />{ESTADO_OPERACION[op.estado] || op.estado}</span></span>
+                        </div>
+                      ))}
+                      {!enProduccion && a.operaciones.map(op => (
                         <div className={`dx-ofd-op${editable ? ' is-edit' : ''}`} key={op.id}>
                           <span className="dx-ofd-o-seq dx-ofd-seq">{op.secuencia}</span>
                           <span className="dx-ofd-o-tar dx-ofd-strong">{op.tarea}</span>
@@ -316,10 +363,36 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                   })}
                 </div>
               )}
+              {pestana === 'partes' && !partes.length && (
+                <div className="dx-ofd-empty">Aún no hay partes. Registra el avance de una operación con «Registrar avance».</div>
+              )}
+              {pestana === 'partes' && partes.length > 0 && (
+                <div className="dx-ofd-mats">
+                  <div className="dx-ofd-parte is-head" aria-hidden="true"><span>Parte</span><span>Operación</span><span>Técnico</span><span className="is-r">Horas</span><span className="is-r">Avance</span><span>Estado</span><span /></div>
+                  {partes.map(p => {
+                    const av = p.estado === 'aprobado' ? p.avance_validado : p.avance_reportado;
+                    return (
+                      <div className="dx-ofd-parte" key={p.id}>
+                        <span className="dx-ofd-p-num dx-ofd-cell"><span className="dx-ofd-mono">{p.numero || 'Sin número'}</span><span className="dx-ofd-muted">{formatearFecha(p.fecha)}</span></span>
+                        <span className="dx-ofd-p-op dx-ofd-strong">{p.operacion ? `${p.secuencia} · ${p.operacion}` : 'Sin dato'}</span>
+                        <span className="dx-ofd-p-tec dx-ofd-muted"><span className="dx-ofd-k">Técnico</span>{p.tecnico || 'Sin dato'}</span>
+                        <span className="dx-ofd-p-hh is-r"><span className="dx-ofd-k">Horas</span>{p.horas} h</span>
+                        <span className="dx-ofd-p-av is-r"><span className="dx-ofd-k">Avance</span>{av == null ? 'Sin dato' : `${av} %`}</span>
+                        <span className="dx-ofd-p-st"><span className={`dx-ofd-opst is-p-${p.estado}`}><i />{ETIQUETA_PARTE[p.estado] || p.estado}</span></span>
+                        <span className="dx-ofd-p-acc">
+                          {p.estado === 'en_revision' && puedeRevisar && (
+                            <button type="button" className="dx-ofd-mini" onClick={() => setModal({ tipo: 'revisar', parte: p })} aria-label={`Revisar ${p.numero || 'parte'}`}>Revisar</button>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {pestana === 'calidad' && (calidad
                 ? <OFCalidadPanel calidad={calidad} resumen={resumenQ} onCambio={mensaje => recargar(mensaje)} />
                 : <div className="dx-ofd-empty">Cargando la calidad de la OF…</div>)}
-              {pestana !== 'calidad' && !editable && !noPlanificado && of.estado !== 'anulada' && (
+              {(pestana === 'ruta' || pestana === 'materiales') && !editable && !noPlanificado && of.estado !== 'anulada' && (
                 <div className="dx-ofd-soon">{catalogo && !catalogo.puede_editar ? 'Tu rol puede ver esta OF, pero no editarla.' : 'Esta OF ya no admite cambios en la ruta ni en los materiales.'}</div>
               )}
             </div>
@@ -346,6 +419,23 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
               </dl>
               <div className="dx-ofd-total"><span>Costo estimado</span><b>{formatearMonto(of.costo_estimado, moneda)}</b></div>
             </div>
+            {verPartes && (
+              <div className="dx-ofd-card dx-ofd-box">
+                <h2>Costo real</h2>
+                {enProduccion ? (
+                  <>
+                    <dl className="dx-ofd-dl">
+                      <dt>Mano de obra ({prod.horasReales} h)</dt><dd>{formatearMonto(prod.manoObra, moneda)}</dd>
+                      <dt>Materiales despachados</dt><dd>{formatearMonto(prod.materiales, moneda)}</dd>
+                    </dl>
+                    <div className="dx-ofd-total"><span>Real a la fecha</span><b>{formatearMonto(of.costo_real, moneda)}</b></div>
+                    {of.costo_estimado > 0 && (
+                      <p className="dx-ofd-muted dx-ofd-note">{Math.round((of.costo_real / of.costo_estimado) * 100)} % del estimado con {prod.avance} % de avance.</p>
+                    )}
+                  </>
+                ) : <p className="dx-ofd-muted dx-ofd-note">Se calcula con los partes aprobados y los materiales despachados.</p>}
+              </div>
+            )}
             <div className="dx-ofd-card dx-ofd-box">
               <h2>Origen</h2>
               <dl className="dx-ofd-dl">
@@ -399,6 +489,16 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           ]}
           onConfirmar={() => liberarOF(of.id)}
           onClose={r => { cerrarModal(); if (r) recargar('OF liberada: lista para entrega.'); }} />
+      )}
+      {modal?.tipo === 'avance' && (
+        <AvanceModal of={of} tecnicos={avanceCat?.tecnicos || []}
+          onGuardar={datos => registrarParteOF(of.id, datos)}
+          onClose={r => { cerrarModal(); if (r) { setPestana('partes'); recargar(`Parte ${r.numero || ''} enviado a revisión.`.replace('  ', ' ')); } }} />
+      )}
+      {modal?.tipo === 'revisar' && (
+        <RevisarParteModal parte={modal.parte} moneda={moneda}
+          onRevisar={(accion, avance, obs) => revisarParteOF(modal.parte.id, accion, avance, obs)}
+          onClose={r => { cerrarModal(); if (r) recargar(r.estado === 'observado' ? 'Parte observado: el técnico debe registrar uno corregido.' : 'Parte aprobado: avance y costo real actualizados.'); }} />
       )}
       {modal?.tipo === 'aprobar' && (
         <ConfirmarModal titulo={`¿Aprobar la ${of.numero}?`} accion="Aprobar OF"

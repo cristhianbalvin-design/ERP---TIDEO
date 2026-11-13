@@ -211,6 +211,34 @@ export const guardarMaterialOF = (ofId, lineaId, datos) =>
 export const quitarMaterialOF = lineaId => rpc('of_quitar_material', { p_material_linea_id: lineaId });
 export const aprobarOF = ofId => rpc('of_aprobar', { p_of_id: ofId });
 
+// F3b · Avance por partes. El costo, el avance ponderado y el paso a producción los calcula la base de datos.
+export async function obtenerCatalogoAvanceOF(ofId) {
+  const data = await rpc('of_catalogo_avance', { p_of_id: ofId });
+  return {
+    puede_registrar: Boolean(data?.puede_registrar),
+    puede_revisar: Boolean(data?.puede_revisar),
+    tecnicos: data?.tecnicos || [],
+  };
+}
+
+export async function listarPartesOF(ofId) {
+  const data = await rpc('of_partes', { p_of_id: ofId });
+  const n = v => (v == null ? null : Number(v));
+  return (data || []).map(p => ({
+    ...p,
+    horas: Number(p.horas) || 0,
+    avance_reportado: n(p.avance_reportado),
+    avance_validado: n(p.avance_validado),
+    costo: n(p.costo),
+    horas_operacion: Number(p.horas_operacion) || 0,
+    horas_estimadas: Number(p.horas_estimadas) || 0,
+  }));
+}
+
+export const registrarParteOF = (ofId, datos) => rpc('of_registrar_parte', { p_of_id: ofId, p_datos: datos });
+export const revisarParteOF = (parteId, accion, avance = null, observacion = null) =>
+  rpc('of_revisar_parte', { p_parte_id: parteId, p_accion: accion, p_avance: avance, p_observacion: observacion });
+
 // F4 · Calidad de la OF. Las reglas (tolerancias, NC, liberación) viven en la base de datos.
 export const obtenerCalidadOF = ofId => rpc('of_calidad_datos', { p_of_id: ofId });
 export const enviarACalidadOF = ofId => rpc('of_calidad_enviar', { p_of_id: ofId });
