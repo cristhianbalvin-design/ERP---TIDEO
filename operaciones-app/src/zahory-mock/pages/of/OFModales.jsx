@@ -212,7 +212,7 @@ export function MaterialModal({ of, linea, noPlanificado, materiales, cargandoMa
   return (
     <ModalBase titulo={noPlanificado ? 'Material no planificado' : linea ? 'Editar material' : 'Agregar material'} sucio={sucio && !guardando} onClose={() => onClose()}
       ayuda={noPlanificado
-        ? 'La OF ya está aprobada: el material se agrega como no planificado.'
+        ? 'La OF ya está aprobada: el material se agrega como no planificado y, si sale del stock, se reserva al guardarlo.'
         : 'Busca en el catálogo de materiales. El costo unitario sale del costo promedio.'}
       pie={cerrar => (
         <>
@@ -220,7 +220,7 @@ export function MaterialModal({ of, linea, noPlanificado, materiales, cargandoMa
           <div className="dx-ofd-modal-actions">
             <button type="button" className="dx-ofd-ghost" data-cerrar onClick={cerrar} disabled={guardando}>Cancelar</button>
             <button type="submit" form="dx-ofd-form-material" className="dx-ofd-primary" disabled={guardando}>
-              {guardando ? 'Guardando…' : linea ? 'Guardar cambios' : 'Agregar material'}
+              {guardando ? 'Guardando…' : linea ? 'Guardar cambios' : noPlanificado && form.origen === 'stock' ? 'Agregar y reservar' : 'Agregar material'}
             </button>
           </div>
         </>

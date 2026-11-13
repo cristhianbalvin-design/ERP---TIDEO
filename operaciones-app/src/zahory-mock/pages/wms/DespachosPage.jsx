@@ -86,7 +86,9 @@ export function DespachosPage() {
         });
         setAviso(pedido.canal === 'venta'
           ? `Guía ${r?.guia_numero || ''} emitida y mercadería despachada${r?.estado === 'parcial' ? ' (despacho parcial)' : ''}.`
-          : `Entregado al cliente · ${pedido.numero}${r?.estado === 'parcial' ? ' (entrega parcial)' : ''}.`);
+          : pedido.canal === 'produccion'
+            ? `Entregado a taller · ${pedido.numero}${r?.estado === 'parcial' ? ' (entrega parcial)' : ''}. Kardex y costo real de la OF actualizados.`
+            : `Entregado al cliente · ${pedido.numero}${r?.estado === 'parcial' ? ' (entrega parcial)' : ''}.`);
       }
       setSeleccion('');
       await cargar();
@@ -112,7 +114,7 @@ export function DespachosPage() {
   const campo = (clave, etiqueta, props = {}) => <div className="dx-ui-field"><label htmlFor={`dx-wdesp-${clave}`}>{etiqueta}{props.required && <span className="dx-ui-required" aria-hidden="true">*</span>}</label><input id={`dx-wdesp-${clave}`} value={guia[clave]} onChange={e => { const valor = e.target.value; setGuia(actual => ({ ...actual, [clave]: valor })); }} {...props} /></div>;
 
   return <section className="dx-ui dx-wms dx-wdesp">
-    <Encabezado titulo="Despachos" sub="Cola única de salida: entregas a taller (OT), ventas con guía y retiros de custodia, preparadas en ruta de picking." >
+    <Encabezado titulo="Despachos" sub="Cola única de salida: entregas a taller (OT y OF), ventas con guía y retiros de custodia, preparadas en ruta de picking." >
       <SelectorAlmacen id="dx-wdesp-almacen" almacenes={almacenes} valor={almacenId} onCambio={valor => { setAlmacenId(valor); setSeleccion(''); }} />
     </Encabezado>
     <AvisoSoloLectura sesion={sesion} />
@@ -120,6 +122,7 @@ export function DespachosPage() {
     <div className="dx-ui-kpi-row">
       <div className="dx-ui-kpi"><strong>{resumen.total}</strong><span>Por despachar</span></div>
       <div className="dx-ui-kpi"><strong>{resumen.ot}</strong><span>A taller (OT)</span></div>
+      <div className="dx-ui-kpi"><strong>{resumen.produccion}</strong><span>A taller (OF)</span></div>
       <div className="dx-ui-kpi"><strong>{resumen.venta}</strong><span>Ventas</span></div>
       <div className="dx-ui-kpi"><strong>{resumen.custodia}</strong><span>Retiros de custodia</span></div>
       <div className="dx-ui-kpi"><strong>{resumen.parciales}</strong><span>Con faltante</span></div>
@@ -129,7 +132,7 @@ export function DespachosPage() {
         <div className="dx-w-bar">
           <h2>Cola de salida</h2>
           <div className="dx-w-seg" role="group" aria-label="Filtrar por canal">
-            {[['todos', 'Todos'], ['ot', 'OT'], ['venta', 'Venta'], ['custodia', 'Custodia']].map(([id, label]) => <button key={id} type="button" className={canal === id ? 'on' : ''} aria-pressed={canal === id} onClick={() => setCanal(id)}>{label}</button>)}
+            {[['todos', 'Todos'], ['ot', 'OT'], ['produccion', 'OF'], ['venta', 'Venta'], ['custodia', 'Custodia']].map(([id, label]) => <button key={id} type="button" className={canal === id ? 'on' : ''} aria-pressed={canal === id} onClick={() => setCanal(id)}>{label}</button>)}
           </div>
           <label className="dx-ui-search" htmlFor="dx-wdesp-buscar"><span aria-hidden="true">⌕</span><input id="dx-wdesp-buscar" placeholder="Buscar documento, destino o material" value={texto} onChange={e => setTexto(e.target.value)} /></label>
         </div>
@@ -153,7 +156,7 @@ export function DespachosPage() {
         {!pedido ? <div className="dx-ui-empty">Selecciona un pedido de la cola para prepararlo.</div> : <>
           <div className="dx-w-bar"><h2>{pedido.numero}</h2><span className={`dx-ui-pill ${meta.pill}`}><i />{meta.label}</span></div>
           <div className="dx-w-sec">
-            <div className="dx-w-flow" aria-label="Avance del pedido"><span className="done">Reservado</span><span className="cur">Picking</span><span>{pedido.canal === 'venta' ? 'Guía y despacho' : pedido.canal === 'ot' ? 'Entrega a taller' : 'Entrega al cliente'}</span></div>
+            <div className="dx-w-flow" aria-label="Avance del pedido"><span className="done">Reservado</span><span className="cur">Picking</span><span>{pedido.canal === 'venta' ? 'Guía y despacho' : pedido.canal === 'ot' || pedido.canal === 'produccion' ? 'Entrega a taller' : 'Entrega al cliente'}</span></div>
             <div className="dx-w-kv"><span>Destino</span><b>{pedido.destino}</b></div>
             {pedido.fecha_requerida && <div className="dx-w-kv"><span>Requerido para</span><b>{pedido.fecha_requerida}</b></div>}
             {hayFaltante && <div className="dx-w-note amber" role="status">Parte del pedido no tiene stock reservado{pedido.canal === 'venta' ? ' (en almacenes mixtos, ventas no toma lo protegido para operaciones)' : ''}. Puedes despachar lo listo o reintentar la reserva.</div>}

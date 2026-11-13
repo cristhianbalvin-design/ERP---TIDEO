@@ -3,9 +3,9 @@ tipo: pantalla
 pantalla: of
 catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
-resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación, registro y revisión de avance por partes, costo real y calidad.
+resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación con reserva de stock y SOLPE, registro y revisión de avance por partes, costo real y calidad.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
-huella: 8875d0cc93
+huella: 9d45607da0
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
@@ -20,3 +20,5 @@ paso: 11 | pantalla=of | permiso=ninguno | La pestaña Partes lista los partes d
 paso: 12 | pantalla=of | permiso=ninguno | La OF pasa de Aprobada a En producción con el primer parte aprobado. Desde ahí la cabecera muestra el avance (ponderado por horas estimadas), las horas reales, el costo real a la fecha y los partes por aprobar; la Ruta muestra por tarea las horas reales, una barra de avance y su estado.
 paso: 13 | pantalla=of | permiso=ninguno | El costo real suma la mano de obra de los partes aprobados (horas por la tarifa del técnico; si no tiene, la del cargo de la operación) y los materiales despachados. Si no ves Registrar avance tu rol no puede editar OF o todas las operaciones están terminadas; si no ves Revisar, tu rol no tiene el permiso de aprobar OF.
 paso: 14 | pantalla=of | permiso=ninguno | Con la OF en producción, Enviar a calidad la pasa a En calidad; en la pestaña Calidad se registran las mediciones por unidad y las no conformidades. Liberar OF la deja Lista para entrega cuando todas las críticas están dentro de tolerancia y no hay no conformidades abiertas.
+paso: 15 | pantalla=of | permiso=ninguno | Al aprobar la OF (botón Aprobar y reservar) se reserva en el almacén el stock de los materiales de origen Stock y lo que falta va a Compras como SOLPE. El aviso de la OF aprobada dice cuántos materiales quedaron reservados y qué SOLPE cubre cada faltante; un Material no planificado de stock se reserva al guardarlo (Agregar y reservar).
+paso: 16 | pantalla=of | permiso=ninguno | En Materiales, cada material de stock muestra su reserva: Reservado (por despachar), Despachado o Falta con su SOLPE. El almacén entrega el material desde Despachos (canal OF); al despacharlo se registra en el kárdex, se actualiza la cantidad real del material y se suma su costo al costo real de la OF.

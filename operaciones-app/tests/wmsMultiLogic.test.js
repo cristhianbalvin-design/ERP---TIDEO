@@ -25,6 +25,11 @@ describe('despachos', () => {
     expect(p.lineas[0]).toMatchObject({ pendiente: 12, faltante: 8, solicitada: 20 });
     expect(resumenCola([p, normalizarPedido(ot)])).toMatchObject({ total: 2, venta: 1, ot: 1, parciales: 1 });
   });
+  it('el pedido de una OF (canal produccion) se cuenta aparte y usa lo reservado', () => {
+    const of = normalizarPedido({ id: 'd2', canal: 'produccion', lineas: [{ linea_id: 'y', codigo: 'R', cantidad: 12, reservada: 7, despachada: 5 }] });
+    expect(of.lineas[0]).toMatchObject({ pendiente: 7, faltante: 0, solicitada: 7 });
+    expect(resumenCola([of, normalizarPedido(ot)])).toMatchObject({ total: 2, produccion: 1, ot: 1, parciales: 0 });
+  });
   it('ordenarPicking deja al final lo que no tiene ubicación', () => {
     expect(ordenarPicking([{ codigo: 'Z' }, { codigo: 'Y', ubicacion: 'C-10' }, { codigo: 'X', ubicacion: 'C-2' }]).map(l => l.codigo)).toEqual(['X', 'Y', 'Z']);
   });

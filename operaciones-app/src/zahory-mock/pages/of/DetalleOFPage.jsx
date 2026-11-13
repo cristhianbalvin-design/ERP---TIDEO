@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { useCompactWorkMode } from '../../../useCompactWorkMode.js';
 import {
-  aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, listarPartesOF, obtenerCalidadOF, obtenerCatalogoAvanceOF,
+  aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, listarPartesOF, obtenerCalidadOF, obtenerCatalogoAvanceOF, obtenerReservasOF,
   obtenerCatalogoEdicionOF, obtenerOF, quitarMaterialOF, quitarOperacionOF, registrarParteOF, revisarParteOF,
 } from '../../../services/ordenFabricacionService.js';
 import { ETIQUETA_ESTADO_OF, formatearFecha, formatearMonto } from './ofBandejaLogic.js';
@@ -11,7 +11,7 @@ import { admiteNoPlanificado, esEditable, materialDesdeLinea, resumenAprobacion,
 import { ConfirmarModal, MaterialModal, TareaModal } from './OFModales.jsx';
 import { OFCalidadPanel } from './OFCalidadPanel.jsx';
 import { AvanceModal, RevisarParteModal } from './OFAvanceModales.jsx';
-import { ESTADOS_AVANCE, ESTADOS_PARTES, ETIQUETA_PARTE, resumenProduccion } from './ofAvanceLogic.js';
+import { ESTADOS_AVANCE, ESTADOS_PARTES, ETIQUETA_PARTE, etiquetasReserva, resumenProduccion, resumenReservas } from './ofAvanceLogic.js';
 import { ESTADOS_CON_CALIDAD, ESTADOS_ENVIO, normalizarCalidad, resumenCalidad } from './ofCalidadLogic.js';
 
 const LINEA_TIEMPO = [
@@ -54,6 +54,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const [calidad, setCalidad] = useState(null);
   const [avanceCat, setAvanceCat] = useState(null);
   const [partes, setPartes] = useState([]);
+  const [reservas, setReservas] = useState(null);
 
   useEffect(() => {
     if (estadoSesion !== 'listo') return undefined;
@@ -69,6 +70,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     setCalidad(null);
     setAvanceCat(null);
     setPartes([]);
+    setReservas(null);
     obtenerOF(id)
       .then(fila => { if (vivo) { setOf(fila); if (!fila) setError('La OF no existe o no tienes acceso a ella.'); } })
       .catch(err => { if (vivo) setError(err?.message || 'No se pudo cargar la OF.'); })
@@ -80,6 +82,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     // F3b · Avance: técnicos, permisos y partes. Si fallan, la ficha sigue sin registrar avance.
     obtenerCatalogoAvanceOF(id).then(c => { if (vivo) setAvanceCat(c); }).catch(() => {});
     listarPartesOF(id).then(l => { if (vivo) setPartes(l); }).catch(() => {});
+    // F3c · Reservas WMS de los materiales de stock (franja de la pestaña Materiales).
+    obtenerReservasOF(id).then(r => { if (vivo) setReservas(r); }).catch(() => {});
     setCargandoMateriales(true);
     listarMaterialesOF(id)
       .then(lista => { if (vivo) setMaterialesCat(lista); })
@@ -95,14 +99,19 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   }, [aviso]);
 
   const recargar = async mensaje => {
-    const [fila, cal, lista] = await Promise.all([obtenerOF(id), obtenerCalidadOF(id).catch(() => null), listarPartesOF(id).catch(() => null)]);
+    const [fila, cal, lista, res] = await Promise.all([
+      obtenerOF(id), obtenerCalidadOF(id).catch(() => null), listarPartesOF(id).catch(() => null), obtenerReservasOF(id).catch(() => null),
+    ]);
     setOf(fila);
+    if (res) setReservas(res);
     if (cal) setCalidad(normalizarCalidad(cal));
     if (lista) setPartes(lista);
     if (mensaje) setAviso(mensaje);
   };
   const resumenQ = useMemo(() => resumenCalidad(calidad || {}), [calidad]);
   const prod = useMemo(() => resumenProduccion(of, partes), [of, partes]);
+  const resR = useMemo(() => resumenReservas(reservas), [reservas]);
+  const reservaPorLinea = useMemo(() => new Map((reservas?.lineas || []).map(l => [l.of_material_id, l])), [reservas]);
   const stockPorMaterial = useMemo(() => new Map(materialesCat.map(m => [m.id, m.disponible])), [materialesCat]);
   const materialPorId = useMemo(() => new Map(materialesCat.map(m => [m.id, m])), [materialesCat]);
 
@@ -192,7 +201,14 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           <div className="dx-ofd-notice"><IcoInfo /><div>Revisa la ruta y los materiales. Al <b>aprobar</b>, la ruta queda fija y después solo se agregan materiales no planificados.</div></div>
         )}
         {of.estado === 'aprobada' && (
-          <div className="dx-ofd-notice"><IcoInfo /><div>La OF está <b>aprobada</b>: la ruta ya no se edita. Pasa a <b>En producción</b> con el primer parte aprobado.</div></div>
+          <div className={`dx-ofd-notice${resR.faltantes.length ? ' is-warn' : ''}`}><IcoInfo /><div>
+            {resR.total > 0 && <>Se reservaron <b>{resR.completas} de {resR.total} {resR.total === 1 ? 'material' : 'materiales'}</b>{reservas?.almacen ? ` en ${reservas.almacen}` : ''}. </>}
+            {resR.faltantes.map(f => {
+              const m = of.materiales.find(x => x.id === f.of_material_id);
+              return <React.Fragment key={f.of_material_id}>Falta <b>{f.faltante} {m?.unidad || 'und'}</b> de {m?.descripcion || 'un material'}{f.solpe ? <>: va a Compras en la SOLPE <b>{f.solpe}</b></> : ''}. </React.Fragment>;
+            })}
+            La ruta ya no se edita y la OF pasa a <b>En producción</b> con el primer parte aprobado.
+          </div></div>
         )}
         {of.estado === 'en_calidad' && calidad && (
           <div className={`dx-ofd-notice${resumenQ.liberable ? ' is-ok' : resumenQ.fuera || resumenQ.ncAbiertas ? ' is-warn' : ''}`}><IcoInfo /><div>
@@ -349,6 +365,11 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                           </span>
                           {m.no_planificado && m.motivo && <span className="dx-ofd-muted">Motivo: {m.motivo}</span>}
                           {stock && <span className={`dx-ofd-stock is-${stock.tono}`}>{stock.texto}</span>}
+                          {!editable && verPartes && m.origen === 'stock' && reservas && (
+                            <span className="dx-ofd-res">
+                              {etiquetasReserva(reservaPorLinea.get(m.id), m.unidad).map(t => <span key={t.texto} className={`dx-ofd-tag is-${t.tono}`}>{t.texto}</span>)}
+                            </span>
+                          )}
                         </span>
                         <span className="dx-ofd-muted">{m.cantidad} {m.unidad || 'und'} × {formatearMonto(m.costo_unitario, moneda)}</span>
                         <span className="dx-ofd-money">{formatearMonto(m.subtotal, moneda)}</span>
@@ -458,7 +479,14 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
         <MaterialModal of={of} linea={modal.linea} noPlanificado={Boolean(modal.noPlanificado)}
           materiales={materialesCat} cargandoMateriales={cargandoMateriales}
           onGuardar={(lineaId, datos) => guardarMaterialOF(of.id, lineaId, datos)}
-          onClose={r => { cerrarModal(); if (r) recargar(r.sin_costo ? 'Material guardado. No tiene costo promedio: quedó en 0.' : 'Material guardado.'); }} />
+          onClose={r => {
+            cerrarModal();
+            if (!r) return;
+            const falt = r.reserva?.faltantes?.some(f => f.of_material_id === r.id);
+            recargar(r.sin_costo ? 'Material guardado. No tiene costo promedio: quedó en 0.'
+              : r.reserva ? (falt ? 'Material agregado. No hay stock suficiente: lo que falta va a Compras (SOLPE).' : 'Material agregado y reservado.')
+                : 'Material guardado.');
+          }} />
       )}
       {modal?.tipo === 'quitar-tarea' && (
         <ConfirmarModal titulo={`¿Quitar la tarea ${modal.operacion.secuencia} · ${modal.operacion.tarea}?`} peligro accion="Quitar tarea"
@@ -501,16 +529,23 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           onClose={r => { cerrarModal(); if (r) recargar(r.estado === 'observado' ? 'Parte observado: el técnico debe registrar uno corregido.' : 'Parte aprobado: avance y costo real actualizados.'); }} />
       )}
       {modal?.tipo === 'aprobar' && (
-        <ConfirmarModal titulo={`¿Aprobar la ${of.numero}?`} accion="Aprobar OF"
-          ayuda="Después de aprobarla, la ruta y los materiales ya no se editan; solo se agregan materiales no planificados."
+        <ConfirmarModal titulo={`¿Aprobar la ${of.numero}?`} accion={resumen.materialesStock ? 'Aprobar y reservar' : 'Aprobar OF'}
+          ayuda="Al aprobarla se reserva el stock y lo que falte se pide a Compras (SOLPE). Después la ruta y los materiales ya no se editan; solo se agregan materiales no planificados."
           filas={[
             ['Operaciones', resumen.operaciones ? `${resumen.operaciones} · ${textoHoras(resumen.horas, resumen.horasMaquina)}` : 'Ninguna: agrega al menos una tarea'],
-            ['Materiales de stock', resumen.materialesStock ? String(resumen.materialesStock) : 'Ninguno'],
-            ['Sin stock suficiente hoy', resumen.sinStockSuficiente.length ? resumen.sinStockSuficiente.join(', ') : 'Ninguno'],
+            ['Se reservará', resumen.materialesStock ? `${resumen.materialesStock} ${resumen.materialesStock === 1 ? 'material de stock' : 'materiales de stock'}` : 'Ninguno'],
+            ['Irá a Compras (sin stock suficiente hoy)', resumen.sinStockSuficiente.length ? resumen.sinStockSuficiente.join(', ') : 'Nada'],
             ['Costo estimado', formatearMonto(of.costo_estimado, moneda)],
           ]}
           onConfirmar={() => aprobarOF(of.id)}
-          onClose={r => { cerrarModal(); if (r) recargar('OF aprobada.'); }} />
+          onClose={r => {
+            cerrarModal();
+            if (!r) return;
+            const falt = r.reserva?.faltantes?.length || 0;
+            recargar(r.reserva?.sin_almacen ? 'OF aprobada. No hay almacén de consumo interno: no se reservó stock.'
+              : falt ? `OF aprobada. Stock reservado; ${falt} ${falt === 1 ? 'material va' : 'materiales van'} a Compras (SOLPE).`
+                : r.reserva?.lineas ? 'OF aprobada y stock reservado.' : 'OF aprobada.');
+          }} />
       )}
     </section>
   );

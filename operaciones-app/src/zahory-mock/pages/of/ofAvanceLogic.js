@@ -73,3 +73,23 @@ export function resumenProduccion(of, partes = []) {
     materiales: r2((of?.materiales || []).reduce((s, m) => s + (m.cantidad_real || 0) * (m.costo_unitario || 0), 0)),
   };
 }
+
+// F3c · Reserva WMS por material de stock: etiquetas de la columna «Reserva y despacho».
+const cant = (n, unidad) => `${r2(n)} ${unidad || 'und'}`;
+export function etiquetasReserva(reserva, unidad) {
+  if (!reserva || !reserva.en_pedido) return [{ tono: 'gray', texto: 'Sin reserva' }];
+  const t = [];
+  if (reserva.despachada > 0) t.push({ tono: 'ok', texto: `Despachado ${cant(reserva.despachada, unidad)}` });
+  if (reserva.reservada > 0) t.push({ tono: 'blue', texto: `Reservado ${cant(reserva.reservada, unidad)} · por despachar` });
+  if (reserva.faltante > 0) t.push({ tono: 'warn', texto: `Falta ${cant(reserva.faltante, unidad)}${reserva.solpe ? ` · SOLPE ${reserva.solpe}` : ''}` });
+  return t;
+}
+
+export function resumenReservas(reservas) {
+  const lineas = (reservas?.lineas || []).filter(l => l.en_pedido);
+  return {
+    total: lineas.length,
+    completas: lineas.filter(l => l.faltante <= 0).length,
+    faltantes: lineas.filter(l => l.faltante > 0),
+  };
+}
