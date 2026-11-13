@@ -99,7 +99,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const malas = todas.filter(r => cambiadas.includes(r.ficha.archivo) && r.faltas.length);
     for (const r of malas) console.error(`ERROR ${r.ficha.archivo}: ficha incompleta.\n  - ${r.faltas.join('\n  - ')}`);
     if (malas.length) {
-      console.error(`\nEste cambio toca ${malas.length} ficha(s) que no están completas. Complétalas (CLAUDE.md §8, «Ficha completa»); npm run manual:extraer -- <clave del catálogo> lista botones, campos y mensajes de la pantalla.`);
+      console.error(`\nEste cambio toca ${malas.length} ficha(s) que no están completas. Complétalas (CLAUDE.md §8, «Ficha completa»); npm run manual:extraer -- <clave del catálogo> lista botones, campos y mensajes de la pantalla. Si no tocaste esas fichas, tu rama está atrasada: git fetch y git rebase origin/main.`);
       process.exit(1);
     }
     console.log(`Fichas tocadas por este cambio: ${cambiadas.length}, todas completas.`);
