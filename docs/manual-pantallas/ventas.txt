@@ -12,3 +12,6 @@ paso: 3 | pantalla=ventas | permiso=ninguno | Guardar borrador la conserva sin c
 paso: 4 | pantalla=ventas | permiso=ninguno | Emitir comprobante genera el comprobante de la venta.
 paso: 5 | pantalla=ventas | permiso=ninguno | Registrar cobro anota el pago: la fecha no puede ser futura y debes elegir la cuenta bancaria donde ingresó el dinero. Anular cobro lo revierte.
 paso: 6 | pantalla=ventas | permiso=ninguno | Anular venta deja la venta sin efecto.
+paso: 7 | pantalla=ventas | permiso=ninguno | Para qué sirve: registrar ventas directas que no pasan por cotización ni orden de servicio, con o sin comprobante, y controlar su cobro. Lo vendido sin comprobante queda pendiente de facturar.
+paso: 8 | pantalla=ventas | permiso=ninguno | Confirmar venta y Editar requieren el permiso de editar en Ventas; si no los ves, tu rol no lo tiene.
+paso: 9 | pantalla=ventas | permiso=ninguno | No deja guardar una venta sin cliente, sin concepto o con total en cero, y una venta al crédito pide entre 1 y 365 días. No deja registrar un cobro con fecha futura.

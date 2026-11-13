@@ -10,3 +10,5 @@ paso: 1 | pantalla=marketing | permiso=ninguno | Crea una campaña con Nueva cam
 paso: 2 | pantalla=marketing | permiso=ninguno | Audiencia muestra a quién va dirigida.
 paso: 3 | pantalla=marketing | permiso=ninguno | Activar la pone en marcha, Pausar la detiene y Reactivar la retoma.
 paso: 4 | pantalla=marketing | permiso=ninguno | Eliminar campana la borra y no se puede deshacer.
+paso: 5 | pantalla=marketing | permiso=ninguno | Para qué sirve: organizar las campañas con las que se consiguen prospectos y medir cuántos leads trae cada una. Los leads cuyo origen coincide con el código de la campaña se le atribuyen solos.
+paso: 6 | pantalla=marketing | permiso=ninguno | Si no ves leads en una campaña, revisa que el origen del lead sea el mismo código de la campaña. No aparece Activar en una campaña que ya está activa: ahí el botón es Pausar.

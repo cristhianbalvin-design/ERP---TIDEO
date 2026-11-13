@@ -8,3 +8,6 @@ componentes: src/pages_core.jsx#Actividades
 huella: a926023fb3
 paso: 1 | pantalla=actividades | permiso=ninguno | Registra una actividad con Nueva actividad y Guardar actividad.
 paso: 2 | pantalla=actividades | permiso=ninguno | Puedes verlas en Kanban o en Lista y acotar con Filtros.
+paso: 3 | pantalla=actividades | permiso=ninguno | Para qué sirve: dejar constancia de cada contacto con un cliente o prospecto (llamada, visita, reunión, correo) para saber qué se habló y qué sigue. Los leads sin actividad reciente se marcan como desatendidos a partir de este registro.
+paso: 4 | pantalla=actividades | permiso=ninguno | Nueva actividad pide el tipo, con quién fue (lead, cuenta u oportunidad), la fecha y un resumen; Guardar actividad la registra. La vista Kanban las agrupa por estado y la Lista las muestra en tabla.
+paso: 5 | pantalla=actividades | permiso=ninguno | Si no aparece una actividad que registraste, revisa los Filtros de fecha y de responsable. Si no puedes registrar, tu rol no tiene permiso de crear en Actividades.

@@ -12,6 +12,7 @@ La fuente de verdad de las reglas del repositorio es **`CLAUDE.md`** en la raíz
 - Si cambió el catálogo, las fichas o las herramientas `asistente_*`: `node scripts/manual/catalogo.mjs generar` y `node scripts/generar-manual-pantallas.mjs`.
 - Si cambia el contenido de algún `_sincronizar.sql`: sube en 1 la `revision` de `catalogo/sincronizacion.json` y regenera. No los apliques a mano: al fusionar en `main`, el workflow `sincronizar-aria.yml` los aplica en Supabase. La base rechaza revisiones viejas y bloquea escrituras directas en esas tablas.
 - Antes de cerrar: `npm run verificar:catalogo` y `npm run test:manual`. El workflow `catalogo-aria.yml` bloquea el PR si una ruta del código no está en el catálogo o si una ficha quedó desactualizada. Para escribir o revisar una ficha: `npm run manual:extraer -- <clave del catálogo>`.
+- La ficha de toda pantalla nueva o modificada debe quedar **completa** (CLAUDE.md §8, «Ficha completa»): propósito («Para qué sirve:»), cada botón por su nombre, estados y validaciones, permisos y qué revisar cuando algo no sale. `npm run manual:completitud -- <ficha>` dice qué le falta; `npm run verificar:catalogo` falla si el cambio toca una ficha incompleta.
 
 ## 2. Reglas de trabajo
 

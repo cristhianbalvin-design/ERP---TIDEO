@@ -9,3 +9,6 @@ huella: f42c3b0172
 paso: 1 | pantalla=hoja_costeo | permiso=ninguno | La pantalla tiene tres secciones: Costo hora por cargo, Depreciación de activos y Gasto administrativo.
 paso: 2 | pantalla=hoja_costeo | permiso=ninguno | En cada una puedes escribir un valor manual, que debe ser un número mayor o igual a cero, y conservarlo con Guardar.
 paso: 3 | pantalla=hoja_costeo | permiso=ninguno | Si tu rol no puede modificar estas variables, la pantalla avisa que no tienes permiso para guardar.
+paso: 4 | pantalla=hoja_costeo | permiso=ninguno | Para qué sirve: fijar los valores con que se costea todo servicio: cuánto cuesta la hora de cada cargo, cuánto se deprecia cada equipo por hora y qué porcentaje de gasto administrativo se carga. Un cambio aquí afecta a las hojas de costeo nuevas.
+paso: 5 | pantalla=hoja_costeo | permiso=ninguno | Cada sección muestra el valor calculado por el sistema y permite reemplazarlo con un valor manual: la depreciación mensual de cada activo, su costo por hora según sus horas disponibles al mes, y el porcentaje de gasto administrativo.
+paso: 6 | pantalla=hoja_costeo | permiso=ninguno | Si no puedes guardar, tu rol no tiene permiso para modificar las variables. Si un activo no aparece con costo por hora, revisa que tenga valor de adquisición, vida útil y horas disponibles al mes; los activos dados de baja no se muestran.
