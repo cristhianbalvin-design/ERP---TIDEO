@@ -8231,6 +8231,11 @@ width:20px;height:20px}
 .dx-ofd-mini:focus-visible { outline:2px solid var(--cy); outline-offset:2px; }
 .dx-ofd-note { margin:10px 0 0; white-space:normal; }
 .dx-ofd-cmp-gap { margin-bottom:16px; }
+.dx-ofd-res { display:flex; flex-wrap:wrap; gap:4px; margin-top:2px; }
+.dx-ofd-res .dx-ofd-tag { white-space:normal; }
+.dx-ofd-tag.is-ok { background:var(--grb); color:var(--grf); }
+.dx-ofd-tag.is-blue { background:var(--blb); color:var(--blf); }
+.dx-ofd-tag.is-gray { background:var(--grb2); color:var(--grf2); }
 @container (max-width:1100px) {
   .dx-ofd-op.is-prod { grid-template-columns:28px minmax(110px,1.4fr) minmax(80px,1fr) 92px minmax(90px,1fr) minmax(90px,1fr) 104px; }
   .dx-ofd-parte { grid-template-columns:minmax(100px,.9fr) minmax(120px,1.4fr) minmax(90px,1fr) 56px 64px 104px 76px; }

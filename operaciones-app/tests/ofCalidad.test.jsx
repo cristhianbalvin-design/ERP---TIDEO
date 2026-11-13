@@ -19,6 +19,7 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   cerrarNoConformidadOF: vi.fn(),
   obtenerCatalogoAvanceOF: vi.fn(() => Promise.resolve({ puede_registrar: false, puede_revisar: false, tecnicos: [] })),
   listarPartesOF: vi.fn(() => Promise.resolve([])),
+  obtenerReservasOF: vi.fn(() => Promise.resolve(mocks.reservas || { demanda_id: null, almacen: '', lineas: [] })),
   registrarParteOF: vi.fn(),
   revisarParteOF: vi.fn(),
 }));

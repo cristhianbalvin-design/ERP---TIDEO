@@ -14,12 +14,13 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   enviarACalidadOF: vi.fn(), liberarOF: vi.fn(), medirCalidadOF: vi.fn(), abrirNoConformidadOF: vi.fn(), cerrarNoConformidadOF: vi.fn(),
   obtenerCatalogoAvanceOF: vi.fn(() => Promise.resolve(mocks.avance)),
   listarPartesOF: vi.fn(() => Promise.resolve(mocks.partes)),
+  obtenerReservasOF: vi.fn(() => Promise.resolve(mocks.reservas || { demanda_id: null, almacen: '', lineas: [] })),
   registrarParteOF: mocks.registrar,
   revisarParteOF: mocks.revisar,
 }));
 
 import { DetalleOFPage } from '../src/zahory-mock/pages/of/DetalleOFPage.jsx';
-import { datosAvance, resumenProduccion, validarAvance, validarRevision } from '../src/zahory-mock/pages/of/ofAvanceLogic.js';
+import { datosAvance, etiquetasReserva, resumenProduccion, resumenReservas, validarAvance, validarRevision } from '../src/zahory-mock/pages/of/ofAvanceLogic.js';
 
 const esperar = async () => { for (let i = 0; i < 12; i += 1) await Promise.resolve(); };
 const texto = nodo => (nodo.children || []).map(h => (typeof h === 'string' ? h : texto(h))).join('');
@@ -65,6 +66,38 @@ describe('lógica del avance por partes', () => {
   it('resume horas, partes por aprobar y costo real', () => {
     const of = { ...OF_BASE, avance_pct: 80, operaciones: [{ horas: 4, horas_reales: 2 }, { horas: 6, horas_reales: 3 }], materiales: [{ cantidad_real: 2, costo_unitario: 10 }] };
     expect(resumenProduccion(of, [PARTE, { ...PARTE, estado: 'aprobado', costo: 49.08 }])).toEqual({ avance: 80, horasReales: 5, horasEstimadas: 10, porAprobar: 1, manoObra: 49.08, materiales: 20 });
+  });
+});
+
+describe('reservas WMS de la OF (F3c)', () => {
+  it('etiqueta reservado, despachado y faltante con su SOLPE', () => {
+    expect(etiquetasReserva(null, 'UND')).toEqual([{ tono: 'gray', texto: 'Sin reserva' }]);
+    expect(etiquetasReserva({ en_pedido: true, cantidad: 12, reservada: 7, despachada: 5, faltante: 0 }, 'UND').map(t => t.texto))
+      .toEqual(['Despachado 5 UND', 'Reservado 7 UND · por despachar']);
+    expect(etiquetasReserva({ en_pedido: true, cantidad: 12, reservada: 6, despachada: 0, faltante: 6, solpe: 'SLP-OF-1' }, 'UND').map(t => t.tono))
+      .toEqual(['blue', 'warn']);
+    expect(resumenReservas({ lineas: [{ en_pedido: true, faltante: 0 }, { en_pedido: true, faltante: 6 }, { en_pedido: false, faltante: 0 }] }))
+      .toMatchObject({ total: 2, completas: 1 });
+  });
+
+  it('la ficha aprobada avisa el faltante con su SOLPE y muestra la reserva por material', async () => {
+    mocks.of = { ...structuredClone(OF_BASE), materiales: [
+      { id: 'm1', material_id: 'x1', descripcion: 'Rodamiento', unidad: 'UND', cantidad: 12, costo_unitario: 1, subtotal: 12, origen: 'stock' },
+      { id: 'm2', material_id: 'x2', descripcion: 'Bomba', unidad: 'UND', cantidad: 2, costo_unitario: 1, subtotal: 2, origen: 'stock' },
+    ] };
+    mocks.partes = [];
+    mocks.avance = { puede_registrar: true, puede_revisar: true, tecnicos: [] };
+    mocks.reservas = { demanda_id: 'd1', almacen: 'Almacén Central', lineas: [
+      { of_material_id: 'm1', en_pedido: true, cantidad: 12, reservada: 12, despachada: 0, faltante: 0 },
+      { of_material_id: 'm2', en_pedido: true, cantidad: 2, reservada: 1, despachada: 0, faltante: 1, solpe: 'SLP-OF-1' },
+    ] };
+    const root = await montar();
+    const aviso = texto(root.root.findByProps({ className: 'dx-ofd-notice is-warn' }));
+    expect(aviso).toContain('Se reservaron 1 de 2 materiales en Almacén Central.');
+    expect(aviso).toContain('Falta 1 UND de Bomba: va a Compras en la SOLPE SLP-OF-1.');
+    await act(async () => { boton(root, 'Materiales · 2').props.onClick(); await esperar(); });
+    expect(root.root.findAllByProps({ className: 'dx-ofd-tag is-warn' }).map(texto)).toEqual(['Falta 1 UND · SOLPE SLP-OF-1']);
+    mocks.reservas = null;
   });
 });
 

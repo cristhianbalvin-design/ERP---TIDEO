@@ -239,6 +239,17 @@ export const registrarParteOF = (ofId, datos) => rpc('of_registrar_parte', { p_o
 export const revisarParteOF = (parteId, accion, avance = null, observacion = null) =>
   rpc('of_revisar_parte', { p_parte_id: parteId, p_accion: accion, p_avance: avance, p_observacion: observacion });
 
+// F3c · Reserva WMS de los materiales de stock: reservado, despachado, faltante y SOLPE por línea.
+export async function obtenerReservasOF(ofId) {
+  const data = await rpc('of_reservas', { p_of_id: ofId });
+  const n = v => Number(v) || 0;
+  return {
+    demanda_id: data?.demanda_id || null,
+    almacen: data?.almacen || '',
+    lineas: (data?.lineas || []).map(l => ({ ...l, cantidad: n(l.cantidad), reservada: n(l.reservada), despachada: n(l.despachada), faltante: n(l.faltante) })),
+  };
+}
+
 // F4 · Calidad de la OF. Las reglas (tolerancias, NC, liberación) viven en la base de datos.
 export const obtenerCalidadOF = ofId => rpc('of_calidad_datos', { p_of_id: ofId });
 export const enviarACalidadOF = ofId => rpc('of_calidad_enviar', { p_of_id: ofId });

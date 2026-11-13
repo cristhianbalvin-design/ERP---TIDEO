@@ -22,6 +22,7 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   cerrarNoConformidadOF: vi.fn(),
   obtenerCatalogoAvanceOF: vi.fn(() => Promise.resolve({ puede_registrar: false, puede_revisar: false, tecnicos: [] })),
   listarPartesOF: vi.fn(() => Promise.resolve([])),
+  obtenerReservasOF: vi.fn(() => Promise.resolve(mocks.reservas || { demanda_id: null, almacen: '', lineas: [] })),
   registrarParteOF: vi.fn(),
   revisarParteOF: vi.fn(),
 }));
@@ -132,7 +133,7 @@ describe('ficha editable de la OF', () => {
     await act(async () => { boton(root, 'Aprobar OF').props.onClick(); await esperar(); });
     expect(texto(root.root.findByProps({ className: 'dx-ofd-cmp' }))).toContain('Rodamiento 6204');
     mocks.of = { ...structuredClone(OF_BASE), estado: 'aprobada' };
-    const confirmar = botones(root).filter(b => texto(b) === 'Aprobar OF').pop();
+    const confirmar = botones(root).find(b => texto(b) === 'Aprobar y reservar');
     await act(async () => { confirmar.props.onClick(); await esperar(); });
     expect(mocks.aprobar).toHaveBeenCalledWith('of1');
     expect(boton(root, 'Aprobar OF')).toBeFalsy();

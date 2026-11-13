@@ -3,10 +3,10 @@ tipo: pantalla
 pantalla: inventario
 catalogo: operaciones/almacen-despachos
 titulo: Despachos de almacén
-resumen: Cola única de salida del almacén: entregas a taller por OT, ventas con guía de remisión y retiros de custodia, preparadas con picking.
+resumen: Cola única de salida del almacén: entregas a taller por OT y por OF, ventas con guía de remisión y retiros de custodia, preparadas con picking.
 componentes: operaciones-app/src/zahory-mock/pages/wms/DespachosPage.jsx#DespachosPage
-huella: 4b4a871230
-paso: 1 | pantalla=inventario | permiso=ninguno | Filtra la cola por canal (OT, Venta o Custodia) y selecciona un pedido para prepararlo.
+huella: 9c94c5971c
+paso: 1 | pantalla=inventario | permiso=ninguno | Filtra la cola por canal (OT, OF, Venta o Custodia) y selecciona un pedido para prepararlo.
 paso: 2 | pantalla=inventario | permiso=ninguno | Escanea el código del material o de la ubicación para marcar lo preparado, o usa Preparar todo lo listo para cargar las cantidades pendientes.
-paso: 3 | pantalla=inventario | permiso=inventario:despachar | Si faltan unidades en una venta o retiro, usa Reintentar reserva para reservar lo que ya está disponible.
-paso: 4 | pantalla=inventario | permiso=inventario:despachar | Despacha el pedido: en OT queda entregado al taller y se actualiza el kardex; en ventas completa la guía de remisión (modalidad, transporte y peso), que se emite con la serie T001 al despachar.
+paso: 3 | pantalla=inventario | permiso=inventario:despachar | Si faltan unidades en una venta, un retiro o una OF, usa Reintentar reserva para reservar lo que ya está disponible.
+paso: 4 | pantalla=inventario | permiso=inventario:despachar | Despacha el pedido: en OT queda entregado al taller y se actualiza el kardex; en OF, además, se registra la cantidad real del material en la OF y su costo real; en ventas completa la guía de remisión (modalidad, transporte y peso), que se emite con la serie T001 al despachar.

@@ -23,6 +23,7 @@ export const CANALES = Object.freeze({
   ot: { label: 'OT', pill: 'is-violet', destino: 'Entregar a taller' },
   venta: { label: 'Venta', pill: 'is-cyan', destino: 'Emitir guía y despachar' },
   custodia: { label: 'Custodia', pill: 'is-amber', destino: 'Entregar al cliente' },
+  produccion: { label: 'OF', pill: 'is-green', destino: 'Entregar a taller' },
 });
 
 const numero = valor => {
@@ -83,7 +84,7 @@ export function ordenarPicking(lineas = []) {
 }
 
 export function resumenCola(pedidos = []) {
-  const r = { total: pedidos.length, ot: 0, venta: 0, custodia: 0, parciales: 0 };
+  const r = { total: pedidos.length, ot: 0, produccion: 0, venta: 0, custodia: 0, parciales: 0 };
   for (const p of pedidos) {
     if (r[p.canal] !== undefined) r[p.canal] += 1;
     if (p.estado === 'parcial' || (p.lineas || []).some(l => numero(l.faltante) > 0)) r.parciales += 1;
