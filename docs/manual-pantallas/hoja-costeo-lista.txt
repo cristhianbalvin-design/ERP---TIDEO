@@ -11,3 +11,6 @@ paso: 2 | pantalla=hoja_costeo | permiso=ninguno | Abrir wizard lleva a la hoja 
 paso: 3 | pantalla=hoja_costeo | permiso=ninguno | Agregar línea suma una línea de costo y Guardar y Continuar conserva el avance.
 paso: 4 | pantalla=hoja_costeo | permiso=ninguno | Enviar a revision la manda a revisión, Aprobar Costeo la aprueba y Volver a borrador la devuelve para corregir.
 paso: 5 | pantalla=hoja_costeo | permiso=ninguno | Con la hoja aprobada, Generar Cotización crea la cotización. PDF descarga la hoja.
+paso: 6 | pantalla=hoja_costeo | permiso=ninguno | Para qué sirve: reunir todas las hojas de costeo y su estado, para saber cuáles faltan revisar, cuáles están aprobadas y cuáles aún no se cotizaron. La hoja define el costo y el margen antes de ofrecer un precio.
+paso: 7 | pantalla=hoja_costeo | permiso=ninguno | Eliminar linea quita una línea de costo de la hoja y Limpiar filtros quita los filtros del listado.
+paso: 8 | pantalla=hoja_costeo | permiso=ninguno | Si no ves Aprobar Costeo, la hoja no está en revisión o tu rol no tiene permiso de aprobar. No deja generar la cotización de una hoja que no está aprobada.

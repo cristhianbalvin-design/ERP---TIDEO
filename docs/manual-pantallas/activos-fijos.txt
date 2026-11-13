@@ -10,3 +10,6 @@ paso: 1 | pantalla=activos_fijos | permiso=ninguno | Registra un activo con Nuev
 paso: 2 | pantalla=activos_fijos | permiso=ninguno | Agregar doc adjunta documentos al activo y Editar cambia sus datos.
 paso: 3 | pantalla=activos_fijos | permiso=ninguno | Promover al Maestro lleva el activo al maestro de la empresa.
 paso: 4 | pantalla=activos_fijos | permiso=ninguno | Dar de baja retira el activo: debes indicar el motivo y confirmar con Confirmar baja.
+paso: 5 | pantalla=activos_fijos | permiso=ninguno | Para qué sirve: llevar el inventario de los bienes de la empresa (equipos, vehículos, maquinaria, mobiliario) con su valor, su vida útil y sus documentos. De aquí salen la depreciación que usa el costeo y los equipos que se asignan a órdenes y alquileres.
+paso: 6 | pantalla=activos_fijos | permiso=ninguno | Crear activo guarda el activo nuevo; pide código y nombre, y para depreciarlo, fecha de alta, valor de adquisición y vida útil. Descargar plantilla baja el Excel para cargar muchos activos de una vez.
+paso: 7 | pantalla=activos_fijos | permiso=ninguno | No deja dar de baja un activo sin indicar el motivo. Si un activo no aparece en la Hoja de Costeo con costo por hora, revisa que tenga valor, vida útil y horas disponibles al mes.

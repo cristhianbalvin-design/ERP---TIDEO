@@ -9,3 +9,6 @@ huella: c24d7b5762
 paso: 1 | pantalla=os_cliente | permiso=ninguno | Es una pantalla de consulta: busca por código, equipo o cliente.
 paso: 2 | pantalla=os_cliente | permiso=ninguno | Muestra los activos en custodia y el historial de OS Cliente de cada equipo.
 paso: 3 | pantalla=os_cliente | permiso=ninguno | Necesita una empresa activa seleccionada para mostrar datos.
+paso: 4 | pantalla=os_cliente | permiso=ninguno | Para qué sirve: saber qué equipos de cada cliente han pasado por la empresa y qué trabajos se les hicieron, para cotizar con historial y atender garantías.
+paso: 5 | pantalla=os_cliente | permiso=ninguno | Los equipos no se crean aquí: se registran al recibirlos en Recepción de Activos o al crear la OS del cliente.
+paso: 6 | pantalla=os_cliente | permiso=ninguno | Si no aparece un equipo, revisa que tenga una recepción o una OS registrada y que estés en la empresa correcta. Si la pantalla dice que no se pudieron cargar los equipos, recarga la página.
