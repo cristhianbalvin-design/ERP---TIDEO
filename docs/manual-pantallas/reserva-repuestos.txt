@@ -11,3 +11,5 @@ paso: 2 | pantalla=inventario | permiso=inventario:despachar | Despachar entrega
 paso: 3 | pantalla=inventario | permiso=inventario:liberar | Liberar devuelve la cantidad reservada al stock disponible, con motivo.
 paso: 4 | pantalla=inventario | permiso=inventario:despachar | Si la reserva está en otro almacén, Trasladar la mueve al almacén de la OT.
 paso: 5 | pantalla=inventario | permiso=ninguno | Ver Kardex abre los movimientos del material y Volver a OT regresa a la orden de trabajo.
+paso: 6 | pantalla=inventario | permiso=ninguno | Para qué sirve: asegurar que los repuestos de cada orden de trabajo estén apartados y entregarlos al taller. Lo reservado no lo puede tomar otra orden ni una venta.
+paso: 7 | pantalla=inventario | permiso=ninguno | Si no aparece una OT en la lista, aún no tiene repuestos reservados: la reserva se crea al programar la orden. Si no deja despachar, falta stock en el almacén de la OT: revisa si la reserva está en otro almacén y usa Trasladar.

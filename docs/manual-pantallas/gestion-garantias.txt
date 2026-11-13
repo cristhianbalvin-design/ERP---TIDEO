@@ -10,3 +10,6 @@ paso: 1 | pantalla=garantias_flota | permiso=ninguno | Registrar garantía anota
 paso: 2 | pantalla=garantias_flota | permiso=ninguno | Sobre una garantía vigente, Liberar y Ejecutar registran su liberación o su ejecución, cada una con su motivo.
 paso: 3 | pantalla=garantias_flota | permiso=ninguno | Registrar reclamo abre un reclamo y Actualizar estado lo hace avanzar; algunos estados exigen escribir la resolución.
 paso: 4 | pantalla=garantias_flota | permiso=ninguno | Catálogo de tipos define los tipos de garantía: Nuevo tipo crea uno y Cargar tipos sugeridos trae una lista base.
+paso: 5 | pantalla=garantias_flota | permiso=ninguno | Para qué sirve: llevar las garantías de los equipos, tanto las que cubren a la empresa como las que respaldan un contrato, y los reclamos que se hacen sobre ellas, para no perder una cobertura por dejar pasar la fecha.
+paso: 6 | pantalla=garantias_flota | permiso=ninguno | Una garantía vigente termina de tres formas: se libera, se ejecuta o vence; Renovar la extiende antes de que venza.
+paso: 7 | pantalla=garantias_flota | permiso=ninguno | Editar solo aparece si tu rol tiene el permiso de editar garantías. No deja pasar un reclamo a ciertos estados sin escribir la resolución. Si no aparece un tipo de garantía, créalo en Catálogo de tipos.

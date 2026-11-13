@@ -9,3 +9,6 @@ huella: 94e691e9d6
 paso: 1 | pantalla=pasaporte_equipos | permiso=ninguno | Selecciona un equipo para desplazarte a su ficha y usa Agregar documento para registrar un documento suyo.
 paso: 2 | pantalla=pasaporte_equipos | permiso=ninguno | Editar cambia los datos del documento. Para cambiar el archivo hay que eliminar el documento y volver a registrarlo.
 paso: 3 | pantalla=pasaporte_equipos | permiso=ninguno | Eliminar abre una confirmación con el nombre del documento; usa Eliminar documento para borrarlo o Cancelar para conservarlo.
+paso: 4 | pantalla=pasaporte_equipos | permiso=ninguno | Para qué sirve: guardar en un solo lugar los documentos de cada equipo (manuales, fichas técnicas, tarjetas de propiedad, informes) para tenerlos a mano en una auditoría o al entregar el equipo.
+paso: 5 | pantalla=pasaporte_equipos | permiso=ninguno | Guardar documento registra el archivo en la ficha del equipo elegido.
+paso: 6 | pantalla=pasaporte_equipos | permiso=ninguno | No deja guardar un documento sin seleccionar el equipo. Si no aparece un equipo, primero debe registrarse en el Panel de Flota. Los documentos con vencimiento (SOAT, pólizas) van en Certificaciones del Activo, no aquí.

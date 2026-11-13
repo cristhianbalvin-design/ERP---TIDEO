@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/wms/VencimientosPage.jsx#Venc
 huella: b58d015cfc
 paso: 1 | pantalla=inventario | permiso=ninguno | La lista muestra los lotes y su vencimiento.
 paso: 2 | pantalla=inventario | permiso=ninguno | Mover a cuarentena retira un lote del stock disponible.
+paso: 3 | pantalla=inventario | permiso=ninguno | Para qué sirve: controlar los materiales que caducan, para usar primero lo que vence antes y no despachar lotes vencidos.
+paso: 4 | pantalla=inventario | permiso=ninguno | Un lote en cuarentena deja de contarse como disponible y no se puede reservar ni despachar.
+paso: 5 | pantalla=inventario | permiso=ninguno | Si no aparece un lote, el material no se ingresó con lote y fecha de vencimiento. Si no ves esta pantalla en el menú, su función puede estar apagada en Configuración del WMS.

@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/wms/ConfiguracionWmsPage.jsx#
 huella: a3620ec951
 paso: 1 | pantalla=inventario | permiso=ninguno | Activa o desactiva las funciones del almacén y define el umbral de aprobación de los conteos, que debe ser cero o mayor.
 paso: 2 | pantalla=inventario | permiso=ninguno | Guardar cambios conserva la configuración; el menú de Almacén se actualiza al recargar la página.
+paso: 3 | pantalla=inventario | permiso=ninguno | Para qué sirve: decidir qué funciones del almacén usa la empresa, para que el menú muestre solo lo necesario, y fijar a partir de qué diferencia un conteo necesita la aprobación de otra persona.
+paso: 4 | pantalla=inventario | permiso=ninguno | Las funciones que se apagan dejan de verse en el menú de Almacén, pero sus datos no se borran: al volver a activarlas reaparecen.
+paso: 5 | pantalla=inventario | permiso=ninguno | Si no ves una pantalla del almacén en el menú, revisa aquí que su función esté activada y recarga la página. No deja guardar un umbral negativo. Si no puedes entrar, tu rol no tiene acceso a la configuración del almacén.

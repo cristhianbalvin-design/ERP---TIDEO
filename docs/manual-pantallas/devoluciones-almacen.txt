@@ -9,3 +9,6 @@ huella: 895a94a0ee
 paso: 1 | pantalla=inventario | permiso=ninguno | Registrar devolución ingresa la mercadería devuelta por un cliente o por una OT; queda en cuarentena para inspección.
 paso: 2 | pantalla=inventario | permiso=ninguno | Revisa las cantidades de cada línea antes de registrar.
 paso: 3 | pantalla=inventario | permiso=ninguno | Cerrar inspección termina la revisión; en una devolución de venta, Administración recibe el aviso para emitir la nota de crédito.
+paso: 4 | pantalla=inventario | permiso=ninguno | Para qué sirve: recibir de vuelta mercadería que ya había salido, sea de un cliente o de una orden de trabajo que no la usó, y revisarla antes de devolverla al stock disponible.
+paso: 5 | pantalla=inventario | permiso=ninguno | Al registrar eliges el origen: Cliente (venta) para lo que devuelve un cliente, u orden de trabajo para lo que regresa del taller. Cerrar panel cierra el formulario sin registrar.
+paso: 6 | pantalla=inventario | permiso=ninguno | No deja registrar si las cantidades de las líneas no son válidas. Si la mercadería devuelta no aparece disponible, sigue en cuarentena: falta Cerrar inspección.
