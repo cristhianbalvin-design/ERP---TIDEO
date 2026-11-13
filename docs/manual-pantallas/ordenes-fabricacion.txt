@@ -9,3 +9,6 @@ huella: 6f1d2aaebd
 paso: 1 | pantalla=of | permiso=ninguno | La bandeja lista las órdenes de fabricación; Todas muestra todos los estados y Limpiar filtros quita los filtros.
 paso: 2 | pantalla=of | permiso=ninguno | Nueva OF abre el registro de una orden nueva.
 paso: 3 | pantalla=of | permiso=ninguno | Abre una orden para ver su ruta y sus materiales.
+paso: 4 | pantalla=of | permiso=ninguno | Para qué sirve: ver todas las órdenes de fabricación con su estado, su avance y su fecha de compromiso, para saber cuáles van atrasadas y cuáles vencen pronto.
+paso: 5 | pantalla=of | permiso=ninguno | Los indicadores de arriba (En curso, Borrador, Atrasadas y Vencen en 7 días) filtran la lista al pulsarlos. Cada orden muestra su avance, su costo y si tiene tareas sin bahía asignada.
+paso: 6 | pantalla=of | permiso=ninguno | Si no aparece una orden, usa Todas y Limpiar filtros. Si la bandeja está vacía, las órdenes se crean desde una OS de fabricación o con Nueva OF.

@@ -10,3 +10,6 @@ paso: 1 | pantalla=ot | permiso=ninguno | Los indicadores de arriba (abiertas, p
 paso: 2 | pantalla=ot | permiso=ninguno | Busca por número, cliente o servicio y filtra por estado o técnico. Solo retrabajos muestra las OT de retrabajo propio. Limpiar quita todos los filtros.
 paso: 3 | pantalla=ot | permiso=ninguno | Para iniciar una OT programada usa Iniciar en su fila: la OT debe tener técnico responsable y centro de costo, y necesitas una sociedad operativa seleccionada (la vista consolidada es solo de lectura).
 paso: 4 | pantalla=ot | permiso=ninguno | Nueva OT abre el asistente de creación.
+paso: 5 | pantalla=ot | permiso=ninguno | Para qué sirve: ver todas las órdenes de trabajo del taller y de campo con su estado, su responsable y su fecha, para saber qué está en marcha, qué falta iniciar y qué va atrasado.
+paso: 6 | pantalla=ot | permiso=ninguno | La lista se pagina: Sig. pasa a la página siguiente.
+paso: 7 | pantalla=ot | permiso=ninguno | No deja iniciar una OT sin técnico responsable ni sin centro de costo: asígnalos primero. Si avisa que la vista es de solo lectura, elige una sociedad operativa en el selector. Si dice que la OT ya no está programada, alguien la inició o la cambió: actualiza la bandeja.

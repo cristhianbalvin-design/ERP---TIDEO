@@ -10,3 +10,5 @@ paso: 1 | pantalla=transporte_comercial | permiso=ninguno | El tablero agrupa lo
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Nueva orden de viaje abre el registro de un viaje nuevo con su ruta y cliente.
 paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Cuando hay viajes atrasados o que salen hoy sin unidad, aparece un aviso con Asignar y despachar, que abre el viaje para asignar unidad y conductor.
 paso: 4 | pantalla=transporte_comercial | permiso=ninguno | Abre un viaje para ver su detalle y su hoja de ruta. Exportar descarga la lista.
+paso: 5 | pantalla=transporte_comercial | permiso=ninguno | Para qué sirve: seguir en vivo todos los viajes de transporte comercial, desde que se programan hasta que se entregan, y detectar a tiempo los que van atrasados o no tienen unidad.
+paso: 6 | pantalla=transporte_comercial | permiso=ninguno | Si no aparece un viaje, usa Limpiar filtros y revisa el estado. Si no deja despachar, al viaje le falta unidad o conductor: usa Asignar y despachar.

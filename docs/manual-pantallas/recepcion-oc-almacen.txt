@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/RecepcionOCPage.jsx#Recepcion
 huella: 84d78fcc4a
 paso: 1 | pantalla=recepciones | permiso=ninguno | Elige la orden de compra que llegó e indica lo recibido.
 paso: 2 | pantalla=recepciones | permiso=ninguno | Registrar recepción ingresa el material al almacén y genera sus movimientos en el kardex.
+paso: 3 | pantalla=recepciones | permiso=ninguno | Para qué sirve: ingresar al almacén, desde Operaciones, el material que llegó de una orden de compra, para que quede con stock y ubicación. La factura del proveedor y la cuenta por pagar se completan en Administración › Recepciones.
+paso: 4 | pantalla=recepciones | permiso=ninguno | Solo se listan las órdenes de compra emitidas que aún tienen cantidad pendiente de recibir. Puedes recibir menos de lo pedido: el saldo queda pendiente en la orden.
+paso: 5 | pantalla=recepciones | permiso=ninguno | Si no aparece la orden de compra, revisa que esté emitida y que no esté recibida por completo. Si el material no aparece luego en el stock, revisa el almacén elegido.

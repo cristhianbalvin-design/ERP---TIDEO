@@ -10,3 +10,6 @@ paso: 1 | pantalla=inventario | permiso=ninguno | La pestaña Stock muestra las 
 paso: 2 | pantalla=inventario | permiso=ninguno | Registrar entrada y Registrar salida registran movimientos manuales; Mover traslada stock y Ajustar stock corrige una diferencia.
 paso: 3 | pantalla=inventario | permiso=ninguno | Liberar devuelve stock reservado al disponible.
 paso: 4 | pantalla=inventario | permiso=ninguno | Antes de registrar un movimiento debes elegir una sociedad concreta.
+paso: 5 | pantalla=inventario | permiso=ninguno | Para qué sirve: saber cuánto hay de cada material, cuánto está reservado y cuánto disponible, y ver cada movimiento que lo explica. El kardex es la prueba de por qué el stock es el que es.
+paso: 6 | pantalla=inventario | permiso=ninguno | El disponible es el stock menos lo reservado para órdenes y pedidos. Una reserva baja el disponible pero no el stock: el stock baja recién con el despacho.
+paso: 7 | pantalla=inventario | permiso=ninguno | No deja registrar un movimiento sin elegir una sociedad concreta en el selector superior. Si el stock no cuadra con lo físico, revisa el Kardex del material y, si la diferencia es real, corrígela con un conteo o con Ajustar stock.

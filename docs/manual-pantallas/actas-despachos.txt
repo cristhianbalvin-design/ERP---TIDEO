@@ -16,3 +16,4 @@ paso: 7 | pantalla=actas_despachos | permiso=ninguno | No se puede despachar un 
 paso: 8 | pantalla=actas_despachos | permiso=ninguno | Confirmar acta la cierra con sus firmas; Volver a firmar permite rehacer una firma antes de confirmar. Anular acta deja sin efecto un acta ya emitida.
 paso: 9 | pantalla=actas_despachos | permiso=ninguno | En Evidencia puedes adjuntar documentos PDF opcionales de hasta 10 MB por archivo. Después de guardar el acta, abre el documento desde el enlace en su detalle.
 paso: 10 | pantalla=actas_despachos | permiso=ninguno | Al elegir enlazar una guía de remisión, si falla la carga de guías se muestra el mensaje «No se pudieron cargar las guías» con el detalle del error.
+paso: 11 | pantalla=actas_despachos | permiso=ninguno | Activar y Desactivar, en el catálogo de puntos del checklist, solo aparecen si tu rol tiene el permiso de editar actas.

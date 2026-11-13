@@ -10,3 +10,6 @@ paso: 1 | pantalla=partes | permiso=ninguno | Nuevo reporte abre el registro; Gu
 paso: 2 | pantalla=partes | permiso=ninguno | Agregar hallazgo registra lo encontrado, que puede marcarse como Urgente; Agregar al backlog lo deja como requerimiento pendiente.
 paso: 3 | pantalla=partes | permiso=ninguno | Enviar a revisión manda el reporte a su revisor.
 paso: 4 | pantalla=partes | permiso=ninguno | Quien revisa usa Aprobar reporte u Observar; un reporte observado vuelve al técnico, que lo corrige con Corregir y reenviar.
+paso: 5 | pantalla=partes | permiso=ninguno | Para qué sirve: que el técnico en mina reporte su trabajo del día, con hallazgos, fotos y pedido de repuestos, y que su supervisor lo revise. Reemplaza al parte de taller cuando el trabajo es en campo.
+paso: 6 | pantalla=partes | permiso=ninguno | Quitar foto retira una foto antes de enviar, y en el pedido de repuestos puedes quitar un ítem que agregaste por error.
+paso: 7 | pantalla=partes | permiso=ninguno | Si un reporte vuelve como observado, corrígelo y reenvíalo. Si no aparece un reporte que enviaste, revisa el filtro de estado: pasa de borrador a en revisión al enviarlo.

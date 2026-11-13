@@ -10,3 +10,6 @@ paso: 1 | pantalla=inventario | permiso=ninguno | Muestra el plano del almacén 
 paso: 2 | pantalla=inventario | permiso=ninguno | Ruta desde la puerta traza el camino hasta una posición.
 paso: 3 | pantalla=inventario | permiso=ninguno | Editor de plano o Dibujar el plano permite armar el plano; al guardarlo se crean, actualizan o desactivan las ubicaciones.
 paso: 4 | pantalla=inventario | permiso=ninguno | Ver con datos de ejemplo muestra un almacén de muestra y Volver a mis datos regresa al tuyo.
+paso: 5 | pantalla=inventario | permiso=ninguno | Para qué sirve: ver el almacén como un plano, saber dónde está cada cosa y cuánto hay, y llegar a una posición sin buscarla. Sirve para ubicar material, para detectar posiciones vacías y para entrenar a personal nuevo.
+paso: 6 | pantalla=inventario | permiso=ninguno | Los indicadores de arriba muestran el porcentaje de posiciones con stock y cuántas están bajo reorden; al pulsarlos se resaltan en el plano. En el editor, Descartar y salir cierra sin guardar los cambios del plano.
+paso: 7 | pantalla=inventario | permiso=ninguno | Si no ves posiciones en el plano, aún no se ha dibujado: usa Dibujar el plano. Si una posición no muestra stock, revisa que el material tenga esa ubicación asignada.

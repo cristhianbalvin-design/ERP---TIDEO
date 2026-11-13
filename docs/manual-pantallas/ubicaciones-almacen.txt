@@ -9,3 +9,6 @@ huella: 1fc2efb872
 paso: 1 | pantalla=inventario | permiso=ninguno | Crea una ubicación con Nueva ubicación; nace sin stock.
 paso: 2 | pantalla=inventario | permiso=ninguno | Editar cambia sus datos. Desactivar la retira del uso y Reactivar la devuelve.
 paso: 3 | pantalla=inventario | permiso=ninguno | Mostrar inactivas incluye en la lista las ubicaciones desactivadas.
+paso: 4 | pantalla=inventario | permiso=ninguno | Para qué sirve: nombrar cada lugar físico del almacén (rack, nivel, posición) para saber exactamente dónde está cada material y trabajar con escáner.
+paso: 5 | pantalla=inventario | permiso=ninguno | Una ubicación desactivada deja de ofrecerse para guardar material, pero conserva su historial.
+paso: 6 | pantalla=inventario | permiso=ninguno | Si no aparece una ubicación al registrar una entrada, puede estar inactiva: marca Mostrar inactivas y usa Reactivar.

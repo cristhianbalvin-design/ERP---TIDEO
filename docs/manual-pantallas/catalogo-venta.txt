@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/wms/CatalogoVentaPage.jsx#Cat
 huella: 7819c0b8aa
 paso: 1 | pantalla=inventario | permiso=ninguno | Agregar producto suma un material del almacén al catálogo con Agregar al catálogo.
 paso: 2 | pantalla=inventario | permiso=ninguno | Un producto que ya está en el catálogo se puede editar con Guardar cambios.
+paso: 3 | pantalla=inventario | permiso=ninguno | Para qué sirve: elegir cuáles materiales del almacén se ofrecen a la venta, para que las órdenes de venta y las cotizaciones de repuestos tomen de aquí sus productos.
+paso: 4 | pantalla=inventario | permiso=ninguno | Un material puede estar en el almacén sin estar en el catálogo: mientras no se agregue, no se puede vender por orden de venta.
+paso: 5 | pantalla=inventario | permiso=ninguno | Si no aparece un producto al armar una orden de venta, agrégalo aquí primero. Si no aparece el material para agregarlo, debe existir antes en el maestro de materiales.

@@ -9,3 +9,6 @@ huella: 4ff52824a1
 paso: 1 | pantalla=of | permiso=ninguno | La OF se crea a partir de la OS del cliente; Cambiar permite elegir otra.
 paso: 2 | pantalla=of | permiso=ninguno | La pantalla indica si la OS tiene Hoja de Costeo, que sirve de base a la orden.
 paso: 3 | pantalla=of | permiso=ninguno | Crear OF registra la orden. Si la OS ya tiene una, el botón dice Crear OF adicional.
+paso: 4 | pantalla=of | permiso=ninguno | Para qué sirve: abrir la orden de fabricación de un pedido del cliente. La OF toma de la Hoja de Costeo de la OS las tareas y los materiales, así el taller fabrica lo mismo que se cotizó.
+paso: 5 | pantalla=of | permiso=ninguno | El enlace Órdenes de Fabricación, arriba, vuelve a la bandeja sin crear nada.
+paso: 6 | pantalla=of | permiso=ninguno | Si no aparece la OS para elegirla, no es de tipo fabricación o mixta: el tipo se define en la Hoja de Costeo. Si el botón dice Crear OF adicional, la OS ya tiene una OF y la nueva nace vacía.

@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/wms/ReporteValorizadoPage.jsx
 huella: 9eb7af8503
 paso: 1 | pantalla=inventario | permiso=ninguno | Es un reporte de consulta del valor del inventario y su clasificación ABC.
 paso: 2 | pantalla=inventario | permiso=ninguno | Exportar Excel descarga el reporte.
+paso: 3 | pantalla=inventario | permiso=ninguno | Para qué sirve: saber cuánto dinero hay inmovilizado en el almacén y en qué materiales se concentra. La clasificación ABC ordena los materiales por su valor: A son los pocos que concentran la mayor parte, C los muchos de poco valor.
+paso: 4 | pantalla=inventario | permiso=ninguno | El valor de cada material sale de su stock por su costo en el kardex.
+paso: 5 | pantalla=inventario | permiso=ninguno | Si un material no aparece o figura con valor cero, revisa que tenga stock y que sus entradas se hayan registrado con costo.

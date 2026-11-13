@@ -10,3 +10,5 @@ paso: 1 | pantalla=inventario | permiso=ninguno | Inicia con Nuevo conteo y elig
 paso: 2 | pantalla=inventario | permiso=ninguno | Registra lo contado y usa Guardar avance para continuar después. Un código que no pertenece al conteo se rechaza.
 paso: 3 | pantalla=inventario | permiso=ninguno | Cerrar conteo exige contar todas las líneas y registra los ajustes en el kardex.
 paso: 4 | pantalla=inventario | permiso=ninguno | Si las diferencias superan el umbral, el conteo queda por aprobar por otra persona, que usa Aprobar ajustes o Devolver a recontar.
+paso: 5 | pantalla=inventario | permiso=ninguno | Para qué sirve: comprobar que lo que dice el sistema coincide con lo que hay físicamente en el almacén, contando por partes sin detener la operación, y corregir las diferencias dejando historial.
+paso: 6 | pantalla=inventario | permiso=ninguno | No deja cerrar el conteo si faltan líneas por contar o si hay cantidades no válidas. Si al escanear dice que el código no está en este conteo, ese material no pertenece al almacén elegido. Si no ves Aprobar ajustes, el conteo no superó el umbral o lo iniciaste tú: debe aprobarlo otra persona.
