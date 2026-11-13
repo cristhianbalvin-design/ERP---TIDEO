@@ -1,0 +1,14 @@
+clave: disponibilidad_mecanica
+tipo: pantalla
+pantalla: disponibilidad_mecanica
+catalogo: operaciones/disponibilidad-mecanica
+titulo: Disponibilidad mecánica
+resumen: Disponibilidad contractual de flota y disponibilidad de máquinas del taller.
+componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/DisponibilidadMecanicaPage.jsx#DisponibilidadMecanicaPage
+huella: 4b123394e1
+paso: 1 | pantalla=disponibilidad_mecanica | permiso=ver | Selecciona el período y Flota o Taller para consultar disponibilidad, horas de parada y equipos o máquinas bajo la meta mostrada.
+paso: 2 | pantalla=disponibilidad_mecanica | permiso=ver | En Flota por equipo y mes consulta horas programadas, paradas, DMR y meta. El DMR es (horas programadas − paradas del proveedor) ÷ horas programadas, expresado en porcentaje.
+paso: 3 | pantalla=disponibilidad_mecanica | permiso=ver | Las paradas del cliente y las neutrales se muestran por separado; solo las del proveedor reducen el DMR. Ver liquidación abre la liquidación cuando existe.
+paso: 4 | pantalla=disponibilidad_mecanica | permiso=ver | En Máquinas del taller consulta horas posibles, horas de falla y disponibilidad: (horas posibles − horas de falla) ÷ horas posibles, expresado en porcentaje.
+paso: 5 | pantalla=disponibilidad_mecanica | permiso=ver | En Cliente se indica que la disponibilidad contractual no aplica; consulta los días entre fallas en KPIs de confiabilidad.
+paso: 6 | pantalla=disponibilidad_mecanica | permiso=ver | Si no hay datos, revisa el período y los partes o registros de fallas correspondientes. Si aparece Sin liquidación, revisa Liquidación & DMR; si no tienes acceso, revisa la empresa y solicita el permiso de disponibilidad mecánica.

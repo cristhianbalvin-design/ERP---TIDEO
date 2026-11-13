@@ -1,0 +1,15 @@
+clave: analisis_sos
+tipo: pantalla
+pantalla: analisis_sos
+catalogo: operaciones/sos-telemetria
+titulo: Análisis SOS
+resumen: Muestras de aceite, resultados por elemento y seguimiento de condiciones de alerta o críticas.
+componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/AnalisisSosPage.jsx#AnalisisSosPage
+huella: 259082b373
+paso: 1 | pantalla=analisis_sos | permiso=ver | SOS significa Scheduled Oil Sampling: análisis de aceite programado. En Muestras consulta y filtra por condición, estado, segmento y sistema, o busca una muestra.
+paso: 2 | pantalla=analisis_sos | permiso=crear | Usa Nueva muestra, completa los datos del equipo, sistema y muestra solicitados y pulsa Guardar.
+paso: 3 | pantalla=analisis_sos | permiso=editar | Usa Cargar resultados para ingresar la fecha y los valores por elemento y adjuntar el Informe PDF. También puedes usar Importar CSV o XLSX con el archivo del laboratorio, revisar la previsualización y pulsar Aplicar valores reconocidos antes de Guardar.
+paso: 4 | pantalla=analisis_sos | permiso=ver | Los resultados se comparan con límites de alerta y crítico. Los límites son orientativos y deben validarse para cada aplicación; consulta el detalle y la condición prevista antes de guardar.
+paso: 5 | pantalla=analisis_sos | permiso=editar | En Límites consulta los límites globales y de la empresa; usa Nuevo límite propio, Crear límite propio o Editar cuando corresponda y guarda los cambios.
+paso: 6 | pantalla=analisis_sos | permiso=ver | Una condición crítica crea un hallazgo de backlog automáticamente. Para una muestra en alerta sin hallazgo, Crear backlog está disponible si tienes permiso para crear backlog; el botón Backlog abre su seguimiento.
+paso: 7 | pantalla=analisis_sos | permiso=ver | Usa Detalle para revisar resultados e historial. Si no encuentras una muestra, revisa filtros y segmento; si falta una acción, revisa la empresa y solicita los permisos correspondientes.

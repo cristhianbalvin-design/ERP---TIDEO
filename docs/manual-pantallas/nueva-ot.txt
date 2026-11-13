@@ -5,7 +5,7 @@ catalogo: operaciones/crear-ot
 titulo: Nueva OT
 resumen: Asistente de cinco pasos para crear una orden de trabajo: contexto, lugar, matriz DBS, responsable y revisión.
 componentes: operaciones-app/src/zahory-mock/pages/CrearOTPage.jsx#CrearOTPage
-huella: cb7f933511
+huella: de29cf63af
 paso: 1 | pantalla=ot | permiso=ninguno | Paso 1, Contexto: elige la línea de negocio y el objeto de costo raíz: un contrato de alquiler activo, una OS de cliente o un equipo interno de la plataforma.
 paso: 2 | pantalla=ot | permiso=ninguno | Paso 2, Lugar: indica dónde se ejecuta el trabajo. El horómetro actual del equipo es obligatorio en OTs de campo, bajo contrato o con equipo asociado.
 paso: 3 | pantalla=ot | permiso=ninguno | Paso 3, Matriz DBS: clasifica el cargo financiero (facturable al cliente, absorbido, recuperable del fabricante o retrabajo propio, que exige motivo) y arma segmentos con operaciones, mano de obra, repuestos y terceros. La pantalla suma los costos estimados.
@@ -17,3 +17,4 @@ paso: 8 | pantalla=ot | permiso=ninguno | Retrabajo propio es un trabajo que se 
 paso: 9 | pantalla=ot | permiso=ninguno | Al programar la OT, los repuestos de sus segmentos se reservan en el almacén: bajan del disponible pero no salen hasta el despacho. Si falta stock se pide por SOLPE.
 paso: 10 | pantalla=ot | permiso=ninguno | Para qué sirve: abrir una orden de trabajo con todo lo necesario para ejecutarla y costearla: para quién es, dónde se hace, qué trabajos incluye, qué repuestos y terceros necesita y quién responde por ella.
 paso: 11 | pantalla=ot | permiso=ninguno | En el primer paso, Limpiar cliente quita el cliente elegido, e Ir a Recepción de Activos lleva a registrar el equipo si aún no ingresó. En la matriz de trabajo, Agregar Segmento crea un bloque y Agregar Operación una operación dentro de él; Eliminar segmento y Eliminar operación los quitan. Agregar cargo suma mano de obra, Agregar repuesto un repuesto y Agregar tercero un servicio de terceros. Cerrar panel de hallazgos y backlog oculta el panel lateral con lo pendiente del equipo. Al terminar, Ver OTs vuelve a la bandeja.
+paso: 12 | pantalla=ot | permiso=ninguno | En las OT de tipo Correctivo o Preventivo (PM) el equipo es obligatorio, porque con él se calculan las fallas, el MTBF y el programa de mantenimiento en Confiabilidad. Si la OT se abre desde Backlog operativo (Crear OT) o desde Programación PM (Generar OT), el formulario llega con el equipo, el tipo y la descripción, muestra el origen y, al guardar, deja vinculado el hallazgo o el plan PM.

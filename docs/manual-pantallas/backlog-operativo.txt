@@ -1,0 +1,16 @@
+clave: backlog_operativo
+tipo: pantalla
+pantalla: backlog
+catalogo: operaciones/backlog
+titulo: Backlog operativo
+resumen: Hallazgos y necesidades de mantenimiento hasta su atención en una orden de trabajo.
+componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/BacklogOperativoPage.jsx#BacklogOperativoPage
+huella: 4b786b5ec9
+paso: 1 | pantalla=backlog | permiso=ver | Consulta los hallazgos de Flota en alquiler, Máquinas de taller y Equipos de clientes. Selecciona Todos, Flota, Taller o Cliente para acotar los indicadores y la lista.
+paso: 2 | pantalla=backlog | permiso=ver | Usa Lista o Tablero, la búsqueda por equipo o descripción y los filtros Ciclo, Prioridad, Fuente y Sistema. Los cerrados y descartados se muestran en Lista.
+paso: 3 | pantalla=backlog | permiso=crear | Usa Nuevo hallazgo, indica descripción, impacto y urgencia, y completa los demás datos disponibles; selecciona un equipo si luego necesitarás crear una OT. Pulsa Guardar.
+paso: 4 | pantalla=backlog | permiso=ver | El puntaje es impacto × urgencia: emergencia desde 20, urgente desde 12, programable desde 6 y baja por debajo de 6.
+paso: 5 | pantalla=backlog | permiso=editar | Abre un hallazgo y usa Evaluar, Pendiente de recursos o Listo para OT según corresponda. El ciclo va de nuevo a evaluado, pendiente de recursos, listo para OT, en OT y cerrado; también puede descartarse con un motivo.
+paso: 6 | pantalla=backlog | permiso=editar | Crear OT lleva el hallazgo a Nueva OT. Aparece para un hallazgo evaluado o listo para OT, con equipo y sin OT asociada; completa y crea la orden allí.
+paso: 7 | pantalla=backlog | permiso=editar | Para Descartar indica el motivo y usa Confirmar descarte. Reabrir devuelve un hallazgo cerrado o descartado a nuevo. Guarda o descarta cambios antes de cambiar el ciclo o crear la OT.
+paso: 8 | pantalla=backlog | permiso=ver | Si no aparece un hallazgo, revisa el segmento, la búsqueda y los filtros. Si falta un botón o aparece un aviso de permiso, revisa la empresa y solicita acceso para ver, crear o editar según la acción.

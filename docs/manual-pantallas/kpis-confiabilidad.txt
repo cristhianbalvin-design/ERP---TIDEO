@@ -1,0 +1,15 @@
+clave: kpis_confiabilidad
+tipo: pantalla
+pantalla: confiabilidad_kpis
+catalogo: operaciones/confiabilidad
+titulo: KPIs de confiabilidad
+resumen: Indicadores y registro de fallas por período, equipo y segmento.
+componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/KpisConfiabilidadPage.jsx#KpisConfiabilidadPage
+huella: 19ea08bcb2
+paso: 1 | pantalla=confiabilidad_kpis | permiso=ver | Selecciona el período y el segmento de Flota en alquiler, Máquinas de taller o Equipos de clientes. En Resumen consulta indicadores, tendencias y gráficos de fallas y mantenimiento.
+paso: 2 | pantalla=confiabilidad_kpis | permiso=ver | MTBF es horas operadas ÷ fallas y MTTR es horas de parada ÷ fallas. Para equipos de clientes se usan días entre fallas, pues no se dispone de horas operadas ni disponibilidad contractual propias.
+paso: 3 | pantalla=confiabilidad_kpis | permiso=ver | En Por equipo busca y abre un equipo para revisar su detalle; en Calidad de datos identifica información pendiente de completar.
+paso: 4 | pantalla=confiabilidad_kpis | permiso=ver | Registro de fallas reúne fallas de OT correctivas con equipo, paradas del proveedor en partes de flota y registros manuales. Vincular una parada a su OT evita contar el mismo evento dos veces.
+paso: 5 | pantalla=backlog | permiso=crear | En Registro de fallas usa Registrar falla para registrar una parada manual, por ejemplo de un torno o CNC; completa los datos solicitados y guarda.
+paso: 6 | pantalla=backlog | permiso=editar | Según el estado y origen de la falla, usa Cerrar, Vincular a OT o Anular. Vincula la parada a la OT correspondiente cuando ambas describen el mismo evento.
+paso: 7 | pantalla=confiabilidad_kpis | permiso=ver | Si faltan datos o gráficos, revisa el período, el segmento y los registros de origen. Si no puedes entrar o falta una acción, revisa la empresa y los permisos de consulta de KPIs y de creación o edición de backlog.
