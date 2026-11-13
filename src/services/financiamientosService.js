@@ -279,6 +279,42 @@ export async function registrarPagoInteresSaldoRpc({ empresa, financiamientoId, 
   return data;
 }
 
+// Egresos/ingresos de Tesorería y gastos de intereses vinculados a un préstamo, tal como quedaron
+// en el servidor (para refrescar la pantalla tras un alta o un pago calculado en el servidor).
+export async function cargarVinculosFinanciamiento({ empresaId, financiamientoId }) {
+  const supabase = await getSupabaseClient();
+  const [movimientos, gastos] = await Promise.all([
+    supabase.from('movimientos_tesoreria').select('*').eq('empresa_id', empresaId)
+      .eq('vinculo_tipo', 'financiamiento').eq('vinculo_id', financiamientoId),
+    supabase.from('compras_gastos').select('*').eq('empresa_id', empresaId).eq('financiamiento_id', financiamientoId),
+  ]);
+  if (movimientos.error) throw movimientos.error;
+  if (gastos.error) throw gastos.error;
+  return { movimientos: movimientos.data || [], gastos: gastos.data || [] };
+}
+
+// Cuentas de Tesorería para recibir o pagar un préstamo: activas, sin las de detracciones y,
+// si el préstamo tiene sociedad, solo las de esa sociedad (o sin sociedad).
+export function cuentasParaFinanciamiento(cuentas = [], { empresaId, sociedadId = null } = {}) {
+  return (cuentas || []).filter(c =>
+    (!empresaId || c.empresa_id === empresaId) &&
+    (c.estado || 'activo') === 'activo' &&
+    !c.es_cuenta_detracciones &&
+    (!sociedadId || !c.sociedad_id || c.sociedad_id === sociedadId));
+}
+
+// Tipo de cambio sugerido: unidades de la moneda de la cuenta por 1 unidad de la moneda del préstamo
+// (el servidor guarda monto_en_moneda_cuenta = monto × tc). usdPorPen = tipoCambioHoy.usd.
+export function tcSugerido(monedaPrestamo, monedaCuenta, usdPorPen) {
+  const p = monedaPrestamo || 'PEN';
+  const c = monedaCuenta || 'PEN';
+  const usd = Number(usdPorPen || 0);
+  if (p === c || !(usd > 0)) return null;
+  if (p === 'USD' && c === 'PEN') return Math.round((1 / usd) * 10000) / 10000;
+  if (p === 'PEN' && c === 'USD') return Math.round(usd * 10000) / 10000;
+  return null;
+}
+
 // Genera los períodos vencidos y el siguiente de los préstamos de interés sobre saldo.
 export async function sincronizarPeriodosFinanciamientoRpc({ empresaId }) {
   const supabase = await getSupabaseClient();

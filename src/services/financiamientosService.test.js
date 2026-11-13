@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildDebtSummary,
+  cuentasParaFinanciamiento,
   estadoFinanciamiento,
   fechaPeriodo,
   generarAmortizacion,
   proyectarPeriodosInteresSaldo,
   tasaMensualDe,
+  tcSugerido,
   teaEquivalente,
 } from './financiamientosService.js';
 
@@ -72,4 +74,24 @@ test('buildDebtSummary suma lo que vence en el mes, lo vencido y los intereses d
   assert.deepEqual(r.vencidoPorMoneda, {});
   assert.deepEqual(r.interesesPagadosAnioPorMoneda, { USD: 200 });
   assert.equal(r.atrasados, 0);
+});
+
+test('tcSugerido expresa unidades de la cuenta por 1 unidad del préstamo', () => {
+  assert.equal(tcSugerido('USD', 'PEN', 0.2667), 3.7495);
+  assert.equal(tcSugerido('PEN', 'USD', 0.2667), 0.2667);
+  assert.equal(tcSugerido('USD', 'USD', 0.2667), null);
+  assert.equal(tcSugerido('USD', 'PEN', null), null);
+});
+
+test('cuentasParaFinanciamiento deja activas, sin detracciones y de la sociedad del préstamo', () => {
+  const cuentas = [
+    { id: 'a', empresa_id: 'e', estado: 'activo', sociedad_id: 's1' },
+    { id: 'b', empresa_id: 'e', estado: 'inactivo', sociedad_id: 's1' },
+    { id: 'c', empresa_id: 'e', estado: 'activo', es_cuenta_detracciones: true },
+    { id: 'd', empresa_id: 'e', estado: 'activo', sociedad_id: 's2' },
+    { id: 'f', empresa_id: 'e', estado: 'activo', sociedad_id: null },
+    { id: 'g', empresa_id: 'x', estado: 'activo' },
+  ];
+  assert.deepEqual(cuentasParaFinanciamiento(cuentas, { empresaId: 'e', sociedadId: 's1' }).map(c => c.id), ['a', 'f']);
+  assert.deepEqual(cuentasParaFinanciamiento(cuentas, { empresaId: 'e' }).map(c => c.id), ['a', 'd', 'f']);
 });

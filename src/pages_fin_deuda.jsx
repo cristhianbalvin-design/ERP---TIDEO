@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { formatCurrencyTotals, formatMoney, sumByCurrency } from './lib/currency.js';
-import { SociedadFormField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import FinanciamientoListado from './pages/financiamiento/FinanciamientoListado.jsx';
 import FinanciamientoDetalle from './pages/financiamiento/FinanciamientoDetalle.jsx';
+import FinanciamientoAsistente from './pages/financiamiento/FinanciamientoAsistente.jsx';
+import FinanciamientoPago from './pages/financiamiento/FinanciamientoPago.jsx';
 import { cargarAdjuntos, eliminarAdjunto } from './services/storageService.js';
 import {
   buildEgresoTesoreria,
@@ -13,94 +14,27 @@ import {
   buildFinanciamiento,
   buildGastoIntereses,
   buildPagoFinanciamiento,
+  cargarVinculosFinanciamiento,
   construirEdicionFinanciamiento,
   crearFinanciamientoConAmortizacion,
   createFinanciamientosDataSource,
   editarFinanciamientoRpc,
   eliminarFinanciamientoRpc,
+  esInteresSaldo,
   impactoLocalEliminarFinanciamiento,
-  generarAmortizacion as generarAmortizacionService,
   nextCuota,
   recalcularTabla as recalcularTablaService,
   registrarPagoFinanciamientoRpc,
+  registrarPagoInteresSaldoRpc,
 } from './services/financiamientosService.js';
 
 const tipoLabel = { bancario:'Bancario', tercero:'Tercero', leasing:'Leasing', linea_credito:'Linea credito', otro:'Otro' };
 const fmtMoney = (moneda, monto) => formatMoney(monto, moneda);
 const finMoney = (f, monto) => fmtMoney(f?.moneda || 'PEN', monto);
-const fmtDate = date => date ? new Date(date + 'T00:00:00').toLocaleDateString('es-PE') : '-';
 
 function moneyByCurrency(totals) {
   return formatCurrencyTotals(totals);
   return keys.length ? keys.map(m => fmtMoney(m, totals[m])).join(' · ') : fmtMoney('PEN', 0);
-}
-
-function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitting, error, edicion = null }) {
-  const calculoEdicion = edicion ? construirEdicionFinanciamiento(edicion, form) : null;
-  const tabla = calculoEdicion
-    ? (calculoEdicion.tabla || []).filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada')
-    : generarAmortizacionService({ monto:form.monto_original, tasaAnual:form.tasa_anual, plazoMeses:form.plazo_meses, mesesGracia:form.meses_gracia, fechaDesembolso:form.fecha_desembolso, diaPago:form.dia_pago, tipoCuota:form.tipo_cuota });
-  const monedaBloqueada = Boolean(calculoEdicion?.tienePagos || (edicion && ((edicion.pagos_realizados || []).length || (edicion.tabla_amortizacion || []).some(c => c.estado === 'pagada'))));
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]:v }));
-  return (
-    <>
-      <div className="side-panel-backdrop" onClick={onClose}/>
-      <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
-        <div className="side-panel-head"><div><div className="eyebrow">{edicion ? `Editar financiamiento · ${edicion.codigo}` : 'Nuevo financiamiento'}</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{edicion ? edicion.entidad : 'Los campos * son obligatorios'}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
-        <form className="side-panel-body" onSubmit={onSubmit}>
-          {edicion && monedaBloqueada && <div style={{padding:'10px 12px', borderRadius:8, background:'rgba(245,158,11,0.10)', border:'1px solid rgba(245,158,11,0.35)', fontSize:13, marginBottom:16}}>Este préstamo ya tiene pagos registrados{calculoEdicion?.cuotasPagadas ? ` (${calculoEdicion.cuotasPagadas} cuota(s) pagada(s))` : ''}. Las cuotas pagadas no cambian; las pendientes se recalculan sobre el saldo que queda tras el capital ya pagado. La moneda no se puede cambiar.</div>}
-          <div className="grid-2" style={{gap:16}}>
-            <div className="input-group"><label>Tipo *</label><select className="select" value={form.tipo} onChange={e=>set('tipo', e.target.value)}><option value="bancario">Prestamo bancario</option><option value="tercero">Prestamo de tercero</option><option value="leasing">Leasing</option><option value="linea_credito">Linea de credito</option><option value="otro">Otro</option></select></div>
-            <div className="input-group"><label>Entidad *</label><input className="input" value={form.entidad} onChange={e=>set('entidad', e.target.value)} required/></div>
-            <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e=>set('moneda', e.target.value)} disabled={monedaBloqueada} title={monedaBloqueada ? 'Tiene pagos registrados en esta moneda' : undefined}><option>PEN</option><option>USD</option></select></div>
-            <div className="input-group"><label>Monto recibido *</label><input className="input" type="number" value={form.monto_original} onChange={e=>set('monto_original', e.target.value)} required/></div>
-            <SociedadFormField value={form.sociedad_id} onChange={sociedad_id=>set('sociedad_id', sociedad_id)} style={{gridColumn:'1 / -1'}} />
-            <div className="input-group"><label>Fecha desembolso</label><input className="input" type="date" value={form.fecha_desembolso} onChange={e=>set('fecha_desembolso', e.target.value)}/></div>
-            <div className="input-group"><label>Tasa anual</label><input className="input" type="number" value={form.tasa_anual} onChange={e=>set('tasa_anual', e.target.value)}/></div>
-            <div className="input-group"><label>Plazo meses</label><input className="input" type="number" value={form.plazo_meses} onChange={e=>set('plazo_meses', e.target.value)}/></div>
-            <div className="input-group"><label>Gracia meses</label><input className="input" type="number" value={form.meses_gracia} onChange={e=>set('meses_gracia', e.target.value)}/></div>
-            <div className="input-group"><label>Dia de pago</label><input className="input" type="number" value={form.dia_pago} onChange={e=>set('dia_pago', e.target.value)}/></div>
-            <div className="input-group"><label>Tipo cuota</label><select className="select" value={form.tipo_cuota} onChange={e=>set('tipo_cuota', e.target.value)}><option value="frances">Cuota fija</option><option value="aleman">Decreciente</option><option value="bullet">Solo intereses</option></select></div>
-            <div className="input-group"><label>Contacto</label><input className="input" value={form.contacto_nombre} onChange={e=>set('contacto_nombre', e.target.value)}/></div>
-            <div className="input-group"><label>Banco receptor</label><input className="input" value={form.cuenta_bancaria_destino} onChange={e=>set('cuenta_bancaria_destino', e.target.value)}/></div>
-            <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Proposito</label><textarea className="input" rows="2" value={form.proposito} onChange={e=>set('proposito', e.target.value)}/></div>
-          </div>
-          <div className="card mt-6" style={{padding:16}}><strong>Vista previa</strong>{calculoEdicion?.error && <div className="mt-4" style={{color:'var(--red, #dc2626)'}}>{calculoEdicion.error}</div>}{calculoEdicion && !calculoEdicion.error && <><div className="mt-4">Capital ya pagado: <strong>{fmtMoney(form.moneda, calculoEdicion.capitalPagado)}</strong></div><div>Nuevo saldo pendiente: <strong>{fmtMoney(form.moneda, calculoEdicion.nuevoSaldo)}</strong></div><div>Cuotas por pagar: <strong>{tabla.length}</strong></div></>}<div className={calculoEdicion ? '' : 'mt-4'}>{calculoEdicion ? 'Próxima cuota' : 'Cuota estimada'}: <strong>{fmtMoney(form.moneda, tabla[0]?.total || 0)}</strong></div><div>{calculoEdicion ? 'Total por pagar' : 'Total a pagar'}: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.total,0))}</strong></div><div>Total intereses: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.interes,0))}</strong></div></div>
-          {error && <div className="mt-6" style={{color:'var(--red, #dc2626)'}}>{error}</div>}
-          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : (edicion ? 'Guardar cambios' : 'Guardar y generar tabla')}</button></div>
-        </form>
-      </div>
-    </>
-  );
-}
-
-function PagoModal({ data, onClose, onConfirm, isSubmitting, error }) {
-  const { financiamiento, cuota } = data;
-  const cuotas = (financiamiento.tabla_amortizacion || []).filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada');
-  const inicial = cuota || cuotas[0];
-  const [modo, setModo] = useState(inicial ? 'cuota' : 'capital_parcial');
-  const [cuotaNumero, setCuotaNumero] = useState(inicial?.numero || '');
-  const [pago, setPago] = useState({ fecha:inicial?.fecha || new Date().toISOString().slice(0,10), cuenta_bancaria:financiamiento.cuenta_bancaria_destino || 'BCP Cta. cte.', referencia:'', comprobante:'', capital:Math.min(financiamiento.saldo_pendiente || 0, 1000) });
-  const cuotaSel = cuotas.find(c => c.numero === Number(cuotaNumero)) || inicial;
-  const capitalAbono = modo === 'capital_total' ? Number(financiamiento.saldo_pendiente || 0) : Math.min(Number(pago.capital || 0), Number(financiamiento.saldo_pendiente || 0));
-  const resumen = modo === 'cuota' && cuotaSel ? { capital:cuotaSel.capital, interes:cuotaSel.interes, total:cuotaSel.total } : { capital:capitalAbono, interes:0, total:capitalAbono };
-  return (
-    <>
-      <div className="side-panel-backdrop" onClick={onClose}/>
-      <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
-        <div className="side-panel-head"><div><div className="eyebrow">Registrar pago / abono</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{financiamiento.codigo} · {financiamiento.entidad}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
-        <div className="side-panel-body">
-          <div className="input-group"><label>Tipo de pago</label><select className="select" value={modo} onChange={e=>setModo(e.target.value)}><option value="cuota">Pagar cuota pactada</option><option value="capital_parcial">Abono parcial a capital</option><option value="capital_total">Cancelar saldo total de capital</option></select></div>
-          {modo === 'cuota' && <div className="input-group"><label>Cuota</label><select className="select" value={cuotaNumero} onChange={e=>setCuotaNumero(e.target.value)}>{cuotas.map(c => <option key={c.numero} value={c.numero}>Cuota N {c.numero} - {fmtDate(c.fecha)} - {finMoney(financiamiento, c.total)}</option>)}</select></div>}
-          {modo === 'capital_parcial' && <div className="input-group"><label>Monto a capital</label><input className="input" type="number" value={pago.capital} onChange={e=>setPago(v=>({...v, capital:e.target.value}))}/></div>}
-          <div className="card" style={{padding:16}}><div>Capital: <strong>{finMoney(financiamiento, resumen.capital)}</strong></div><div>Interes: <strong>{finMoney(financiamiento, resumen.interes)}</strong></div><div>Total egreso: <strong>{finMoney(financiamiento, resumen.total)}</strong></div></div>
-          <div className="grid-2 mt-6" style={{gap:16}}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={pago.fecha} onChange={e=>setPago(v=>({...v, fecha:e.target.value}))}/></div><div className="input-group"><label>Cuenta</label><input className="input" value={pago.cuenta_bancaria} onChange={e=>setPago(v=>({...v, cuenta_bancaria:e.target.value}))}/></div><div className="input-group"><label>Referencia</label><input className="input" value={pago.referencia} onChange={e=>setPago(v=>({...v, referencia:e.target.value}))}/></div><div className="input-group"><label>Comprobante</label><input className="input" value={pago.comprobante} onChange={e=>setPago(v=>({...v, comprobante:e.target.value}))}/></div></div>
-          {error && <div className="mt-6" style={{color:'var(--red, #dc2626)'}}>{error}</div>}
-          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancelar</button><button className="btn btn-primary" onClick={()=>onConfirm(financiamiento, { modo, cuota:cuotaSel, resumen, ...pago })} disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Confirmar pago'}</button></div>
-        </div>
-      </div>
-    </>
-  );
 }
 
 function EliminarFinanciamientoModal({ data, onClose, onContinuar, onConfirmar }) {
@@ -144,26 +78,20 @@ function EliminarFinanciamientoModal({ data, onClose, onContinuar, onConfirmar }
 }
 
 export function FinanciamientoDeuda() {
-  const { financiamientos, setFinanciamientos, comprasGastos = [], setComprasGastos, movimientosTesoreria = [], setMovimientosTesoreria, empresa, role, activeParams, navigate, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { financiamientos, setFinanciamientos, comprasGastos = [], setComprasGastos, movimientosTesoreria = [], setMovimientosTesoreria, cuentasBancarias = [], tipoCambioHoy, empresa, role, activeParams, navigate, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   // Misma regla que usuario_puede(empresa, 'financiamiento', 'editar' | 'eliminar') en el servidor
   // ('eliminar' usa el permiso de anular de la pantalla).
   const tienePermiso = accion => Boolean(role?.es_admin_empresa || role?.es_superadmin || role?.permisos?.todo || role?.permisos?.plataforma
     || role?.permisos?.[accion] === true || role?.permisos?.[accion]?.includes?.('financiamiento'));
   const puedeEditar = tienePermiso('editar');
   const puedeEliminar = tienePermiso('anular');
-  const [edicionOpen, setEdicionOpen] = useState(null);
+  const [asistente, setAsistente] = useState(null);
   const [eliminarOpen, setEliminarOpen] = useState(null);
   const modoVistaSociedad = resolverFiltroSociedadesVista({ multisociedadHabilitado: empresa?.multisociedad_habilitado, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles });
   const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear un financiamiento.';
   const [tab, setTab] = useState('todos');
-  const [nuevoOpen, setNuevoOpen] = useState(false);
   const [pagoOpen, setPagoOpen] = useState(null);
-  const [guardandoFinanciamiento, setGuardandoFinanciamiento] = useState(false);
-  const [errorNuevoFinanciamiento, setErrorNuevoFinanciamiento] = useState('');
-  const [guardandoPago, setGuardandoPago] = useState(false);
-  const [errorPago, setErrorPago] = useState('');
-  const formInicial = { tipo:'bancario', entidad:'', tipo_entidad:'banco', contacto_nombre:'', contacto_telefono:'', contacto_email:'', monto_original:50000, moneda:'PEN', sociedad_id:'', fecha_desembolso:'2026-04-01', tasa_anual:12, tipo_tasa:'TEA', plazo_meses:24, meses_gracia:0, dia_pago:5, tipo_cuota:'frances', centro_costo:'CC-OPS', proposito:'', cuenta_bancaria_destino:'BCP Cta. cte.', notas:'' };
-  const [form, setForm] = useState(formInicial);
+  const sociedadActivaId = typeof sociedadActiva === 'string' ? sociedadActiva : sociedadActiva?.id;
   const detalle = activeParams?.detail ? financiamientos.find(f => f.id === activeParams.detail) : null;
   const dataSource = createFinanciamientosDataSource({
     empresa,
@@ -177,98 +105,64 @@ export function FinanciamientoDeuda() {
   const empresaFinanciamientos = financiamientos.filter(f => f.empresa_id === empresa.id);
   const { activos, deudaTotalPorMoneda, cuotasMesPorMoneda, interesesMesPorMoneda, interesesPagadosPorMoneda } = buildDebtSummary(empresaFinanciamientos);
 
-  const guardarFinanciamiento = async e => {
-    e.preventDefault();
-    if (!modoVistaSociedad.permiteEscritura) { setErrorNuevoFinanciamiento(mensajeSeleccionSociedad); return; }
-    const formEl = e.target;
-    if (!formEl.checkValidity()) {
-      formEl.reportValidity();
-      setErrorNuevoFinanciamiento('Completa los campos obligatorios (*) antes de guardar.');
-      return;
+  // Trae del servidor los egresos/ingresos y gastos del préstamo (tras un alta o un pago calculado allá).
+  const refrescarVinculos = async financiamientoId => {
+    try {
+      const { movimientos, gastos } = await cargarVinculosFinanciamiento({ empresaId: empresa.id, financiamientoId });
+      setMovimientosTesoreria(prev => [...movimientos, ...prev.filter(m => !(m.vinculo_tipo === 'financiamiento' && m.vinculo_id === financiamientoId))]);
+      setComprasGastos(prev => [...gastos, ...prev.filter(g => g.financiamiento_id !== financiamientoId)]);
+    } catch (error) {
+      console.warn('[financiamiento] no se pudieron refrescar los movimientos vinculados:', error?.message || error);
     }
-    if (empresa?.multisociedad_habilitado && !form.sociedad_id) {
-      setErrorNuevoFinanciamiento('Selecciona la sociedad que contrata el financiamiento.');
-      return;
-    }
-    setErrorNuevoFinanciamiento('');
-    setGuardandoFinanciamiento(true);
+  };
+
+  const guardarFinanciamiento = async form => {
+    if (!modoVistaSociedad.permiteEscritura) throw new Error(mensajeSeleccionSociedad);
     const nuevo = buildFinanciamiento({
-      form: { ...form, sociedad_id: empresa?.multisociedad_habilitado ? form.sociedad_id : null },
+      form: { ...form, sociedad_id: empresa?.multisociedad_habilitado ? form.sociedad_id : null, cuenta_bancaria_destino: form.cuenta?.nombre || '' },
       empresa,
       sequence: financiamientos.length + 1,
     });
-    try {
-      if (dataSource.mode === 'supabase') {
-        const persistido = await crearFinanciamientoConAmortizacion({ empresa, nuevo });
-        setFinanciamientos(prev => [...prev, persistido]);
-      } else {
-        dataSource.financiamientos.create(nuevo);
-      }
-      setNuevoOpen(false);
-      addNotificacion(`Financiamiento ${nuevo.codigo} creado con tabla de amortizacion.`);
-    } catch (error) {
-      setErrorNuevoFinanciamiento(error?.message || 'No se pudo guardar el financiamiento.');
-    } finally {
-      setGuardandoFinanciamiento(false);
+    delete nuevo.cuenta;
+    if (dataSource.mode === 'supabase') {
+      const persistido = await crearFinanciamientoConAmortizacion({
+        empresa,
+        nuevo: { ...nuevo, codigo: null },
+        registrarIngreso: Boolean(form.registrar_ingreso && form.cuenta),
+        tcAplicado: form.tc_aplicado ? Number(form.tc_aplicado) : null,
+        referencia: form.referencia || null,
+      });
+      setFinanciamientos(prev => [...prev, persistido]);
+      if (form.registrar_ingreso && form.cuenta) await refrescarVinculos(persistido.id);
+      setAsistente(null);
+      navigate('financiamiento', { detail: persistido.id });
+      addNotificacion(`Préstamo ${persistido.codigo} registrado.`);
+    } else {
+      dataSource.financiamientos.create(nuevo);
+      setAsistente(null);
+      addNotificacion(`Préstamo ${nuevo.codigo} registrado.`);
     }
   };
 
-  const abrirEdicion = financiamiento => {
-    setErrorNuevoFinanciamiento('');
-    setForm({
-      ...formInicial,
-      tipo: financiamiento.tipo || 'bancario',
-      entidad: financiamiento.entidad || '',
-      contacto_nombre: financiamiento.contacto_nombre || '',
-      monto_original: financiamiento.monto_original ?? 0,
-      moneda: financiamiento.moneda || 'PEN',
-      sociedad_id: financiamiento.sociedad_id || '',
-      fecha_desembolso: financiamiento.fecha_desembolso || '',
-      tasa_anual: financiamiento.tasa_anual ?? 0,
-      plazo_meses: financiamiento.plazo_meses ?? 1,
-      meses_gracia: financiamiento.meses_gracia ?? 0,
-      dia_pago: financiamiento.dia_pago ?? 5,
-      tipo_cuota: financiamiento.tipo_cuota || 'frances',
-      proposito: financiamiento.proposito || '',
-      cuenta_bancaria_destino: financiamiento.cuenta_bancaria_destino || '',
-      notas: financiamiento.notas || '',
-    });
-    setEdicionOpen(financiamiento);
-  };
-
-  const guardarEdicion = async e => {
-    e.preventDefault();
-    const financiamiento = edicionOpen;
-    const formEl = e.target;
-    if (!formEl.checkValidity()) {
-      formEl.reportValidity();
-      setErrorNuevoFinanciamiento('Completa los campos obligatorios (*) antes de guardar.');
-      return;
+  const guardarEdicion = async form => {
+    const financiamiento = asistente.financiamiento;
+    const calculo = construirEdicionFinanciamiento(financiamiento, { ...form, cuenta_bancaria_destino: form.cuenta?.nombre || financiamiento.cuenta_bancaria_destino || '' });
+    if (calculo.error) throw new Error(calculo.error);
+    const datos = {
+      ...calculo.datos,
+      cuenta_bancaria_id: form.cuenta_bancaria_id || null,
+      ...(form.cuenta ? { cuenta_bancaria_destino: form.cuenta.nombre } : {}),
+      sociedad_id: empresa?.multisociedad_habilitado ? (form.sociedad_id || null) : (financiamiento.sociedad_id ?? null),
+    };
+    const actualizado = dataSource.mode === 'supabase'
+      ? { ...financiamiento, ...(await editarFinanciamientoRpc({ empresa, id: financiamiento.id, datos, cuotas: calculo.tabla })), pagos_realizados: financiamiento.pagos_realizados || [] }
+      : { ...financiamiento, ...datos, tabla_amortizacion: calculo.tabla };
+    setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? actualizado : f));
+    if ((actualizado.sociedad_id || null) !== (financiamiento.sociedad_id || null)) {
+      setComprasGastos(prev => prev.map(g => g.financiamiento_id === financiamiento.id ? { ...g, sociedad_id: actualizado.sociedad_id || null } : g));
     }
-    if (empresa?.multisociedad_habilitado && !form.sociedad_id) {
-      setErrorNuevoFinanciamiento('Selecciona la sociedad que contrata el financiamiento.');
-      return;
-    }
-    const calculo = construirEdicionFinanciamiento(financiamiento, form);
-    if (calculo.error) { setErrorNuevoFinanciamiento(calculo.error); return; }
-    const datos = { ...calculo.datos, sociedad_id: empresa?.multisociedad_habilitado ? (form.sociedad_id || null) : (financiamiento.sociedad_id ?? null) };
-    setErrorNuevoFinanciamiento('');
-    setGuardandoFinanciamiento(true);
-    try {
-      const actualizado = dataSource.mode === 'supabase'
-        ? { ...financiamiento, ...(await editarFinanciamientoRpc({ empresa, id: financiamiento.id, datos, cuotas: calculo.tabla })), pagos_realizados: financiamiento.pagos_realizados || [] }
-        : { ...financiamiento, ...datos, tabla_amortizacion: calculo.tabla };
-      setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? actualizado : f));
-      if ((actualizado.sociedad_id || null) !== (financiamiento.sociedad_id || null)) {
-        setComprasGastos(prev => prev.map(g => g.financiamiento_id === financiamiento.id ? { ...g, sociedad_id: actualizado.sociedad_id || null } : g));
-      }
-      setEdicionOpen(null);
-      addNotificacion(`Financiamiento ${financiamiento.codigo} actualizado.`);
-    } catch (error) {
-      setErrorNuevoFinanciamiento(error?.message || 'No se pudo guardar los cambios del financiamiento.');
-    } finally {
-      setGuardandoFinanciamiento(false);
-    }
+    setAsistente(null);
+    addNotificacion(`Préstamo ${financiamiento.codigo} actualizado.`);
   };
 
   const continuarEliminar = async () => {
@@ -311,7 +205,28 @@ export function FinanciamientoDeuda() {
     }
   };
 
-  const registrarPago = async (financiamiento, datos) => {
+  // Interés sobre saldo: el servidor calcula interés, saldo, egreso y gasto financiero.
+  const registrarPagoInteresSaldo = async (financiamiento, datos) => {
+    const actualizado = await registrarPagoInteresSaldoRpc({
+      empresa,
+      financiamientoId: financiamiento.id,
+      datos: {
+        fecha: datos.fecha,
+        periodo_numero: datos.modo === 'capital' ? null : datos.periodo?.numero ?? null,
+        capital: datos.resumen.capital,
+        cuenta_bancaria_id: datos.cuenta_bancaria_id,
+        tc_aplicado: datos.tc_aplicado,
+        referencia: datos.referencia,
+        comprobante: datos.comprobante,
+      },
+    });
+    setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? { ...f, ...actualizado } : f));
+    await refrescarVinculos(financiamiento.id);
+  };
+
+  // Cuota fija, decreciente o bullet: misma lógica de siempre, ahora con la cuenta real y el TC.
+  const registrarPagoCuota = async (financiamiento, entrada) => {
+    const datos = { ...entrada, cuota: entrada.modo === 'cuota' ? entrada.periodo : null, cuenta_bancaria: entrada.cuenta?.nombre || '' };
     const esCuota = datos.modo === 'cuota';
     const capital = +datos.resumen.capital || 0;
     const interes = +datos.resumen.interes || 0;
@@ -319,43 +234,59 @@ export function FinanciamientoDeuda() {
     const nuevoEstado = nuevoSaldo <= 0 ? 'cancelado' : financiamiento.estado;
     const nuevasCuotasPagadas = esCuota ? (financiamiento.cuotas_pagadas || 0) + 1 : (financiamiento.cuotas_pagadas || 0);
     const nuevosInteresesPagados = (financiamiento.intereses_pagados_total || 0) + interes;
-    const pago = buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo });
+    const pago = { ...buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo }), cuenta_bancaria_id: datos.cuenta_bancaria_id };
     const tablaMarcada = (financiamiento.tabla_amortizacion || []).map(c => esCuota && c.numero === datos.cuota?.numero ? { ...c, estado:'pagada', fecha_pago_real:datos.fecha, referencia:datos.referencia, comprobante:datos.comprobante } : c);
     const tabla = esCuota ? tablaMarcada : recalcularTablaService(financiamiento, tablaMarcada, nuevoSaldo, datos.fecha);
     const movimiento = buildEgresoTesoreria({ financiamiento, pago, datos, empresa });
     const gasto = (esCuota && interes > 0) ? buildGastoIntereses({ financiamiento, cuota: datos.cuota, interes, fecha: datos.fecha, empresa }) : null;
 
-    setErrorPago('');
-    setGuardandoPago(true);
+    if (dataSource.mode === 'supabase') {
+      const resultado = await registrarPagoFinanciamientoRpc({
+        empresa,
+        financiamientoId: financiamiento.id,
+        saldoPendiente: nuevoSaldo,
+        estado: nuevoEstado,
+        cuotasPagadas: nuevasCuotasPagadas,
+        interesesPagadosTotal: nuevosInteresesPagados,
+        tabla,
+        pago,
+        movimiento,
+        gasto,
+      });
+      setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? { ...f, ...resultado, pagos_realizados:[...(f.pagos_realizados || []), pago] } : f));
+      await refrescarVinculos(financiamiento.id);
+      return;
+    }
     setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? { ...f, saldo_pendiente:nuevoSaldo, estado:nuevoEstado, tabla_amortizacion:tabla, cuotas_pagadas:nuevasCuotasPagadas, intereses_pagados_total:nuevosInteresesPagados, pagos_realizados:[...(f.pagos_realizados || []), pago] } : f));
     setMovimientosTesoreria(prev => [movimiento, ...prev]);
     if (gasto) setComprasGastos(prev => [gasto, ...prev]);
-
-    try {
-      if (dataSource.mode === 'supabase') {
-        await registrarPagoFinanciamientoRpc({
-          empresa,
-          financiamientoId: financiamiento.id,
-          saldoPendiente: nuevoSaldo,
-          estado: nuevoEstado,
-          cuotasPagadas: nuevasCuotasPagadas,
-          interesesPagadosTotal: nuevosInteresesPagados,
-          tabla,
-          pago,
-          movimiento,
-          gasto,
-        });
-      }
-      setGuardandoPago(false);
-      setPagoOpen(null);
-    } catch (error) {
-      setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? financiamiento : f));
-      setMovimientosTesoreria(prev => prev.filter(m => m.id !== movimiento.id));
-      if (gasto) setComprasGastos(prev => prev.filter(g => g.id !== gasto.id));
-      setErrorPago(error?.message || 'No se pudo registrar el pago en Supabase.');
-      setGuardandoPago(false);
-    }
   };
+
+  const registrarPago = async datos => {
+    const financiamiento = pagoOpen.financiamiento;
+    if (esInteresSaldo(financiamiento)) await registrarPagoInteresSaldo(financiamiento, datos);
+    else await registrarPagoCuota(financiamiento, datos);
+    setPagoOpen(null);
+    addNotificacion(`Pago de ${finMoney(financiamiento, datos.resumen.total)} registrado en ${financiamiento.codigo}.`);
+  };
+
+  if (asistente) {
+    return (
+      <>
+        <FinanciamientoAsistente
+          key={asistente.financiamiento?.id || 'nuevo'}
+          edicion={asistente.financiamiento || null}
+          empresa={empresa}
+          sociedadesDisponibles={sociedadesDisponibles}
+          sociedadInicial={sociedadActivaId && sociedadesDisponibles.some(x => x.id === sociedadActivaId) ? sociedadActivaId : ''}
+          cuentasBancarias={cuentasBancarias}
+          tcUsdPorPen={tipoCambioHoy?.usd || null}
+          onCancelar={() => setAsistente(null)}
+          onGuardar={asistente.financiamiento ? guardarEdicion : guardarFinanciamiento}
+        />
+      </>
+    );
+  }
 
   if (detalle) {
     return (
@@ -366,22 +297,19 @@ export function FinanciamientoDeuda() {
           puedeEditar={puedeEditar}
           puedeEliminar={puedeEliminar}
           onVolver={() => navigate('financiamiento')}
-          onEditar={() => abrirEdicion(detalle)}
+          onEditar={() => setAsistente({ financiamiento: detalle })}
           onEliminar={() => setEliminarOpen({ financiamiento:detalle, paso:1 })}
           onPagar={cuota => setPagoOpen({ financiamiento:detalle, cuota: cuota || nextCuota(detalle) })}
         />
-        {pagoOpen && <PagoModal data={pagoOpen} onClose={()=>{ setPagoOpen(null); setErrorPago(''); }} onConfirm={registrarPago} isSubmitting={guardandoPago} error={errorPago}/>}
-        {edicionOpen && <NuevoFinanciamientoPanel edicion={edicionOpen} form={form} setForm={setForm} onClose={()=>{ setEdicionOpen(null); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarEdicion} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
+        {pagoOpen && <FinanciamientoPago financiamiento={pagoOpen.financiamiento} cuotaInicial={pagoOpen.cuota} cuentasBancarias={cuentasBancarias} empresaId={empresa.id} tcUsdPorPen={tipoCambioHoy?.usd || null} onCerrar={() => setPagoOpen(null)} onConfirmar={registrarPago}/>}
         {eliminarOpen && <EliminarFinanciamientoModal data={eliminarOpen} onClose={()=>setEliminarOpen(null)} onContinuar={continuarEliminar} onConfirmar={confirmarEliminar}/>}
       </>
     );
   }
 
-  const abrirNuevo = () => { if (modoVistaSociedad.permiteEscritura) { setErrorNuevoFinanciamiento(''); setForm(formInicial); setNuevoOpen(true); } };
+  const abrirNuevo = () => { if (modoVistaSociedad.permiteEscritura) setAsistente({ financiamiento: null }); };
   const modales = (
     <>
-      {nuevoOpen && <NuevoFinanciamientoPanel form={form} setForm={setForm} onClose={()=>{ setNuevoOpen(false); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarFinanciamiento} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
-      {edicionOpen && <NuevoFinanciamientoPanel edicion={edicionOpen} form={form} setForm={setForm} onClose={()=>{ setEdicionOpen(null); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarEdicion} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
       {eliminarOpen && <EliminarFinanciamientoModal data={eliminarOpen} onClose={()=>setEliminarOpen(null)} onContinuar={continuarEliminar} onConfirmar={confirmarEliminar}/>}
     </>
   );
