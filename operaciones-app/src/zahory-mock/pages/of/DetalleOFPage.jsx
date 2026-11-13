@@ -198,7 +198,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
         </div>
         {aviso && <div className="dx-ofd-toast" role="status">{aviso}</div>}
         {editable && (
-          <div className="dx-ofd-notice"><IcoInfo /><div>Revisa la ruta y los materiales. Al <b>aprobar</b>, la ruta queda fija y después solo se agregan materiales no planificados.</div></div>
+          <div className="dx-ofd-notice"><IcoInfo /><div>Revisa la ruta y los materiales. Al <b>aprobar</b>, se reserva el stock y se pide a Compras lo que falte; la ruta queda fija y después solo se agregan materiales no planificados.</div></div>
         )}
         {of.estado === 'aprobada' && (
           <div className={`dx-ofd-notice${resR.faltantes.length ? ' is-warn' : ''}`}><IcoInfo /><div>
@@ -238,9 +238,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
         {enProduccion && (
           <div className="dx-ui dx-ofd-kpis">
             <div className="dx-ui-kpi-row">
-              <div className="dx-ui-kpi"><strong>{prod.avance} %</strong><span>Avance (por horas estimadas)</span></div>
-              <div className="dx-ui-kpi"><strong>{prod.horasReales} h</strong><span>Horas reales de {prod.horasEstimadas} h estimadas</span></div>
-              <div className="dx-ui-kpi"><strong>{formatearMonto(of.costo_real, moneda)}</strong><span>Costo real a la fecha</span></div>
+              <div className="dx-ui-kpi"><strong>{prod.avance} %</strong><span>Avance ponderado</span></div>
+              <div className="dx-ui-kpi"><strong>{prod.horasReales} h</strong><span>Horas reales de {prod.horasEstimadas} h</span></div>
+              <div className="dx-ui-kpi"><strong>{formatearMonto(of.costo_real, moneda)}</strong><span>Costo real</span></div>
               <div className="dx-ui-kpi"><strong>{prod.porAprobar}</strong><span>{prod.porAprobar === 1 ? 'Parte por aprobar' : 'Partes por aprobar'}</span></div>
             </div>
           </div>
@@ -388,7 +388,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                 <div className="dx-ofd-empty">Aún no hay partes. Registra el avance de una operación con «Registrar avance».</div>
               )}
               {pestana === 'partes' && partes.length > 0 && (
-                <div className="dx-ofd-mats">
+                <div className="dx-ofd-mats dx-ofd-partes">
                   <div className="dx-ofd-parte is-head" aria-hidden="true"><span>Parte</span><span>Operación</span><span>Técnico</span><span className="is-r">Horas</span><span className="is-r">Avance</span><span>Estado</span><span /></div>
                   {partes.map(p => {
                     const av = p.estado === 'aprobado' ? p.avance_validado : p.avance_reportado;
