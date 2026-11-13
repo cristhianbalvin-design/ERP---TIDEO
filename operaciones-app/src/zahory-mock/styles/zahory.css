@@ -8190,8 +8190,10 @@ width:20px;height:20px}
 .dx-ofd-cmp dd { margin:0; color:var(--ink); font-weight:700; overflow-wrap:anywhere; }
 .dx-ofd-ref { display:flex; min-width:0; flex-direction:column; gap:6px; }
 .dx-ofd-modal .dx-ui-field input[readonly] { background:var(--hd); color:var(--grf2); }
+/* La regla base .dx-ui .dx-ui-form-grid label (display:grid) baja el asterisco de línea; aquí la etiqueta va en una sola fila. */
+.dx-ofd-modal .dx-ui-form-grid .dx-ui-field > label { display:flex; align-items:center; gap:4px; }
 @container (max-width:1100px) {
-  .dx-ofd-op.is-edit { grid-template-columns:28px minmax(120px,1.4fr) minmax(90px,1fr) 90px minmax(100px,1fr) minmax(110px,1fr) 86px 64px; }
+  .dx-ofd-op.is-edit { grid-template-columns:28px minmax(110px,1.4fr) minmax(80px,1fr) 80px minmax(90px,1fr) minmax(100px,1fr) 80px 64px; }
 }
 @container (max-width:760px) {
   .dx-ofd-op.is-edit { grid-template-columns:28px minmax(0,1fr) auto; grid-template-areas:'seq tar act' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah' 'seq st st'; }
