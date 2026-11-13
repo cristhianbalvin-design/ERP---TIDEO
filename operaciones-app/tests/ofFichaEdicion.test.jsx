@@ -14,6 +14,12 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   guardarMaterialOF: vi.fn(),
   quitarMaterialOF: vi.fn(),
   aprobarOF: mocks.aprobar,
+  obtenerCalidadOF: vi.fn(() => Promise.resolve({ estado: 'borrador', caracteristicas: [], mediciones: [], no_conformidades: [] })),
+  enviarACalidadOF: vi.fn(),
+  liberarOF: vi.fn(),
+  medirCalidadOF: vi.fn(),
+  abrirNoConformidadOF: vi.fn(),
+  cerrarNoConformidadOF: vi.fn(),
 }));
 
 import { DetalleOFPage } from '../src/zahory-mock/pages/of/DetalleOFPage.jsx';

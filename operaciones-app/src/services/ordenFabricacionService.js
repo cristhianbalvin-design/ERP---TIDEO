@@ -210,3 +210,14 @@ export const guardarMaterialOF = (ofId, lineaId, datos) =>
   rpc('of_guardar_material', { p_of_id: ofId, p_material_linea_id: lineaId || null, p_datos: datos });
 export const quitarMaterialOF = lineaId => rpc('of_quitar_material', { p_material_linea_id: lineaId });
 export const aprobarOF = ofId => rpc('of_aprobar', { p_of_id: ofId });
+
+// F4 · Calidad de la OF. Las reglas (tolerancias, NC, liberación) viven en la base de datos.
+export const obtenerCalidadOF = ofId => rpc('of_calidad_datos', { p_of_id: ofId });
+export const enviarACalidadOF = ofId => rpc('of_calidad_enviar', { p_of_id: ofId });
+export const medirCalidadOF = (caracteristicaId, unidad, valor, conforme = null) =>
+  rpc('of_calidad_medir', { p_caracteristica_id: caracteristicaId, p_unidad: unidad, p_valor: valor, p_conforme: conforme });
+export const abrirNoConformidadOF = ({ caracteristicaId, unidad, descripcion, disposicion, responsable }) =>
+  rpc('of_calidad_abrir_nc', { p_caracteristica_id: caracteristicaId, p_unidad: unidad, p_descripcion: descripcion, p_disposicion: disposicion, p_responsable: responsable || null });
+export const cerrarNoConformidadOF = ({ ncId, accion, valor = null, conforme = null, evidencia = null }) =>
+  rpc('of_calidad_cerrar_nc', { p_nc_id: ncId, p_accion: accion, p_valor: valor, p_conforme: conforme, p_evidencia: evidencia });
+export const liberarOF = ofId => rpc('of_calidad_liberar', { p_of_id: ofId });

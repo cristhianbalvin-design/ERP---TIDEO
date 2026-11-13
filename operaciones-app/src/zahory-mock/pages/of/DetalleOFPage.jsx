@@ -2,13 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { useCompactWorkMode } from '../../../useCompactWorkMode.js';
 import {
-  aprobarOF, guardarMaterialOF, guardarOperacionOF, listarMaterialesOF, obtenerCatalogoEdicionOF, obtenerOF,
+  aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, obtenerCalidadOF, obtenerCatalogoEdicionOF, obtenerOF,
   quitarMaterialOF, quitarOperacionOF,
 } from '../../../services/ordenFabricacionService.js';
 import { ETIQUETA_ESTADO_OF, formatearFecha, formatearMonto } from './ofBandejaLogic.js';
 import { agruparRuta, textoHoras } from './ofCrearLogic.js';
 import { admiteNoPlanificado, esEditable, materialDesdeLinea, resumenAprobacion, tareaDesdeOperacion, textoStock } from './ofFichaLogic.js';
 import { ConfirmarModal, MaterialModal, TareaModal } from './OFModales.jsx';
+import { OFCalidadPanel } from './OFCalidadPanel.jsx';
+import { ESTADOS_CON_CALIDAD, ESTADOS_ENVIO, normalizarCalidad, resumenCalidad } from './ofCalidadLogic.js';
 
 const LINEA_TIEMPO = [
   ['borrador', 'Borrador'],
@@ -29,7 +31,9 @@ const Atras = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l
 const IcoMas = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>;
 const IcoEditar = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>;
 const IcoQuitar = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
+const IcoX = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>;
 const IcoCheck = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>;
+const IcoEnviar = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>;
 const IcoInfo = () => <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>;
 
 export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
@@ -45,6 +49,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const [cargandoMateriales, setCargandoMateriales] = useState(false);
   const [modal, setModal] = useState(null);
   const [aviso, setAviso] = useState('');
+  const [calidad, setCalidad] = useState(null);
 
   useEffect(() => {
     if (estadoSesion !== 'listo') return undefined;
@@ -57,12 +62,15 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     setAviso('');
     setCatalogo(null);
     setMaterialesCat([]);
+    setCalidad(null);
     obtenerOF(id)
       .then(fila => { if (vivo) { setOf(fila); if (!fila) setError('La OF no existe o no tienes acceso a ella.'); } })
       .catch(err => { if (vivo) setError(err?.message || 'No se pudo cargar la OF.'); })
       .finally(() => { if (vivo) setCargando(false); });
     // Catálogos para editar: si fallan, la ficha sigue en solo lectura.
     obtenerCatalogoEdicionOF(id).then(c => { if (vivo) setCatalogo(c); }).catch(() => {});
+    // F4 · Calidad: si falla, la pestaña muestra el aviso y el resto de la ficha sigue igual.
+    obtenerCalidadOF(id).then(c => { if (vivo) setCalidad(normalizarCalidad(c)); }).catch(() => {});
     setCargandoMateriales(true);
     listarMaterialesOF(id)
       .then(lista => { if (vivo) setMaterialesCat(lista); })
@@ -78,10 +86,12 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   }, [aviso]);
 
   const recargar = async mensaje => {
-    const fila = await obtenerOF(id);
+    const [fila, cal] = await Promise.all([obtenerOF(id), obtenerCalidadOF(id).catch(() => null)]);
     setOf(fila);
+    if (cal) setCalidad(normalizarCalidad(cal));
     if (mensaje) setAviso(mensaje);
   };
+  const resumenQ = useMemo(() => resumenCalidad(calidad || {}), [calidad]);
   const stockPorMaterial = useMemo(() => new Map(materialesCat.map(m => [m.id, m.disponible])), [materialesCat]);
   const materialPorId = useMemo(() => new Map(materialesCat.map(m => [m.id, m])), [materialesCat]);
 
@@ -118,6 +128,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const editable = esEditable(of.estado) && Boolean(catalogo?.puede_editar);
   const noPlanificado = admiteNoPlanificado(of.estado) && Boolean(catalogo?.puede_editar);
   const puedeAprobar = esEditable(of.estado) && Boolean(catalogo?.puede_aprobar);
+  const puedeEnviarCalidad = ESTADOS_ENVIO.includes(of.estado) && Boolean(calidad?.puedeEnviar);
+  const puedeLiberar = of.estado === 'en_calidad' && Boolean(calidad?.puedeLiberar);
+  const verCalidad = ESTADOS_ENVIO.includes(of.estado) || ESTADOS_CON_CALIDAD.includes(of.estado);
   const cerrarModal = () => setModal(null);
   const abrirTarea = (operacion = null, preset = {}) => setModal({ tipo: 'tarea', operacion: operacion && { ...operacion, _form: tareaDesdeOperacion(operacion) }, preset });
   const abrirMaterial = (linea = null) => setModal({ tipo: 'material', linea: linea && { ...linea, _form: materialDesdeLinea(linea) } });
@@ -147,9 +160,14 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </h1>
             <p className="dx-ofd-sub">{[of.descripcion, of.cliente].filter(Boolean).join(' · ') || 'Sin descripción'}</p>
           </div>
-          {puedeAprobar && (
+          {(puedeAprobar || puedeEnviarCalidad || puedeLiberar) && (
             <div className="dx-ofd-hdr-actions">
-              <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'aprobar' })}><IcoCheck />Aprobar OF</button>
+              {puedeAprobar && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'aprobar' })}><IcoCheck />Aprobar OF</button>}
+              {puedeEnviarCalidad && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'enviar-calidad' })}><IcoEnviar />Enviar a calidad</button>}
+              {puedeLiberar && (
+                <button type="button" className="dx-ofd-primary" disabled={!resumenQ.liberable} onClick={() => setModal({ tipo: 'liberar' })}
+                  title={resumenQ.liberable ? '' : 'Faltan críticas dentro de tolerancia o hay una NC abierta.'}><IcoCheck />Liberar OF</button>
+              )}
             </div>
           )}
         </div>
@@ -159,6 +177,18 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
         )}
         {of.estado === 'aprobada' && (
           <div className="dx-ofd-notice"><IcoInfo /><div>La OF está <b>aprobada</b>: la ruta ya no se edita. La reserva de stock y el registro de avance llegan en las siguientes entregas.</div></div>
+        )}
+        {of.estado === 'en_calidad' && calidad && (
+          <div className={`dx-ofd-notice${resumenQ.liberable ? ' is-ok' : resumenQ.fuera || resumenQ.ncAbiertas ? ' is-warn' : ''}`}><IcoInfo /><div>
+            {resumenQ.liberable
+              ? <>Todas las críticas están dentro de tolerancia y no hay NC abiertas. Ya se puede <b>liberar</b> la OF.</>
+              : resumenQ.ncAbiertas
+                ? <>Hay <b>{resumenQ.ncAbiertas} {resumenQ.ncAbiertas === 1 ? 'no conformidad abierta' : 'no conformidades abiertas'}</b>: la OF no se libera hasta cerrarlas.</>
+                : <>La OF está <b>en calidad</b>: registra las mediciones de cada unidad en la pestaña Calidad.</>}
+          </div></div>
+        )}
+        {of.estado === 'lista_entrega' && calidad?.liberadoEn && (
+          <div className="dx-ofd-notice is-ok"><IcoCheck /><div>OF liberada por calidad{calidad.liberadoPor ? ` (${calidad.liberadoPor})` : ''} el {formatearFecha(calidad.liberadoEn)}: <b>lista para entrega</b>.</div></div>
         )}
 
         {of.estado === 'anulada'
@@ -189,6 +219,11 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                 <button type="button" role="tab" aria-selected={pestana === 'materiales'} className={pestana === 'materiales' ? 'is-on' : ''} onClick={() => setPestana('materiales')}>
                   Materiales · {of.materiales.length}
                 </button>
+                {verCalidad && (
+                  <button type="button" role="tab" aria-selected={pestana === 'calidad'} className={pestana === 'calidad' ? 'is-on' : ''} onClick={() => setPestana('calidad')}>
+                    Calidad{resumenQ.ncAbiertas ? <b>{resumenQ.ncAbiertas}</b> : null}
+                  </button>
+                )}
               </div>
               {pestana === 'ruta' && editable && (
                 <button type="button" className="dx-ofd-ghost" onClick={() => abrirTarea()}><IcoMas />Agregar tarea</button>
@@ -281,13 +316,27 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                   })}
                 </div>
               )}
-              {!editable && !noPlanificado && of.estado !== 'anulada' && (
+              {pestana === 'calidad' && (calidad
+                ? <OFCalidadPanel calidad={calidad} resumen={resumenQ} onCambio={mensaje => recargar(mensaje)} />
+                : <div className="dx-ofd-empty">Cargando la calidad de la OF…</div>)}
+              {pestana !== 'calidad' && !editable && !noPlanificado && of.estado !== 'anulada' && (
                 <div className="dx-ofd-soon">{catalogo && !catalogo.puede_editar ? 'Tu rol puede ver esta OF, pero no editarla.' : 'Esta OF ya no admite cambios en la ruta ni en los materiales.'}</div>
               )}
             </div>
           </div>
 
           <aside className="dx-ofd-aside">
+            {calidad && ESTADOS_CON_CALIDAD.includes(of.estado) && (
+              <div className="dx-ofd-card dx-ofd-box">
+                <h2>Liberación</h2>
+                <ul className="dx-ofq-check">
+                  <li className={resumenQ.criticasOk === resumenQ.criticasTotal ? 'is-ok' : 'is-bad'}>{resumenQ.criticasOk === resumenQ.criticasTotal ? <IcoCheck /> : <IcoX />}<span>Críticas dentro de tolerancia ({resumenQ.criticasOk}/{resumenQ.criticasTotal})</span></li>
+                  <li className={resumenQ.ncAbiertas ? 'is-bad' : 'is-ok'}>{resumenQ.ncAbiertas ? <IcoX /> : <IcoCheck />}<span>Sin no conformidades abiertas</span></li>
+                  <li className="is-ok"><IcoCheck /><span>Las no críticas son opcionales</span></li>
+                </ul>
+                <p className="dx-ofd-muted dx-ofq-note">{calidad.liberadoEn ? `Liberada${calidad.liberadoPor ? ` por ${calidad.liberadoPor}` : ''} el ${formatearFecha(calidad.liberadoEn)}.` : 'Solo el permiso Calidad de OF registra mediciones, gestiona las NC y libera la OF.'}</p>
+              </div>
+            )}
             <div className="dx-ofd-card dx-ofd-box">
               <h2>Costos</h2>
               <dl className="dx-ofd-dl">
@@ -331,6 +380,25 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
         <ConfirmarModal titulo={`¿Quitar ${modal.linea.descripcion}?`} peligro accion="Quitar material"
           onConfirmar={() => quitarMaterialOF(modal.linea.id)}
           onClose={r => { cerrarModal(); if (r) recargar('Material quitado.'); }} />
+      )}
+      {modal?.tipo === 'enviar-calidad' && (
+        <ConfirmarModal titulo={`¿Enviar la ${of.numero} a calidad?`} accion="Enviar a calidad"
+          ayuda={calidad?.ficha
+            ? `Se copian las piezas y características de la ficha técnica v${calidad.ficha.version} para medirlas por unidad. La OF pasa a «En calidad».`
+            : 'Esta OF no viene de un diagnóstico de fabricación con ficha técnica: pasa a «En calidad» sin mediciones.'}
+          onConfirmar={() => enviarACalidadOF(of.id)}
+          onClose={r => { cerrarModal(); if (r) { setPestana('calidad'); recargar('OF enviada a calidad.'); } }} />
+      )}
+      {modal?.tipo === 'liberar' && (
+        <ConfirmarModal titulo={`¿Liberar la ${of.numero}?`} accion="Liberar OF"
+          ayuda="La OF pasa a «Lista para entrega» y las mediciones quedan de solo lectura."
+          filas={[
+            ['Críticas dentro de tolerancia', `${resumenQ.criticasOk} de ${resumenQ.criticasTotal}`],
+            ['No conformidades', `${(calidad?.noConformidades || []).length} (abiertas: ${resumenQ.ncAbiertas})`],
+            ['Opcionales medidas', `${resumenQ.opcionalesMedidas} de ${resumenQ.opcionalesTotal}`],
+          ]}
+          onConfirmar={() => liberarOF(of.id)}
+          onClose={r => { cerrarModal(); if (r) recargar('OF liberada: lista para entrega.'); }} />
       )}
       {modal?.tipo === 'aprobar' && (
         <ConfirmarModal titulo={`¿Aprobar la ${of.numero}?`} accion="Aprobar OF"
