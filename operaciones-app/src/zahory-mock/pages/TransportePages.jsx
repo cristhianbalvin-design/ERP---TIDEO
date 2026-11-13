@@ -1365,6 +1365,7 @@ export const MapaCampo = ({ setCurrent }) => {
 };
 
 // ── 8. LiquidacionTransporte ──────────────────────────────────────────────────
+// Sin uso: la ruta transporte-liquidacion abre LiquidacionTransportePage (datos reales). Pendiente del PR de limpieza.
 
 export const LiquidacionTransporte = () => {
   const ovs       = ZAHORY_SAC_DATA.ordenes_viaje || [];

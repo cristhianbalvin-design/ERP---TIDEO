@@ -20,7 +20,7 @@ import {
 
 const BLANK = { ruta_id: '', cuenta_id: null, tipo_unidad: '', modalidad: 'viaje', tarifa: '',
   moneda: 'PEN', minimo_facturable: '', vigente_desde: fechaActualLocal(), vigente_hasta: '',
-  estado: 'activa', notas: '' };
+  estado: 'activa', notas: '', franquicia_espera_horas: '', tarifa_espera_hora: '', incluye_peajes: false };
 const cuentaLabel = account => account?.nombre_comercial || account?.razon_social || account?.id || 'Cliente';
 
 function tarifaErrorFieldId(field) {
@@ -164,6 +164,9 @@ export function TarifasTransportePage() {
       const payload = { ...form, ruta_id: form.ruta_id || null, cuenta_id: form.cuenta_id || null,
         tipo_unidad: form.tipo_unidad.trim(), tarifa: Number(form.tarifa),
         minimo_facturable: form.minimo_facturable === '' ? null : Number(form.minimo_facturable),
+        franquicia_espera_horas: form.franquicia_espera_horas === '' || form.franquicia_espera_horas == null ? null : Number(form.franquicia_espera_horas),
+        tarifa_espera_hora: form.tarifa_espera_hora === '' || form.tarifa_espera_hora == null ? null : Number(form.tarifa_espera_hora),
+        incluye_peajes: Boolean(form.incluye_peajes),
         vigente_hasta: form.vigente_hasta || null, notas: form.notas || null };
       payload.ruta_id = form.ruta_id === '__all__' ? null : form.ruta_id || null;
       if (form.id) await actualizarTarifa(empresaId, form.id, payload);

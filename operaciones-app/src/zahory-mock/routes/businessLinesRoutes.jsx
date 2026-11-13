@@ -30,7 +30,6 @@ import { CrearOFPage } from '../pages/of/CrearOFPage.jsx';
 import { DetalleOFPage } from '../pages/of/DetalleOFPage.jsx';
 import {
   DashboardTransporte,
-  LiquidacionTransporte,
 } from '../pages/TransportePages.jsx';
 import { MaestroRutasPage } from '../pages/transporte/MaestroRutasPage.jsx';
 import { TarifasTransportePage } from '../pages/transporte/TarifasTransportePage.jsx';
@@ -40,6 +39,7 @@ import { LugaresPage } from '../pages/transporte/LugaresPage.jsx';
 import { ViajeDetallePage } from '../pages/transporte/ViajeDetallePage.jsx';
 import { FlotaPage } from '../pages/transporte/FlotaPage.jsx';
 import { HojaDeRutaPage } from '../pages/transporte/HojaDeRutaPage.jsx';
+import { LiquidacionTransportePage } from '../pages/transporte/LiquidacionTransportePage.jsx';
 import {
   DashboardRepuestos,
   PedidosVenta,
@@ -98,7 +98,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'transporte-lugares': return <LugaresPage />;
     case 'transporte-ruta': return <HojaDeRutaPage onNav={onNavigate} routeParams={routeParams} />;
     case 'transporte-tarifas': return <MaestroRutasPage />;
-    case 'transporte-liquidacion': return <LiquidacionTransporte onNav={onNavigate} />;
+    case 'transporte-liquidacion': return <LiquidacionTransportePage onNav={onNavigate} routeParams={routeParams} />;
     case 'transporte-tarifas-config': return <TarifasTransportePage />;
 
     case 'dashboard-produccion': return <DashboardProduccion onNav={onNavigate} setCurrentOF={setCurrentOF} />;

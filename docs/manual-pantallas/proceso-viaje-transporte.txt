@@ -5,9 +5,10 @@ catalogo: operaciones/transporte-crear-ov, operaciones/transporte-ruta, operacio
 titulo: Transporte: de la orden de viaje al despacho
 resumen: Sigue un viaje de transporte: orden de viaje, programación en la Hoja de Ruta, asignación de unidad y conductor, despacho y seguimiento.
 componentes: operaciones-app/src/zahory-mock/pages/transporte/OrdenViajePage.jsx#OrdenViajePage, operaciones-app/src/zahory-mock/pages/transporte/HojaDeRutaPage.jsx#HojaDeRutaPage, operaciones-app/src/zahory-mock/pages/transporte/ViajeDetallePage.jsx#ViajeDetallePage, operaciones-app/src/zahory-mock/pages/transporte/MonitorViajesPage.jsx#MonitorViajesPage
-huella: aa6bbffce0 fb0b722c0a 42c87dc48a 89fb9d5ef7
+huella: aa6bbffce0 fb0b722c0a 3be3705461 89fb9d5ef7
 pantalla_recorrido: transporte_comercial
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Registra el viaje con Nueva orden de viaje. Puedes partir Desde OS del cliente o como Viaje directo. Guardar borrador lo conserva sin programar y Guardar y programar lo deja programado.
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | En la Hoja de Ruta arma las rutas del día: crea una ruta, agrega los pedidos y asígnala. Imprimir hojas del día genera las hojas para los conductores.
 paso: 3 | pantalla=transporte_comercial | permiso=ninguno | En el detalle del viaje usa Asignar y despachar para definir la unidad y el conductor y dar la salida. Reprogramar cambia la fecha y Cambiar asignación reemplaza la unidad o el conductor.
 paso: 4 | pantalla=transporte_comercial | permiso=ninguno | El Monitor de Viajes agrupa los viajes por estado y marca los atrasados y los que salen hoy sin unidad asignada, para atenderlos primero.
+paso: 5 | pantalla=transporte_comercial | permiso=ninguno | Cuando el viaje se entrega, pasa a Liquidación de transporte: ahí se juntan los viajes del cliente, se revisan los gastos del conductor y se envía la liquidación a Ventas para facturar.
