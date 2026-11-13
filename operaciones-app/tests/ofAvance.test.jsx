@@ -136,7 +136,7 @@ describe('avance en la ficha de la OF', () => {
     mocks.partes = [PARTE];
     const root = await montar();
     const kpis = root.root.findAllByProps({ className: 'dx-ui-kpi' }).map(texto);
-    expect(kpis).toEqual(['20 %Avance (por horas estimadas)', '2 hHoras reales de 10 h estimadas', 'S/ 49.08Costo real a la fecha', '1Parte por aprobar']);
+    expect(kpis).toEqual(['20 %Avance ponderado', '2 hHoras reales de 10 h', 'S/ 49.08Costo real', '1Parte por aprobar']);
     expect(root.root.findAllByProps({ className: 'dx-ofd-o-bah dx-ofd-progress' }).map(texto)).toEqual(['50 %', '0 %']);
 
     await act(async () => { boton(root, 'Partes · 1').props.onClick(); await esperar(); });

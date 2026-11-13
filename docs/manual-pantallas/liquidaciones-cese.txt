@@ -10,3 +10,6 @@ paso: 1 | pantalla=liquidaciones_cese | permiso=ninguno | Inicia con Nueva liqui
 paso: 2 | pantalla=liquidaciones_cese | permiso=ninguno | Si el cese es por falta grave debes indicar el motivo específico. Recalcular vuelve a calcular los importes.
 paso: 3 | pantalla=liquidaciones_cese | permiso=ninguno | Para confirmar marca la casilla de confirmación y usa Confirmar liquidación: se genera la cuenta por pagar y se bloquea el acceso del trabajador al sistema. Ver CxP generada abre esa cuenta.
 paso: 4 | pantalla=liquidaciones_cese | permiso=ninguno | Anular deja sin efecto una liquidación; el motivo es obligatorio.
+paso: 5 | pantalla=liquidaciones_cese | permiso=ninguno | Para qué sirve: calcular lo que la empresa debe pagar a un trabajador que se va (beneficios pendientes según el tipo de cese) y dejar la deuda registrada para pagarla.
+paso: 6 | pantalla=liquidaciones_cese | permiso=ninguno | Nueva liquidación solo aparece si tu rol puede gestionar liquidaciones. Al confirmar, el monto queda como cuenta por pagar al trabajador.
+paso: 7 | pantalla=liquidaciones_cese | permiso=ninguno | No deja calcular si el colaborador no tiene fecha de ingreso en su ficha: complétala primero en RRHH. No deja confirmar sin marcar la casilla de confirmación, ni anular sin escribir el motivo. Si el pago va a un beneficiario, pide su nombre y su DNI.

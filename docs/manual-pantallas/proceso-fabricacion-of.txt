@@ -5,7 +5,7 @@ catalogo: admin/os_cliente, operaciones/produccion-crear-of, operaciones/producc
 titulo: Fabricación con Orden de Fabricación (OF)
 resumen: Sigue un trabajo de fabricación desde la orden de servicio del cliente hasta la OF lista para entrega: creación, ruta de tareas, materiales, aprobación, avance por partes y calidad.
 componentes: src/pages_core.jsx#OSCliente, operaciones-app/src/zahory-mock/pages/of/CrearOFPage.jsx#CrearOFPage, operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage, operaciones-app/src/zahory-mock/pages/of/BandejaOFPage.jsx#BandejaOFPage
-huella: 90315ca39a 4ff52824a1 9d45607da0 6f1d2aaebd
+huella: 90315ca39a 4ff52824a1 56692b0bea 6f1d2aaebd
 pantalla_recorrido: os_cliente,of
 paso: 1 | pantalla=os_cliente | permiso=ninguno | Cuando el trabajo vendido es una fabricación, en la OS Cliente usa Crear OF en lugar de Crear OT.
 paso: 2 | pantalla=of | permiso=ninguno | En Nueva OF, la orden parte de la OS del cliente y toma su Hoja de Costeo si la tiene. Crear OF la registra; si la OS ya tiene una, el botón dice Crear OF adicional.

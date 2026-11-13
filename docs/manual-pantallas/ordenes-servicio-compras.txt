@@ -9,3 +9,6 @@ huella: 0144236b2a
 paso: 1 | pantalla=ordenes_servicio | permiso=ninguno | Crea una orden con Nueva OS: debes tener seleccionada una sociedad y elegir un CECO, que es obligatorio.
 paso: 2 | pantalla=ordenes_servicio | permiso=ninguno | Emitir OS la emite al proveedor.
 paso: 3 | pantalla=ordenes_servicio | permiso=ninguno | Conformidad registra que el servicio se recibió conforme.
+paso: 4 | pantalla=ordenes_servicio | permiso=ninguno | Para qué sirve: contratar un servicio a un proveedor (un trabajo de terceros, un flete, una reparación) con su alcance y su precio. Es el equivalente de la orden de compra cuando no llega mercadería sino un trabajo.
+paso: 5 | pantalla=ordenes_servicio | permiso=ninguno | La conformidad reemplaza a la recepción: al registrarla el servicio queda aceptado y puede seguir su cuenta por pagar.
+paso: 6 | pantalla=ordenes_servicio | permiso=ninguno | No deja crear la orden sin seleccionar una sociedad ni sin elegir un centro de costo. Si no ves Emitir OS, la orden ya está emitida o tu rol no tiene ese permiso.

@@ -12,3 +12,5 @@ paso: 3 | pantalla=cot_compras | permiso=ninguno | Seleccionar ganador elige la 
 paso: 4 | pantalla=cot_compras | permiso=ninguno | Ver proceso abre el detalle de un proceso.
 paso: 5 | pantalla=cot_compras | permiso=ninguno | Úsalo cuando quieres comparar precios antes de comprar: el mismo pedido se envía a varios proveedores, registras lo que responde cada uno y eliges al ganador. Si ya sabes a quién comprar, no hace falta: ve directo a la Bandeja de Sourcing o a la orden de compra.
 paso: 6 | pantalla=cot_compras | permiso=ninguno | Si cada material conviene comprarlo a un proveedor distinto, usa la Bandeja de Sourcing: ahí se asigna el proveedor línea por línea y se genera una orden por proveedor.
+paso: 7 | pantalla=cot_compras | permiso=ninguno | Para qué sirve: pedir precio a varios proveedores por lo mismo y elegir con datos antes de comprar. Deja constancia de quién cotizó cuánto y por qué se eligió al ganador.
+paso: 8 | pantalla=cot_compras | permiso=ninguno | Si no ves el botón para generar la orden, aún no hay un proveedor ganador elegido. Si un proveedor no aparece para invitarlo, regístralo primero en Proveedores.
