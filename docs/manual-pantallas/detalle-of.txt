@@ -3,9 +3,9 @@ tipo: pantalla
 pantalla: of
 catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
-resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado y aprobación.
+resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación, registro y revisión de avance por partes, costo real y calidad.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
-huella: 3f49007a28
+huella: 8875d0cc93
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
@@ -15,3 +15,8 @@ paso: 6 | pantalla=of | permiso=ninguno | La ruta se ordena como Trabajo › Act
 paso: 7 | pantalla=of | permiso=ninguno | Si la OF nació de una OS con Hoja de Costeo llega precargada con las tareas y materiales de la hoja, y toma su moneda; revísala antes de aprobar. Si se creó como OF adicional llega vacía y se arma a mano.
 paso: 8 | pantalla=of | permiso=ninguno | Después de aprobar solo se puede agregar un Material no planificado, y exige escribir el motivo; ese motivo queda visible en la lista de materiales. Para cambiar la ruta de una OF aprobada no hay botón: hay que pedirlo a quien administra el sistema.
 paso: 9 | pantalla=of | permiso=ninguno | Si no ves Aprobar OF es porque tu rol no tiene el permiso de aprobar Órdenes de Fabricación o porque la OF ya no está en Borrador o Ingeniería. Si no ves Agregar tarea, tu rol no puede editar OF.
+paso: 10 | pantalla=of | permiso=ninguno | Con la OF Aprobada o En producción, Registrar avance crea un parte: elige la operación, el técnico, la fecha (no futura), las horas trabajadas y el avance de la operación (0 a 100; con 100 queda terminada). El parte queda Por aprobar.
+paso: 11 | pantalla=of | permiso=ninguno | La pestaña Partes lista los partes de la OF con su estado (Por aprobar, Aprobado, Observado). Revisar abre el parte: Aprobar parte suma las horas, actualiza el avance de la operación y de la OF y el costo real; Observar lo devuelve con una observación y el técnico registra uno corregido. Si cambias el avance reportado, la observación es obligatoria.
+paso: 12 | pantalla=of | permiso=ninguno | La OF pasa de Aprobada a En producción con el primer parte aprobado. Desde ahí la cabecera muestra el avance (ponderado por horas estimadas), las horas reales, el costo real a la fecha y los partes por aprobar; la Ruta muestra por tarea las horas reales, una barra de avance y su estado.
+paso: 13 | pantalla=of | permiso=ninguno | El costo real suma la mano de obra de los partes aprobados (horas por la tarifa del técnico; si no tiene, la del cargo de la operación) y los materiales despachados. Si no ves Registrar avance tu rol no puede editar OF o todas las operaciones están terminadas; si no ves Revisar, tu rol no tiene el permiso de aprobar OF.
+paso: 14 | pantalla=of | permiso=ninguno | Con la OF en producción, Enviar a calidad la pasa a En calidad; en la pestaña Calidad se registran las mediciones por unidad y las no conformidades. Liberar OF la deja Lista para entrega cuando todas las críticas están dentro de tolerancia y no hay no conformidades abiertas.
