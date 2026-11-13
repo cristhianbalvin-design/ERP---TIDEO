@@ -50,6 +50,17 @@ describe('cálculos de Hoja de Costeo', () => {
     expect(grupos[0].subtotal).toBe(24);
   });
 
+  it('separa el material de las piezas del diagnóstico de fabricación en su propio grupo', () => {
+    const grupos = agruparMaterialesPorTrabajo({
+      materiales: [
+        { id: 'mat-p1', diagnostico_pieza_id: 'p1', cantidad: 1.6, subtotal: 0 },
+        { id: 'mat-p2', diagnostico_pieza_id: 'p2', cantidad: 2.4, subtotal: 0 },
+        { id: 'mat-suelto', cantidad: 1, subtotal: 5 },
+      ],
+    });
+    expect(grupos.map(grupo => [grupo.key, grupo.piezas, grupo.lineas.length])).toEqual([['piezas', true, 2], ['::', false, 1]]);
+  });
+
   it('usa el subtotal guardado de la tarea para evitar diferencias por redondeo del costo/hora', () => {
     const [trabajo] = calcularCostosPorTarea({ lineas: [{ id: 'mo-1', familia_trabajo_id: 'f1', tarea_id: 't1', horas: 7.5, costo_hora_snapshot: 21.13, subtotal: 158.46 }] });
     expect(trabajo.tareas[0].subtotal_mano_obra).toBe(158.46);
