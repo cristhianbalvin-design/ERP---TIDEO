@@ -5,7 +5,7 @@ catalogo: operaciones/pasaporte-equipos
 titulo: Pasaporte de Equipos
 resumen: Documentos de cada equipo de la flota.
 componentes: operaciones-app/src/zahory-mock/pages/flota/PasaporteEquiposPage.jsx#PasaporteEquiposPage
-huella: 14c7aba2b3
-paso: 1 | pantalla=pasaporte_equipos | permiso=ninguno | Selecciona un equipo y usa Agregar documento para registrar un documento suyo.
+huella: 94e691e9d6
+paso: 1 | pantalla=pasaporte_equipos | permiso=ninguno | Selecciona un equipo para desplazarte a su ficha y usa Agregar documento para registrar un documento suyo.
 paso: 2 | pantalla=pasaporte_equipos | permiso=ninguno | Editar cambia los datos del documento. Para cambiar el archivo hay que eliminar el documento y volver a registrarlo.
-paso: 3 | pantalla=pasaporte_equipos | permiso=ninguno | Eliminar documento lo borra.
+paso: 3 | pantalla=pasaporte_equipos | permiso=ninguno | Eliminar abre una confirmación con el nombre del documento; usa Eliminar documento para borrarlo o Cancelar para conservarlo.

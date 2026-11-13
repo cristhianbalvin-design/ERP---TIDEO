@@ -5,7 +5,7 @@ catalogo: operaciones/liquidacion
 titulo: Liquidación & DMR
 resumen: Partes diarios de los equipos alquilados y su liquidación mensual.
 componentes: operaciones-app/src/zahory-mock/pages/flota/LiquidacionFlotaPage.jsx#LiquidacionFlotaPage
-huella: a3c150a93e
+huella: fa96e9f580
 paso: 1 | pantalla=liquidacion_flota | permiso=ninguno | En Partes diarios registra cada día con Nuevo parte: horas operadas, horómetro y paradas, que se agregan con Agregar parada. Guardar parte lo conserva y Anular parte lo deja sin efecto.
 paso: 2 | pantalla=liquidacion_flota | permiso=ninguno | En Liquidaciones usa Liquidar un mes y Crear liquidación; la liquidación queda en borrador. Recalcular la actualiza con los partes.
 paso: 3 | pantalla=liquidacion_flota | permiso=ninguno | Enviar a revisión la manda a aprobación; quien revisa usa Aprobar o Devolver.
@@ -15,3 +15,4 @@ paso: 6 | pantalla=liquidacion_flota | permiso=ninguno | La causa de cada parada
 paso: 7 | pantalla=liquidacion_flota | permiso=ninguno | Qué se cobra: las horas facturables son el mayor valor entre las horas operadas y el mínimo del contrato, prorrateado por los días del mes que el equipo estuvo en contrato. Lo operado se cobra con la tarifa vigente de cada día. Si el DMR quedó por debajo de la meta del contrato, se descuenta una penalidad proporcional a esa diferencia, por equipo.
 paso: 8 | pantalla=liquidacion_flota | permiso=ninguno | La liquidación pasa por Borrador, En revisión y Aprobada. No se puede enviar a revisión si faltan partes de algún día ni antes de que termine el mes. Quien revisa usa Aprobar o Devolver con un motivo. Mientras la liquidación está en revisión o aprobada, los partes de ese mes quedan de solo lectura.
 paso: 9 | pantalla=liquidacion_flota | permiso=ninguno | Si no puedes editar un parte, casi siempre es porque el mes ya está liquidado. Si no puedes enviar la liquidación, revisa en Partes diarios qué días faltan. Aprobar y anular liquidaciones corresponde a los administradores de la empresa.
+paso: 10 | pantalla=liquidacion_flota | permiso=ninguno | La pantalla se muestra mientras cargan los permisos; las acciones que requieren permiso permanecen deshabilitadas hasta que se comprueben. Si falla la carga de permisos, aparece un mensaje de error.
