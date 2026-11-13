@@ -179,6 +179,7 @@
 .dx-fin .dx-fin-solo-lectura { display:flex; align-items:center; min-height:40px; color:var(--dx-ui-ink); font-size:14px; font-weight:600 }
 /* Deja libre la esquina del botón flotante de Aria */
 @media (min-width:761px) { .dx-fin .dx-fin-barra { padding-right:128px } }
+@media (max-width:760px) { html[data-dx-fin-asistente="true"] .dx-asis-fab, html[data-dx-fin-asistente="true"] .dx-asis-hint { display:none !important } }
 .dx-fin .dx-fin-barra-error { flex:1 1 100%; padding:10px 12px; border-radius:10px; background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); font-size:13px }
 .dx-fin .dx-fin-link { align-self:flex-start; padding:0; border:0; background:transparent; color:var(--dx-ui-cyan-fg); font:600 12px 'DM Sans',sans-serif; cursor:pointer }
 .dx-fin .dx-fin-link:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px }

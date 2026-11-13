@@ -134,6 +134,12 @@ export default function FinanciamientoAsistente({
   const [confirmarSalida, setConfirmarSalida] = useState(false);
   const cuerpo = useRef(null);
 
+  // En móvil se oculta el botón flotante de Aria mientras el asistente está abierto (taparía la barra).
+  useEffect(() => {
+    document.documentElement.dataset.dxFinAsistente = 'true';
+    return () => { delete document.documentElement.dataset.dxFinAsistente; };
+  }, []);
+
   const hayCambios = JSON.stringify(form) !== JSON.stringify(inicial);
   useEffect(() => {
     if (!hayCambios) return undefined;
