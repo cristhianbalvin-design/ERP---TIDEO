@@ -11,3 +11,6 @@ paso: 2 | pantalla=organigrama | permiso=ninguno | Dentro de una unidad defines 
 paso: 3 | pantalla=organigrama | permiso=ninguno | Cada posición lleva un rol sugerido, que puedes editar, y los módulos de campo habilitados para la aplicación móvil.
 paso: 4 | pantalla=organigrama | permiso=ninguno | Al guardar un cambio de rol o de módulos, se aplica a las personas que ocupan esa posición.
 paso: 5 | pantalla=organigrama | permiso=ninguno | Eliminar cargo retira un cargo del organigrama.
+paso: 6 | pantalla=organigrama | permiso=ninguno | Para qué sirve: dibujar cómo está organizada la empresa: unidades, cargos y posiciones, y quién reporta a quién. De aquí salen el rol de cada persona en el sistema y su jefe directo, que se usa en aprobaciones y avisos.
+paso: 7 | pantalla=organigrama | permiso=ninguno | Nueva UO y Crear UO agregan una unidad organizativa. Crear cargo y posiciones crea un cargo dentro de una unidad con sus puestos; si las posiciones no se generaron, Reintentar generar posiciones lo vuelve a intentar. Guardar cambios conserva la edición.
+paso: 8 | pantalla=organigrama | permiso=ninguno | Eliminar una unidad o un cargo es permanente y borra también sus posiciones vacantes; la pantalla pide confirmarlo. Si no ves a una persona con el acceso esperado, revisa que su posición tenga un rol de sistema asignado.

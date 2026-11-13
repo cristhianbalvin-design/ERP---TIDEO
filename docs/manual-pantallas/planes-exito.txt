@@ -8,3 +8,6 @@ componentes: src/pages_cs.jsx#CSPlanes
 huella: 47127ab65e
 paso: 1 | pantalla=cs_planes | permiso=ninguno | Crea un plan con Nuevo plan y ábrelo con Ver plan.
 paso: 2 | pantalla=cs_planes | permiso=ninguno | Nueva reunión registra una reunión de seguimiento con el cliente.
+paso: 3 | pantalla=cs_planes | permiso=ninguno | Para qué sirve: acordar con cada cliente importante qué quiere lograr y hacerle seguimiento con reuniones periódicas, para que renueve y compre más.
+paso: 4 | pantalla=cs_planes | permiso=ninguno | Cada plan pertenece a una cuenta y reúne sus objetivos y sus reuniones.
+paso: 5 | pantalla=cs_planes | permiso=ninguno | Si no aparece un cliente para crearle un plan, primero debe existir como cuenta.

@@ -10,3 +10,6 @@ paso: 1 | pantalla=servicios | permiso=ninguno | Crea un servicio con Nuevo serv
 paso: 2 | pantalla=servicios | permiso=ninguno | Marca Recurrente mensual en los servicios que se cobran todos los meses.
 paso: 3 | pantalla=servicios | permiso=ninguno | Para cargar muchos servicios descarga la Plantilla y usa Importar Excel; solo se importan las filas válidas.
 paso: 4 | pantalla=servicios | permiso=ninguno | Eliminar borra un servicio y pide confirmación.
+paso: 5 | pantalla=servicios | permiso=ninguno | Para qué sirve: definir una sola vez los servicios que la empresa vende, con su familia y su precio de referencia, para que cotizaciones, órdenes de servicio y órdenes de trabajo usen los mismos nombres y se pueda medir cuánto se vende de cada uno.
+paso: 6 | pantalla=servicios | permiso=ninguno | Guardar cambios conserva la edición de un servicio. En la carga masiva, Importar filas válidas crea las que pasaron la revisión y Subir otro archivo reemplaza el Excel elegido. Limpiar filtros quita los filtros de la lista.
+paso: 7 | pantalla=servicios | permiso=ninguno | Si no aparece un servicio al cotizar, revisa que exista aquí y esté activo. No deja importar hasta que carguen las familias. Si no aparece la familia que necesitas, créala desde el mismo formulario.

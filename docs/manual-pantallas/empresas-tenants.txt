@@ -9,3 +9,6 @@ huella: 859eca11fc
 paso: 1 | pantalla=tenants | permiso=ninguno | Crea una empresa con Nuevo grupo y Crear grupo.
 paso: 2 | pantalla=tenants | permiso=ninguno | Editar cambia sus datos y Eliminar la borra.
 paso: 3 | pantalla=tenants | permiso=ninguno | Reporte plataforma descarga el reporte general.
+paso: 4 | pantalla=tenants | permiso=ninguno | Para qué sirve: es la pantalla del personal de la plataforma para dar de alta a cada empresa cliente del sistema y mantener sus datos. Cada empresa trabaja aislada de las demás.
+paso: 5 | pantalla=tenants | permiso=ninguno | Guardar cambios conserva la edición de una empresa.
+paso: 6 | pantalla=tenants | permiso=ninguno | No aparece esta pantalla para los usuarios de una empresa cliente: es solo de la plataforma. Si al crear o actualizar aparece un error, la pantalla muestra el motivo.

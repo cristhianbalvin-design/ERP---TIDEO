@@ -10,3 +10,6 @@ paso: 1 | pantalla=api_keys | permiso=ninguno | Crea una llave con Nuevo API Key
 paso: 2 | pantalla=api_keys | permiso=ninguno | La llave se muestra una sola vez: cópiala con Copiar y confirma con Entendido, ya lo guardé.
 paso: 3 | pantalla=api_keys | permiso=ninguno | Editar permisos cambia lo que la llave puede hacer.
 paso: 4 | pantalla=api_keys | permiso=ninguno | Revocar key la desactiva de forma irreversible.
+paso: 5 | pantalla=api_keys | permiso=ninguno | Para qué sirve: dar acceso controlado al ERP a otros sistemas (una web, un formulario, un tablero), cada uno con su propia llave y solo con los permisos que necesita. Si una llave se filtra, se revoca sin afectar a las demás.
+paso: 6 | pantalla=api_keys | permiso=ninguno | Guardar permisos conserva los cambios hechos con Editar permisos. Al copiar la llave, el botón cambia a Copiado para confirmar que ya está en el portapapeles.
+paso: 7 | pantalla=api_keys | permiso=ninguno | Si no guardaste la llave al crearla, no se puede volver a ver: revócala y crea otra. No aparece esta pantalla si tu rol no administra integraciones. Una llave revocada no se reactiva.

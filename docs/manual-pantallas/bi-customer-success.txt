@@ -9,3 +9,6 @@ huella: 41eae9e552
 paso: 1 | pantalla=bi_cs | permiso=ninguno | Es un tablero de consulta: clientes saludables, clientes en riesgo, health score promedio y NPS promedio.
 paso: 2 | pantalla=bi_cs | permiso=ninguno | También muestra los onboardings en curso y las renovaciones próximas.
 paso: 3 | pantalla=bi_cs | permiso=ninguno | Exportar descarga la información.
+paso: 4 | pantalla=bi_cs | permiso=ninguno | Para qué sirve: mostrar a gerencia cómo está la relación con los clientes: cuántos están sanos, cuántos en riesgo de irse y qué renovaciones vienen, para actuar antes de perder una cuenta.
+paso: 5 | pantalla=bi_cs | permiso=ninguno | Los indicadores se calculan con lo registrado en Health Score, Fidelización y NPS, Onboarding y Renovaciones.
+paso: 6 | pantalla=bi_cs | permiso=ninguno | Si no ves datos, aún no hay registros en esas pantallas. Si no aparece un cliente, revisa que su cuenta esté activa.
