@@ -8,7 +8,7 @@ import {
 } from './ofFichaLogic.js';
 
 // Marco común: fondo, Escape, foco inicial y aviso de cambios sin guardar.
-function ModalBase({ titulo, ayuda, onClose, sucio = false, estrecho = false, children, pie }) {
+export function ModalBase({ titulo, ayuda, onClose, sucio = false, estrecho = false, children, pie }) {
   const ref = useRef(null);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
   const intentarCerrar = () => { if (sucio) setConfirmarSalida(true); else onClose(); };
@@ -51,7 +51,7 @@ function ModalBase({ titulo, ayuda, onClose, sucio = false, estrecho = false, ch
   );
 }
 
-function Campo({ id, label, requerido, error, ayuda, children, completo }) {
+export function Campo({ id, label, requerido, error, ayuda, children, completo }) {
   return (
     <div className={`dx-ui-field${completo ? ' dx-ui-field-full' : ''}`}>
       <label htmlFor={id}>{label}{requerido && <span className="dx-ui-required"> *</span>}</label>
@@ -212,7 +212,7 @@ export function MaterialModal({ of, linea, noPlanificado, materiales, cargandoMa
   return (
     <ModalBase titulo={noPlanificado ? 'Material no planificado' : linea ? 'Editar material' : 'Agregar material'} sucio={sucio && !guardando} onClose={() => onClose()}
       ayuda={noPlanificado
-        ? 'La OF ya está aprobada: el material se agrega como no planificado.'
+        ? 'La OF ya está aprobada: el material se agrega como no planificado y, si sale del stock, se reserva al guardarlo.'
         : 'Busca en el catálogo de materiales. El costo unitario sale del costo promedio.'}
       pie={cerrar => (
         <>
@@ -220,7 +220,7 @@ export function MaterialModal({ of, linea, noPlanificado, materiales, cargandoMa
           <div className="dx-ofd-modal-actions">
             <button type="button" className="dx-ofd-ghost" data-cerrar onClick={cerrar} disabled={guardando}>Cancelar</button>
             <button type="submit" form="dx-ofd-form-material" className="dx-ofd-primary" disabled={guardando}>
-              {guardando ? 'Guardando…' : linea ? 'Guardar cambios' : 'Agregar material'}
+              {guardando ? 'Guardando…' : linea ? 'Guardar cambios' : noPlanificado && form.origen === 'stock' ? 'Agregar y reservar' : 'Agregar material'}
             </button>
           </div>
         </>

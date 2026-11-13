@@ -2407,10 +2407,10 @@
       "titulo": "Liquidación de transporte",
       "ruta": "transporte-liquidacion",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/TransportePages.jsx#LiquidacionTransporte",
+      "componente": "operaciones-app/src/zahory-mock/pages/transporte/LiquidacionTransportePage.jsx#LiquidacionTransportePage",
       "permiso": "transporte_comercial",
       "tipo": "subpantalla",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/transporte-lugares",

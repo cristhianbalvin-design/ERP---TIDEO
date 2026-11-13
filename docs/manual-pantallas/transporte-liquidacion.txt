@@ -1,0 +1,17 @@
+clave: transporte_liquidacion
+tipo: pantalla
+pantalla: transporte_comercial
+catalogo: operaciones/transporte-liquidacion
+titulo: Liquidación de transporte
+resumen: Junta los viajes comerciales entregados de un cliente, calcula flete, espera, peajes, recargos, costos y margen, recoge la conformidad del cliente y envía la liquidación a Ventas para facturar. Incluye la rendición de gastos de cada conductor.
+componentes: operaciones-app/src/zahory-mock/pages/transporte/LiquidacionTransportePage.jsx#LiquidacionTransportePage, operaciones-app/src/zahory-mock/pages/transporte/LiquidacionDetalle.jsx#LiquidacionDetalle, operaciones-app/src/zahory-mock/pages/transporte/RendicionDetalle.jsx#RendicionDetalle, operaciones-app/src/services/transporteLiquidacionService.js
+huella: e71e8fb7cf 982acbc53a d970c22d77 429486daab
+paso: 1 | pantalla=transporte_comercial | permiso=ninguno | La espera se cobra según la tarifa del viaje: horas libres por parada y precio por hora. Los peajes se suman desde los tickets del conductor, salvo que la tarifa diga que ya los incluye.
+paso: 2 | pantalla=transporte_comercial | permiso=editar | En la pestaña Rendiciones de conductores abre la rendición del viaje. Usa Fondo entregado para anotar lo que se le dio al conductor y su referencia; solo sirve para calcular el saldo y no mueve Caja Chica.
+paso: 3 | pantalla=transporte_comercial | permiso=aprobar | Revisa cada gasto con su foto y usa Aprobar u Observar; al observar escribe el motivo. Un gasto observado no cuenta como costo ni se reembolsa. Cuando no queden gastos por revisar, usa Aprobar rendición.
+paso: 4 | pantalla=transporte_comercial | permiso=crear | En la pestaña Por liquidar los viajes entregados se agrupan por cliente. Usa Crear liquidación, revisa el período y confirma; los viajes pasan a «En liquidación».
+paso: 5 | pantalla=transporte_comercial | permiso=editar | Mientras la liquidación está en borrador puedes ajustar la espera con un motivo, agregar recargos, descuentos u otros costos, anotar el flete pactado con un transportista tercero, y agregar o quitar viajes del mismo cliente.
+paso: 6 | pantalla=transporte_comercial | permiso=editar | Usa Enviar a revisión. Desde revisión puedes devolverla a borrador con un motivo o usar Enviar al cliente y mandarle la Prefactura PDF.
+paso: 7 | pantalla=transporte_comercial | permiso=aprobar | Si no necesitas la conformidad del cliente, usa Aprobar desde revisión. Si la enviaste al cliente, usa Registrar respuesta del cliente: Conforme la aprueba y Observada la devuelve a borrador.
+paso: 8 | pantalla=transporte_comercial | permiso=aprobar | Con la liquidación aprobada usa Enviar a Ventas. Se crea la venta por el total con IGV y los viajes quedan cerrados; también necesitas permiso para crear ventas.
+paso: 9 | pantalla=transporte_comercial | permiso=anular | Usa Anular con un motivo para descartar una liquidación en borrador o aprobada que aún no se envió a Ventas; sus viajes vuelven a Por liquidar.
