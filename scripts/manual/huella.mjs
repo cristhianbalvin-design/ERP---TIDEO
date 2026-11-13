@@ -18,7 +18,9 @@ function declaracionesTopLevel(ast) {
 }
 
 // Devuelve el código del componente y de todas las declaraciones de nivel superior del mismo archivo que alcanza.
-export function codigoComponente(referencia, root = raiz) {
+// Con soloInterfaz solo sigue lo que el componente dibuja o invoca (componentes JSX y funciones llamadas): así un
+// identificador que coincide por nombre con otra pantalla del archivo no arrastra sus botones. Las huellas no lo usan.
+export function codigoComponente(referencia, root = raiz, { soloInterfaz = false } = {}) {
   const [archivo, nombre] = referencia.split('#');
   if (!nombre) return normalizar(readFileSync(path.join(root, archivo), 'utf8'));
   const { ast, codigo } = leerAst(archivo, root);
@@ -31,7 +33,9 @@ export function codigoComponente(referencia, root = raiz) {
     if (incluidos.has(actual)) continue;
     incluidos.add(actual);
     recorrer(decls.get(actual), nodo => {
-      const nombreUsado = nodo.type === 'Identifier' ? nodo.name : nodo.type === 'JSXIdentifier' ? nodo.name : null;
+      const nombreUsado = soloInterfaz
+        ? (nodo.type === 'JSXIdentifier' ? nodo.name : nodo.type === 'CallExpression' && nodo.callee?.type === 'Identifier' ? nodo.callee.name : null)
+        : nodo.type === 'Identifier' ? nodo.name : nodo.type === 'JSXIdentifier' ? nodo.name : null;
       if (nombreUsado && decls.has(nombreUsado) && !incluidos.has(nombreUsado)) pendientes.push(nombreUsado);
     });
   }

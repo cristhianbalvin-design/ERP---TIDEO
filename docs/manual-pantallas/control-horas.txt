@@ -10,3 +10,6 @@ paso: 1 | pantalla=control_horas | permiso=ninguno | Muestra las horas por colab
 paso: 2 | pantalla=control_horas | permiso=ninguno | Filtra por colaborador y por modalidad: planilla u honorarios.
 paso: 3 | pantalla=control_horas | permiso=ninguno | Evaluar mes revisa la productividad del período y avisa cuántas alertas de baja productividad encontró.
 paso: 4 | pantalla=control_horas | permiso=ninguno | Exportar Excel descarga el reporte.
+paso: 5 | pantalla=control_horas | permiso=ninguno | Para qué sirve: ver cuántas horas trabajó cada colaborador en cada orden de trabajo durante el mes y cuánto costaron, para saber en qué se va el tiempo del personal y detectar a quien registra pocas horas.
+paso: 6 | pantalla=control_horas | permiso=ninguno | Las horas vienen de los partes diarios aprobados y de los tareos; el costo sale de las horas por la tarifa por hora de cada persona. Para quien cobra por honorarios muestra también si ya tiene su recibo del período.
+paso: 7 | pantalla=control_horas | permiso=ninguno | Si no aparecen horas de un colaborador, revisa que sus partes estén aprobados y sean del mes elegido. Si la pantalla dice que no tienes permiso para ver este módulo, tu rol no tiene acceso a Control de Horas.
