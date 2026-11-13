@@ -834,6 +834,8 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
     tipoCargo: 'Cliente_Contrato',
     tecnico: '',
     descripcion: '',
+    backlog_id: null,
+    pm_programa_id: null,
     motivoRetrabajo: '',
     fechaProgramadaInicio: TODAY,
     fechaAprobacionComercial: '',
@@ -882,6 +884,8 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
           tipoTrabajo:  ctx.tipo_trabajo     || 'Correctivo',
           tipoCargo:    ctx.cargo_financiero  || 'Cliente_Contrato',
           descripcion:  ctx.descripcion       || '',
+          backlog_id: ctx.backlog_id || null,
+          pm_programa_id: ctx.pm_programa_id || null,
           lineaNegocio: 'flota_alquileres',
         }));
         if (ctx.backlog_origen_id) setBacklogs([ctx.backlog_origen_id]);
@@ -1727,6 +1731,14 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
   const validation = validateOTForm({
     ...form, hasValidSegment: hasValidSegment(segmentos), objetoCostoTipo,
   });
+  if (['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo)
+    && ['Correctivo', 'Preventivo_PM'].includes(form.tipoTrabajo) && !form.equipo) {
+    if (!validation.fieldErrors.equipo) {
+      validation.fieldErrors.equipo = ['Seleccione un activo / equipo.'];
+      validation.issues.push({ path: ['equipo'], message: 'Seleccione un activo / equipo.' });
+    }
+    validation.success = false;
+  }
   const pasoPorCampo = {
     lineaNegocio: 1, clienteId: 1, contratoId: 1, equipo: 1,
     lugarEjecucion: 2, unidadMinera: 2,
@@ -1798,6 +1810,8 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
       os_cliente_id: objetoCostoTipo === 'os_cliente' ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
       equipo_id: ['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? (form.equipo || null) : null,
+      ...(form.backlog_id ? { backlog_id: form.backlog_id } : {}),
+      ...(form.pm_programa_id ? { pm_programa_id: form.pm_programa_id } : {}),
       cuenta_id: form.clienteId || null,
       proyecto_id: form.proyectoId || null,
       servicio: form.descripcion.trim(),
@@ -1968,6 +1982,9 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
         </div>
       </div>
 
+      {(form.backlog_id || form.pm_programa_id) && (
+        <div className="card dx-ot-alert" role="status">Origen: {[form.backlog_id && `Backlog ${form.backlog_id}`, form.pm_programa_id && `Plan PM ${form.pm_programa_id}`].filter(Boolean).join(' / ')}</div>
+      )}
       {!sesionOperativa.permiteEscritura && (
         <div className="card dx-ot-alert" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
           Vista consolidada de grupo: no se permite crear ni editar OTs hasta seleccionar una sociedad operativa.
