@@ -323,6 +323,43 @@ export function TarifaEditor({
                   <small className="dx-ui-field-error">{errors.minimo_facturable}</small>
                 )}
               </label>
+              <label className="dx-ui-field" htmlFor="tarifa-franquicia">
+                <span>Horas libres de espera</span>
+                <input
+                  id="tarifa-franquicia"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={form.franquicia_espera_horas ?? ''}
+                  onChange={event => updateField('franquicia_espera_horas', event.target.value)}
+                />
+                <small className="dx-transporte-composer-hint">Por parada (carga y descarga). Vacío: no se cobra espera.</small>
+              </label>
+              <label className="dx-ui-field" htmlFor="tarifa-espera-hora">
+                <span>Precio por hora de espera</span>
+                <input
+                  id="tarifa-espera-hora"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.tarifa_espera_hora ?? ''}
+                  onChange={event => updateField('tarifa_espera_hora', event.target.value)}
+                />
+                <small className="dx-transporte-composer-hint">Se cobra en la liquidación por cada hora fuera de las libres.</small>
+              </label>
+              <label className="dx-ui-field dx-transporte-tarifa-check" htmlFor="tarifa-peajes">
+                <span>Peajes</span>
+                <span className="dx-transporte-tarifa-checkrow">
+                  <input
+                    id="tarifa-peajes"
+                    type="checkbox"
+                    checked={Boolean(form.incluye_peajes)}
+                    onChange={event => updateField('incluye_peajes', event.target.checked)}
+                  />
+                  Incluidos en la tarifa
+                </span>
+                <small className="dx-transporte-composer-hint">Si no, se cobran según los tickets del conductor.</small>
+              </label>
             </div>
           </section>
 
