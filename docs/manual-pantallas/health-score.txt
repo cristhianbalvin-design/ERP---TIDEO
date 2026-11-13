@@ -9,3 +9,6 @@ huella: 05155164d5
 paso: 1 | pantalla=cs_health | permiso=ninguno | La lista muestra el puntaje de salud de cada cliente; Ver detalle abre su desglose.
 paso: 2 | pantalla=cs_health | permiso=ninguno | Crear plan retención inicia un plan para un cliente en riesgo.
 paso: 3 | pantalla=cs_health | permiso=ninguno | Exportar descarga la lista.
+paso: 4 | pantalla=cs_health | permiso=ninguno | Para qué sirve: detectar a tiempo qué clientes están en riesgo de irse. Cada cliente tiene un puntaje de salud; los de puntaje bajo necesitan un plan de retención.
+paso: 5 | pantalla=cs_health | permiso=ninguno | Ver detalle muestra de qué se compone el puntaje del cliente.
+paso: 6 | pantalla=cs_health | permiso=ninguno | Si no aparece un cliente, revisa que su cuenta esté activa. Si no ves datos, aún no se ha calculado el puntaje de ese cliente.

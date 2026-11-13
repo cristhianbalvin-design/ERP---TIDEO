@@ -9,3 +9,6 @@ huella: 7031d7e4c6
 paso: 1 | pantalla=cs_fidelizacion | permiso=ninguno | Enviar encuesta manda la encuesta de satisfacción a un cliente.
 paso: 2 | pantalla=cs_fidelizacion | permiso=ninguno | En los casos de éxito, Solicitar autorización al cliente pide su permiso para publicar el caso.
 paso: 3 | pantalla=cs_fidelizacion | permiso=ninguno | Convertir a lead crea un prospecto en Leads.
+paso: 4 | pantalla=cs_fidelizacion | permiso=ninguno | Para qué sirve: medir qué tan satisfechos están los clientes con una encuesta corta y aprovechar a los más contentos: pedirles un caso de éxito o una recomendación que se convierte en un nuevo prospecto.
+paso: 5 | pantalla=cs_fidelizacion | permiso=ninguno | El NPS resume en un número cuántos clientes recomendarían a la empresa frente a cuántos no.
+paso: 6 | pantalla=cs_fidelizacion | permiso=ninguno | Si no aparece un cliente para enviarle la encuesta, revisa que exista como cuenta activa en Cuentas y Contactos.

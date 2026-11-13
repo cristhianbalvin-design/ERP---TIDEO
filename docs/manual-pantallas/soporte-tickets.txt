@@ -10,3 +10,5 @@ paso: 1 | pantalla=tickets | permiso=ninguno | Crea un ticket con Nuevo Ticket; 
 paso: 2 | pantalla=tickets | permiso=ninguno | Dentro del ticket agrega comentarios al hilo y usa Adjuntar imagen para sumar evidencia.
 paso: 3 | pantalla=tickets | permiso=ninguno | Un ticket no se puede resolver hasta aprobar su control de calidad.
 paso: 4 | pantalla=tickets | permiso=ninguno | Reabrir ticket lo vuelve a abrir; debes escribir el motivo de la reapertura.
+paso: 5 | pantalla=tickets | permiso=ninguno | Para qué sirve: registrar cada pedido o problema de un cliente y seguirlo hasta resolverlo, con su conversación, sus evidencias y un control de calidad antes de darlo por cerrado.
+paso: 6 | pantalla=tickets | permiso=ninguno | Crear ticket guarda el ticket nuevo y Guardar cambios su edición. Quitar imagen retira una imagen adjunta. Si intentas resolver sin el control de calidad, el botón indica «Aprueba el QC antes de resolver». Confirmar reapertura reabre el ticket con el motivo escrito.

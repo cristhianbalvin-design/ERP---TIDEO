@@ -10,3 +10,6 @@ paso: 1 | pantalla=campo | permiso=ninguno | Marcar entrada/salida lleva a la as
 paso: 2 | pantalla=campo | permiso=ninguno | Solicitudes, Nueva licencia, Solicitar HE y Solicitar constancia envían tus pedidos; debes completar los campos obligatorios.
 paso: 3 | pantalla=campo | permiso=ninguno | Subir contrato firmado carga tu contrato, que queda en revisión por RRHH. El archivo no puede estar vacío ni pasar de 20 MB.
 paso: 4 | pantalla=campo | permiso=ninguno | Si no aparece tu ficha de personal, contacta a RRHH.
+paso: 5 | pantalla=campo | permiso=ninguno | Para qué sirve: que el trabajador gestione lo suyo desde el celular: ver sus documentos, firmar y subir su contrato y enviar sus solicitudes, sin ir a RRHH.
+paso: 6 | pantalla=campo | permiso=ninguno | Revisar abre un documento marcado como Pendiente; Firma electrónica lo firma desde el celular y Confirmar y enviar lo entrega. Confirmar subida envía el archivo elegido. Responder contesta una observación de RRHH.
+paso: 7 | pantalla=campo | permiso=ninguno | No deja subir un archivo vacío ni de más de 20 MB. Si no aparece tu ficha de personal, contacta a RRHH.

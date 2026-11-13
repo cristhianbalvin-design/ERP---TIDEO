@@ -9,3 +9,6 @@ huella: 95cd76d187
 paso: 1 | pantalla=backlog | permiso=ninguno | Registra un pendiente con Nuevo requerimiento y Agregar requerimiento.
 paso: 2 | pantalla=backlog | permiso=ninguno | Puedes verlos en Kanban o en Lista y acotar con Filtros.
 paso: 3 | pantalla=backlog | permiso=ninguno | Convertir a OT crea la orden de trabajo a partir del requerimiento.
+paso: 4 | pantalla=backlog | permiso=ninguno | Para qué sirve: anotar trabajos pendientes que todavía no se van a ejecutar (una reparación diferida, un pedido interno, algo detectado en una inspección) para que no se pierdan y se conviertan en orden de trabajo cuando toque.
+paso: 5 | pantalla=backlog | permiso=ninguno | En el Kanban cada requerimiento se arrastra entre columnas para cambiar su estado.
+paso: 6 | pantalla=backlog | permiso=ninguno | Si no se puede convertir a OT, la pantalla avisa que no se pudo convertir: revisa los datos del requerimiento y vuelve a intentarlo. Si no aparece un requerimiento, revisa los Filtros y la vista elegida.

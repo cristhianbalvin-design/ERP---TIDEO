@@ -11,3 +11,5 @@ paso: 2 | pantalla=campo | permiso=ninguno | Antes de salir se hace la inspecci�
 paso: 3 | pantalla=campo | permiso=ninguno | En el viaje registras el kilometraje de salida y de llegada, los gastos y los incidentes; un incidente deja el viaje «con incidente» y el despachador lo ve en el Monitor.
 paso: 4 | pantalla=campo | permiso=ninguno | Omitir parada exige escribir el motivo, y el pedido vuelve a «Por enviar a ruta».
 paso: 5 | pantalla=campo | permiso=ninguno | Al terminar se registra la conformidad del cliente con la hora y el GPS, que sirven para la facturación.
+paso: 6 | pantalla=campo | permiso=ninguno | Para qué sirve: que el conductor lleve su viaje desde el celular: inspección de la unidad, salida, paradas, gastos, incidentes y entrega con la conformidad del cliente. Lo que registra es lo que luego se liquida y se factura.
+paso: 7 | pantalla=campo | permiso=ninguno | Si no aparece tu viaje, revisa que esté asignado a ti y programado para hoy en la Hoja de Ruta. No deja salir si la inspección tiene puntos críticos sin autorizar.

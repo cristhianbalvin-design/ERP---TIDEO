@@ -13,3 +13,5 @@ paso: 4 | pantalla=prestamos_personal | permiso=ninguno | Nuevo Préstamo pide e
 paso: 5 | pantalla=prestamos_personal | permiso=ninguno | Con «Descontar automáticamente en nómina» marcado, la cuota mensual queda en la ficha del trabajador y la planilla la descuenta cada mes. Sin marcar, cada cuota se registra a mano con Pagar cuota.
 paso: 6 | pantalla=prestamos_personal | permiso=ninguno | Avance Cuotas muestra cuántas van pagadas. Al pagarse la última, el préstamo queda cancelado y el descuento en planilla se detiene.
 paso: 7 | pantalla=prestamos_personal | permiso=ninguno | No confundir con Financiamiento y Deuda, que son los préstamos que la empresa recibe de bancos; esta pantalla es lo que la empresa presta a su personal.
+paso: 8 | pantalla=prestamos_personal | permiso=ninguno | Para qué sirve: registrar el dinero que la empresa presta a un trabajador y cobrarlo en cuotas, de preferencia descontándolo solo en la planilla, sin llevar el control aparte.
+paso: 9 | pantalla=prestamos_personal | permiso=ninguno | Guardar préstamo registra el préstamo nuevo.

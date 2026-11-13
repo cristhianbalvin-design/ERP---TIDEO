@@ -9,3 +9,6 @@ huella: db8d14d20f
 paso: 1 | pantalla=cierre | permiso=ninguno | La lista muestra las OT cerradas con su cierre técnico, su acta de conformidad y su estado de valorización.
 paso: 2 | pantalla=cierre | permiso=ninguno | Filtra por OS, cliente, responsable y fecha de cierre; Limpiar quita los filtros.
 paso: 3 | pantalla=cierre | permiso=ninguno | Detalle abre el cierre de una OT y Valorizar lleva a valorizar una OT lista para ello.
+paso: 4 | pantalla=cierre | permiso=ninguno | Para qué sirve: revisar los trabajos ya cerrados y comprobar que cada uno tiene su conformidad del cliente y su valorización, para que nada terminado se quede sin cobrar.
+paso: 5 | pantalla=cierre | permiso=ninguno | Una OT cerrada con acta de conformidad y sin valorizar es trabajo entregado pendiente de cobro: Valorizar la lleva al siguiente paso.
+paso: 6 | pantalla=cierre | permiso=ninguno | Si no aparece una OT, todavía no está cerrada: el cierre se hace en Operaciones › Cierre & Conformidad. Si no ves Valorizar, la OT ya está valorizada o no tiene acta.

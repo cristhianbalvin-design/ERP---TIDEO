@@ -8,3 +8,6 @@ componentes: src/pages_plataforma.jsx#SaludImplementacion
 huella: cf7ef1176b
 paso: 1 | pantalla=tenants | permiso=ninguno | Es una pantalla de consulta para el personal de la plataforma.
 paso: 2 | pantalla=tenants | permiso=ninguno | Muestra el avance de la implementación de las empresas; no registra información.
+paso: 3 | pantalla=tenants | permiso=ninguno | Para qué sirve: que el personal de la plataforma vea, empresa por empresa, cómo va su implementación y cuáles necesitan apoyo.
+paso: 4 | pantalla=tenants | permiso=ninguno | Compara las empresas con los mismos puntos de control que cada una ve en su propia pantalla de salud de implementación.
+paso: 5 | pantalla=tenants | permiso=ninguno | No aparece esta pantalla para los usuarios de una empresa cliente. Si no ves una empresa, revisa que esté dada de alta en Empresas / Tenants.
