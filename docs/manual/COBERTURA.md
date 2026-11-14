@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 73 (95 %) | 30 (39 %) | 3 | 3 |
-| Operaciones | 120 | 55 (46 %) | 46 (38 %) | 1 | 53 |
+| Operaciones | 120 | 57 (48 %) | 46 (38 %) | 1 | 51 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 137 (67 %) | 76 (37 %) | 4 | 56 |
+| **Total** | 206 | 139 (67 %) | 76 (37 %) | 4 | 54 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_estado_resultados`, `asistente_presupuesto_real`, `asistente_resumen_financiero`.
 
@@ -207,9 +207,9 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Producción | Trazabilidad de OF (`of-trazabilidad`) | placeholder | — | — | — | — |
 | Producción | Nueva OF (`produccion-crear-of`) | activa | nueva_of | proceso_fabricacion_of | — | — |
 | Producción | Detalle de OF (`produccion-detalle-of`) | activa | detalle_of | proceso_fabricacion_of | — | — |
-| Producción | Garantías de producción (`produccion-garantias`) | maqueta | — | — | — | — |
+| Producción | Garantías de producción (`produccion-garantias`) | activa | garantias_produccion | — | — | — |
 | Producción | Ingeniería y BOM (`produccion-ingenieria`) | maqueta | — | — | — | — |
-| Producción | Pasaporte de componente (`produccion-pasaporte`) | maqueta | — | — | — | — |
+| Producción | Pasaporte de componente (`produccion-pasaporte`) | activa | pasaporte_componente | — | — | — |
 | Producción | Tiempos estándar (`produccion-tiempos`) | maqueta | — | — | — | — |
 | Producción | Corte Térmico (`sol-corte`) | maqueta | — | — | — | — |
 | Producción | Soldadura Estructural (`sol-estructural`) | maqueta | — | — | — | — |

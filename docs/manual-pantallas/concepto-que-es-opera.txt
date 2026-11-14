@@ -5,7 +5,7 @@ catalogo: admin/inicio
 titulo: Qué es OPERA y para qué sirve cada aplicación
 resumen: Orientación para quien recién entra: qué es OPERA, qué hace el sistema, para qué sirve cada una de sus tres aplicaciones, cómo está organizado el menú y qué hacer el primer día.
 componentes: catalogo/pantallas.json
-huella: 063dba2ec2
+huella: a1490a9a64
 paso: 1 | pantalla=ninguna | permiso=ninguno | OPERA es el sistema donde la empresa lleva todo su trabajo en un solo lugar: lo que vende, lo que compra, lo que cobra y paga, su personal, su taller, su almacén, su flota y su transporte. Lo que una persona registra en un módulo lo usan los demás: por ejemplo, una cotización aprobada se vuelve orden de servicio, la orden genera trabajo en el taller, el trabajo terminado se valoriza y se factura, y la factura queda como cuenta por cobrar.
 paso: 2 | pantalla=ninguna | permiso=ninguno | Tiene tres aplicaciones, que eliges al entrar en la pantalla Elige una aplicación. Administración es para oficina: comercial, compras, finanzas, RRHH y configuración. Operaciones es para el trabajo operativo: órdenes de trabajo del taller, almacén, flota y alquileres, transporte y producción. Control de asistencia y la versión móvil son para el celular: marcar asistencia, registrar partes, aprobar y vender en campo.
 paso: 3 | pantalla=ninguna | permiso=ninguno | En Administración el menú se agrupa por área: Inicio, CRM & Marketing, Comercial, Compras, Logística, Operaciones, Administración (finanzas), RRHH, Customer Success, Dashboards y Configuración. Solo ves las áreas y pantallas que tu rol permite; si no ves algo, no es un error: tu rol no lo tiene asignado y lo habilita el administrador de tu empresa en Roles y Permisos.
