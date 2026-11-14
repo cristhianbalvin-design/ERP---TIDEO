@@ -5,7 +5,7 @@ catalogo: operaciones/recepcion-activos, operaciones/diagnostico-tecnico, operac
 titulo: De la recepción del equipo a la entrega con conformidad
 resumen: Sigue un trabajo de taller desde que ingresa el equipo del cliente hasta el acta de conformidad: recepción, diagnóstico, orden de trabajo, repuestos, partes diarios y cierre.
 componentes: operaciones-app/src/zahory-mock/pages/RecepcionActivosClientePage.jsx#RecepcionActivosClientePage, operaciones-app/src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx#DiagnosticoTecnicoPage, operaciones-app/src/zahory-mock/pages/CrearOTPage.jsx#CrearOTPage, operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#OTsListadoPage, operaciones-app/src/zahory-mock/pages/ReservaRepuestosPage.jsx#ReservaRepuestosPage, operaciones-app/src/zahory-mock/pages/pages3.jsx#ParteTallerPage, operaciones-app/src/zahory-mock/pages/CierreConformidadPage.jsx#CierreConformidadPage
-huella: 4923fe7cdf e945eecb6f de29cf63af b22cbde9d1 3d08475098 a7974170a2 b188e26ea6
+huella: 4923fe7cdf e945eecb6f 972837319f b22cbde9d1 3d08475098 a7974170a2 b188e26ea6
 pantalla_recorrido: recepcion_activos_cliente,diagnostico_tecnico,ot,inventario,partes
 paso: 1 | pantalla=recepcion_activos_cliente | permiso=ninguno | Registra el ingreso del equipo con Nueva recepción: elige el cliente propietario, el activo (o Registrar como activo nuevo si aún no existe), el almacén de custodia y la fecha de ingreso. Puedes adjuntar fotos del estado en que llega.
 paso: 2 | pantalla=recepcion_activos_cliente | permiso=ninguno | Desde la recepción usa Abrir diagnóstico para empezar la evaluación técnica del equipo.

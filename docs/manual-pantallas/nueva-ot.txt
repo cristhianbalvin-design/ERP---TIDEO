@@ -5,7 +5,7 @@ catalogo: operaciones/crear-ot
 titulo: Nueva OT
 resumen: Asistente de cinco pasos para crear una orden de trabajo: contexto, lugar, matriz DBS, responsable y revisión.
 componentes: operaciones-app/src/zahory-mock/pages/CrearOTPage.jsx#CrearOTPage
-huella: de29cf63af
+huella: 972837319f
 paso: 1 | pantalla=ot | permiso=ninguno | Paso 1, Contexto: elige la línea de negocio y el objeto de costo raíz: un contrato de alquiler activo, una OS de cliente o un equipo interno de la plataforma.
 paso: 2 | pantalla=ot | permiso=ninguno | Paso 2, Lugar: indica dónde se ejecuta el trabajo. El horómetro actual del equipo es obligatorio en OTs de campo, bajo contrato o con equipo asociado.
 paso: 3 | pantalla=ot | permiso=ninguno | Paso 3, Matriz DBS: clasifica el cargo financiero (facturable al cliente, absorbido, recuperable del fabricante o retrabajo propio, que exige motivo) y arma segmentos con operaciones, mano de obra, repuestos y terceros. La pantalla suma los costos estimados.

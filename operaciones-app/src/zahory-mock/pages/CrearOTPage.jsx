@@ -886,6 +886,8 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
           descripcion:  ctx.descripcion       || '',
           backlog_id: ctx.backlog_id || null,
           pm_programa_id: ctx.pm_programa_id || null,
+          equipo_origen: ctx.equipo_id || '',
+          origen_texto: ctx.descripcion || '',
           lineaNegocio: 'flota_alquileres',
         }));
         if (ctx.backlog_origen_id) setBacklogs([ctx.backlog_origen_id]);
@@ -1572,7 +1574,9 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
     setPropietarioEquipoOS('cliente');
     setForm(f => ({
       ...f, objeto_costo_tipo: tipo, objeto_costo_id: null,
-      clienteId: '', proyectoId: '', contratoId: '', equipo: '',
+      clienteId: '', proyectoId: '', contratoId: '',
+      // Si la OT viene de Backlog o Programación PM, un equipo propio conserva el equipo del origen.
+      equipo: tipo === 'equipo_interno' ? (f.equipo_origen || '') : '',
       unidadMinera: '', centro_costo: null, centro_beneficio_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
@@ -1865,6 +1869,18 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
       });
       if (error) throw error;
 
+      // crear_orden_trabajo no guarda el origen de Confiabilidad: se vincula aparte (backlog → En OT, PM → OT activa).
+      let errorVinculo = null;
+      if (form.backlog_id || form.pm_programa_id) {
+        const { error: errVinculo } = await getSupabaseClient().rpc('conf_vincular_ot_origen', {
+          p_empresa_id: sesionOperativa.empresaId,
+          p_ot_id: guardada.id,
+          p_backlog_id: form.backlog_id || null,
+          p_pm_programa_id: form.pm_programa_id || null,
+        });
+        if (errVinculo) errorVinculo = `La OT se creó, pero no se pudo vincular con su origen de Confiabilidad: ${errVinculo.message}`;
+      }
+
       setCreada({
         ...form,
         id: guardada.id,
@@ -1877,6 +1893,7 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
         horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
         errorRepuestos: null,
         errorTareas: null,
+        errorVinculo,
       });
     } catch (error) {
       setErrorGuardado(mensajeErrorGuardadoOT(error));
@@ -1938,6 +1955,11 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
               {creada.errorRepuestos}
             </div>
           )}
+          {creada.errorVinculo && (
+            <div className="card" style={{ padding: 14, marginBottom: 18, textAlign: 'left', color: '#b45309', borderColor: '#fcd34d', background: '#fffbeb' }}>
+              {creada.errorVinculo}
+            </div>
+          )}
           {creada.errorTareas && (
             <div className="card" style={{ padding: 14, marginBottom: 18, textAlign: 'left', color: '#b45309', borderColor: '#fcd34d', background: '#fffbeb' }}>
               {creada.errorTareas}
@@ -1983,7 +2005,7 @@ export const CrearOTPage = ({ onNav, routeParams = {} }) => {
       </div>
 
       {(form.backlog_id || form.pm_programa_id) && (
-        <div className="card dx-ot-alert" role="status">Origen: {[form.backlog_id && `Backlog ${form.backlog_id}`, form.pm_programa_id && `Plan PM ${form.pm_programa_id}`].filter(Boolean).join(' / ')}</div>
+        <div className="card dx-ot-alert" role="status">Origen: {form.pm_programa_id ? 'Programación PM' : 'Backlog operativo'}{form.origen_texto ? ` · ${form.origen_texto.length > 90 ? `${form.origen_texto.slice(0, 90)}…` : form.origen_texto}` : ''}</div>
       )}
       {!sesionOperativa.permiteEscritura && (
         <div className="card dx-ot-alert" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
