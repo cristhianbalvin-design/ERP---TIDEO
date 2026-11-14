@@ -126,15 +126,15 @@ export function BacklogOperativoPage({ onNav }) {
   const porSegmento = rows.filter((r) => segmento === 'todos' || equipoDe(r)?.segmento === segmento);
   const abiertos = porSegmento.filter((r) => !['cerrado', 'descartado'].includes(r.ciclo));
   const edades = abiertos.map(edad).filter((x) => x != null);
+  const costosPorMoneda = Object.entries(
+    abiertos.reduce((acc, r) => {
+      if (r.moneda && r.costo_estimado != null) acc[r.moneda] = (acc[r.moneda] || 0) + Number(r.costo_estimado);
+      return acc;
+    }, {}),
+  ).map(([m, v]) => dinero(v, m));
   const costos =
-    Object.entries(
-      abiertos.reduce((acc, r) => {
-        if (r.moneda && r.costo_estimado != null) acc[r.moneda] = (acc[r.moneda] || 0) + Number(r.costo_estimado);
-        return acc;
-      }, {}),
-    )
-      .map(([m, v]) => dinero(v, m))
-      .join(' / ') || 'Sin dato';
+    costosPorMoneda.length > 1 ? 'Varias monedas' : costosPorMoneda.length === 1 ? costosPorMoneda[0] : 'Sin dato';
+  const costosDetalle = costosPorMoneda.length > 1 ? costosPorMoneda.join(' · ') : undefined;
   const visibles = porSegmento.filter(
     (r) =>
       (!ciclo || (r.ciclo || 'nuevo') === ciclo) &&
@@ -333,9 +333,9 @@ export function BacklogOperativoPage({ onNav }) {
                 edades.length ? `${(edades.reduce((a, b) => a + b, 0) / edades.length).toFixed(1)} días` : 'Sin dato',
                 'Edad promedio',
               ],
-              [costos, 'Costo estimado abierto'],
-            ].map(([v, l]) => (
-              <div className="dx-ui-kpi" key={l}>
+              [costos, 'Costo estimado abierto', costosDetalle],
+            ].map(([v, l, detalle]) => (
+              <div className="dx-ui-kpi" key={l} title={detalle}>
                 <strong>{v}</strong>
                 <span title={l}>{l}</span>
               </div>

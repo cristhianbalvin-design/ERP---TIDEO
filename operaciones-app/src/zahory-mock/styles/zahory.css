@@ -10935,7 +10935,9 @@ width:20px;height:20px}
 .dx-confpm-root .dx-ui-kpi strong,
 .dx-confsos-root .dx-ui-kpi strong {
   max-width: 100%;
+  overflow: hidden;
   line-height: 22px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dx-confbl .dx-ui-kpi span,
