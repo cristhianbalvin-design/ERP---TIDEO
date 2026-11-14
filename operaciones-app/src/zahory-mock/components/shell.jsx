@@ -47,6 +47,13 @@ export const Icon = ({ name, size = 16, stroke = 2 }) => {
     shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
     map: <><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" /><line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" /></>,
     calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></>,
+    // Grupos del menú lateral (franja de íconos)
+    home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></>,
+    truck: <><path d="M1 4h13v12H1z" /><path d="M14 8h4l3 4v4h-7z" /><circle cx="5.5" cy="18.5" r="2" /><circle cx="17.5" cy="18.5" r="2" /></>,
+    factory: <><path d="M2 21V10l6 4V10l6 4V4h4v17z" /><path d="M2 21h20" /><path d="M7 17h2M12 17h2M17 17h2" /></>,
+    cart: <><circle cx="9" cy="20" r="1.5" /><circle cx="18" cy="20" r="1.5" /><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 7H6" /></>,
+    globe: <><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20z" /></>,
+    bank: <><path d="M3 10h18L12 4z" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 21h18" /></>,
   };
   return <svg {...s} viewBox="0 0 24 24">{paths[name] || null}</svg>;
 };
@@ -201,7 +208,7 @@ export const SIDEBAR_ZONES = [
           { id: 'ots',                label: 'Bandeja de OTs',      icon: 'orders',   roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'recepcion-activos',  label: 'Recepción de Activos',  icon: 'box',      roles: ['gerente', 'supervisor', 'tecnico', 'almacenero'] },
           { id: 'diagnostico-tecnico', label: 'Diagnóstico Técnico',     icon: 'report',  roles: ['gerente', 'supervisor', 'tecnico'] },
-          { id: 'taller',             label: 'Partes Taller',         icon: 'workshop', roles: ['gerente', 'supervisor', 'tecnico'] },
+          { id: 'partes-taller',      label: 'Partes Taller',         icon: 'workshop', altIds: ['taller', 'crear-parte-taller'], roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'partes-mina',        label: 'Reportes Mina',         icon: 'mine',     roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'cierre-conformidad', label: 'Cierre & Conformidad',  icon: 'check',    roles: ['gerente', 'supervisor'] },
           { id: 'scheduler-despacho', label: 'Planner',  icon: 'calendar', roles: ['gerente', 'supervisor'] },

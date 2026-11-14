@@ -6,7 +6,7 @@ titulo: Gestión de partes de taller
 resumen: Lista de partes diarios del taller para revisarlos: aprobar, observar, rechazar o reabrir un parte.
 componentes: operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#GestionPartesTallerPage
 huella: 5ebecf6ab0
-paso: 1 | pantalla=partes | permiso=ninguno | La lista muestra los partes diarios del taller.
+paso: 1 | pantalla=partes | permiso=ninguno | Se abre desde el menú en Órdenes de Trabajo › Partes Taller. La lista muestra los partes diarios del taller.
 paso: 2 | pantalla=partes | permiso=ninguno | Nuevo Parte Diario registra un parte y Ver detalle del Parte Diario lo abre.
 paso: 3 | pantalla=partes | permiso=ninguno | Desde aquí el jefe de taller revisa los partes: los que están En revisión esperan su decisión. Aprobar confirma horas y avance; Observar y Rechazar exigen escribir el motivo, que el técnico verá para corregir.
 paso: 4 | pantalla=partes | permiso=ninguno | Solo aprueba, observa, rechaza o reabre quien tiene el permiso de aprobar Partes. Si no ves esos botones, pide ese permiso en Roles y permisos.

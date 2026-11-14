@@ -9,8 +9,6 @@ vi.mock('../src/zahory-mock/ZahoryScreenHost.jsx', () => ({ ZahoryScreenHost: ()
 vi.mock('../src/zahory-mock/ZahoryRoutes.jsx', () => ({ availableZahoryRoutes: new Set(['diagnostico-tecnico']) }));
 vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => <i /> }));
 vi.mock('../src/zahory-mock/navigation.js', () => ({
-  findAreaForRoute: () => null,
-  findGroupForRoute: () => null,
   getZahoryNavigation: () => [{ id: 'area', label: 'Área', type: 'flat', items: [{ id: 'diagnostico-tecnico', label: 'Diagnóstico técnico', icon: 'report' }] }],
   itemMatchesRoute: (item, route) => item.id === route,
 }));
@@ -34,14 +32,17 @@ describe('sidebar de Operaciones en modo de trabajo del diagnóstico', () => {
     let renderer;
     await act(async () => { renderer = create(<OperationalApp />); });
     const sidebar = () => renderer.root.findByType('aside');
-    expect(sidebar().props.className).toContain('is-diagnostico-rail');
-    const navItem = renderer.root.findAll(node => node.type === 'button' && node.props.title === 'Diagnóstico técnico')[0];
-    expect(navItem.props.title).toBe('Diagnóstico técnico');
-    expect(navItem.props['aria-label']).toBe('Diagnóstico técnico');
+    // En modo trabajo el menú queda en la franja de íconos: sin panel fijo.
+    expect(sidebar().props.className).toContain('dx-opsnav-shell');
+    expect(sidebar().props.className).not.toContain('is-pinned');
+    const railButton = renderer.root.findAll(node => node.type === 'button' && node.props.className?.includes('dx-opsnav-rail-button') && node.props['aria-label'] === 'Inicio')[0];
+    expect(railButton).toBeTruthy();
+    expect(typeof railButton.props.onMouseEnter).toBe('function');
     await act(async () => listeners.get('dx-diagnostico-work-mode')({ detail: { active: false } }));
-    expect(sidebar().props.className).not.toContain('is-diagnostico-rail');
+    expect(sidebar().props.className).toContain('is-pinned');
+    expect(renderer.root.findAll(node => node.type === 'button' && node.props.className === 'dx-opsnav-item').map(node => node.props.children[1].props.children)).toContain('Diagnóstico técnico');
     await act(async () => listeners.get('dx-diagnostico-work-mode')({ detail: { active: true } }));
-    expect(sidebar().props.className).toContain('is-diagnostico-rail');
+    expect(sidebar().props.className).not.toContain('is-pinned');
     await act(async () => renderer.unmount());
   });
 });
