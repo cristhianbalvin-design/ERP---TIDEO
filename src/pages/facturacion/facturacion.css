@@ -181,12 +181,18 @@
 
 .dx-facliq-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0; }
 .dx-facliq-tabs [aria-pressed="true"] { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); border-color:var(--dx-ui-cyan); }
-.dx-facliq-kpis { margin-bottom:16px; }
-.dx-facliq-kpis .dx-ui-kpi { min-width:0; overflow:hidden; }
-.dx-facliq-kpis strong, .dx-facliq-kpis span { overflow:hidden; text-overflow:ellipsis; }
+.dx-facliq-kpis-contenedor { container-type:inline-size; }
+.dx-ui .dx-facliq-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); margin-bottom:16px; }
+.dx-ui .dx-facliq-kpis .dx-ui-kpi { min-width:0; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; }
+.dx-ui .dx-facliq-kpis strong { font-size:16px; line-height:1.3; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.dx-facliq-kpis small { color:var(--dx-ui-gray); font-size:12px; overflow-wrap:anywhere; }
 .dx-facliq-card .dx-ui-toolbar { flex-wrap:wrap; }
 .dx-facliq-card .dx-ui-toolbar select { width:auto; min-width:150px; }
-.dx-facliq-cols { --dx-ui-cols:minmax(100px,1fr) minmax(130px,1.4fr) minmax(75px,.7fr) minmax(65px,.6fr) repeat(3,minmax(90px,1fr)) auto; }
+.dx-facliq-filtro { display:flex; align-items:center; gap:8px; color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui .dx-facliq-cols { --dx-ui-cols:minmax(103px,1fr) minmax(120px,1.2fr) minmax(90px,.8fr) minmax(100px,.9fr) repeat(3,minmax(95px,.9fr)) 92px; column-gap:10px; }
+.dx-facliq-cols > :nth-child(5), .dx-facliq-cols > :nth-child(6), .dx-facliq-cols > :nth-child(7) { text-align:right; font-variant-numeric:tabular-nums; }
+.dx-facliq-penalidad { white-space:nowrap; }
+.dx-facliq-estado, .dx-facliq-periodo-movil, .dx-facliq-accion-movil { display:none; }
 .dx-facliq-cols > div { min-width:0; overflow-wrap:anywhere; }
 .dx-facliq-cols small, .dx-facliq-equipo small { display:block; color:var(--dx-ui-gray); }
 .dx-facliq-label { display:none; }
@@ -211,16 +217,29 @@
 .dx-facliq-error label { display:block; }
 .dx-facliq-glosa { grid-column:1 / -1; }
 .dx-facliq-panel .dx-ui-dialog-foot { flex-wrap:wrap; }
+@container (max-width:899px) {
+  .dx-ui .dx-facliq-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @container (max-width:760px) {
-  .dx-facliq-card .dx-ui-head { display:none; }
-  .dx-facliq-card .dx-facliq-cols { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .dx-ui .dx-facliq-card .dx-ui-head.dx-facliq-cols { display:none; }
+  .dx-ui .dx-facliq-card .dx-ui-row.dx-facliq-cols { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding-block:14px; cursor:default; }
+  .dx-facliq-identidad, .dx-facliq-cliente, .dx-facliq-cols > :last-child { grid-column:1 / -1; }
+  .dx-facliq-identidad { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+  .dx-facliq-identidad .dx-facliq-penalidad { flex-basis:100%; }
+  .dx-facliq-estado { display:inline-flex; margin-left:auto; padding:4px 10px; border-radius:999px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font-size:12px; font-weight:700; }
+  .dx-facliq-estado.parcial { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+  .dx-facliq-estado.facturada { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+  .dx-facliq-periodo-movil, .dx-facliq-accion-movil { display:inline; }
+  .dx-facliq-periodo, .dx-facliq-equipos, .dx-facliq-accion-escritorio { display:none; }
   .dx-facliq-label { display:block; color:var(--dx-ui-gray); font-size:12px; }
+  .dx-facliq-cols > :nth-child(5), .dx-facliq-cols > :nth-child(6), .dx-facliq-cols > :nth-child(7) { text-align:left; font-size:12px; }
+  .dx-facliq-cols > :last-child .dx-btn { width:100%; }
 }
 @container facliq-panel (max-width:760px) {
   .dx-facliq-body { grid-template-columns:minmax(0,1fr); }
   .dx-facliq-form, .dx-facliq-aside { padding:14px; }
 }
 @container (max-width:420px) {
-  .dx-facliq-card .dx-facliq-cols { grid-template-columns:minmax(0,1fr); }
-  .dx-facliq-card .dx-ui-toolbar select, .dx-facliq-card .dx-ui-search { width:100%; }
+  .dx-facliq-card .dx-facliq-filtro, .dx-facliq-card .dx-ui-search { width:100%; }
+  .dx-facliq-card .dx-facliq-filtro select { flex:1; min-width:0; }
 }
