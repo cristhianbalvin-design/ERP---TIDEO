@@ -116,6 +116,7 @@ export const SIDEBAR_ZONES = [
         items: [
           { id: 'dashboard-produccion', label: 'Dashboard Producción',   icon: 'dashboard', roles: ['gerente'] },
           { id: 'maestranza-of',        label: 'Órdenes de Fab. (OF)',   icon: 'parts', altIds: ['produccion-crear-of', 'produccion-detalle-of'], roles: ['gerente'] },
+          { id: 'produccion-garantias', label: 'Garantías de producción', icon: 'parts', altIds: ['produccion-pasaporte'], roles: ['gerente'] },
           { id: 'of-planificacion',     label: 'Planificación de OF',    icon: 'rates', roles: ['gerente'] },
           { id: 'maestranza-piso',      label: 'Control de Producción',  icon: 'activity', roles: ['gerente'], badge: 'MES' },
           { id: 'of-tiempos-mtm',       label: 'Tiempos y MTM',          icon: 'rates',    roles: ['gerente'], badge: 'MES' },

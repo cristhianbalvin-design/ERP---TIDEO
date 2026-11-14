@@ -5,9 +5,9 @@ import { formatearFecha } from './ofBandejaLogic.js';
 
 const fecha = v => v ? formatearFecha(v) : 'Sin dato';
 const ESTADO_GARANTIA = { vigente: 'Vigente', anulada: 'Anulada' };
-export function OFEntregaUnidades({ datos }) {
+export function OFEntregaUnidades({ datos, onVerPasaporte }) {
   return <div className="dx-ui dx-ofe-unidades">{(datos?.unidades || []).length ? datos.unidades.map(u => <div className="dx-ofe-unidad" key={u.id}>
-    <span>Unidad {u.unidad}</span><span>Serie: {u.serie || 'Sin dato'}</span><span>Inicio: {fecha(u.garantia?.fecha_inicio)}</span><span>Fin: {fecha(u.garantia?.fecha_fin)}</span><span>Garantía: {u.garantia ? ESTADO_GARANTIA[u.garantia.estado] || u.garantia.estado : 'Sin garantía'}</span>
+    <span>Unidad {u.unidad}</span><span>Serie: {u.serie || 'Sin dato'}</span><span>Inicio: {fecha(u.garantia?.fecha_inicio)}</span><span>Fin: {fecha(u.garantia?.fecha_fin)}</span><span>Garantía: {u.garantia ? ESTADO_GARANTIA[u.garantia.estado] || u.garantia.estado : 'Sin garantía'}</span>{onVerPasaporte && <button type="button" className="dx-ofd-ghost" onClick={() => onVerPasaporte(u.id)}>Ver pasaporte</button>}
   </div>) : <p>Sin dato</p>}</div>;
 }
 export function OFEntregaPanel({ datos, of, empresaId, puedeEditar, onActualizado }) {

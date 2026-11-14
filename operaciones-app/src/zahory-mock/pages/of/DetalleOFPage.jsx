@@ -302,7 +302,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </div>
 
             <div className="dx-ofd-panel" role="tabpanel">
-              {pestana === 'unidades' && verEntrega && <OFEntregaUnidades datos={entrega} />}
+              {pestana === 'unidades' && verEntrega && <OFEntregaUnidades datos={entrega} onVerPasaporte={id => onNav?.('produccion-pasaporte', { id })} />}
               {pestana === 'ruta' && !of.operaciones.length && (
                 <div className="dx-ofd-empty">
                   Esta OF aún no tiene operaciones.
@@ -439,6 +439,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           </div>
 
           <aside className="dx-ofd-aside">
+            {of.reclamo_id && <div className="dx-ofd-card dx-ofd-box"><h2>OF de garantía</h2><dl className="dx-ofd-dl"><dt>Reclamo</dt><dd>{of.reclamo_numero || 'Sin dato'}</dd><dt>Facturación</dt><dd>No facturable</dd></dl><button type="button" className="dx-ofd-ghost" onClick={() => onNav?.('produccion-garantias')}>Ver garantías</button></div>}
             {verEntrega && <OFEntregaPanel datos={entrega} of={{ ...of, garantia_meses: datosEntrega?.garantia_meses }} empresaId={empresaId} puedeEditar={Boolean(catalogo?.puede_editar)} onActualizado={() => recargar()} />}
             {calidad && ESTADOS_CON_CALIDAD.includes(of.estado) && (
               <div className="dx-ofd-card dx-ofd-box">

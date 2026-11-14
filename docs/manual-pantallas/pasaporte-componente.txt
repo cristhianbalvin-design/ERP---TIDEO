@@ -1,0 +1,15 @@
+clave: pasaporte_componente
+tipo: pantalla
+pantalla: of
+catalogo: operaciones/produccion-pasaporte
+titulo: Pasaporte de componente
+resumen: Consulta trazabilidad de una unidad por serie, desde su OF hasta la entrega y reclamos.
+componentes: operaciones-app/src/zahory-mock/pages/of/OFPasaportePage.jsx#OFPasaportePage
+huella: 5c7cd93805
+paso: 1 | pantalla=of | permiso=ninguno | Para qué sirve: consultar la trazabilidad de una unidad entregada por su serie, OF o cliente.
+paso: 2 | pantalla=of | permiso=ninguno | Busca una serie, OF o cliente y usa Ver pasaporte para abrir la unidad. Buscar otra unidad vuelve a la búsqueda. La cabecera muestra serie y unidad; los datos muestran componente, cliente, OF, OS y fechas de apertura, liberación y entrega.
+paso: 3 | pantalla=of | permiso=ninguno | Ruta ejecutada muestra operaciones de la OF, horas reales y estimadas y técnicos de los partes. Materiales consumidos muestra cantidades despachadas de las reservas.
+paso: 4 | pantalla=of | permiso=ninguno | Calidad de esta unidad muestra sus mediciones y no conformidades. Entrega muestra acta, guía y quien recibe; Ver acta PDF abre el archivo disponible.
+paso: 5 | pantalla=of | permiso=ninguno | Garantía y reclamos muestra el número, vencimiento, estado, falla y evaluación. La OF de garantía enlazada abre su detalle; los reclamos pueden estar abiertos, en reparación, cerrados o rechazados.
+paso: 6 | pantalla=of | permiso=ninguno | La consulta requiere of:ver. Las acciones de reclamo requieren of:editar y la creación de una OF de garantía requiere of:crear en Garantías de producción.
+paso: 7 | pantalla=of | permiso=ninguno | Si no ves una unidad, revisa la empresa, sociedad, permiso y texto de búsqueda. Sin dato indica que no existe información disponible; si no aparece Ver acta PDF, el acta no tiene PDF registrado.

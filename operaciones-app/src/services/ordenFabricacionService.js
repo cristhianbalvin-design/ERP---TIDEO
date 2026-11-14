@@ -86,7 +86,8 @@ export async function crearOFDesdeOS(osId, copiarHoja) {
 }
 
 const COLUMNAS_FICHA = [
-  'id,numero,estado,descripcion,fecha_apertura,fecha_compromiso,moneda,costo_estimado,costo_real,avance_pct,created_at,motivo_anulacion,anulada_en,',
+  'id,numero,estado,descripcion,fecha_apertura,fecha_compromiso,moneda,costo_estimado,costo_real,avance_pct,created_at,motivo_anulacion,anulada_en,facturable,reclamo_id,',
+  'reclamo:of_reclamos!ordenes_fabricacion_reclamo_fk(numero),',
   'os:os_clientes(id,numero,nombre,tipo_ejecucion),',
   'cuenta:cuentas(id,razon_social,nombre_comercial),',
   'activo:activos(id,codigo,nombre),',
@@ -148,6 +149,9 @@ export function normalizarFichaOF(fila) {
     id: fila.id,
     numero: fila.numero,
     estado: fila.estado,
+    facturable: fila.facturable,
+    reclamo_id: fila.reclamo_id,
+    reclamo_numero: fila.reclamo?.numero || '',
     motivo_anulacion: fila.motivo_anulacion,
     anulada_en: fila.anulada_en,
     descripcion: fila.descripcion || '',

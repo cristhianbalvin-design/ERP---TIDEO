@@ -2275,10 +2275,10 @@
       "titulo": "Garantías de producción",
       "ruta": "produccion-garantias",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#GarantiasPage",
-      "permiso": null,
-      "tipo": "subpantalla",
-      "estado": "maqueta"
+      "componente": "operaciones-app/src/zahory-mock/pages/of/OFGarantiasPage.jsx#OFGarantiasPage",
+      "permiso": "of",
+      "tipo": "menu",
+      "estado": "activa"
     },
     {
       "clave": "operaciones/produccion-ingenieria",
@@ -2299,10 +2299,10 @@
       "titulo": "Pasaporte de componente",
       "ruta": "produccion-pasaporte",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#PasaporteComponentePage",
-      "permiso": null,
+      "componente": "operaciones-app/src/zahory-mock/pages/of/OFPasaportePage.jsx#OFPasaportePage",
+      "permiso": "of",
       "tipo": "subpantalla",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/produccion-tiempos",
