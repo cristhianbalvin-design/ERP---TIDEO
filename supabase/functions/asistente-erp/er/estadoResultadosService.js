@@ -329,7 +329,7 @@ export const filtrarComprasGastosParaEr = comprasGastos =>
   (comprasGastos || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er && !g.financiamiento_id);
 
 export const filtrarCajaChicaSinGastoVinculado = filas =>
-  (filas || []).filter(r => r.gasto_id == null);
+  (filas || []).filter(r => r.gasto_id == null && r.origen_registro !== 'transporte_entrega');
 
 export const compraCoversCxp = (cxp, comprasGastos = []) => {
   const cxpId = cxp?.id;
@@ -683,7 +683,7 @@ async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null, e
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('caja_chica')
-    .select('id, fecha, monto, moneda, categoria, ceco_id, gasto_id, estado, sociedad_id')
+    .select('id, fecha, monto, moneda, categoria, ceco_id, gasto_id, estado, sociedad_id, origen_registro')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next)
