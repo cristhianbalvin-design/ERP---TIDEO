@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
 resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación con reserva de stock y SOLPE, registro y revisión de avance por partes, costo real y calidad.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
-huella: 7cb18bcc14
+huella: 3a3039c203
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
@@ -26,3 +26,8 @@ paso: 17 | pantalla=of | permiso=ninguno | Para qué sirve: es el expediente de 
 paso: 18 | pantalla=of | permiso=ninguno | Anular OF está disponible con el permiso anular de Órdenes de Fabricación en Borrador, En ingeniería, Aprobada o En producción. Pide un Motivo de al menos 5 caracteres. Al confirmar se liberan las reservas de stock y el pedido sale de Despachos; lo ya despachado queda en el kárdex. Las SOLPE de faltantes se anulan desde Compras si ya no se necesitan. No se puede deshacer. La ficha anulada muestra el motivo y la fecha.
 paso: 19 | pantalla=of | permiso=ninguno | Si no ves Anular OF, revisa que tu rol tenga el permiso anular de Órdenes de Fabricación y que la OF esté en Borrador, En ingeniería, Aprobada o En producción.
 paso: 20 | pantalla=of | permiso=ninguno | Al recibir una compra de un material que una OF tiene pendiente (Falta con su SOLPE), el almacén lo reserva automáticamente para esa OF si entra al mismo almacén del pedido. Si entró a otro almacén, en Despachos usa Reintentar reserva después de trasladarlo.
+paso: 21 | pantalla=of | permiso=of:editar | Con la OF Lista para entrega, Entregar al cliente abre el asistente de cuatro pasos. En Fotos y conformidad agrega entre una y seis fotos, elige Conforme o Con observaciones, completa las observaciones si corresponden y revisa una serie distinta para cada unidad.
+paso: 22 | pantalla=of | permiso=of:editar | En Firmas, el responsable y el cliente firman con el dedo o el mouse. Escribe el nombre de quien recibe y su documento (DNI o carné de extranjería). En Guía de remisión completa partida, llegada, fecha de inicio del traslado y peso bruto mayor que cero. Para transporte privado indica placa, conductor, documento y brevete; para transporte público, RUC de once dígitos y razón social del transportista.
+paso: 23 | pantalla=of | permiso=of:editar | En Revisión comprueba unidades, conformidad y guía, y define la garantía entre 0 y 120 meses; 0 significa sin garantía. Entregar y emitir acta entrega la OF y crea el acta, la guía de remisión y una garantía por unidad cuando los meses son mayores que cero. La OF pasa a Entregada.
+paso: 24 | pantalla=of | permiso=ninguno | En una OF Entregada o Cerrada, Unidades muestra la serie, el inicio, el fin y el estado de la garantía por unidad. Las tarjetas Entrega y Garantía muestran el acta, la fecha, quién recibe, la conformidad, la guía y el vencimiento. Ver acta PDF abre el acta emitida.
+paso: 25 | pantalla=of | permiso=of:editar | Si falló la creación del PDF después de entregar, la OF sigue Entregada. Usa Reintentar PDF en la tarjeta Entrega para generar y registrar el acta. Si no ves Entregar al cliente, revisa que la OF esté en Lista para entrega y que tu rol tenga el permiso of:editar.
