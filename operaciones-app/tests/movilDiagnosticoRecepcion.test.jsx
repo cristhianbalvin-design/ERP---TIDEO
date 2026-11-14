@@ -5,7 +5,7 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../src/zahory-mock/styles/zahory.css');
 const shellCss = read('../src/styles.css');
 const pageJsx = read('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx');
-const appJsx = read('../src/OperationalApp.jsx');
+const menuJsx = read('../src/MenuLateralOperaciones.jsx');
 const endOwnCss = css.includes('/* Solicitudes SOLPE */') ? css.indexOf('/* Solicitudes SOLPE */') : css.length;
 const movil = css.slice(css.indexOf('/* movil: diagnostico y recepcion */'), endOwnCss);
 const compact = css.slice(css.indexOf('/* Compact work mode refinements */'), endOwnCss);
@@ -98,7 +98,7 @@ describe('movil diagnostico y recepcion', () => {
   });
 
   it('el retorno desde el cajón comparte el evento de vuelta con las dos pantallas', () => {
-    expect(appJsx).toContain('requestWorkBack(); setNavOpen(false);');
+    expect(menuJsx).toContain('requestWorkBack(); onCloseNav?.();');
     expect(pageJsx).toContain("window.addEventListener('dx-work-back', handleWorkBack)");
     const receptionPage = read('../src/zahory-mock/pages/RecepcionActivosClientePage.jsx');
     expect(receptionPage).toContain("window.addEventListener('dx-work-back', handleWorkBack)");

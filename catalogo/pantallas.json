@@ -1863,7 +1863,7 @@
       "alias": [],
       "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#GestionPartesTallerPage",
       "permiso": "partes",
-      "tipo": "subpantalla",
+      "tipo": "menu",
       "estado": "activa"
     },
     {
@@ -1894,14 +1894,24 @@
       "clave": "operaciones/taller",
       "app": "operaciones",
       "modulo": "Órdenes de Trabajo",
-      "titulo": "Partes Taller",
+      "titulo": "Parte diario de taller",
       "ruta": "taller",
-      "alias": [
-        "crear-parte-taller"
-      ],
+      "alias": [],
       "componente": "operaciones-app/src/zahory-mock/pages/pages3.jsx#ParteTallerPage",
       "permiso": "partes",
-      "tipo": "menu",
+      "tipo": "subpantalla",
+      "estado": "activa"
+    },
+    {
+      "clave": "operaciones/crear-parte-taller",
+      "app": "operaciones",
+      "modulo": "Órdenes de Trabajo",
+      "titulo": "Nuevo parte diario de taller",
+      "ruta": "crear-parte-taller",
+      "alias": [],
+      "componente": "operaciones-app/src/zahory-mock/pages/pages3.jsx#ParteTallerPage",
+      "permiso": "partes",
+      "tipo": "subpantalla",
       "estado": "activa"
     },
     {

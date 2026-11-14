@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 73 (95 %) | 30 (39 %) | 3 | 3 |
-| Operaciones | 120 | 55 (46 %) | 46 (38 %) | 1 | 53 |
+| Operaciones | 121 | 56 (46 %) | 46 (38 %) | 1 | 53 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 137 (67 %) | 76 (37 %) | 4 | 56 |
+| **Total** | 207 | 138 (67 %) | 76 (37 %) | 4 | 56 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_estado_resultados`, `asistente_presupuesto_real`, `asistente_resumen_financiero`.
 
@@ -177,7 +177,8 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Órdenes de Trabajo | Gestión de partes de taller (`partes-taller`) | activa | gestion_partes_taller | — | — | — |
 | Órdenes de Trabajo | Recepción de Activos (`recepcion-activos`) | activa | recepcion_activos | proceso_recepcion_entrega | — | — |
 | Órdenes de Trabajo | Planner (`scheduler-despacho`) | activa | planner_taller | — | — | — |
-| Órdenes de Trabajo | Partes Taller (`taller`) | activa | partes_taller | proceso_recepcion_entrega | — | — |
+| Órdenes de Trabajo | Parte diario de taller (`taller`) | activa | partes_taller | proceso_recepcion_entrega | — | — |
+| Órdenes de Trabajo | Nuevo parte diario de taller (`crear-parte-taller`) | activa | partes_taller | — | — | — |
 | Producción | Fabricación y Ensamble (`area-fabricacion`) | maqueta | — | — | — | — |
 | Producción | Ingeniería y Diseño (`area-ingenieria`) | maqueta | — | — | — | — |
 | Producción | Maestranza (`area-maestranza`) | maqueta | — | — | — | — |

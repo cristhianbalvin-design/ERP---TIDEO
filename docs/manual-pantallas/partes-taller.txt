@@ -1,7 +1,7 @@
 clave: partes_taller
 tipo: pantalla
 pantalla: partes
-catalogo: operaciones/taller
+catalogo: operaciones/taller, operaciones/crear-parte-taller
 titulo: Parte diario de taller
 resumen: Registra el trabajo diario del técnico sobre una OT: actividades, fotos, hallazgos y repuestos, y lo envía a revisión.
 componentes: operaciones-app/src/zahory-mock/pages/pages3.jsx#ParteTallerPage
