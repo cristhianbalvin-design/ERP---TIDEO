@@ -133,7 +133,11 @@ export function BacklogOperativoPage({ onNav }) {
     }, {}),
   ).map(([m, v]) => dinero(v, m));
   const costos =
-    costosPorMoneda.length > 1 ? 'Varias monedas' : costosPorMoneda.length === 1 ? costosPorMoneda[0] : 'Sin dato';
+    costosPorMoneda.length > 1
+      ? `${costosPorMoneda.length} monedas`
+      : costosPorMoneda.length === 1
+        ? costosPorMoneda[0]
+        : 'Sin dato';
   const costosDetalle = costosPorMoneda.length > 1 ? costosPorMoneda.join(' · ') : undefined;
   const visibles = porSegmento.filter(
     (r) =>

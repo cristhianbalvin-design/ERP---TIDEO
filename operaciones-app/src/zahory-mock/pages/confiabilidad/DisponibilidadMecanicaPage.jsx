@@ -58,7 +58,7 @@ export function DisponibilidadMecanicaPage({ onNav }) {
   const variasMonedas = monedasInformadas.length > 1;
   const faltaMoneda = penalidadesPorMoneda.has('');
   const penalidadTotal = variasMonedas
-    ? 'Varias monedas'
+    ? `${monedasInformadas.length} monedas`
     : aprobadas.length && !faltaMoneda
       ? dineroConMoneda(penalidadesPorMoneda.get(monedasInformadas[0]), monedasInformadas[0])
       : 'Sin dato';
