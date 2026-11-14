@@ -2,7 +2,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ of: null, partes: [], avance: null, registrar: vi.fn(), revisar: vi.fn() }));
+const mocks = vi.hoisted(() => ({ of: null, partes: [], avance: null, registrar: vi.fn(), revisar: vi.fn(), anular: vi.fn() }));
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => ({ estado: 'listo', empresaId: 'e1' }) }));
 vi.mock('../src/useCompactWorkMode.js', () => ({ useCompactWorkMode: () => {} }));
 vi.mock('../src/services/ordenFabricacionService.js', () => ({
@@ -17,10 +17,11 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   obtenerReservasOF: vi.fn(() => Promise.resolve(mocks.reservas || { demanda_id: null, almacen: '', lineas: [] })),
   registrarParteOF: mocks.registrar,
   revisarParteOF: mocks.revisar,
+  anularOF: mocks.anular,
 }));
 
 import { DetalleOFPage } from '../src/zahory-mock/pages/of/DetalleOFPage.jsx';
-import { datosAvance, etiquetasReserva, resumenProduccion, resumenReservas, validarAvance, validarRevision } from '../src/zahory-mock/pages/of/ofAvanceLogic.js';
+import { datosAvance, etiquetasReserva, resumenProduccion, resumenReservas, validarAvance, validarMotivoAnulacion, validarRevision } from '../src/zahory-mock/pages/of/ofAvanceLogic.js';
 
 const esperar = async () => { for (let i = 0; i < 12; i += 1) await Promise.resolve(); };
 const texto = nodo => (nodo.children || []).map(h => (typeof h === 'string' ? h : texto(h))).join('');
@@ -47,6 +48,11 @@ async function montar() {
 }
 
 describe('lógica del avance por partes', () => {
+  it('valida el motivo de anulación después de recortar espacios', () => {
+    expect(validarMotivoAnulacion('   ')).toBe('Indica el motivo.');
+    expect(validarMotivoAnulacion(' 1234 ')).toBe('El motivo debe tener al menos 5 caracteres.');
+    expect(validarMotivoAnulacion(' 12345 ')).toBe('');
+  });
   it('valida el parte por campo, sin fechas futuras y con 2 decimales', () => {
     const errs = validarAvance({ operacion_id: '', tecnico_id: '', fecha: '2026-11-13', horas: '0', avance: '101' }, '2026-11-12');
     expect(Object.keys(errs).sort()).toEqual(['avance', 'fecha', 'horas', 'operacion_id', 'tecnico_id']);
@@ -66,6 +72,55 @@ describe('lógica del avance por partes', () => {
   it('resume horas, partes por aprobar y costo real', () => {
     const of = { ...OF_BASE, avance_pct: 80, operaciones: [{ horas: 4, horas_reales: 2 }, { horas: 6, horas_reales: 3 }], materiales: [{ cantidad_real: 2, costo_unitario: 10 }] };
     expect(resumenProduccion(of, [PARTE, { ...PARTE, estado: 'aprobado', costo: 49.08 }])).toEqual({ avance: 80, horasReales: 5, horasEstimadas: 10, porAprobar: 1, manoObra: 49.08, materiales: 20 });
+  });
+});
+
+describe('anulación de la OF', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.of = structuredClone(OF_BASE);
+    mocks.partes = [];
+    mocks.reservas = null;
+    mocks.avance = { puede_anular: true, puede_registrar: false, puede_revisar: false, tecnicos: [] };
+    mocks.anular.mockResolvedValue(null);
+  });
+
+  it('muestra Anular OF solo con permiso y en estados anulables', async () => {
+    for (const estado of ['borrador', 'en_ingenieria', 'aprobada', 'en_produccion', 'en_calidad', 'lista_entrega', 'entregada', 'cerrada', 'anulada']) {
+      for (const permiso of [true, false]) {
+        mocks.of = { ...structuredClone(OF_BASE), estado };
+        mocks.avance.puede_anular = permiso;
+        const root = await montar();
+        expect(Boolean(boton(root, 'Anular OF'))).toBe(permiso && ['borrador', 'en_ingenieria', 'aprobada', 'en_produccion'].includes(estado));
+        await act(async () => root.unmount());
+      }
+    }
+  });
+
+  it('rechaza un motivo corto y anula con motivo válido mostrando el aviso', async () => {
+    const root = await montar();
+    await act(async () => { boton(root, 'Anular OF').props.onClick(); await esperar(); });
+    const form = () => root.root.findByProps({ id: 'dx-ofd-form-anular' });
+    await act(async () => { control(root, 'of-anular-motivo').props.onChange({ target: { value: ' abc ' } }); await esperar(); });
+    await act(async () => { form().props.onSubmit({ preventDefault() {} }); await esperar(); });
+    expect(texto(root.root.findByProps({ id: 'of-anular-motivo-err' }))).toBe('El motivo debe tener al menos 5 caracteres.');
+    expect(mocks.anular).not.toHaveBeenCalled();
+    await act(async () => { control(root, 'of-anular-motivo').props.onChange({ target: { value: ' Cambio de plan ' } }); await esperar(); });
+    mocks.of = { ...mocks.of, estado: 'anulada', motivo_anulacion: 'Cambio de plan', anulada_en: '2026-11-14T12:00:00Z' };
+    await act(async () => { form().props.onSubmit({ preventDefault() {} }); await esperar(); });
+    expect(mocks.anular).toHaveBeenCalledWith('of1', 'Cambio de plan');
+    expect(texto(root.root.findByProps({ className: 'dx-ofd-toast' }))).toBe('OF anulada. Reservas liberadas.');
+    expect(texto(root.root.findByProps({ className: 'dx-ofd-anulada' }))).toContain('Motivo: Cambio de plan. Fecha de anulación: 14 nov 2026.');
+  });
+
+  it('muestra motivo y fecha de la OF anulada, o Sin dato si faltan', async () => {
+    mocks.of = { ...mocks.of, estado: 'anulada', motivo_anulacion: 'Cancelación del cliente', anulada_en: '2026-11-14T12:00:00Z' };
+    let root = await montar();
+    expect(texto(root.root.findByProps({ className: 'dx-ofd-anulada' }))).toBe('Esta OF está anulada. Motivo: Cancelación del cliente. Fecha de anulación: 14 nov 2026.');
+    await act(async () => root.unmount());
+    mocks.of = { ...mocks.of, motivo_anulacion: null, anulada_en: null };
+    root = await montar();
+    expect(texto(root.root.findByProps({ className: 'dx-ofd-anulada' }))).toBe('Esta OF está anulada. Motivo: Sin dato. Fecha de anulación: Sin dato.');
   });
 });
 

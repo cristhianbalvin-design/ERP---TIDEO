@@ -1,12 +1,8 @@
-import { BacklogPage } from '../pages/BacklogPage.jsx';
 import { CrearOTPage } from '../pages/CrearOTPage.jsx';
-import { KPIsConfiabilidad } from '../pages/ConfiabilidadPage.jsx';
 import { OTDetallePage } from '../pages/pages1.jsx';
 import {
   OTsListadoPage,
   GestionPartesTallerPage,
-  ProgramacionPM,
-  DisponibilidadMecanica,
 } from '../pages/pages2_v2.jsx';
 import { CierreConformidadPage } from '../pages/CierreConformidadPage.jsx';
 import { RecepcionActivosClientePage } from '../pages/RecepcionActivosClientePage.jsx';
@@ -14,7 +10,11 @@ import { DiagnosticoTecnicoPage } from '../pages/DiagnosticoTecnicoPage.jsx';
 import { ParteTallerPage } from '../pages/pages3.jsx';
 import { ReportesMinaPage } from '../pages/ReportesMinaPage.jsx';
 import { PlannerPage } from '../pages/planner/PlannerPage.jsx';
-import { AnalisisSOS } from '../pages/ProduccionPages.jsx';
+import { BacklogOperativoPage } from '../pages/confiabilidad/BacklogOperativoPage.jsx';
+import { AnalisisSosPage } from '../pages/confiabilidad/AnalisisSosPage.jsx';
+import { KpisConfiabilidadPage } from '../pages/confiabilidad/KpisConfiabilidadPage.jsx';
+import { ProgramacionPmPage } from '../pages/confiabilidad/ProgramacionPmPage.jsx';
+import { DisponibilidadMecanicaPage } from '../pages/confiabilidad/DisponibilidadMecanicaPage.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 import {
@@ -61,12 +61,12 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'analisis-riesgo-ats': return <AnalisisRiesgoATS />;
     case 'protocolo-loto': return <ProtocoloLOTO />;
 
-    case 'backlog': return <><AdministrativeAppLinkPage title="Backlog Operativo" adminRoute="backlog" /><BacklogPage onNav={onNavigate} /></>;
+    case 'backlog': return <BacklogOperativoPage onNav={onNavigate} />;
     case 'sos-telemetria':
-    case 'analisis-sos': return <AnalisisSOS setCurrent={onNavigate} />;
-    case 'confiabilidad': return <KPIsConfiabilidad />;
-    case 'programacion-pm': return <ProgramacionPM setCurrent={onNavigate} />;
-    case 'disponibilidad-mecanica': return <DisponibilidadMecanica setCurrent={onNavigate} />;
+    case 'analisis-sos': return <AnalisisSosPage onNav={onNavigate} />;
+    case 'confiabilidad': return <KpisConfiabilidadPage onNav={onNavigate} />;
+    case 'programacion-pm': return <ProgramacionPmPage onNav={onNavigate} />;
+    case 'disponibilidad-mecanica': return <DisponibilidadMecanicaPage onNav={onNavigate} />;
     case 'indicadores-confiabilidad': return <PlaceholderPage title="Indicadores MTBF/MTTR" />;
     default: return null;
   }

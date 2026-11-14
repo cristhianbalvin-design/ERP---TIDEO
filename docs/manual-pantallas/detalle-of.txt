@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
 resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación con reserva de stock y SOLPE, registro y revisión de avance por partes, costo real y calidad.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
-huella: 56692b0bea
+huella: 7cb18bcc14
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
@@ -23,3 +23,6 @@ paso: 14 | pantalla=of | permiso=ninguno | Con la OF en producción, Enviar a ca
 paso: 15 | pantalla=of | permiso=ninguno | Al aprobar la OF (botón Aprobar y reservar) se reserva en el almacén el stock de los materiales de origen Stock y lo que falta va a Compras como SOLPE. El aviso de la OF aprobada dice cuántos materiales quedaron reservados y qué SOLPE cubre cada faltante; un Material no planificado de stock se reserva al guardarlo (Agregar y reservar).
 paso: 16 | pantalla=of | permiso=ninguno | En Materiales, cada material de stock muestra su reserva: Reservado (por despachar), Despachado o Falta con su SOLPE. El almacén entrega el material desde Despachos (canal OF); al despacharlo se registra en el kárdex, se actualiza la cantidad real del material y se suma su costo al costo real de la OF.
 paso: 17 | pantalla=of | permiso=ninguno | Para qué sirve: es el expediente de una orden de fabricación. Aquí se define cómo se fabrica (ruta y materiales), se aprueba, se registra el avance del taller, se controla la calidad y se ve cuánto está costando frente a lo previsto.
+paso: 18 | pantalla=of | permiso=ninguno | Anular OF está disponible con el permiso anular de Órdenes de Fabricación en Borrador, En ingeniería, Aprobada o En producción. Pide un Motivo de al menos 5 caracteres. Al confirmar se liberan las reservas de stock y el pedido sale de Despachos; lo ya despachado queda en el kárdex. Las SOLPE de faltantes se anulan desde Compras si ya no se necesitan. No se puede deshacer. La ficha anulada muestra el motivo y la fecha.
+paso: 19 | pantalla=of | permiso=ninguno | Si no ves Anular OF, revisa que tu rol tenga el permiso anular de Órdenes de Fabricación y que la OF esté en Borrador, En ingeniería, Aprobada o En producción.
+paso: 20 | pantalla=of | permiso=ninguno | Al recibir una compra de un material que una OF tiene pendiente (Falta con su SOLPE), el almacén lo reserva automáticamente para esa OF si entra al mismo almacén del pedido. Si entró a otro almacén, en Despachos usa Reintentar reserva después de trasladarlo.

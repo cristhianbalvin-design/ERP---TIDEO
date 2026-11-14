@@ -1358,10 +1358,10 @@
       "titulo": "Backlog Operativo",
       "ruta": "backlog",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/components/AdministrativeAppLinkPage.jsx#AdministrativeAppLinkPage",
+      "componente": "operaciones-app/src/zahory-mock/pages/confiabilidad/BacklogOperativoPage.jsx#BacklogOperativoPage",
       "permiso": "backlog",
       "tipo": "menu",
-      "estado": "puente"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/confiabilidad",
@@ -1370,10 +1370,10 @@
       "titulo": "KPIs de Confiabilidad",
       "ruta": "confiabilidad",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/ConfiabilidadPage.jsx#KPIsConfiabilidad",
-      "permiso": null,
+      "componente": "operaciones-app/src/zahory-mock/pages/confiabilidad/KpisConfiabilidadPage.jsx#KpisConfiabilidadPage",
+      "permiso": "confiabilidad_kpis",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/disponibilidad-mecanica",
@@ -1382,10 +1382,10 @@
       "titulo": "Disponibilidad Mecánica",
       "ruta": "disponibilidad-mecanica",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#DisponibilidadMecanica",
-      "permiso": null,
+      "componente": "operaciones-app/src/zahory-mock/pages/confiabilidad/DisponibilidadMecanicaPage.jsx#DisponibilidadMecanicaPage",
+      "permiso": "disponibilidad_mecanica",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/programacion-pm",
@@ -1394,10 +1394,10 @@
       "titulo": "Programación PM",
       "ruta": "programacion-pm",
       "alias": [],
-      "componente": "operaciones-app/src/zahory-mock/pages/pages2_v2.jsx#ProgramacionPM",
-      "permiso": null,
+      "componente": "operaciones-app/src/zahory-mock/pages/confiabilidad/ProgramacionPmPage.jsx#ProgramacionPmPage",
+      "permiso": "programacion_pm",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/sos-telemetria",
@@ -1408,10 +1408,10 @@
       "alias": [
         "analisis-sos"
       ],
-      "componente": "operaciones-app/src/zahory-mock/pages/ProduccionPages.jsx#AnalisisSOS",
-      "permiso": null,
+      "componente": "operaciones-app/src/zahory-mock/pages/confiabilidad/AnalisisSosPage.jsx#AnalisisSosPage",
+      "permiso": "analisis_sos",
       "tipo": "menu",
-      "estado": "maqueta"
+      "estado": "activa"
     },
     {
       "clave": "operaciones/configuracion",
@@ -1735,7 +1735,7 @@
       "clave": "operaciones/indicadores-confiabilidad",
       "app": "operaciones",
       "modulo": "Operaciones",
-      "titulo": "Indicadores de confiabilidad",
+      "titulo": "Indicadores MTBF/MTTR",
       "ruta": "indicadores-confiabilidad",
       "alias": [],
       "componente": "operaciones-app/src/zahory-mock/components/PlaceholderPage.jsx#PlaceholderPage",

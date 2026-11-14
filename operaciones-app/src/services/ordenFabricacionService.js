@@ -86,7 +86,7 @@ export async function crearOFDesdeOS(osId, copiarHoja) {
 }
 
 const COLUMNAS_FICHA = [
-  'id,numero,estado,descripcion,fecha_apertura,fecha_compromiso,moneda,costo_estimado,costo_real,avance_pct,created_at,',
+  'id,numero,estado,descripcion,fecha_apertura,fecha_compromiso,moneda,costo_estimado,costo_real,avance_pct,created_at,motivo_anulacion,anulada_en,',
   'os:os_clientes(id,numero,nombre,tipo_ejecucion),',
   'cuenta:cuentas(id,razon_social,nombre_comercial),',
   'activo:activos(id,codigo,nombre),',
@@ -148,6 +148,8 @@ export function normalizarFichaOF(fila) {
     id: fila.id,
     numero: fila.numero,
     estado: fila.estado,
+    motivo_anulacion: fila.motivo_anulacion,
+    anulada_en: fila.anulada_en,
     descripcion: fila.descripcion || '',
     fecha_apertura: fila.fecha_apertura,
     fecha_compromiso: fila.fecha_compromiso,
@@ -210,6 +212,7 @@ export const guardarMaterialOF = (ofId, lineaId, datos) =>
   rpc('of_guardar_material', { p_of_id: ofId, p_material_linea_id: lineaId || null, p_datos: datos });
 export const quitarMaterialOF = lineaId => rpc('of_quitar_material', { p_material_linea_id: lineaId });
 export const aprobarOF = ofId => rpc('of_aprobar', { p_of_id: ofId });
+export const anularOF = (ofId, motivo) => rpc('of_anular', { p_of_id: ofId, p_motivo: motivo });
 
 // F3b · Avance por partes. El costo, el avance ponderado y el paso a producción los calcula la base de datos.
 export async function obtenerCatalogoAvanceOF(ofId) {
@@ -217,6 +220,7 @@ export async function obtenerCatalogoAvanceOF(ofId) {
   return {
     puede_registrar: Boolean(data?.puede_registrar),
     puede_revisar: Boolean(data?.puede_revisar),
+    puede_anular: Boolean(data?.puede_anular),
     tecnicos: data?.tecnicos || [],
   };
 }
