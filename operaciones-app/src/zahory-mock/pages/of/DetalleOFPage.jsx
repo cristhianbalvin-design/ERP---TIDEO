@@ -13,6 +13,9 @@ import { OFCalidadPanel } from './OFCalidadPanel.jsx';
 import { AnularOFModal, AvanceModal, RevisarParteModal } from './OFAvanceModales.jsx';
 import { ESTADOS_ANULABLES, ESTADOS_AVANCE, ESTADOS_PARTES, ETIQUETA_PARTE, etiquetasReserva, hoyISO, resumenProduccion, resumenReservas } from './ofAvanceLogic.js';
 import { ESTADOS_CON_CALIDAD, ESTADOS_ENVIO, normalizarCalidad, resumenCalidad } from './ofCalidadLogic.js';
+import { cargarDatosEntrega, cargarEntrega } from '../../../services/ofEntregaService.js';
+import { OFEntregaWizard } from './OFEntregaWizard.jsx';
+import { OFEntregaPanel, OFEntregaUnidades } from './OFEntregaPanel.jsx';
 
 const LINEA_TIEMPO = [
   ['borrador', 'Borrador'],
@@ -40,7 +43,7 @@ const IcoInfo = () => <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12
 
 export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   useCompactWorkMode(true, { backLabel: 'Órdenes de Fabricación', onBack: () => onNav?.('maestranza-of') });
-  const { estado: estadoSesion } = useSesionOperativa();
+  const { estado: estadoSesion, empresaId } = useSesionOperativa();
   const id = routeParams.id || ofIdRespaldo || '';
   const [of, setOf] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -55,6 +58,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const [avanceCat, setAvanceCat] = useState(null);
   const [partes, setPartes] = useState([]);
   const [reservas, setReservas] = useState(null);
+  const [datosEntrega, setDatosEntrega] = useState(null);
+  const [entrega, setEntrega] = useState(null);
 
   useEffect(() => {
     if (estadoSesion !== 'listo') return undefined;
@@ -71,6 +76,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     setAvanceCat(null);
     setPartes([]);
     setReservas(null);
+    setDatosEntrega(null);
+    setEntrega(null);
     obtenerOF(id)
       .then(fila => { if (vivo) { setOf(fila); if (!fila) setError('La OF no existe o no tienes acceso a ella.'); } })
       .catch(err => { if (vivo) setError(err?.message || 'No se pudo cargar la OF.'); })
@@ -84,6 +91,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     listarPartesOF(id).then(l => { if (vivo) setPartes(l); }).catch(() => {});
     // F3c · Reservas WMS de los materiales de stock (franja de la pestaña Materiales).
     obtenerReservasOF(id).then(r => { if (vivo) setReservas(r); }).catch(() => {});
+    cargarDatosEntrega(id).then(r => { if (vivo) setDatosEntrega(r); }).catch(() => {});
+    cargarEntrega(id).then(r => { if (vivo) setEntrega(r); }).catch(() => {});
     setCargandoMateriales(true);
     listarMaterialesOF(id)
       .then(lista => { if (vivo) setMaterialesCat(lista); })
@@ -106,6 +115,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
     if (res) setReservas(res);
     if (cal) setCalidad(normalizarCalidad(cal));
     if (lista) setPartes(lista);
+    const [preparacion, entregado] = await Promise.all([cargarDatosEntrega(id).catch(() => null), cargarEntrega(id).catch(() => null)]);
+    setDatosEntrega(preparacion);
+    setEntrega(entregado);
     if (mensaje) setAviso(mensaje);
   };
   const resumenQ = useMemo(() => resumenCalidad(calidad || {}), [calidad]);
@@ -155,6 +167,8 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const puedeRegistrar = ESTADOS_AVANCE.includes(of.estado) && Boolean(avanceCat?.puede_registrar) && of.operaciones.some(o => o.estado !== 'terminada');
   const puedeRevisar = ESTADOS_AVANCE.includes(of.estado) && Boolean(avanceCat?.puede_revisar);
   const verPartes = ESTADOS_PARTES.includes(of.estado);
+  const verEntrega = ['entregada', 'cerrada'].includes(of.estado);
+  const puedeEntregar = of.estado === 'lista_entrega' && Boolean(datosEntrega?.puede_entregar);
   const enProduccion = verPartes && (of.estado !== 'aprobada' || partes.length > 0);
   const cerrarModal = () => setModal(null);
   const abrirTarea = (operacion = null, preset = {}) => setModal({ tipo: 'tarea', operacion: operacion && { ...operacion, _form: tareaDesdeOperacion(operacion) }, preset });
@@ -185,7 +199,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </h1>
             <p className="dx-ofd-sub">{[of.descripcion, of.cliente].filter(Boolean).join(' · ') || 'Sin descripción'}</p>
           </div>
-          {(puedeAnular || puedeAprobar || puedeRegistrar || puedeEnviarCalidad || puedeLiberar) && (
+          {(puedeAnular || puedeAprobar || puedeRegistrar || puedeEnviarCalidad || puedeLiberar || puedeEntregar) && (
             <div className="dx-ofd-hdr-actions">
               {puedeAnular && <button type="button" className="dx-ofd-ghost" onClick={() => setModal({ tipo: 'anular' })}>Anular OF</button>}
               {puedeRegistrar && <button type="button" className={puedeEnviarCalidad ? 'dx-ofd-ghost' : 'dx-ofd-primary'} onClick={() => setModal({ tipo: 'avance' })}><IcoMas />Registrar avance</button>}
@@ -195,6 +209,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                 <button type="button" className="dx-ofd-primary" disabled={!resumenQ.liberable} onClick={() => setModal({ tipo: 'liberar' })}
                   title={resumenQ.liberable ? '' : 'Faltan críticas dentro de tolerancia o hay una NC abierta.'}><IcoCheck />Liberar OF</button>
               )}
+              {puedeEntregar && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'entrega' })}>Entregar al cliente</button>}
             </div>
           )}
         </div>
@@ -274,6 +289,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
                     Calidad{resumenQ.ncAbiertas ? <b>{resumenQ.ncAbiertas}</b> : null}
                   </button>
                 )}
+                {verEntrega && <button type="button" role="tab" aria-selected={pestana === 'unidades'} className={pestana === 'unidades' ? 'is-on' : ''} onClick={() => setPestana('unidades')}>Unidades · {entrega?.unidades?.length || 0}</button>}
               </div>
               {pestana === 'ruta' && editable && (
                 <button type="button" className="dx-ofd-ghost" onClick={() => abrirTarea()}><IcoMas />Agregar tarea</button>
@@ -286,6 +302,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </div>
 
             <div className="dx-ofd-panel" role="tabpanel">
+              {pestana === 'unidades' && verEntrega && <OFEntregaUnidades datos={entrega} />}
               {pestana === 'ruta' && !of.operaciones.length && (
                 <div className="dx-ofd-empty">
                   Esta OF aún no tiene operaciones.
@@ -422,6 +439,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           </div>
 
           <aside className="dx-ofd-aside">
+            {verEntrega && <OFEntregaPanel datos={entrega} of={{ ...of, garantia_meses: datosEntrega?.garantia_meses }} empresaId={empresaId} puedeEditar={Boolean(catalogo?.puede_editar)} onActualizado={() => recargar()} />}
             {calidad && ESTADOS_CON_CALIDAD.includes(of.estado) && (
               <div className="dx-ofd-card dx-ofd-box">
                 <h2>Liberación</h2>
@@ -477,6 +495,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           onGuardar={(opId, datos) => guardarOperacionOF(of.id, opId, datos)}
           onClose={r => { cerrarModal(); if (r) recargar(r.sin_tarifa ? 'Tarea guardada. Su cargo no tiene tarifa: quedó sin costo de mano de obra.' : 'Tarea guardada.'); }} />
       )}
+      {modal?.tipo === 'entrega' && <OFEntregaWizard of={of} empresaId={empresaId} datos={datosEntrega} onClose={cerrarModal} onEntregada={(r, falloPdf) => {
+        cerrarModal(); setPestana('unidades'); recargar(`OF entregada. Acta ${r.numero} y guía ${r.guia_numero} emitidas.${falloPdf ? ' El PDF no se pudo generar; usa Reintentar PDF.' : ''}`);
+      }} />}
       {modal?.tipo === 'material' && (
         <MaterialModal of={of} linea={modal.linea} noPlanificado={Boolean(modal.noPlanificado)}
           materiales={materialesCat} cargandoMateriales={cargandoMateriales}
