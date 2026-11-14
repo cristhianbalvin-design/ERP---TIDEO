@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { usePermisoPantalla } from './confiabilidadPermisos.js';
 import { cargarDisponibilidad } from '../../../services/confiabilidadService.js';
-import { Barra, Kpi, Periodo, Segmentos, dinero, mes, numero, periodoInicial } from './confiabilidadUi.jsx';
+import { Barra, Kpi, Periodo, Segmentos, dineroConMoneda, mes, numero, periodoInicial } from './confiabilidadUi.jsx';
 
 export function DisponibilidadMecanicaPage({ onNav }) {
   const { empresaId, sociedadId, estado } = useSesionOperativa();
@@ -49,6 +49,22 @@ export function DisponibilidadMecanicaPage({ onNav }) {
   const parada = suma(segmento === 'flota' ? 'parada_proveedor' : 'horas_falla');
   const promedio = posibles ? (100 * (posibles - parada)) / posibles : null;
   const aprobadas = filas.filter((x) => x.estado_liquidacion === 'aprobada' && x.penalidad != null);
+  const penalidadesPorMoneda = aprobadas.reduce((totales, x) => {
+    const moneda = x.moneda || '';
+    totales.set(moneda, (totales.get(moneda) || 0) + Number(x.penalidad));
+    return totales;
+  }, new Map());
+  const monedasInformadas = [...penalidadesPorMoneda.keys()].filter(Boolean);
+  const variasMonedas = monedasInformadas.length > 1;
+  const faltaMoneda = penalidadesPorMoneda.has('');
+  const penalidadTotal = variasMonedas
+    ? 'Varias monedas'
+    : aprobadas.length && !faltaMoneda
+      ? dineroConMoneda(penalidadesPorMoneda.get(monedasInformadas[0]), monedasInformadas[0])
+      : 'Sin dato';
+  const desglosePenalidad = variasMonedas
+    ? [...penalidadesPorMoneda].map(([moneda, total]) => dineroConMoneda(total, moneda)).join(' · ')
+    : undefined;
   const bajo = new Set(
     filas
       .filter((x) => x.dmr != null && x.meta_dmr != null && Number(x.dmr) < Number(x.meta_dmr))
@@ -105,13 +121,10 @@ export function DisponibilidadMecanicaPage({ onNav }) {
               valor={numero(parada, ' h')}
             />
             {segmento === 'flota' && (
-              <Kpi
-                titulo="Penalidad de liquidaciones aprobadas"
-                valor={aprobadas.length === 1 ? dinero(aprobadas[0].penalidad) : 'Sin dato'}
-              />
+              <Kpi titulo="Penalidad de liquidaciones aprobadas" valor={penalidadTotal} detalle={desglosePenalidad} />
             )}
           </div>
-          {segmento === 'flota' && aprobadas.length > 1 && (
+          {segmento === 'flota' && faltaMoneda && !variasMonedas && (
             <p>
               No se puede sumar la penalidad total: la información recibida no identifica la moneda de cada liquidación.
             </p>
@@ -181,11 +194,22 @@ export function DisponibilidadMecanicaPage({ onNav }) {
                                 'Sin liquidación'
                               ) : (
                                 <>
-                                  {dinero(x.penalidad)}
+                                  {dineroConMoneda(x.penalidad, x.moneda)}
                                   <br />
                                   {x.estado_liquidacion || 'Sin dato'}
                                   <br />
-                                  <button type="button" className="dx-btn" onClick={() => onNav?.('liquidacion')}>
+                                  <button
+                                    type="button"
+                                    className="dx-btn"
+                                    onClick={() =>
+                                      onNav?.('liquidacion', {
+                                        liquidacion_id: x.liquidacion_id,
+                                        contrato_id: x.contrato_id,
+                                        activo_id: x.activo_id,
+                                        mes: x.mes,
+                                      })
+                                    }
+                                  >
                                     Ver liquidación
                                   </button>
                                 </>
