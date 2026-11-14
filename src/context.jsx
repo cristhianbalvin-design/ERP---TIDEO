@@ -87,7 +87,6 @@ import {
   actualizarRuta as svcActualizarRuta,
   actualizarEstadoRuta as svcActualizarEstadoRuta,
   agregarParada as svcAgregarParada,
-  actualizarParada as svcActualizarParada,
   reordenarParadas as svcReordenarParadas,
   quitarParada as svcQuitarParada,
   eliminarRuta as svcEliminarRuta,
@@ -98,8 +97,8 @@ import {
   actualizarMantenimientoFlota as svcActualizarMantenimientoFlota,
   eliminarMantenimientoFlota as svcEliminarMantenimientoFlota,
 } from './services/mantenimientosFlotaService.js';
-import { listarLecturasFlota as svcListarLecturasFlota, crearLecturaFlota as svcCrearLecturaFlota } from './services/lecturasFlotaService.js';
-import { listarIncidentesFlota as svcListarIncidentesFlota, crearIncidenteFlota as svcCrearIncidenteFlota } from './services/incidentesFlotaService.js';
+import { listarLecturasFlota as svcListarLecturasFlota } from './services/lecturasFlotaService.js';
+import { listarIncidentesFlota as svcListarIncidentesFlota } from './services/incidentesFlotaService.js';
 // Conserva la misma instancia de contexto durante las recargas en caliente de Vite.
 // Sin ello, un chunk cargado antes de una actualización puede conservar useApp()
 // apuntando al contexto anterior mientras AppProvider ya usa uno nuevo.
@@ -8850,33 +8849,6 @@ export function AppProvider({ children }) {
     return data;
   };
 
-  const actualizarParadaRutaCtx = async (id, cambios) => {
-    if (isSupabaseConfigured()) {
-      const data = await svcActualizarParada(empresa.id, id, cambios);
-      setRutas(prev => prev.map(ruta => ({
-        ...ruta,
-        ruta_paradas: (ruta.ruta_paradas || []).map(parada => parada.id === id ? data : parada),
-      })));
-      setRutaParadas(prev => prev.map(parada => parada.id === id ? data : parada));
-      return data;
-    }
-    const data = { ...cambios, id, updated_at: new Date().toISOString() };
-    setRutas(prev => prev.map(ruta => ({
-      ...ruta,
-      ruta_paradas: (ruta.ruta_paradas || []).map(parada => parada.id === id ? { ...parada, ...data } : parada),
-    })));
-    setRutaParadas(prev => prev.map(parada => parada.id === id ? { ...parada, ...data } : parada));
-    return data;
-  };
-
-  const actualizarEstadoParadaRutaCtx = async (id, estado, observaciones = null) => {
-    const cambios = { estado };
-    if (estado === 'en_curso') cambios.llegada_at = new Date().toISOString();
-    if (estado === 'completada' || estado === 'omitida') cambios.salida_at = new Date().toISOString();
-    if (observaciones !== null) cambios.observaciones = observaciones;
-    return actualizarParadaRutaCtx(id, cambios);
-  };
-
   const reordenarParadasRutaCtx = async (rutaId, paradas) => {
     if (isSupabaseConfigured()) {
       const data = await svcReordenarParadas(empresa.id, rutaId, paradas);
@@ -8927,19 +8899,6 @@ export function AppProvider({ children }) {
     return svcListarLecturasFlota(empresa.id, filtros);
   };
 
-  const crearLecturaFlotaCtx = async payload => {
-    if (!empresa?.id) throw new Error('Sin empresa activa');
-    if (isSupabaseConfigured()) return svcCrearLecturaFlota(empresa.id, payload);
-    return {
-      ...payload,
-      id: generateId('lec'),
-      empresa_id: empresa.id,
-      fecha: payload.fecha || new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-  };
-
   const listarIncidentesFlotaCtx = async filtros => {
     if (!empresa?.id || !isSupabaseConfigured()) return [];
     return svcListarIncidentesFlota(empresa.id, filtros);
@@ -8948,19 +8907,6 @@ export function AppProvider({ children }) {
   const listarParadasLibresCtx = async () => {
     if (!empresa?.id || !isSupabaseConfigured()) return [];
     return svcListarParadasLibres(empresa.id);
-  };
-
-  const crearIncidenteFlotaCtx = async payload => {
-    if (!empresa?.id) throw new Error('Sin empresa activa');
-    if (isSupabaseConfigured()) return svcCrearIncidenteFlota(empresa.id, payload);
-    return {
-      ...payload,
-      id: generateId('inc'),
-      empresa_id: empresa.id,
-      estado: payload.estado || 'abierto',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
   };
 
   const crearTransportistaCtx = async (form) => {
@@ -12056,9 +12002,9 @@ export function AppProvider({ children }) {
     catalogoVenta, setCatalogoVenta, crearProductoCatalogoCtx,
     rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas, buscarGastosCampoCtx,
     crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx, eliminarRutaCtx,
-    actualizarParadaRutaCtx, actualizarEstadoParadaRutaCtx, reordenarParadasRutaCtx, quitarParadaRutaCtx,
+    reordenarParadasRutaCtx, quitarParadaRutaCtx,
     mantenimientosFlota, recargarMantenimientosFlota, crearMantenimientoFlotaCtx, actualizarMantenimientoFlotaCtx, eliminarMantenimientoFlotaCtx,
-    listarLecturasFlotaCtx, crearLecturaFlotaCtx, listarIncidentesFlotaCtx, crearIncidenteFlotaCtx, listarParadasLibresCtx,
+    listarLecturasFlotaCtx, listarIncidentesFlotaCtx, listarParadasLibresCtx,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,

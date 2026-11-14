@@ -5,7 +5,7 @@ catalogo: operaciones/transporte-liquidacion
 titulo: Liquidación de transporte
 resumen: Junta los viajes comerciales entregados de un cliente, calcula flete, espera, peajes, recargos, costos y margen, recoge la conformidad del cliente y envía la liquidación a Ventas para facturar. Incluye la rendición de gastos de cada conductor.
 componentes: operaciones-app/src/zahory-mock/pages/transporte/LiquidacionTransportePage.jsx#LiquidacionTransportePage, operaciones-app/src/zahory-mock/pages/transporte/LiquidacionDetalle.jsx#LiquidacionDetalle, operaciones-app/src/zahory-mock/pages/transporte/RendicionDetalle.jsx#RendicionDetalle, operaciones-app/src/services/transporteLiquidacionService.js
-huella: e71e8fb7cf 982acbc53a d970c22d77 429486daab
+huella: e71e8fb7cf 982acbc53a d970c22d77 3ac73839a7
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | La espera se cobra según la tarifa del viaje: horas libres por parada y precio por hora. Los peajes se suman desde los tickets del conductor, salvo que la tarifa diga que ya los incluye.
 paso: 2 | pantalla=transporte_comercial | permiso=editar | En la pestaña Rendiciones de conductores abre la rendición del viaje. Usa Fondo entregado para anotar lo que se le dio al conductor y su referencia; solo sirve para calcular el saldo y no mueve Caja Chica.
 paso: 3 | pantalla=transporte_comercial | permiso=aprobar | Revisa cada gasto con su foto y usa Aprobar u Observar; al observar escribe el motivo. Un gasto observado no cuenta como costo ni se reembolsa. Cuando no queden gastos por revisar, usa Aprobar rendición.

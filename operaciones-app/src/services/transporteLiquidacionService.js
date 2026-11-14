@@ -30,6 +30,13 @@ export async function listarLiquidaciones(empresaId) {
   return (data || []).map(l => ({ ...l, n_viajes: (l.viajes || []).filter(v => v.activo).length }));
 }
 
+export async function obtenerLiquidacionActivaViaje(viajeId) {
+  const { data, error } = await getSupabaseClient().from('transporte_liquidacion_viajes')
+    .select('liquidacion_id').eq('viaje_id', viajeId).eq('activo', true).maybeSingle();
+  check(error);
+  return data?.liquidacion_id || null;
+}
+
 // Viajes comerciales entregados que aún no están en una liquidación.
 export async function listarPorLiquidar(empresaId) {
   const { data, error } = await getSupabaseClient().from('transporte_viajes').select(VIAJE)
