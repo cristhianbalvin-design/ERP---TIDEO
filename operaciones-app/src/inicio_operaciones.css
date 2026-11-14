@@ -20,3 +20,9 @@ html[data-dx-work-compact="true"].dark .dx-opsini-bar, html[data-dx-work-compact
 .ops-inicio-aria .dxi-root .dxi-hero h1 em { background: linear-gradient(90deg, #FFD08A, #F59E0B); -webkit-background-clip: text; background-clip: text; }
 .ops-inicio-aria .dxi-root .dxi-send, .ops-inicio-aria .dxi-root .dxi-act:not(.dxi-sec) { background: #1E2126; color: #fff; }
 .dark .ops-inicio-aria .dxi-root .dxi-send, .dark .ops-inicio-aria .dxi-root .dxi-act:not(.dxi-sec) { background: #F59E0B; color: #2A1700; }
+.ops-inicio-aria .dxi-root { --dx-ui-cyan: #D97706; --dx-ui-cyan-fg: #8A4B00; --dx-ui-cyan-bg: #FFF3E0; }
+.dark .ops-inicio-aria .dxi-root { --dx-ui-cyan: #F59E0B; --dx-ui-cyan-fg: #FFC27A; --dx-ui-cyan-bg: #3A2A10; }
+.ops-inicio-aria .dxi-root .dxi-p { background: linear-gradient(135deg, #F59E0B, #D97706); color: #2A1700; box-shadow: 0 8px 24px rgba(245,158,11,.32); }
+.ops-inicio-aria .dxi-root .dxi-ask { background: linear-gradient(100deg, #F59E0B, #FDE68A 55%, #F59E0B); background-size: 220% 100%; }
+.ops-inicio-aria .dxi-root .dxi-me { background: linear-gradient(135deg, #F59E0B, #1E2126); }
+.ops-inicio-aria .dxi-root .dxi-rb-aria { background: #1E2126; box-shadow: 0 0 0 2px #F59E0B; }
