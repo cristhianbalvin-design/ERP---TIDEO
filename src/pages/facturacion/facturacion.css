@@ -215,6 +215,7 @@
 .dx-facliq-penalidad, .dx-facliq-error { color:var(--dx-ui-red-fg); }
 .dx-facliq-error { flex-basis:100%; }
 .dx-facliq-error label { display:block; }
+.dx-facliq-panel .dx-facliq-aviso { padding:10px 12px; border:1px solid var(--dx-ui-amber-dot); border-radius:var(--dx-ui-radius-field); background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); font-size:12px; }
 .dx-facliq-glosa { grid-column:1 / -1; }
 .dx-facliq-panel .dx-ui-dialog-foot { flex-wrap:wrap; }
 @container (max-width:899px) {

@@ -5,7 +5,7 @@ catalogo: operaciones/sos-telemetria
 titulo: Análisis SOS
 resumen: Muestras de aceite, resultados por elemento y seguimiento de condiciones de alerta o críticas.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/AnalisisSosPage.jsx#AnalisisSosPage
-huella: 5dc3598e36
+huella: 54b1d652c4
 paso: 1 | pantalla=analisis_sos | permiso=ver | Para qué sirve: registrar las muestras de aceite que se envían al laboratorio y sus resultados, para detectar desgaste o contaminación antes de que el equipo falle. Cada resultado se compara con límites de alerta y crítico; un resultado crítico genera automáticamente un hallazgo en el backlog para atenderlo.
 paso: 2 | pantalla=analisis_sos | permiso=ver | SOS significa Scheduled Oil Sampling: análisis de aceite programado. En Muestras consulta y filtra por condición, estado, segmento y sistema, o busca una muestra.
 paso: 3 | pantalla=analisis_sos | permiso=crear | Usa Nueva muestra, completa los datos del equipo, sistema y muestra solicitados y pulsa Guardar.
@@ -15,3 +15,4 @@ paso: 6 | pantalla=analisis_sos | permiso=editar | En Límites consulta los lím
 paso: 7 | pantalla=analisis_sos | permiso=ver | Una condición crítica crea un hallazgo de backlog automáticamente. Para una muestra en alerta sin hallazgo, Crear backlog está disponible si tienes permiso para crear backlog; el botón Backlog abre su seguimiento.
 paso: 8 | pantalla=analisis_sos | permiso=editar | En el detalle de una muestra usa Abrir informe PDF para ver el informe del laboratorio adjunto y Marcar revisada cuando ya analizaste el resultado. Si la muestra generó un hallazgo, Ver backlog te lleva al Backlog operativo para darle seguimiento.
 paso: 9 | pantalla=analisis_sos | permiso=ver | Usa Detalle para revisar resultados e historial. Si no encuentras una muestra, revisa filtros y segmento; si falta una acción, revisa la empresa y solicita los permisos correspondientes.
+paso: 10 | pantalla=analisis_sos | permiso=ver | Si no ves los botones para crear, registrar o editar y aparece el aviso «Estás en la vista consolidada del grupo», es porque la sociedad elegida arriba es la vista consolidada (solo consulta). Elige una sociedad concreta en el selector Sociedad de la parte superior y los botones vuelven a aparecer.
