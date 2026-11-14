@@ -27,7 +27,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Administración | Caja Chica (`caja`) | activa | caja | proceso_caja_chica | 4 | preparar_egreso_caja_chica |
 | Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | concepto_detraccion, problemas_corregir_registro, proceso_cierre_mes, proceso_cotizacion_cobro | 4 | — |
 | Administración | Cuentas por Pagar (`cxp`) | activa | cxp | concepto_detraccion, proceso_cierre_mes, proceso_solpe_pago | 4 | — |
-| Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_cotizacion_cobro | 5 | — |
+| Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_alquiler_flota, proceso_cotizacion_cobro | 5 | — |
 | Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | 1 | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | presupuestos | proceso_cierre_mes | — | — |

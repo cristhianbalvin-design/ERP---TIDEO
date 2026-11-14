@@ -13,3 +13,4 @@ paso: 3 | pantalla=actas_despachos | permiso=ninguno | Al entregar el equipo usa
 paso: 4 | pantalla=actas_despachos | permiso=ninguno | Cuando el equipo regresa usa Recibir equipo y emite el acta de recepción de la misma forma. Un acta equivocada se deja sin efecto con Anular acta.
 paso: 5 | pantalla=liquidacion_flota | permiso=ninguno | En Liquidación & DMR registra cada día con Nuevo parte: las horas operadas, el horómetro y las paradas, que se agregan con Agregar parada.
 paso: 6 | pantalla=liquidacion_flota | permiso=ninguno | Al cierre del mes usa Liquidar un mes y Crear liquidación, que queda en borrador. Se manda con Enviar a revisión y quien revisa usa Aprobar o Devolver.
+paso: 7 | pantalla=facturacion | permiso=facturacion:crear | En Facturación abre Liquidaciones por facturar, selecciona los equipos pendientes de la liquidación aprobada y emite el comprobante y su cuenta por cobrar.
