@@ -5,7 +5,7 @@ catalogo: operaciones/programacion-pm
 titulo: Programación de mantenimiento preventivo
 resumen: Planes, vencimientos y registro de mantenimiento preventivo por equipo.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/ProgramacionPmPage.jsx#ProgramacionPmPage
-huella: 327080426f
+huella: 81e8927c94
 paso: 1 | pantalla=programacion_pm | permiso=ver | Para qué sirve: planificar el mantenimiento preventivo (PM) de cada equipo según sus horas de uso o según el calendario, ver a tiempo qué equipos están por vencer o vencidos y generar sus órdenes de trabajo antes de que fallen. Aplica a la flota en alquiler, a las máquinas del taller como tornos y CNC y a equipos de clientes con contrato de mantenimiento.
 paso: 2 | pantalla=programacion_pm | permiso=ver | Usa Programa para revisar los mantenimientos por equipo y Planes para consultar los planes disponibles. Busca por equipo o plan y filtra por Semáforo y Segmento.
 paso: 3 | pantalla=programacion_pm | permiso=crear | En Planes usa Nuevo plan; define su alcance por modelo o equipo, intervalo en horas y/o días, tolerancia y tareas, y pulsa Guardar.
@@ -14,3 +14,4 @@ paso: 5 | pantalla=programacion_pm | permiso=ver | El semáforo muestra vencido,
 paso: 6 | pantalla=programacion_pm | permiso=crear | En Programa usa Generar OT para llevar el plan a Nueva OT y completa la orden preventiva con su equipo. Si ya hay una OT activa, usa Ver OT.
 paso: 7 | pantalla=programacion_pm | permiso=crear | Usa Registrar PM realizado, indica la fecha y un horómetro válido, y pulsa Guardar para registrar la ejecución.
 paso: 8 | pantalla=programacion_pm | permiso=ver | Si no aparece un programa, revisa los filtros, el plan y su alcance. Si figura sin lectura, revisa el horómetro disponible; si falta una acción, comprueba la empresa y los permisos de crear o editar.
+paso: 9 | pantalla=programacion_pm | permiso=ver | Si no ves los botones para crear, registrar o editar y aparece el aviso «Estás en la vista consolidada del grupo», es porque la sociedad elegida arriba es la vista consolidada (solo consulta). Elige una sociedad concreta en el selector Sociedad de la parte superior y los botones vuelven a aparecer.

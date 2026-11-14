@@ -153,7 +153,7 @@ export function RendicionDetalle({ viajeId, empresaId, perm, onNav }) {
       <div className="dx-ui-kpi"><strong>{formatearImporte(fondo, moneda)}</strong><span>Fondo entregado</span></div>
       <div className="dx-ui-kpi"><strong>{formatearImporte(gastado, moneda)}</strong><span>Gastado</span></div>
       <div className="dx-ui-kpi"><strong>{formatearImporte(aprobado, moneda)}</strong><span>Aprobado</span></div>
-      <div className="dx-ui-kpi"><strong>{formatearImporte(Math.abs(saldo), moneda)}</strong><span>{saldo > 0 ? 'A reembolsar al conductor' : saldo < 0 ? 'A devolver' : 'Saldo'}</span></div>
+      <div className="dx-ui-kpi"><strong>{formatearImporte(Math.abs(saldo), moneda)}</strong><span>{saldo > 0 ? 'A reembolsar' : saldo < 0 ? 'A devolver' : 'Saldo'}</span></div>
     </div>
     <p className="dx-tmsliq-help dx-tmsliq-kpinote">Fondo: {ren?.fondo_referencia || 'sin referencia'} · {etiquetaContador(validos.length, 'gasto')} válidos
       {saldo !== 0 && ` · ${saldo > 0 ? 'el conductor gastó más del fondo' : 'al conductor le sobró fondo'}${pendientes ? ' (si se aprueban los pendientes)' : ''}`}</p>
@@ -183,12 +183,12 @@ export function RendicionDetalle({ viajeId, empresaId, perm, onNav }) {
       <div className="dx-tmsliq-note is-cyan dx-tmsliq-inset" role="note">Los gastos aprobados son el costo del viaje en la liquidación. Un gasto observado no se cuenta ni se reembolsa.</div>
     </div>
 
-    {(ren?.fondo_caja_id || gastosAprobados.length > 0 || movimientos.length > 0) && <div className="dx-ui-card dx-tmsliq-caja">
+    {(aprobada ? movimientos.length > 0 : (ren?.fondo_caja_id || gastosAprobados.length > 0)) && <div className="dx-ui-card dx-tmsliq-caja">
       <div className="dx-ui-toolbar"><h2>{aprobada ? 'Movimientos en Caja Chica' : 'Así queda en Caja Chica al aprobar'}</h2></div>
       <p className="dx-tmsliq-help">{nombreCaja || 'Sin caja chica seleccionada'}</p>
       <div className="dx-tmsliq-caja-head"><span>Fecha</span><span>Movimiento</span><span>Categoría ER</span><span>Monto</span></div>
       {vista.map(m => <div className="dx-tmsliq-caja-row" key={m.id}><span data-label="Fecha">{fechaDMY(m.fecha)}</span><span data-label="Movimiento">{m.concepto} {m.origen === 'transporte_entrega' && <span className="dx-ui-pill is-gray"><i />{m.vistaEntrega || (m.estado === 'anulado' && m.motivo_anulacion?.startsWith('Rendida en')) ? 'Rendida' : m.estado === 'anulado' ? 'Anulada' : 'Por rendir'}</span>}{m.origen !== 'transporte_entrega' && m.estado === 'anulado' && <span className="dx-ui-pill is-gray"><i />Anulado</span>}</span><span data-label="Categoría ER">{m.origen === 'transporte_entrega' ? 'No es gasto' : m.categoria || 'Logística'}</span><span data-label="Monto">{formatearImporte(Number(m.monto), m.moneda || moneda)}</span></div>)}
-      <div className="dx-tmsliq-datos"><div>Entrega rendida (se revierte) <b>+ {formatearImporte(entrega ? fondo : 0, moneda)}</b></div><div>Gastos aprobados (Logística · costo de ventas) <b>− {formatearImporte(aprobado, moneda)}</b></div><div>Efecto neto en la caja <b>{formatearImporte(redondear((entrega ? fondo : 0) - aprobado), moneda)}</b></div><div>Saldo actual de la caja <b>{cajaOrigen ? formatearImporte(cajaOrigen.saldo, moneda) : 'Sin dato'}</b></div></div>
+      <div className="dx-tmsliq-datos"><div>Entrega rendida (se revierte) <b>+ {formatearImporte(entrega ? fondo : 0, moneda)}</b></div><div>Gastos aprobados (Logística · costo de ventas) <b>− {formatearImporte(aprobado, moneda)}</b></div><div>Efecto neto en la caja <b>{(n => `${n < 0 ? '− ' : n > 0 ? '+ ' : ''}${formatearImporte(Math.abs(n), moneda)}`)(redondear((entrega ? fondo : 0) - aprobado))}</b></div><div>Saldo actual de la caja <b>{cajaOrigen ? formatearImporte(cajaOrigen.saldo, moneda) : 'Sin dato'}</b></div></div>
       {entrega && diferencia !== 0 && <p className="dx-tmsliq-help">{diferencia > 0 ? `El conductor gastó ${formatearImporte(diferencia, moneda)} más que el fondo: se le reembolsa en efectivo desde la caja y el saldo coincide con lo contado.` : `El conductor gastó ${formatearImporte(Math.abs(diferencia), moneda)} menos que el fondo: devuelve ese importe a la caja y el saldo coincide con lo contado.`}</p>}
     </div>}
 

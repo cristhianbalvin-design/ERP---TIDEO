@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { usePermisoPantalla } from './confiabilidadPermisos.js';
+import { AvisoVistaConsolidada } from './confiabilidadUi.jsx';
 import {
   listarActivosPorSegmento,
   listarBacklog,
@@ -308,6 +309,7 @@ export function BacklogOperativoPage({ onNav }) {
           </button>
         )}
       </header>
+      <AvisoVistaConsolidada visible={permisos.vistaConsolidada} />
       {(error || permisos.error) && <p role="alert">{error || permisos.error}</p>}
       {!sesion.empresaId && (
         <div className="dx-ui-empty">{sesion.cargando ? 'Cargando sesión…' : 'Seleccione una empresa operativa.'}</div>
@@ -335,7 +337,7 @@ export function BacklogOperativoPage({ onNav }) {
             ].map(([v, l]) => (
               <div className="dx-ui-kpi" key={l}>
                 <strong>{v}</strong>
-                <span>{l}</span>
+                <span title={l}>{l}</span>
               </div>
             ))}
           </div>
@@ -677,10 +679,15 @@ export function BacklogOperativoPage({ onNav }) {
             )}
             {motivo !== null && (
               <div className="dx-ui-field">
-                <label>
+                <label htmlFor="dx-confbl-motivo-descarte">
                   Motivo del descarte <i className="dx-ui-required">*</i>
                 </label>
-                <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+                <textarea
+                  id="dx-confbl-motivo-descarte"
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  aria-invalid={!!errores.motivo}
+                />
                 {errores.motivo && (
                   <small className="dx-ui-field-error" role="alert">
                     {errores.motivo}

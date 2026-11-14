@@ -5,7 +5,7 @@ catalogo: operaciones/backlog
 titulo: Backlog operativo
 resumen: Hallazgos y necesidades de mantenimiento hasta su atención en una orden de trabajo.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/BacklogOperativoPage.jsx#BacklogOperativoPage
-huella: d7e7793323
+huella: c138406d55
 paso: 1 | pantalla=backlog | permiso=ver | Para qué sirve: aquí se anotan y priorizan los hallazgos de mantenimiento de cada equipo (una fuga, un desgaste, un resultado de aceite crítico, un PM vencido) desde que se detectan hasta que se atienden en una OT, para que nada se pierda y se trabaje primero lo más crítico. Se usa a diario por supervisores y planificadores de mantenimiento de flota, taller y equipos de clientes.
 paso: 2 | pantalla=backlog | permiso=ver | Consulta los hallazgos de Flota en alquiler, Máquinas de taller y Equipos de clientes. Selecciona Todos, Flota, Taller o Cliente para acotar los indicadores y la lista.
 paso: 3 | pantalla=backlog | permiso=ver | Usa Lista o Tablero, la búsqueda por equipo o descripción y los filtros Ciclo, Prioridad, Fuente y Sistema. Los cerrados y descartados se muestran en Lista.
@@ -16,3 +16,4 @@ paso: 7 | pantalla=backlog | permiso=editar | Crear OT lleva el hallazgo a Nueva
 paso: 8 | pantalla=backlog | permiso=editar | Para Descartar indica el motivo y usa Confirmar descarte. Reabrir devuelve un hallazgo cerrado o descartado a nuevo. Guarda o descarta cambios antes de cambiar el ciclo o crear la OT.
 paso: 9 | pantalla=backlog | permiso=editar | En el detalle, si el hallazgo aún no tiene equipo verás Sin equipo: elige el equipo antes de crear la OT. Si cambiaste datos y quieres volver atrás usa Descartar cambios. Cuando el hallazgo ya está en una OT, Ver OT en bandeja abre la bandeja de órdenes para seguir su avance.
 paso: 10 | pantalla=backlog | permiso=ver | Si no aparece un hallazgo, revisa el segmento, la búsqueda y los filtros. Si falta un botón o aparece un aviso de permiso, revisa la empresa y solicita acceso para ver, crear o editar según la acción.
+paso: 11 | pantalla=backlog | permiso=ver | Si no ves los botones para crear, registrar o editar y aparece el aviso «Estás en la vista consolidada del grupo», es porque la sociedad elegida arriba es la vista consolidada (solo consulta). Elige una sociedad concreta en el selector Sociedad de la parte superior y los botones vuelven a aparecer.

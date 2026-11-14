@@ -3,9 +3,9 @@ tipo: proceso
 pantalla: ninguna
 catalogo: admin/os_cliente, operaciones/produccion-crear-of, operaciones/produccion-detalle-of, operaciones/maestranza-of
 titulo: Fabricación con Orden de Fabricación (OF)
-resumen: Sigue un trabajo de fabricación desde la orden de servicio del cliente hasta la OF lista para entrega: creación, ruta de tareas, materiales, aprobación, avance por partes y calidad.
+resumen: Sigue un trabajo de fabricación desde la orden de servicio del cliente hasta la entrega al cliente: creación, ruta de tareas, materiales, aprobación, avance por partes, calidad y entrega con acta, guía y garantía.
 componentes: src/pages_core.jsx#OSCliente, operaciones-app/src/zahory-mock/pages/of/CrearOFPage.jsx#CrearOFPage, operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage, operaciones-app/src/zahory-mock/pages/of/BandejaOFPage.jsx#BandejaOFPage
-huella: 90315ca39a 4ff52824a1 7cb18bcc14 6f1d2aaebd
+huella: 90315ca39a 4ff52824a1 3a3039c203 6f1d2aaebd
 pantalla_recorrido: os_cliente,of
 paso: 1 | pantalla=os_cliente | permiso=ninguno | Cuando el trabajo vendido es una fabricación, en la OS Cliente usa Crear OF en lugar de Crear OT.
 paso: 2 | pantalla=of | permiso=ninguno | En Nueva OF, la orden parte de la OS del cliente y toma su Hoja de Costeo si la tiene. Crear OF la registra; si la OS ya tiene una, el botón dice Crear OF adicional.
@@ -15,4 +15,4 @@ paso: 5 | pantalla=of | permiso=ninguno | La bandeja Órdenes de Fab. lista toda
 paso: 6 | pantalla=of | permiso=ninguno | Qué decide si un trabajo va a OT o a OF: el tipo del Trabajo (mantenimiento o fabricación), que se marca en la Hoja de Costeo y viaja a la cotización y a la OS. Una OS de mantenimiento genera OT, una de fabricación genera OF y una mixta genera las dos.
 paso: 7 | pantalla=of | permiso=ninguno | Solo se puede crear OF desde una OS de tipo fabricación o mixta. Cada OS admite una OF con copia de su hoja; una segunda se crea como OF adicional, vacía. Desde Administración, el botón Crear OF de la OS abre Operaciones, y la pestaña OF de la OS lista las que ya tiene.
 paso: 8 | pantalla=of | permiso=ninguno | Con la OF aprobada, el avance se registra en su ficha con Registrar avance; el jefe de taller aprueba u observa cada parte en la pestaña Partes. El primer parte aprobado pasa la OF a En producción y cada aprobación actualiza el avance y el costo real.
-paso: 9 | pantalla=of | permiso=ninguno | Terminada la producción, Enviar a calidad pasa la OF a En calidad; se mide en la pestaña Calidad y Liberar OF la deja Lista para entrega. La entrega de la OF al cliente aún no está disponible en el sistema.
+paso: 9 | pantalla=of | permiso=ninguno | Terminada la producción, Enviar a calidad pasa la OF a En calidad; se mide en la pestaña Calidad y Liberar OF la deja Lista para entrega. Con la OF Lista para entrega, Entregar al cliente registra fotos, conformidad y firmas, emite el acta de entrega y la guía de remisión, crea una garantía por unidad y deja la OF Entregada.

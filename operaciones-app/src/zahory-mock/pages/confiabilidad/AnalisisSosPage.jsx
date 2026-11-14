@@ -17,6 +17,7 @@ import {
 } from '../../../services/confiabilidadService.js';
 import { nivelSos, condicionSos, etiquetaConfiabilidad } from './confiabilidadLogic.js';
 import { usePermisoPantalla } from './confiabilidadPermisos.js';
+import { AvisoVistaConsolidada } from './confiabilidadUi.jsx';
 import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 
 const fecha = (x) => (x ? x.slice(0, 10).split('-').reverse().join('/') : 'Sin dato');
@@ -344,6 +345,7 @@ export function AnalisisSosPage({ onNav }) {
           </p>
         </div>
       </header>
+      <AvisoVistaConsolidada visible={perm.vistaConsolidada} />
       <div className="dx-ui-kpi-row">
         {[
           ['Muestras del mes', periodo.length],
@@ -354,7 +356,7 @@ export function AnalisisSosPage({ onNav }) {
         ].map(([l, n]) => (
           <div className="dx-ui-kpi" key={l}>
             <strong>{n}</strong>
-            <span>{l}</span>
+            <span title={l}>{l}</span>
           </div>
         ))}
       </div>
