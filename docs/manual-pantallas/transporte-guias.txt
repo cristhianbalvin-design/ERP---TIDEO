@@ -4,8 +4,8 @@ pantalla: remision
 catalogo: admin/remision
 titulo: Transporte y Guias
 resumen: Órdenes de venta, guías de despacho, transportistas, vehículos y conductores.
-componentes: src/pages_ops.jsx#Remision
-huella: 11875105df
+componentes: src/pages_ops.jsx#Remision, src/components/EnviarARuta.jsx#EnviarARuta
+huella: 11875105df 4ad574d7bf
 paso: 1 | pantalla=remision | permiso=ninguno | Nueva OV crea una orden de venta; Confirmar OV reserva el stock.
 paso: 2 | pantalla=remision | permiso=ninguno | Nueva Guía o Crear guía de despacho prepara la guía y Emitir guía la emite.
 paso: 3 | pantalla=remision | permiso=ninguno | Marcar en tránsito indica que la carga salió y Confirmar entrega que llegó.
@@ -14,3 +14,4 @@ paso: 5 | pantalla=remision | permiso=ninguno | Anular deja sin efecto un docume
 paso: 6 | pantalla=remision | permiso=ninguno | Para qué sirve: despachar mercadería vendida: la orden de venta reserva el stock, la guía ampara el traslado y el seguimiento confirma la entrega. También guarda el padrón de transportistas con sus vehículos y conductores.
 paso: 7 | pantalla=remision | permiso=ninguno | Crear OV guarda la orden de venta y Guardar borrador la deja sin confirmar. Si el producto no está en el catálogo, + Agregar al catálogo lo crea desde aquí. En un transportista, Editar vehículo, Editar conductor, Eliminar vehículo y Eliminar conductor mantienen su flota y su personal, y Guardar cambios conserva la edición.
 paso: 8 | pantalla=remision | permiso=ninguno | Si no ves Emitir guía, la guía ya está emitida o la orden de venta no está confirmada.
+paso: 9 | pantalla=remision | permiso=ninguno | Enviar a ruta aparece en el detalle de una guía no anulada en borrador, emitida o en tránsito si no tiene pedido activo. Elige Recoger o Entregar, indica lugar, texto para el despachador y día; dirección, horario e indicaciones son opcionales. Enviar a la Hoja de Ruta deja el pedido en Por enviar a ruta para que el despachador lo asigne. Retirar permite retirarlo mientras está pendiente.
