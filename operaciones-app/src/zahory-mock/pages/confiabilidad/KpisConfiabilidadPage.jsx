@@ -13,6 +13,7 @@ import {
   vincularFallaOt,
 } from '../../../services/confiabilidadService.js';
 import {
+  AvisoVistaConsolidada,
   BuscadorEquipo,
   Kpi,
   Periodo,
@@ -484,6 +485,7 @@ export function KpisConfiabilidadPage({ onNav }) {
         <h1 className="dx-ui-title">KPIs de confiabilidad</h1>
         <p>Fallas, mantenimiento y disponibilidad por segmento.</p>
       </header>
+      <AvisoVistaConsolidada visible={acciones.vistaConsolidada} />
       <div className="dx-ui-card dx-confk-filtros">
         <Periodo value={periodo} onChange={setPeriodo} />
         <Segmentos prefijo="dx-confk" value={segmento} onChange={setSegmento} />

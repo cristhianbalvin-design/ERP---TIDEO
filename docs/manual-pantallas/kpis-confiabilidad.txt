@@ -5,7 +5,7 @@ catalogo: operaciones/confiabilidad
 titulo: KPIs de confiabilidad
 resumen: Indicadores y registro de fallas por período, equipo y segmento.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/KpisConfiabilidadPage.jsx#KpisConfiabilidadPage
-huella: cc74ea7017
+huella: 311b709587
 paso: 1 | pantalla=confiabilidad_kpis | permiso=ver | Para qué sirve: medir qué tan confiables son los equipos y si el mantenimiento está funcionando: cuántas fallas hubo, cada cuántas horas falla un equipo (MTBF), cuánto tarda en volver a operar (MTTR), su disponibilidad y la proporción de mantenimiento preventivo frente al correctivo. Se usa en las revisiones mensuales de mantenimiento y para decidir en qué equipos o sistemas actuar primero.
 paso: 2 | pantalla=confiabilidad_kpis | permiso=ver | Selecciona el período y el segmento de Flota en alquiler, Máquinas de taller o Equipos de clientes. En Resumen consulta indicadores, tendencias y gráficos de fallas y mantenimiento.
 paso: 3 | pantalla=confiabilidad_kpis | permiso=ver | MTBF es horas operadas ÷ fallas y MTTR es horas de parada ÷ fallas. Para equipos de clientes se usan días entre fallas, pues no se dispone de horas operadas ni disponibilidad contractual propias.
@@ -14,3 +14,4 @@ paso: 5 | pantalla=confiabilidad_kpis | permiso=ver | Registro de fallas reúne 
 paso: 6 | pantalla=backlog | permiso=crear | En Registro de fallas usa Registrar falla para registrar una parada manual, por ejemplo de un torno o CNC; completa los datos solicitados y guarda.
 paso: 7 | pantalla=backlog | permiso=editar | Según el estado y origen de la falla, usa Cerrar, Vincular a OT o Anular. Vincula la parada a la OT correspondiente cuando ambas describen el mismo evento.
 paso: 8 | pantalla=confiabilidad_kpis | permiso=ver | Si faltan datos o gráficos, revisa el período, el segmento y los registros de origen. Si no puedes entrar o falta una acción, revisa la empresa y los permisos de consulta de KPIs y de creación o edición de backlog.
+paso: 9 | pantalla=confiabilidad_kpis | permiso=ver | Si no ves los botones para crear, registrar o editar y aparece el aviso «Estás en la vista consolidada del grupo», es porque la sociedad elegida arriba es la vista consolidada (solo consulta). Elige una sociedad concreta en el selector Sociedad de la parte superior y los botones vuelven a aparecer.

@@ -94,21 +94,34 @@ export function Segmentos({ value, onChange, opciones = ['todos', 'flota', 'tall
     </div>
   );
 }
+export function AvisoVistaConsolidada({ visible }) {
+  return visible ? (
+    <p className="dx-conf-aviso" role="status">
+      Estás en la vista consolidada del grupo. Para registrar o editar, elige una sociedad en el selector Sociedad de la
+      parte superior.
+    </p>
+  ) : null;
+}
 export function Kpi({ titulo, valor, anterior, menorEsMejor = false }) {
   const dif = valor == null || anterior == null ? null : Number(valor) - Number(anterior);
   return (
     <div className="dx-ui-kpi">
-      <strong>{valor == null ? 'Sin dato' : valor}</strong>
+      <strong>
+        {valor == null ? 'Sin dato' : valor}
+        {dif != null && Number.isFinite(dif) && (
+          <small
+            className={dif === 0 ? '' : dif > 0 !== menorEsMejor ? 'dx-confk-good' : 'dx-confk-bad'}
+            aria-label={`${dif > 0 ? '↑' : dif < 0 ? '↓' : '→'} ${numero(Math.abs(dif))} vs periodo anterior`}
+          >
+            {' '}
+            {dif > 0 ? '↑' : dif < 0 ? '↓' : '→'} {numero(Math.abs(dif))}
+          </small>
+        )}
+      </strong>
       <span
         title={dif != null && Number.isFinite(dif) ? `${titulo}: ${numero(Math.abs(dif))} vs periodo anterior` : titulo}
       >
         {titulo}
-        {dif != null && Number.isFinite(dif) && (
-          <small className={dif === 0 ? '' : dif > 0 !== menorEsMejor ? 'dx-confk-good' : 'dx-confk-bad'}>
-            {' '}
-            {dif > 0 ? '↑' : dif < 0 ? '↓' : '→'} {numero(Math.abs(dif))} vs periodo anterior
-          </small>
-        )}
       </span>
     </div>
   );

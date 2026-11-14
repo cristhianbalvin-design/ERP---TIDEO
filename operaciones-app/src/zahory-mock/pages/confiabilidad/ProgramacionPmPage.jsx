@@ -10,6 +10,7 @@ import {
 } from '../../../services/confiabilidadService.js';
 import { formatoHoras, etiquetaConfiabilidad } from './confiabilidadLogic.js';
 import { usePermisoPantalla } from './confiabilidadPermisos.js';
+import { AvisoVistaConsolidada } from './confiabilidadUi.jsx';
 import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 
 const fecha = (x) => (x ? x.slice(0, 10).split('-').reverse().join('/') : 'Sin dato');
@@ -184,7 +185,8 @@ export function ProgramacionPmPage({ onNav }) {
       if (modal === 'plan') {
         const id = await guardarPlanPm({ ...form, empresa_id: empresa, tareas: form.tareas.filter((x) => x.trim()) });
         const actual = await estadoPm(empresa, sociedad);
-        setAviso(`${actual.filter((x) => x.plan_id === id).length} equipos programados.`);
+        const cantidad = actual.filter((x) => x.plan_id === id).length;
+        setAviso(`${cantidad} ${cantidad === 1 ? 'equipo programado' : 'equipos programados'}.`);
       } else {
         await registrarEjecucionPm(seleccion.programa_id, form.fecha, Number(form.horometro), form.observacion || null);
         setAviso('PM realizado registrado.');
@@ -238,6 +240,7 @@ export function ProgramacionPmPage({ onNav }) {
           <p className="dx-ui-sub">Planes para flota en alquiler, máquinas de taller y equipos de clientes.</p>
         </div>
       </header>
+      <AvisoVistaConsolidada visible={perm.vistaConsolidada} />
       <div className="dx-ui-kpi-row">
         {[
           ['Vencidos', filas.filter((x) => x.semaforo === 'vencido').length],
@@ -248,7 +251,7 @@ export function ProgramacionPmPage({ onNav }) {
         ].map(([l, n]) => (
           <div className="dx-ui-kpi" key={l}>
             <strong>{n}</strong>
-            <span>{l}</span>
+            <span title={l}>{l}</span>
           </div>
         ))}
       </div>
