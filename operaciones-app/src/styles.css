@@ -286,3 +286,4 @@ body {
 
 /* Modo oscuro de Operaciones en grafito (fondo y tarjetas), coherente con el menú y la cabecera. */
 .dark .ops-shell .dx-ui { --dx-ui-bg: #0F1012; --dx-ui-head: #16181B; --dx-ui-card: #1A1C20; --dx-ui-hover: #22252A; --dx-ui-border: #4A4D55; --dx-ui-gray-bg: #2B2E34; }
+.ops-shell .dxi-fab .dxi-tp { background: #1E2126; }
