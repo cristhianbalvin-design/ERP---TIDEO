@@ -11103,3 +11103,14 @@ width:20px;height:20px}
     width: 100%;
   }
 }
+
+.dx-ofe-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.dx-ofe-steps button { min-height: 40px; padding: 6px 10px; border: 1px solid var(--dx-ui-border); border-radius: 8px; background: var(--dx-ui-card); color: var(--dx-ui-ink); }
+.dx-ofe-steps button[aria-current="step"] { border-color: var(--dx-ui-cyan); font-weight: 700; }
+.dx-ofe-steps button:focus-visible, .dx-ofe-unidades button:focus-visible { outline: 2px solid var(--dx-ui-cyan); outline-offset: 2px; }
+.dx-ofe-unidades { container-type: inline-size; }
+.dx-ofe-unidad { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; padding: 12px; border-bottom: 1px solid var(--dx-ui-border); }
+[data-theme="dark"] .dx-ofe-steps button { color: var(--dx-ui-ink); }
+@container (max-width: 760px) { .dx-ofe-unidad { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 600px) { .dx-ofe-unidad { gap: 8px; } }
+@container (max-width: 420px) { .dx-ofe-unidad { grid-template-columns: minmax(0, 1fr); } }
