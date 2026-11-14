@@ -5,7 +5,7 @@ catalogo: operaciones/programacion-pm
 titulo: Programación de mantenimiento preventivo
 resumen: Planes, vencimientos y registro de mantenimiento preventivo por equipo.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/ProgramacionPmPage.jsx#ProgramacionPmPage
-huella: 327080426f
+huella: d616e1aa4f
 paso: 1 | pantalla=programacion_pm | permiso=ver | Para qué sirve: planificar el mantenimiento preventivo (PM) de cada equipo según sus horas de uso o según el calendario, ver a tiempo qué equipos están por vencer o vencidos y generar sus órdenes de trabajo antes de que fallen. Aplica a la flota en alquiler, a las máquinas del taller como tornos y CNC y a equipos de clientes con contrato de mantenimiento.
 paso: 2 | pantalla=programacion_pm | permiso=ver | Usa Programa para revisar los mantenimientos por equipo y Planes para consultar los planes disponibles. Busca por equipo o plan y filtra por Semáforo y Segmento.
 paso: 3 | pantalla=programacion_pm | permiso=crear | En Planes usa Nuevo plan; define su alcance por modelo o equipo, intervalo en horas y/o días, tolerancia y tareas, y pulsa Guardar.

@@ -5,7 +5,7 @@ catalogo: operaciones/backlog
 titulo: Backlog operativo
 resumen: Hallazgos y necesidades de mantenimiento hasta su atención en una orden de trabajo.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/BacklogOperativoPage.jsx#BacklogOperativoPage
-huella: d7e7793323
+huella: e58cc3db83
 paso: 1 | pantalla=backlog | permiso=ver | Para qué sirve: aquí se anotan y priorizan los hallazgos de mantenimiento de cada equipo (una fuga, un desgaste, un resultado de aceite crítico, un PM vencido) desde que se detectan hasta que se atienden en una OT, para que nada se pierda y se trabaje primero lo más crítico. Se usa a diario por supervisores y planificadores de mantenimiento de flota, taller y equipos de clientes.
 paso: 2 | pantalla=backlog | permiso=ver | Consulta los hallazgos de Flota en alquiler, Máquinas de taller y Equipos de clientes. Selecciona Todos, Flota, Taller o Cliente para acotar los indicadores y la lista.
 paso: 3 | pantalla=backlog | permiso=ver | Usa Lista o Tablero, la búsqueda por equipo o descripción y los filtros Ciclo, Prioridad, Fuente y Sistema. Los cerrados y descartados se muestran en Lista.
