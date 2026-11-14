@@ -9,6 +9,8 @@ import {
   registrarEjecucionPm,
 } from '../../../services/confiabilidadService.js';
 import { formatoHoras, etiquetaConfiabilidad } from './confiabilidadLogic.js';
+import { usePermisoPantalla } from './confiabilidadPermisos.js';
+import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 
 const fecha = (x) => (x ? x.slice(0, 10).split('-').reverse().join('/') : 'Sin dato');
 const textos = { vencido: 'Vencido', por_vencer: 'Por vencer', al_dia: 'Al día', sin_lectura: 'Sin lectura' };
@@ -26,28 +28,19 @@ const vacio = {
   vigente: true,
 };
 const valor = (x) => (x == null || x === '' ? 'Sin dato' : x);
-async function acceso(empresa) {
-  const db = getSupabaseClient();
-  return Object.fromEntries(
-    await Promise.all(
-      ['ver', 'crear', 'editar'].map(async (accion) => {
-        const { data, error } = await db.rpc('usuario_puede', {
-          target_empresa_id: empresa,
-          target_pantalla: 'programacion_pm',
-          target_accion: accion,
-        });
-        return [accion, !error && !!data];
-      }),
-    ),
-  );
-}
 function Campo({ nombre, etiqueta, form, setForm, errores, tipo = 'text', requerido = false, children }) {
   return (
     <label className="dx-ui-field">
       <span>
         {etiqueta} {requerido && <b className="dx-ui-required">*</b>}
       </span>
-      {children || (
+      {children ? (
+        React.Children.map(children, (child) =>
+          React.isValidElement(child) && (child.type === 'input' || child.type === 'select')
+            ? React.cloneElement(child, { 'aria-invalid': !!errores[nombre] })
+            : child,
+        )
+      ) : (
         <input
           name={nombre}
           type={tipo}
@@ -68,8 +61,8 @@ export function ProgramacionPmPage({ onNav }) {
   const sesion = useSesionOperativa();
   const empresa = sesion.empresaId || sesion.empresa?.id,
     sociedad = sesion.sociedadId || sesion.sociedad?.id || null;
-  const [perm, setPerm] = useState(null),
-    [filas, setFilas] = useState([]),
+  const perm = usePermisoPantalla('programacion_pm');
+  const [filas, setFilas] = useState([]),
     [planes, setPlanes] = useState([]),
     [activos, setActivos] = useState([]);
   const [cargando, setCargando] = useState(true),
@@ -87,13 +80,11 @@ export function ProgramacionPmPage({ onNav }) {
     [sucio, setSucio] = useState(false),
     [confirmar, setConfirmar] = useState(false);
   async function cargar() {
-    if (!empresa) return;
+    if (!empresa || perm.cargando) return;
     setCargando(true);
     setError('');
     try {
-      const p = await acceso(empresa);
-      setPerm(p);
-      if (p.ver) {
+      if (perm.ver) {
         const [f, pl, a] = await Promise.all([
           estadoPm(empresa, sociedad),
           listarPlanesPm(empresa),
@@ -111,7 +102,7 @@ export function ProgramacionPmPage({ onNav }) {
   }
   useEffect(() => {
     cargar();
-  }, [empresa, sociedad]);
+  }, [empresa, sociedad, perm.cargando, perm.ver]);
   function abrir(m, f, s = null) {
     setModal(m);
     setForm(f);
@@ -226,7 +217,7 @@ export function ProgramacionPmPage({ onNav }) {
         <div className="dx-ui-empty">{sesion.error || 'Selecciona una empresa para consultar la programación.'}</div>
       </section>
     );
-  if (!empresa || cargando)
+  if (!empresa || perm.cargando || cargando)
     return (
       <section className="dx-ui">
         <div className="dx-ui-empty">Cargando programación…</div>
@@ -235,15 +226,17 @@ export function ProgramacionPmPage({ onNav }) {
   if (!perm?.ver)
     return (
       <section className="dx-ui">
-        <div className="dx-ui-empty">{error || 'No tienes permiso para ver Programación PM.'}</div>
+        <div className="dx-ui-empty">{perm.error || error || 'No tienes permiso para ver Programación PM.'}</div>
       </section>
     );
   return (
     <section className="dx-ui dx-confpm-root">
-      <header>
-        <small>CONFIABILIDAD</small>
-        <h1>Programación de mantenimiento preventivo</h1>
-        <p>Planes para flota en alquiler, máquinas de taller y equipos de clientes.</p>
+      <header className="dx-ui-head-page">
+        <div>
+          <div className="dx-ui-eyebrow">Confiabilidad</div>
+          <h1 className="dx-ui-title">Programación de mantenimiento preventivo</h1>
+          <p className="dx-ui-sub">Planes para flota en alquiler, máquinas de taller y equipos de clientes.</p>
+        </div>
       </header>
       <div className="dx-ui-kpi-row">
         {[
@@ -261,11 +254,23 @@ export function ProgramacionPmPage({ onNav }) {
       </div>
       {aviso && <p role="status">{aviso}</p>}
       {error && !modal && <p role="alert">{error}</p>}
-      <nav>
-        <button type="button" onClick={() => setTab('programa')}>
+      <nav className="dx-ui-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'programa'}
+          className={`dx-ui-tab${tab === 'programa' ? ' on' : ''}`}
+          onClick={() => setTab('programa')}
+        >
           Programa
         </button>
-        <button type="button" onClick={() => setTab('planes')}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'planes'}
+          className={`dx-ui-tab${tab === 'planes' ? ' on' : ''}`}
+          onClick={() => setTab('planes')}
+        >
           Planes
         </button>
       </nav>
@@ -274,19 +279,28 @@ export function ProgramacionPmPage({ onNav }) {
           <h2>{tab === 'programa' ? 'Programa' : 'Planes'}</h2>
           <span className="dx-ui-count">{tab === 'programa' ? visibles.length : planes.length} registros</span>
           {tab === 'planes' && perm.crear && (
-            <button onClick={() => abrir('plan', { ...vacio, tareas: [] })}>Nuevo plan</button>
+            <button className="dx-btn" onClick={() => abrir('plan', { ...vacio, tareas: [] })}>
+              Nuevo plan
+            </button>
           )}
         </div>
         {tab === 'programa' ? (
           <>
             <div className="dx-confpm-filtros">
-              <input
-                aria-label="Buscar equipo o plan"
-                placeholder="Buscar equipo o plan"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-              <select aria-label="Semáforo" value={filtro} onChange={(e) => setFiltro(e.target.value)}>
+              <label className="dx-ui-search">
+                <input
+                  aria-label="Buscar equipo o plan"
+                  placeholder="Buscar equipo o plan"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+              </label>
+              <select
+                className="dx-ui-select"
+                aria-label="Semáforo"
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+              >
                 <option value="todos">Todos los estados</option>
                 {Object.entries(textos).map(([k, v]) => (
                   <option key={k} value={k}>
@@ -294,7 +308,12 @@ export function ProgramacionPmPage({ onNav }) {
                   </option>
                 ))}
               </select>
-              <select aria-label="Segmento" value={segmento} onChange={(e) => setSegmento(e.target.value)}>
+              <select
+                className="dx-ui-select"
+                aria-label="Segmento"
+                value={segmento}
+                onChange={(e) => setSegmento(e.target.value)}
+              >
                 <option value="todos">Todos</option>
                 <option value="flota">Flota en alquiler</option>
                 <option value="taller">Máquinas de taller</option>
@@ -360,15 +379,26 @@ export function ProgramacionPmPage({ onNav }) {
                     )}
                   </div>
                   <div>
-                    <button onClick={() => detalle(f)}>Detalle e historial</button>
-                    {perm.crear && !f.ot_activa_id && <button onClick={() => generar(f)}>Generar OT</button>}
+                    <button className="dx-btn" onClick={() => detalle(f)}>
+                      Detalle e historial
+                    </button>
+                    {perm.crear && !f.ot_activa_id && (
+                      <button className="dx-btn" onClick={() => generar(f)}>
+                        Generar OT
+                      </button>
+                    )}
                     {perm.crear && (
-                      <button onClick={() => abrir('ejecucion', { fecha: '', horometro: '', observacion: '' }, f)}>
+                      <button
+                        className="dx-btn"
+                        onClick={() => abrir('ejecucion', { fecha: '', horometro: '', observacion: '' }, f)}
+                      >
                         Registrar PM realizado
                       </button>
                     )}
                     {f.ot_activa_id && (
-                      <button onClick={() => onNav?.('ots')}>Ver OT {valor(f.ot_activa_numero)}</button>
+                      <button className="dx-btn" onClick={() => onNav?.('ots')}>
+                        Ver OT {valor(f.ot_activa_numero)}
+                      </button>
                     )}
                   </div>
                 </article>
@@ -384,11 +414,13 @@ export function ProgramacionPmPage({ onNav }) {
                 <span>
                   {p.alcance === 'modelo'
                     ? `${p.marca} ${p.modelo}`
-                    : activos.find((a) => a.id === p.activo_id)?.codigo || p.activo_id}
+                    : activos.find((a) => a.id === p.activo_id)?.codigo || 'Sin dato'}
                 </span>
                 <span>{p.vigente ? 'Vigente' : 'No vigente'}</span>
                 {perm.editar && (
-                  <button onClick={() => abrir('plan', { ...p, tareas: [...(p.tareas || [])] })}>Editar</button>
+                  <button className="dx-btn" onClick={() => abrir('plan', { ...p, tareas: [...(p.tareas || [])] })}>
+                    Editar
+                  </button>
                 )}
               </article>
             ))}
@@ -411,10 +443,12 @@ export function ProgramacionPmPage({ onNav }) {
                     ? 'Historial de ejecuciones'
                     : 'Registrar PM realizado'}
               </h2>
-              <button onClick={cerrar}>Cerrar</button>
+              <button className="dx-btn" onClick={cerrar}>
+                Cerrar
+              </button>
             </div>
             {modal === 'detalle' ? (
-              <div>
+              <div className="dx-ui-detail-body">
                 {historial.length ? (
                   historial.map((h) => (
                     <p key={h.id}>
@@ -425,6 +459,7 @@ export function ProgramacionPmPage({ onNav }) {
                 ) : (
                   <p>Sin ejecuciones registradas.</p>
                 )}
+                <div className="dx-ui-dialog-foot">{error && <span role="alert">{error}</span>}</div>
               </div>
             ) : (
               <form onSubmit={guardar} onChange={() => setSucio(true)} noValidate>
@@ -473,21 +508,20 @@ export function ProgramacionPmPage({ onNav }) {
                           </Campo>
                         </>
                       ) : (
-                        <Campo nombre="activo_id" etiqueta="Activo" requerido {...{ form, setForm, errores }}>
-                          <input
-                            list="dx-confpm-activos"
-                            name="activo_id"
-                            value={form.activo_id || ''}
-                            onChange={(e) => setForm({ ...form, activo_id: e.target.value })}
-                          />
-                          <datalist id="dx-confpm-activos">
-                            {activos.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.codigo} {a.nombre}
-                              </option>
-                            ))}
-                          </datalist>
-                        </Campo>
+                        <DxReferenceSelector
+                          label="Activo"
+                          name="activo_id"
+                          required
+                          options={activos}
+                          value={form.activo_id}
+                          error={errores.activo_id}
+                          optionalLabel={null}
+                          getLabel={(a) => `${valor(a.codigo)} · ${valor(a.nombre)}`}
+                          onChange={(activo_id) => {
+                            setForm({ ...form, activo_id: activo_id || '' });
+                            setSucio(true);
+                          }}
+                        />
                       )}
                       <Campo
                         nombre="intervalo_horas"
@@ -539,7 +573,9 @@ export function ProgramacionPmPage({ onNav }) {
                 </div>
                 <div className="dx-ui-dialog-foot">
                   {error && <span role="alert">{error}</span>}
-                  <button type="submit">Guardar</button>
+                  <button className="dx-btn" type="submit">
+                    Guardar
+                  </button>
                 </div>
               </form>
             )}
@@ -547,6 +583,7 @@ export function ProgramacionPmPage({ onNav }) {
               <div role="alertdialog" aria-label="Cambios sin guardar">
                 <p>Hay cambios sin guardar. ¿Descartarlos?</p>
                 <button
+                  className="dx-btn"
                   onClick={() => {
                     setModal('');
                     setConfirmar(false);
@@ -555,7 +592,9 @@ export function ProgramacionPmPage({ onNav }) {
                 >
                   Descartar
                 </button>
-                <button onClick={() => setConfirmar(false)}>Seguir editando</button>
+                <button className="dx-btn" onClick={() => setConfirmar(false)}>
+                  Seguir editando
+                </button>
               </div>
             )}
           </div>

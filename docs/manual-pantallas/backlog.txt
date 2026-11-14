@@ -6,6 +6,9 @@ titulo: Backlog
 resumen: Consulta de requerimientos de Administración; el backlog se gestiona en Operaciones.
 componentes: src/pages_ops.jsx#Backlog
 huella: d348b762df
-paso: 1 | pantalla=backlog | permiso=ninguno | Esta vista de Administración es solo de consulta. Revisa los requerimientos en Kanban o Lista y usa la búsqueda para encontrar uno por descripción, cuenta o servicio.
-paso: 2 | pantalla=backlog | permiso=ninguno | Para registrar o gestionar hallazgos y llevarlos a una OT, usa Ir a Operaciones y entra a Confiabilidad › Backlog operativo.
-paso: 3 | pantalla=backlog | permiso=ninguno | Si no puedes gestionar un hallazgo en Operaciones, revisa la empresa y solicita los permisos de backlog necesarios.
+paso: 1 | pantalla=backlog | permiso=ninguno | Para qué sirve: dar a Administración una vista de consulta de los requerimientos y hallazgos pendientes de la empresa, sin modificarlos. La gestión del backlog (registrar, priorizar, cambiar el ciclo y llevarlo a una OT) se hace en Operaciones › Confiabilidad › Backlog operativo, donde trabajan los equipos de mantenimiento.
+paso: 2 | pantalla=backlog | permiso=ninguno | Esta vista de Administración es solo de consulta. Revisa los requerimientos en Kanban o Lista y usa la búsqueda para encontrar uno por descripción, cuenta o servicio.
+paso: 3 | pantalla=backlog | permiso=ninguno | En la vista Lista, además del servicio, la cuenta, el monto, la prioridad, la fecha y el estado, se muestran el Equipo, el Ciclo (nuevo, evaluado, pendiente de recursos, listo para OT, en OT, cerrado o descartado) y la Prioridad calculada que se registraron en Operaciones. Un valor que no se registró aparece como Sin dato.
+paso: 4 | pantalla=backlog | permiso=ninguno | Para registrar o gestionar hallazgos y llevarlos a una OT, usa Ir a Operaciones y entra a Confiabilidad › Backlog operativo.
+paso: 5 | pantalla=backlog | permiso=ninguno | Si no puedes gestionar un hallazgo en Operaciones, revisa la empresa y solicita los permisos de backlog necesarios.
+paso: 6 | pantalla=backlog | permiso=ninguno | Si un requerimiento no aparece, revisa la búsqueda y la vista Kanban o Lista. Si necesitas cambiar algo y no encuentras cómo hacerlo aquí, es porque esta pantalla es solo de consulta: usa Ir a Operaciones.

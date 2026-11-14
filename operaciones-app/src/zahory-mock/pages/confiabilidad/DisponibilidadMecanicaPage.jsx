@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
+import { usePermisoPantalla } from './confiabilidadPermisos.js';
 import { cargarDisponibilidad } from '../../../services/confiabilidadService.js';
-import { Barra, Kpi, Periodo, Segmentos, dinero, fecha, numero, periodoInicial, permisos } from './confiabilidadUi.jsx';
+import { Barra, Kpi, Periodo, Segmentos, dinero, mes, numero, periodoInicial } from './confiabilidadUi.jsx';
 
 export function DisponibilidadMecanicaPage({ onNav }) {
   const { empresaId, sociedadId, estado } = useSesionOperativa();
@@ -10,10 +11,10 @@ export function DisponibilidadMecanicaPage({ onNav }) {
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
-  const [acceso, setAcceso] = useState(null);
+  const acceso = usePermisoPantalla('disponibilidad_mecanica');
   useEffect(() => {
     let activo = true;
-    if (!empresaId) {
+    if (!empresaId || acceso.cargando || !acceso.ver) {
       setCargando(false);
       return () => {
         activo = false;
@@ -23,14 +24,12 @@ export function DisponibilidadMecanicaPage({ onNav }) {
     setError('');
     setDatos(null);
     Promise.all([
-      permisos(empresaId, 'disponibilidad_mecanica', ['ver']),
       periodo.desde && periodo.hasta && periodo.desde <= periodo.hasta
         ? cargarDisponibilidad(empresaId, sociedadId, periodo.desde, periodo.hasta, segmento)
         : Promise.reject(new Error('Selecciona un periodo válido.')),
     ])
-      .then(([p, d]) => {
+      .then(([d]) => {
         if (activo) {
-          setAcceso(p);
           setDatos(d);
         }
       })
@@ -43,7 +42,7 @@ export function DisponibilidadMecanicaPage({ onNav }) {
     return () => {
       activo = false;
     };
-  }, [empresaId, sociedadId, periodo.desde, periodo.hasta, segmento]);
+  }, [empresaId, sociedadId, periodo.desde, periodo.hasta, segmento, acceso.cargando, acceso.ver]);
   const filas = datos?.[segmento] || [];
   const suma = (clave, lista = filas) => lista.reduce((s, x) => s + Number(x[clave] || 0), 0);
   const posibles = suma(segmento === 'flota' ? 'horas_programadas' : 'horas_posibles');
@@ -71,11 +70,11 @@ export function DisponibilidadMecanicaPage({ onNav }) {
           opciones={['flota', 'taller', 'cliente']}
         />
       </div>
-      {cargando || estado === 'cargando' ? (
+      {cargando || acceso.cargando || estado === 'cargando' ? (
         <div className="dx-ui-empty">Cargando disponibilidad…</div>
-      ) : error ? (
+      ) : error || acceso.error ? (
         <div className="dx-ui-empty" role="alert">
-          {error}
+          {error || acceso.error}
         </div>
       ) : !empresaId ? (
         <div className="dx-ui-empty">No hay una empresa disponible en la sesión.</div>
@@ -164,7 +163,7 @@ export function DisponibilidadMecanicaPage({ onNav }) {
                         </td>
                         {segmento === 'flota' ? (
                           <>
-                            <td>{fecha(x.mes)}</td>
+                            <td>{mes(x.mes)}</td>
                             <td>
                               {x.contrato || 'Sin dato'}
                               <br />
@@ -186,7 +185,7 @@ export function DisponibilidadMecanicaPage({ onNav }) {
                                   <br />
                                   {x.estado_liquidacion || 'Sin dato'}
                                   <br />
-                                  <button type="button" onClick={() => onNav?.('liquidacion')}>
+                                  <button type="button" className="dx-btn" onClick={() => onNav?.('liquidacion')}>
                                     Ver liquidación
                                   </button>
                                 </>

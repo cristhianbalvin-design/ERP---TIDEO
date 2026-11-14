@@ -16,6 +16,8 @@ import {
   listarBacklog,
 } from '../../../services/confiabilidadService.js';
 import { nivelSos, condicionSos, etiquetaConfiabilidad } from './confiabilidadLogic.js';
+import { usePermisoPantalla } from './confiabilidadPermisos.js';
+import { DxReferenceSelector } from '../../components/dx/DxReferenceSelector.jsx';
 
 const fecha = (x) => (x ? x.slice(0, 10).split('-').reverse().join('/') : 'Sin dato');
 const valor = (x) => (x == null || x === '' ? 'Sin dato' : x);
@@ -48,28 +50,19 @@ const alias = {
   water: 'agua',
   soot: 'hollín',
 };
-async function acceso(empresa, pantalla) {
-  const db = getSupabaseClient();
-  return Object.fromEntries(
-    await Promise.all(
-      ['ver', 'crear', 'editar'].map(async (accion) => {
-        const { data, error } = await db.rpc('usuario_puede', {
-          target_empresa_id: empresa,
-          target_pantalla: pantalla,
-          target_accion: accion,
-        });
-        return [accion, !error && !!data];
-      }),
-    ),
-  );
-}
 function Campo({ nombre, etiqueta, form, setForm, errores, tipo = 'text', requerido, children }) {
   return (
     <label className="dx-ui-field">
       <span>
         {etiqueta} {requerido && <b className="dx-ui-required">*</b>}
       </span>
-      {children || (
+      {children ? (
+        React.Children.map(children, (child) =>
+          React.isValidElement(child) && (child.type === 'input' || child.type === 'select')
+            ? React.cloneElement(child, { 'aria-invalid': !!errores[nombre] })
+            : child,
+        )
+      ) : (
         <input
           name={nombre}
           type={tipo}
@@ -94,9 +87,9 @@ export function AnalisisSosPage({ onNav }) {
   const sesion = useSesionOperativa(),
     empresa = sesion.empresaId || sesion.empresa?.id,
     sociedad = sesion.sociedadId || sesion.sociedad?.id || null;
-  const [perm, setPerm] = useState(null),
-    [permBacklog, setPermBacklog] = useState(null),
-    [muestras, setMuestras] = useState([]),
+  const perm = usePermisoPantalla('analisis_sos');
+  const permBacklog = usePermisoPantalla('backlog');
+  const [muestras, setMuestras] = useState([]),
     [activos, setActivos] = useState([]),
     [backlogs, setBacklogs] = useState([]),
     [limites, setLimites] = useState([]),
@@ -121,14 +114,11 @@ export function AnalisisSosPage({ onNav }) {
     [sucio, setSucio] = useState(false),
     [confirmar, setConfirmar] = useState(false);
   async function cargar() {
-    if (!empresa) return;
+    if (!empresa || perm.cargando || permBacklog.cargando) return;
     setCargando(true);
     setError('');
     try {
-      const [p, pb] = await Promise.all([acceso(empresa, 'analisis_sos'), acceso(empresa, 'backlog')]);
-      setPerm(p);
-      setPermBacklog(pb);
-      if (p.ver) {
+      if (perm.ver) {
         const [m, a, l, b] = await Promise.all([
           listarMuestrasSos(empresa, sociedad),
           listarActivosPorSegmento(empresa),
@@ -137,7 +127,7 @@ export function AnalisisSosPage({ onNav }) {
             .select('*')
             .or(`empresa_id.is.null,empresa_id.eq.${empresa}`)
             .order('elemento'),
-          pb.ver ? listarBacklog(empresa, sociedad) : Promise.resolve([]),
+          permBacklog.ver ? listarBacklog(empresa, sociedad) : Promise.resolve([]),
         ]);
         if (l.error) throw l.error;
         setMuestras(m);
@@ -153,7 +143,7 @@ export function AnalisisSosPage({ onNav }) {
   }
   useEffect(() => {
     cargar();
-  }, [empresa, sociedad]);
+  }, [empresa, sociedad, perm.cargando, perm.ver, permBacklog.cargando, permBacklog.ver]);
   function abrir(tipo, f = {}, m = null) {
     setModal(tipo);
     setForm(f);
@@ -227,8 +217,12 @@ export function AnalisisSosPage({ onNav }) {
     if (modal === 'resultados') {
       if (!form.fecha_resultado) err.fecha_resultado = 'Indica la fecha.';
       const entries = limites.map((l) => valores[l.elemento]).filter((v) => v !== '' && v != null);
-      if (!entries.length || entries.some((v) => !Number.isFinite(Number(v)) || Number(v) < 0))
-        err.valores = 'Ingresa al menos un valor válido y no negativo con límite vigente.';
+      if (!entries.length) err.valores = 'Ingresa al menos un valor con límite vigente.';
+      for (const l of limites) {
+        const v = valores[l.elemento];
+        if (v !== '' && v != null && (!Number.isFinite(Number(v)) || Number(v) < 0))
+          err[`valor-${l.elemento}`] = 'Ingresa un valor válido y no negativo.';
+      }
       if (archivo && archivo.type !== 'application/pdf') err.informe = 'Selecciona un PDF.';
     }
     if (modal === 'limite') {
@@ -289,7 +283,7 @@ export function AnalisisSosPage({ onNav }) {
   }
   async function crearBacklog(m) {
     try {
-      const id = await guardarBacklog({
+      await guardarBacklog({
         empresa_id: empresa,
         sociedad_id: m.sociedad_id,
         activo_id: m.activo_id,
@@ -301,7 +295,7 @@ export function AnalisisSosPage({ onNav }) {
         urgencia: 3,
         fecha_deteccion: m.fecha_muestra,
       });
-      setAviso(`Backlog ${id} creado.`);
+      setAviso('Backlog creado.');
       await cargar();
     } catch (e) {
       setError(e.message);
@@ -327,7 +321,7 @@ export function AnalisisSosPage({ onNav }) {
         <div className="dx-ui-empty">{sesion.error || 'Selecciona una empresa para consultar las muestras.'}</div>
       </section>
     );
-  if (!empresa || cargando)
+  if (!empresa || perm.cargando || permBacklog.cargando || cargando)
     return (
       <section className="dx-ui">
         <div className="dx-ui-empty">Cargando análisis SOS…</div>
@@ -336,15 +330,19 @@ export function AnalisisSosPage({ onNav }) {
   if (!perm?.ver)
     return (
       <section className="dx-ui">
-        <div className="dx-ui-empty">{error || 'No tienes permiso para ver análisis SOS.'}</div>
+        <div className="dx-ui-empty">{perm.error || error || 'No tienes permiso para ver análisis SOS.'}</div>
       </section>
     );
   return (
     <section className="dx-ui dx-confsos-root">
-      <header>
-        <small>CONFIABILIDAD</small>
-        <h1>Análisis de aceite (SOS)</h1>
-        <p>SOS significa Scheduled Oil Sampling: análisis de aceite programado para detectar desgaste.</p>
+      <header className="dx-ui-head-page">
+        <div>
+          <div className="dx-ui-eyebrow">Confiabilidad</div>
+          <h1 className="dx-ui-title">Análisis de aceite (SOS)</h1>
+          <p className="dx-ui-sub">
+            SOS significa Scheduled Oil Sampling: análisis de aceite programado para detectar desgaste.
+          </p>
+        </div>
       </header>
       <div className="dx-ui-kpi-row">
         {[
@@ -364,14 +362,34 @@ export function AnalisisSosPage({ onNav }) {
         <p role="status">
           {aviso}{' '}
           {resultadoGuardado?.backlog_id && (
-            <button onClick={() => onNav?.('backlog')}>Ver backlog {resultadoGuardado.backlog_id}</button>
+            <button className="dx-btn" onClick={() => onNav?.('backlog')}>
+              Ver backlog
+            </button>
           )}
         </p>
       )}
-      {error && !modal && <p role="alert">{error}</p>}
-      <nav>
-        <button onClick={() => setTab('muestras')}>Muestras</button>
-        <button onClick={() => setTab('limites')}>Límites</button>
+      {(error || permBacklog.error) && !modal && (
+        <p className="dx-ui-error" role="alert">
+          {error || permBacklog.error}
+        </p>
+      )}
+      <nav className="dx-ui-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'muestras'}
+          className={`dx-ui-tab${tab === 'muestras' ? ' on' : ''}`}
+          onClick={() => setTab('muestras')}
+        >
+          Muestras
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'limites'}
+          className={`dx-ui-tab${tab === 'limites' ? ' on' : ''}`}
+          onClick={() => setTab('limites')}
+        >
+          Límites
+        </button>
       </nav>
       <div className="dx-ui-card dx-confsos-card">
         <div className="dx-ui-toolbar">
@@ -379,6 +397,7 @@ export function AnalisisSosPage({ onNav }) {
           <span className="dx-ui-count">{tab === 'muestras' ? visibles.length : todosLimites.length} registros</span>
           {tab === 'muestras' && perm.crear && (
             <button
+              className="dx-btn"
               onClick={() =>
                 abrir('muestra', {
                   activo_id: '',
@@ -397,6 +416,7 @@ export function AnalisisSosPage({ onNav }) {
           )}
           {tab === 'limites' && perm.editar && (
             <button
+              className="dx-btn"
               onClick={() =>
                 abrir('limite', {
                   sistema: '',
@@ -417,13 +437,20 @@ export function AnalisisSosPage({ onNav }) {
         {tab === 'muestras' ? (
           <>
             <div className="dx-confsos-filtros">
-              <input
-                aria-label="Buscar muestras"
-                placeholder="Buscar muestras"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-              <select aria-label="Condición" value={condicion} onChange={(e) => setCondicion(e.target.value)}>
+              <label className="dx-ui-search">
+                <input
+                  aria-label="Buscar muestras"
+                  placeholder="Buscar muestras"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+              </label>
+              <select
+                className="dx-ui-select"
+                aria-label="Condición"
+                value={condicion}
+                onChange={(e) => setCondicion(e.target.value)}
+              >
                 <option value="todos">Todas las condiciones</option>
                 {['normal', 'alerta', 'critico'].map((x) => (
                   <option key={x} value={x}>
@@ -431,7 +458,12 @@ export function AnalisisSosPage({ onNav }) {
                   </option>
                 ))}
               </select>
-              <select aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value)}>
+              <select
+                className="dx-ui-select"
+                aria-label="Estado"
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+              >
                 <option value="todos">Todos los estados</option>
                 {['registrada', 'con_resultado', 'revisada', 'anulada'].map((x) => (
                   <option key={x} value={x}>
@@ -439,13 +471,23 @@ export function AnalisisSosPage({ onNav }) {
                   </option>
                 ))}
               </select>
-              <select aria-label="Segmento" value={segmento} onChange={(e) => setSegmento(e.target.value)}>
+              <select
+                className="dx-ui-select"
+                aria-label="Segmento"
+                value={segmento}
+                onChange={(e) => setSegmento(e.target.value)}
+              >
                 <option value="todos">Todos</option>
                 <option value="flota">Flota en alquiler</option>
                 <option value="taller">Máquinas de taller</option>
                 <option value="cliente">Equipos de clientes</option>
               </select>
-              <select aria-label="Sistema" value={sistema} onChange={(e) => setSistema(e.target.value)}>
+              <select
+                className="dx-ui-select"
+                aria-label="Sistema"
+                value={sistema}
+                onChange={(e) => setSistema(e.target.value)}
+              >
                 <option value="todos">Todos los sistemas</option>
                 {[...new Set(muestras.map((m) => m.sistema))].map((x) => (
                   <option key={x}>{x}</option>
@@ -481,15 +523,25 @@ export function AnalisisSosPage({ onNav }) {
                     {etiquetas[m.condicion] || 'Sin resultado'}
                   </span>
                   <p>{etiquetas[m.estado]}</p>
-                  {backlog(m) && <button onClick={() => onNav?.('backlog')}>Backlog {backlog(m)}</button>}
+                  {backlog(m) && (
+                    <button className="dx-btn" onClick={() => onNav?.('backlog')}>
+                      Ver backlog
+                    </button>
+                  )}
                 </div>
                 <div>
-                  <button onClick={() => detalle(m)}>Detalle</button>
+                  <button className="dx-btn" onClick={() => detalle(m)}>
+                    Detalle
+                  </button>
                   {perm.editar && ['registrada', 'con_resultado'].includes(m.estado) && (
-                    <button onClick={() => resultados(m)}>Cargar resultados</button>
+                    <button className="dx-btn" onClick={() => resultados(m)}>
+                      Cargar resultados
+                    </button>
                   )}
                   {permBacklog?.crear && m.condicion === 'alerta' && !backlog(m) && (
-                    <button onClick={() => crearBacklog(m)}>Crear backlog</button>
+                    <button className="dx-btn" onClick={() => crearBacklog(m)}>
+                      Crear backlog
+                    </button>
                   )}
                 </div>
               </article>
@@ -506,6 +558,7 @@ export function AnalisisSosPage({ onNav }) {
                 <span>{limiteTexto(l)}</span>
                 {perm.editar && (
                   <button
+                    className="dx-btn"
                     onClick={() => abrir('limite', { ...l, id: l.empresa_id ? l.id : undefined, empresa_id: empresa })}
                   >
                     {l.empresa_id ? 'Editar' : 'Crear límite propio'}
@@ -530,10 +583,12 @@ export function AnalisisSosPage({ onNav }) {
                   }[modal]
                 }
               </h2>
-              <button onClick={cerrar}>Cerrar</button>
+              <button className="dx-btn" onClick={cerrar}>
+                Cerrar
+              </button>
             </div>
             {modal === 'detalle' ? (
-              <div>
+              <div className="dx-ui-detail-body">
                 <p>
                   {valor(activo(seleccion.activo_id)?.codigo)} · {seleccion.sistema} · {fecha(seleccion.fecha_muestra)}
                 </p>
@@ -592,6 +647,7 @@ export function AnalisisSosPage({ onNav }) {
                 })()}
                 {seleccion.informe_path && (
                   <button
+                    className="dx-btn"
                     onClick={async () => {
                       try {
                         window.open(await urlInformeSos(seleccion.informe_path), '_blank', 'noopener,noreferrer');
@@ -605,6 +661,7 @@ export function AnalisisSosPage({ onNav }) {
                 )}
                 {perm.editar && seleccion.estado === 'con_resultado' && (
                   <button
+                    className="dx-btn"
                     onClick={async () => {
                       try {
                         await marcarMuestraRevisada(seleccion.id);
@@ -619,28 +676,27 @@ export function AnalisisSosPage({ onNav }) {
                     Marcar revisada
                   </button>
                 )}
-                {error && <p role="alert">{error}</p>}
+                <div className="dx-ui-dialog-foot">{error && <span role="alert">{error}</span>}</div>
               </div>
             ) : (
               <form onSubmit={guardar} onChange={() => setSucio(true)} noValidate>
                 <div className="dx-ui-form-grid">
                   {modal === 'muestra' && (
                     <>
-                      <Campo nombre="activo_id" etiqueta="Equipo" requerido {...{ form, setForm, errores }}>
-                        <input
-                          list="dx-confsos-activos"
-                          name="activo_id"
-                          value={form.activo_id}
-                          onChange={(e) => setForm({ ...form, activo_id: e.target.value })}
-                        />
-                        <datalist id="dx-confsos-activos">
-                          {activos.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.codigo} {a.nombre}
-                            </option>
-                          ))}
-                        </datalist>
-                      </Campo>
+                      <DxReferenceSelector
+                        label="Equipo"
+                        name="activo_id"
+                        required
+                        options={activos}
+                        value={form.activo_id}
+                        error={errores.activo_id}
+                        optionalLabel={null}
+                        getLabel={(a) => `${valor(a.codigo)} · ${valor(a.nombre)}`}
+                        onChange={(activo_id) => {
+                          setForm({ ...form, activo_id: activo_id || '' });
+                          setSucio(true);
+                        }}
+                      />
                       {[
                         ['sistema', 'Sistema', 'text', true],
                         ['tipo_aceite', 'Tipo de aceite'],
@@ -667,6 +723,7 @@ export function AnalisisSosPage({ onNav }) {
                       ))}
                       <Campo nombre="tipo" etiqueta="Tipo" {...{ form, setForm, errores }}>
                         <select
+                          className="dx-ui-select"
                           name="tipo"
                           value={form.tipo}
                           onChange={(e) => setForm({ ...form, tipo: e.target.value })}
@@ -709,9 +766,14 @@ export function AnalisisSosPage({ onNav }) {
                           name="informe"
                           type="file"
                           accept="application/pdf"
+                          aria-invalid={!!errores.informe}
                           onChange={(e) => setArchivo(e.target.files[0] || null)}
                         />
-                        {errores.informe && <span className="dx-ui-field-error">{errores.informe}</span>}
+                        {errores.informe && (
+                          <span className="dx-ui-field-error" role="alert">
+                            {errores.informe}
+                          </span>
+                        )}
                       </label>
                       <label className="dx-ui-field">
                         <span>Importar CSV o XLSX</span>
@@ -737,6 +799,7 @@ export function AnalisisSosPage({ onNav }) {
                           </p>
                         ))}
                         <button
+                          className="dx-btn"
                           type="button"
                           onClick={() => {
                             setValores({
@@ -752,11 +815,13 @@ export function AnalisisSosPage({ onNav }) {
                     )}
                     <div className="dx-confsos-resultados">
                       {limites.map((l) => (
-                        <label key={l.id}>
+                        <label className="dx-ui-field" key={l.id}>
                           <span>
                             {l.elemento} ({l.unidad}) · {limiteTexto(l)}
                           </span>
                           <input
+                            name={errores.valores ? 'valores' : `valor-${l.elemento}`}
+                            aria-invalid={!!(errores.valores || errores[`valor-${l.elemento}`])}
                             type="number"
                             min="0"
                             step="any"
@@ -764,6 +829,11 @@ export function AnalisisSosPage({ onNav }) {
                             onChange={(e) => setValores({ ...valores, [l.elemento]: e.target.value })}
                           />
                           <span>{etiquetas[nivelSos(valores[l.elemento], l)] || 'Sin dato'}</span>
+                          {errores[`valor-${l.elemento}`] && (
+                            <span className="dx-ui-field-error" role="alert">
+                              {errores[`valor-${l.elemento}`]}
+                            </span>
+                          )}
                         </label>
                       ))}
                     </div>
@@ -780,7 +850,9 @@ export function AnalisisSosPage({ onNav }) {
                 )}
                 <div className="dx-ui-dialog-foot">
                   {error && <span role="alert">{error}</span>}
-                  <button type="submit">Guardar</button>
+                  <button className="dx-btn" type="submit">
+                    Guardar
+                  </button>
                 </div>
               </form>
             )}
@@ -788,6 +860,7 @@ export function AnalisisSosPage({ onNav }) {
               <div role="alertdialog" aria-label="Cambios sin guardar">
                 <p>Hay cambios sin guardar. ¿Descartarlos?</p>
                 <button
+                  className="dx-btn"
                   onClick={() => {
                     setModal('');
                     setConfirmar(false);
@@ -796,7 +869,9 @@ export function AnalisisSosPage({ onNav }) {
                 >
                   Descartar
                 </button>
-                <button onClick={() => setConfirmar(false)}>Seguir editando</button>
+                <button className="dx-btn" onClick={() => setConfirmar(false)}>
+                  Seguir editando
+                </button>
               </div>
             )}
           </div>

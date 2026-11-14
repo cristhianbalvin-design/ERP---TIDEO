@@ -10461,7 +10461,102 @@ width:20px;height:20px}
 @container liquidacion (max-width:360px) { .dx-liqf .dx-liqf-kpis { grid-template-columns:minmax(0,1fr); } }
 
 
+/* ===== Confiabilidad · Backlog, KPIs y Disponibilidad (dx-confbl-, dx-confk-, dx-confd-) ===== */
 /* ===== Confiabilidad · Backlog operativo (dx-confbl-) ===== */
+.dx-ui.dx-confbl,
+.dx-ui.dx-confk,
+.dx-ui.dx-confd {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 24px 28px 60px;
+  color: var(--dx-ui-ink);
+  container-type: inline-size;
+}
+.dx-confbl > *,
+.dx-confk > *,
+.dx-confd > * {
+  min-width: 0;
+}
+.dx-confbl .dx-ui-card,
+.dx-confk .dx-ui-card,
+.dx-confd .dx-ui-card {
+  min-width: 0;
+}
+.dx-confbl-filters > .dx-ui-select {
+  width: auto;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.dx-confbl-popover input {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--dx-ui-border);
+  border-radius: 10px;
+}
+.dx-confk-options button,
+.dx-confbl-popover button {
+  padding: 10px;
+  border: 0;
+  background: var(--dx-ui-card);
+  color: var(--dx-ui-ink);
+  cursor: pointer;
+}
+.dx-confk-options button:hover,
+.dx-confbl-popover button:hover {
+  background: var(--dx-ui-hover);
+}
+.dx-confk-table,
+.dx-confd-table {
+  min-width: 760px;
+  color: var(--dx-ui-ink);
+}
+.dx-confk-table-wrap,
+.dx-confd-table-wrap {
+  max-width: 100%;
+}
+.dx-confk-chart {
+  overflow-x: auto;
+}
+.dx-confk-chart svg {
+  min-width: 300px;
+}
+.dx-confk .dx-ui-kpi small {
+  display: inline;
+  font-size: 11px;
+}
+.dx-confk .dx-ui-kpi span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-theme="dark"] .dx-confbl,
+[data-theme="dark"] .dx-confk,
+[data-theme="dark"] .dx-confd {
+  color: var(--dx-ui-ink);
+}
+[data-theme="dark"] .dx-confbl-popover,
+[data-theme="dark"] .dx-confk-options {
+  background: var(--dx-ui-card);
+  color: var(--dx-ui-ink);
+  border-color: var(--dx-ui-border);
+}
+[data-theme="dark"] .dx-confbl-board-item,
+[data-theme="dark"] .dx-confk-table,
+[data-theme="dark"] .dx-confd-table {
+  background: var(--dx-ui-card);
+  color: var(--dx-ui-ink);
+}
+[data-theme="dark"] .dx-confk-chart svg text {
+  fill: var(--dx-ui-ink);
+}
+[data-theme="dark"] .dx-confk-bar {
+  fill: var(--dx-ui-cyan);
+}
+[data-theme="dark"] .dx-confk-bar-alt {
+  fill: var(--dx-ui-violet);
+}
 .dx-confbl {
   --dx-confbl-board-bg: var(--dx-ui-head);
   --dx-confbl-focus: var(--dx-ui-cyan);
@@ -10640,7 +10735,7 @@ width:20px;height:20px}
   color: var(--dx-ui-red-fg);
 }
 .dx-confk .dx-ui-kpi small {
-  display: block;
+  display: inline;
 }
 .dx-confk-charts,
 .dx-confk-calidad {
@@ -10819,129 +10914,81 @@ width:20px;height:20px}
   }
 }
 
-/* ===== Confiabilidad · Programación PM (dx-confpm-) ===== */
-.dx-confpm-root {
-  color: var(--dx-ui-ink);
-}
-.dx-confpm-root header small {
-  color: var(--dx-ui-cyan-fg);
-  font-weight: 700;
-}
-.dx-confpm-root header p,
-.dx-confpm-card p {
-  color: var(--dx-ui-gray);
-}
-.dx-confpm-card {
-  container-type: inline-size;
-}
-.dx-confpm-filtros {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.dx-confpm-fila {
-  display: grid;
-  grid-template-columns: 1.3fr 1.2fr 1fr 1fr;
-  gap: 16px;
-  align-items: start;
-  padding: 16px;
-  border-top: 1px solid var(--dx-ui-line);
-}
-.dx-confpm-fila > div {
+/* ===== Confiabilidad · Programación PM y Análisis SOS (dx-confpm-, dx-confsos-) ===== */
+/* Confiabilidad · Programación PM (dx-confpm-) */
+.dx-ui.dx-confpm-root,
+.dx-ui.dx-confsos-root {
+  box-sizing: border-box;
   min-width: 0;
-}
-.dx-confpm-fila button {
-  margin: 3px;
-}
-.dx-confpm-fila progress {
-  display: block;
-  width: 100%;
-  accent-color: var(--dx-ui-cyan);
-}
-.dx-confpm-root .dx-ui-pill .dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: currentColor;
-}
-.dx-confpm-fila:focus-visible,
-.dx-confpm-root button:focus-visible {
-  outline: 2px solid var(--dx-ui-cyan);
-  outline-offset: 2px;
-}
-[data-theme="dark"] .dx-confpm-root {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
   color: var(--dx-ui-ink);
 }
-@container (max-width: 1100px) {
-  .dx-confpm-fila {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.dx-confpm-root *,
+.dx-confsos-root * {
+  box-sizing: border-box;
 }
-@container (max-width: 760px) {
-  .dx-confpm-fila {
-    grid-template-columns: 1fr;
-  }
+.dx-confpm-root .dx-ui-kpi-row,
+.dx-confsos-root .dx-ui-kpi-row {
+  margin-bottom: 16px;
 }
-@container (max-width: 600px) {
-  .dx-confpm-filtros > * {
-    width: 100%;
-  }
-}
-
-/* ===== Confiabilidad · Análisis SOS (dx-confsos-) ===== */
-.dx-confsos-root {
-  color: var(--dx-ui-ink);
-}
-.dx-confsos-root header small {
-  color: var(--dx-ui-cyan-fg);
-  font-weight: 700;
-}
-.dx-confsos-root header p,
-.dx-confsos-card p {
-  color: var(--dx-ui-gray);
-}
+.dx-confpm-card,
 .dx-confsos-card {
   container-type: inline-size;
+  min-width: 0;
 }
+.dx-confpm-card > p,
+.dx-confsos-card > p {
+  margin: 0;
+  padding: 0 20px 12px;
+  color: var(--dx-ui-gray);
+}
+.dx-confpm-filtros,
 .dx-confsos-filtros {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  padding: 14px 20px;
 }
+.dx-confpm-filtros > .dx-ui-select,
+.dx-confsos-filtros > .dx-ui-select {
+  width: auto;
+  min-width: 160px;
+  max-width: 100%;
+}
+.dx-confpm-fila,
 .dx-confsos-fila {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
-  padding: 16px;
+  padding: 16px 20px;
   border-top: 1px solid var(--dx-ui-line);
+  overflow-wrap: anywhere;
 }
-.dx-confsos-fila > div {
+.dx-confpm-fila > *,
+.dx-confsos-fila > * {
   min-width: 0;
 }
-.dx-confsos-fila button {
+.dx-confpm-fila p,
+.dx-confsos-fila p {
+  color: var(--dx-ui-gray);
+}
+.dx-confpm-fila .dx-btn,
+.dx-confsos-fila .dx-btn {
+  max-width: 100%;
   margin: 3px;
+  white-space: normal;
+  height: auto;
 }
-.dx-confsos-resultados label {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 10px;
-  align-items: center;
-  border-top: 1px solid var(--dx-ui-line);
-  padding: 8px 0;
-}
-.dx-confsos-grafico {
-  display: block;
-  width: 100%;
-  max-width: 360px;
-  color: var(--dx-ui-cyan);
-}
+.dx-confpm-fila progress,
 .dx-confsos-root progress {
   display: block;
   width: 100%;
   accent-color: var(--dx-ui-cyan);
 }
+.dx-confpm-root .dx-ui-pill .dot,
 .dx-confsos-root .dx-ui-pill .dot {
   width: 6px;
   height: 6px;
@@ -10949,25 +10996,109 @@ width:20px;height:20px}
   border-radius: 50%;
   background: currentColor;
 }
+.dx-confpm-root button:focus-visible,
 .dx-confsos-root button:focus-visible {
   outline: 2px solid var(--dx-ui-cyan);
   outline-offset: 2px;
 }
+.dx-confpm-root .dx-ui-dialog,
+.dx-confsos-root .dx-ui-dialog {
+  container-type: inline-size;
+  min-width: 0;
+}
+.dx-confpm-root .dx-ui-dialog-foot,
+.dx-confsos-root .dx-ui-dialog-foot {
+  flex-wrap: wrap;
+}
+.dx-confpm-root .dx-ui-dialog-foot [role="alert"],
+.dx-confsos-root .dx-ui-dialog-foot [role="alert"] {
+  color: var(--dx-ui-red-fg);
+  margin-right: auto;
+}
+.dx-confpm-root [role="alertdialog"],
+.dx-confsos-root [role="alertdialog"] {
+  padding: 16px 20px;
+  border-top: 1px solid var(--dx-ui-line);
+  background: var(--dx-ui-card);
+}
+[data-theme="dark"] .dx-confpm-root {
+  color: var(--dx-ui-ink);
+  color-scheme: dark;
+}
+[data-theme="dark"] .dx-confpm-card,
+[data-theme="dark"] .dx-confpm-root .dx-ui-dialog {
+  background: var(--dx-ui-card);
+  border-color: var(--dx-ui-line);
+}
+
+/* Confiabilidad · Análisis SOS (dx-confsos-) */
+.dx-confsos-resultados {
+  display: grid;
+  gap: 10px;
+  padding: 0 22px;
+}
+.dx-confsos-resultados .dx-ui-field {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--dx-ui-line);
+}
+.dx-confsos-resultados .dx-ui-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid var(--dx-ui-border);
+  border-radius: 8px;
+  background: var(--dx-ui-card);
+  color: var(--dx-ui-ink);
+  font: inherit;
+}
+.dx-confsos-resultados .dx-ui-field-error {
+  grid-column: 1 / -1;
+}
+.dx-confsos-root form > p,
+.dx-confsos-root form > div:not(.dx-ui-form-grid):not(.dx-ui-dialog-foot):not(.dx-confsos-resultados) {
+  margin: 12px 22px;
+}
+.dx-confsos-grafico {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  color: var(--dx-ui-cyan);
+}
+.dx-confsos-grafico circle {
+  fill: currentColor;
+}
 [data-theme="dark"] .dx-confsos-root {
   color: var(--dx-ui-ink);
+  color-scheme: dark;
+}
+[data-theme="dark"] .dx-confsos-card,
+[data-theme="dark"] .dx-confsos-root .dx-ui-dialog {
+  background: var(--dx-ui-card);
+  border-color: var(--dx-ui-line);
+}
+[data-theme="dark"] .dx-confsos-grafico {
+  color: var(--dx-ui-cyan);
 }
 @container (max-width: 1100px) {
+  .dx-confpm-fila,
   .dx-confsos-fila {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @container (max-width: 760px) {
+  .dx-confpm-fila,
   .dx-confsos-fila,
-  .dx-confsos-resultados label {
-    grid-template-columns: 1fr;
+  .dx-confsos-resultados .dx-ui-field {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @container (max-width: 600px) {
+  .dx-confpm-filtros > *,
   .dx-confsos-filtros > * {
     width: 100%;
   }

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { getSupabaseClient } from '../../../lib/supabaseClient.js';
 
 export const segmentos = {
   todos: 'Todos',
@@ -17,6 +16,13 @@ export const dinero = (v) =>
   v == null
     ? 'Sin dato'
     : `${Number(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (moneda no informada)`;
+export const mes = (v) => {
+  if (!v) return 'Sin dato';
+  const d = new Date(`${String(v).slice(0, 7)}-01T12:00:00`);
+  if (Number.isNaN(d.getTime())) return 'Sin dato';
+  const partes = new Intl.DateTimeFormat('es-PE', { month: 'short', year: 'numeric' }).formatToParts(d);
+  return `${partes.find((p) => p.type === 'month').value.replace('.', '')} ${partes.find((p) => p.type === 'year').value}`;
+};
 const iso = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export function periodoInicial() {
@@ -74,7 +80,7 @@ export function Segmentos({ value, onChange, opciones = ['todos', 'flota', 'tall
           <button
             key={s}
             type="button"
-            className={`${prefijo}-segment ${prefijo}-segment-${s}${value === s ? ' on' : ''}`}
+            className={`dx-btn ${prefijo}-segment ${prefijo}-segment-${s}${value === s ? ' on' : ''}`}
             aria-pressed={value === s}
             onClick={() => onChange(s)}
           >
@@ -93,9 +99,11 @@ export function Kpi({ titulo, valor, anterior, menorEsMejor = false }) {
   return (
     <div className="dx-ui-kpi">
       <strong>{valor == null ? 'Sin dato' : valor}</strong>
-      <span>
+      <span
+        title={dif != null && Number.isFinite(dif) ? `${titulo}: ${numero(Math.abs(dif))} vs periodo anterior` : titulo}
+      >
         {titulo}
-        {dif != null && (
+        {dif != null && Number.isFinite(dif) && (
           <small className={dif === 0 ? '' : dif > 0 !== menorEsMejor ? 'dx-confk-good' : 'dx-confk-bad'}>
             {' '}
             {dif > 0 ? '↑' : dif < 0 ? '↓' : '→'} {numero(Math.abs(dif))} vs periodo anterior
@@ -103,25 +111,6 @@ export function Kpi({ titulo, valor, anterior, menorEsMejor = false }) {
         )}
       </span>
     </div>
-  );
-}
-export async function permisos(empresaId, pantalla, acciones) {
-  const db = getSupabaseClient();
-  return Object.fromEntries(
-    await Promise.all(
-      acciones.map(async (accion) => {
-        try {
-          const { data, error } = await db.rpc('usuario_puede', {
-            target_empresa_id: empresaId,
-            target_pantalla: pantalla,
-            target_accion: accion,
-          });
-          return [accion, !error && Boolean(data)];
-        } catch {
-          return [accion, false];
-        }
-      }),
-    ),
   );
 }
 export function Barra({ valor }) {
@@ -139,7 +128,7 @@ export function BuscadorEquipo({ activos, value, onChange, invalid }) {
   const [abierto, setAbierto] = useState(false);
   const elegido = activos.find((a) => String(a.id) === String(value));
   return (
-    <div className="dx-confk-picker">
+    <div className="dx-ui-field dx-confk-picker">
       <input
         aria-label="Buscar equipo"
         aria-invalid={invalid}

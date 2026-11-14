@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
-import { usuarioPuedeFlota } from '../../../services/flotaService.js';
+import { usePermisoPantalla } from './confiabilidadPermisos.js';
 import {
   listarActivosPorSegmento,
   listarBacklog,
@@ -52,7 +52,8 @@ const normal = (value) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
-const nombreEquipo = (a) => (a ? [a.codigo, a.nombre].filter(Boolean).join(' · ') || a.id : 'Sin dato');
+const nombreEquipo = (a) => (a ? [a.codigo, a.nombre].filter(Boolean).join(' · ') || 'Sin dato' : 'Sin dato');
+const etiquetaPrioridad = (v) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : 'Sin dato');
 const edad = (r) => {
   const f = r.fecha_deteccion || r.created_at;
   if (!f) return null;
@@ -78,8 +79,8 @@ const vacio = () => ({
 
 export function BacklogOperativoPage({ onNav }) {
   const sesion = useSesionOperativa();
-  const [permisos, setPermisos] = useState(null),
-    [rows, setRows] = useState([]),
+  const permisos = usePermisoPantalla('backlog');
+  const [rows, setRows] = useState([]),
     [activos, setActivos] = useState([]);
   const [cargando, setCargando] = useState(true),
     [error, setError] = useState('');
@@ -117,31 +118,8 @@ export function BacklogOperativoPage({ onNav }) {
     }
   }, [sesion.empresaId, sesion.sociedadId]);
   useEffect(() => {
-    let vigente = true;
-    setPermisos(null);
-    if (!sesion.empresaId) {
-      setCargando(false);
-      return () => {
-        vigente = false;
-      };
-    }
-    Promise.all(['ver', 'crear', 'editar'].map((a) => usuarioPuedeFlota(sesion.empresaId, 'backlog', a)))
-      .then(([ver, crear, editar]) => {
-        if (vigente) setPermisos({ ver, crear, editar });
-      })
-      .catch((e) => {
-        if (vigente) {
-          setPermisos({});
-          setError(e.message || 'No se pudieron consultar los permisos.');
-        }
-      });
-    return () => {
-      vigente = false;
-    };
-  }, [sesion.empresaId]);
-  useEffect(() => {
     if (permisos?.ver) cargar();
-  }, [permisos, cargar]);
+  }, [permisos.ver, cargar]);
   const activosPorId = useMemo(() => new Map(activos.map((a) => [String(a.id), a])), [activos]);
   const equipoDe = (r) => activosPorId.get(String(r.activo_id)) || r.activo;
   const porSegmento = rows.filter((r) => segmento === 'todos' || equipoDe(r)?.segmento === segmento);
@@ -298,23 +276,23 @@ export function BacklogOperativoPage({ onNav }) {
       <span>{r.sistema || 'Sin dato'}</span>
       <span>{r.descripcion || 'Sin dato'}</span>
       <span>
-        {etiquetaConfiabilidad('fuente', r.fuente)}
-        {r.fuente_id ? ` · ${r.fuente_id}` : ''}
+        {r.fuente === 'sos' ? 'Muestra SOS' : etiquetaConfiabilidad('fuente', r.fuente)}
+        {r.fuente === 'sos' && (r.informe_numero || r.fecha_muestra) ? ` · ${r.informe_numero || r.fecha_muestra}` : ''}
       </span>
       <span>
         {r.puntaje ?? 'Sin dato'}{' '}
         <i
           className={`dx-ui-pill ${['emergencia', 'urgente'].includes(r.prioridad_calculada) ? 'is-red' : 'is-amber'}`}
         >
-          {r.prioridad_calculada || 'Sin dato'}
+          {etiquetaPrioridad(r.prioridad_calculada)}
         </i>
       </span>
       <span>{etiquetaConfiabilidad('ciclo', r.ciclo || 'nuevo')}</span>
       <span>{edad(r) == null ? 'Sin dato' : `${edad(r)} días`}</span>
-      <span>{r.ot?.numero || r.ot_id || 'Sin dato'}</span>
+      <span>{r.ot?.numero || 'Sin dato'}</span>
     </div>
   );
-  const editable = !!form && (form.id ? permisos?.editar : permisos?.crear) && sesion.permiteEscritura;
+  const editable = !!form && (form.id ? permisos.editar : permisos.crear);
   const score = form ? puntajeBacklog(form.impacto, form.urgencia) : null;
   return (
     <section className="dx-ui dx-confbl">
@@ -324,18 +302,20 @@ export function BacklogOperativoPage({ onNav }) {
           <h1 className="dx-ui-title">Backlog operativo</h1>
           <p className="dx-ui-sub">Hallazgos y necesidades de mantenimiento hasta su atención en una OT.</p>
         </div>
-        {permisos?.crear && sesion.permiteEscritura && (
+        {permisos.crear && (
           <button className="dx-btn primary" onClick={() => abrir(null)}>
             Nuevo hallazgo
           </button>
         )}
       </header>
-      {error && <p role="alert">{error}</p>}
+      {(error || permisos.error) && <p role="alert">{error || permisos.error}</p>}
       {!sesion.empresaId && (
         <div className="dx-ui-empty">{sesion.cargando ? 'Cargando sesión…' : 'Seleccione una empresa operativa.'}</div>
       )}
-      {sesion.empresaId && !permisos && !error && <div className="dx-ui-empty">Cargando permisos…</div>}
-      {permisos && !permisos.ver && <div className="dx-ui-empty">No tienes permiso para ver el backlog.</div>}
+      {sesion.empresaId && permisos.cargando && <div className="dx-ui-empty">Cargando permisos…</div>}
+      {sesion.empresaId && !permisos.cargando && !permisos.error && !permisos.ver && (
+        <div className="dx-ui-empty">No tienes permiso para ver el backlog.</div>
+      )}
       {permisos?.ver && (
         <>
           <div className="dx-ui-kpi-row">
@@ -410,7 +390,7 @@ export function BacklogOperativoPage({ onNav }) {
                   <option value="">{label}: todos</option>
                   {opciones.map((o) => (
                     <option key={o} value={o}>
-                      {etiquetaConfiabilidad(tipo, o)}
+                      {tipo === 'prioridad' ? etiquetaPrioridad(o) : etiquetaConfiabilidad(tipo, o)}
                     </option>
                   ))}
                 </select>
@@ -449,7 +429,7 @@ export function BacklogOperativoPage({ onNav }) {
                         <button className="dx-confbl-board-item" key={r.id} onClick={() => abrir(r)}>
                           <b>{nombreEquipo(equipoDe(r))}</b>
                           <span>{r.descripcion || 'Sin dato'}</span>
-                          <span>{r.prioridad_calculada || 'Sin dato'}</span>
+                          <span>{etiquetaPrioridad(r.prioridad_calculada)}</span>
                         </button>
                       ))}
                   </div>
@@ -474,7 +454,7 @@ export function BacklogOperativoPage({ onNav }) {
           >
             <div className="dx-ui-dialog-head">
               <div>
-                <h2 id="dx-confbl-title">{form.id ? `Hallazgo ${form.id}` : 'Nuevo hallazgo'}</h2>
+                <h2 id="dx-confbl-title">{form.id ? 'Hallazgo' : 'Nuevo hallazgo'}</h2>
                 <p>{form.id ? etiquetaConfiabilidad('ciclo', form.ciclo || 'nuevo') : 'Registro de mantenimiento'}</p>
               </div>
               <button type="button" className="dx-btn" onClick={cerrar} aria-label="Cerrar">
@@ -549,10 +529,6 @@ export function BacklogOperativoPage({ onNav }) {
                     ))}
                   </select>
                 </label>
-                <label className="dx-ui-field">
-                  <span>ID de origen</span>
-                  <input value={form.fuente_id || ''} onChange={(e) => patch('fuente_id', e.target.value)} />
-                </label>
                 <label className="dx-ui-field dx-confbl-full">
                   <span>
                     Descripción <i className="dx-ui-required">*</i>
@@ -602,7 +578,9 @@ export function BacklogOperativoPage({ onNav }) {
                 ))}
                 <div className="dx-ui-field">
                   <span>Puntaje y prioridad</span>
-                  <strong>{score == null ? 'Sin dato' : `${score} · ${prioridadBacklog(score)}`}</strong>
+                  <strong>
+                    {score == null ? 'Sin dato' : `${score} · ${etiquetaPrioridad(prioridadBacklog(score))}`}
+                  </strong>
                 </div>
                 <label className="dx-ui-field">
                   <span>Costo estimado</span>
@@ -646,12 +624,10 @@ export function BacklogOperativoPage({ onNav }) {
                 <p>Equipo: {nombreEquipo(equipoDe(form))}</p>
                 <p>Sistema: {form.sistema || 'Sin dato'}</p>
                 <p>Descripción: {form.descripcion || 'Sin dato'}</p>
-                <p>
-                  Fuente: {etiquetaConfiabilidad('fuente', form.fuente)} {form.fuente_id || ''}
-                </p>
+                <p>Fuente: {form.fuente === 'sos' ? 'Muestra SOS' : etiquetaConfiabilidad('fuente', form.fuente)}</p>
                 <p>
                   Impacto: {form.impacto ?? 'Sin dato'} · Urgencia: {form.urgencia ?? 'Sin dato'} · Puntaje:{' '}
-                  {form.puntaje ?? 'Sin dato'} · Prioridad: {form.prioridad_calculada || 'Sin dato'}
+                  {form.puntaje ?? 'Sin dato'} · Prioridad: {etiquetaPrioridad(form.prioridad_calculada)}
                 </p>
                 <p>Costo estimado: {dinero(form.costo_estimado, form.moneda)}</p>
                 <p>
@@ -694,7 +670,7 @@ export function BacklogOperativoPage({ onNav }) {
                 )}
                 {form.ot_id && (
                   <button type="button" className="dx-btn" onClick={() => onNav('ots')}>
-                    Ver OT {form.ot?.numero || form.ot_id} en bandeja
+                    Ver OT {form.ot?.numero || ''} en bandeja
                   </button>
                 )}
               </div>

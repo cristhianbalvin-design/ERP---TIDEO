@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
+import { usePermisoPantalla } from './confiabilidadPermisos.js';
 import { getSupabaseClient } from '../../../lib/supabaseClient.js';
 import {
   anularFalla,
@@ -19,7 +20,7 @@ import {
   fecha,
   numero,
   periodoInicial,
-  permisos,
+  mes,
   segmentos,
 } from './confiabilidadUi.jsx';
 
@@ -39,11 +40,11 @@ const enPeriodo = (f, p) =>
   String(f.fecha_inicio || '').slice(0, 10) <= p.hasta && (!f.fecha_fin || String(f.fecha_fin).slice(0, 10) >= p.desde);
 const etiquetaActivo = (activos, id) => {
   const a = activos.find((x) => String(x.id) === String(id));
-  return a ? `${a.codigo || 'Sin código'} · ${a.nombre || 'Sin nombre'}` : id || 'Sin dato';
+  return a ? `${a.codigo || 'Sin código'} · ${a.nombre || 'Sin nombre'}` : 'Sin dato';
 };
 function Grafico({ titulo, filas, campos, etiquetas }) {
   const max = Math.max(1, ...filas.flatMap((f) => campos.map((c) => Number(f[c]) || 0)));
-  const ancho = Math.max(300, filas.length * 80);
+  const ancho = Math.max(300, filas.length * 150);
   const paso = ancho / Math.max(1, filas.length);
   return (
     <div className="dx-ui-card dx-confk-chart">
@@ -67,12 +68,13 @@ function Grafico({ titulo, filas, campos, etiquetas }) {
                       width="16"
                       height={h}
                     >
-                      <title>{`${etiquetas[j]}: ${numero(f[c])}`}</title>
+                      <title>{`${etiquetas[j]}: ${titulo.includes('costo') && f[c] != null ? Number(f[c]).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : numero(f[c])}`}</title>
                     </rect>
                   );
                 })}
                 <text x={i * paso + 5} y="140">
-                  {String(f.mes || f.sistema || f.nombre || '').slice(0, 12)}
+                  <title>{f.mes ? mes(f.mes) : f.sistema || f.nombre || 'Sin dato'}</title>
+                  {f.mes ? mes(f.mes) : f.sistema || f.nombre || 'Sin dato'}
                 </text>
               </g>
             ))}
@@ -81,11 +83,11 @@ function Grafico({ titulo, filas, campos, etiquetas }) {
           <ul>
             {filas.map((f, i) => (
               <li key={i}>
-                {f.mes || f.sistema || f.nombre || 'Sin dato'}:{' '}
+                {f.mes ? mes(f.mes) : f.sistema || f.nombre || 'Sin dato'}:{' '}
                 {campos
                   .map(
                     (c, j) =>
-                      `${etiquetas[j]} ${numero(f[c], c === 'porcentaje_acumulado' || c === 'disponibilidad_pct' ? '%' : '')}`,
+                      `${etiquetas[j]} ${titulo.includes('costo') && f[c] != null ? Number(f[c]).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : numero(f[c], c === 'porcentaje_acumulado' || c === 'disponibilidad_pct' ? '%' : '')}`,
                   )
                   .join(' · ')}
               </li>
@@ -218,7 +220,7 @@ function ModalFalla({ tipo, falla, activos, empresaId, sociedadId, onClose, onSa
       <div className="dx-ui-dialog dx-ui-dialog-wide" role="dialog" aria-modal="true" aria-label={titulo} ref={ref}>
         <div className="dx-ui-dialog-head">
           <h2>{titulo}</h2>
-          <button type="button" onClick={cerrar} aria-label="Cerrar diálogo">
+          <button type="button" className="dx-btn" onClick={cerrar} aria-label="Cerrar diálogo">
             ×
           </button>
         </div>
@@ -272,7 +274,7 @@ function ModalFalla({ tipo, falla, activos, empresaId, sociedadId, onClose, onSa
                   <option value="">Sin OT vinculada</option>
                   {ots.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.numero || o.id} · {o.estado}
+                      {o.numero || 'Sin número'} · {o.estado}
                     </option>
                   ))}
                 </select>
@@ -289,19 +291,19 @@ function ModalFalla({ tipo, falla, activos, empresaId, sociedadId, onClose, onSa
             {confirmar ? (
               <>
                 <span>Hay cambios sin guardar. ¿Descartarlos?</span>
-                <button type="button" onClick={() => setConfirmar(false)}>
+                <button type="button" className="dx-btn" onClick={() => setConfirmar(false)}>
                   Seguir editando
                 </button>
-                <button type="button" onClick={onClose}>
+                <button type="button" className="dx-btn" onClick={onClose}>
                   Descartar
                 </button>
               </>
             ) : (
               <>
-                <button type="button" onClick={cerrar}>
+                <button type="button" className="dx-btn" onClick={cerrar}>
                   Cancelar
                 </button>
-                <button type="submit" disabled={busy || !!errorOt}>
+                <button type="submit" className="dx-btn primary" disabled={busy || !!errorOt}>
                   {busy ? 'Guardando…' : titulo}
                 </button>
               </>
@@ -321,7 +323,8 @@ export function KpisConfiabilidadPage({ onNav }) {
   const [datos, setDatos] = useState(null);
   const [fallas, setFallas] = useState([]);
   const [activos, setActivos] = useState([]);
-  const [acceso, setAcceso] = useState(null);
+  const acceso = usePermisoPantalla('confiabilidad_kpis');
+  const acciones = usePermisoPantalla('backlog');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
   const [version, setVersion] = useState(0);
@@ -331,7 +334,7 @@ export function KpisConfiabilidadPage({ onNav }) {
   const [modal, setModal] = useState(null);
   useEffect(() => {
     let vigente = true;
-    if (!empresaId) {
+    if (!empresaId || acceso.cargando || !acceso.ver) {
       setCargando(false);
       return () => {
         vigente = false;
@@ -341,17 +344,14 @@ export function KpisConfiabilidadPage({ onNav }) {
     setError('');
     setDatos(null);
     Promise.all([
-      permisos(empresaId, 'confiabilidad_kpis', ['ver']),
-      permisos(empresaId, 'backlog', ['crear', 'editar']),
       periodo.desde && periodo.hasta && periodo.desde <= periodo.hasta
         ? cargarKpis(empresaId, sociedadId, periodo.desde, periodo.hasta, segmento)
         : Promise.reject(new Error('Selecciona un periodo válido.')),
       listarFallas(empresaId, sociedadId),
       listarActivosPorSegmento(empresaId),
     ])
-      .then(([ver, acciones, k, f, a]) => {
+      .then(([k, f, a]) => {
         if (vigente) {
-          setAcceso({ ...acciones, ver: ver.ver });
           setDatos(k || {});
           setFallas(f);
           setActivos(a);
@@ -366,7 +366,7 @@ export function KpisConfiabilidadPage({ onNav }) {
     return () => {
       vigente = false;
     };
-  }, [empresaId, sociedadId, periodo.desde, periodo.hasta, segmento, version]);
+  }, [empresaId, sociedadId, periodo.desde, periodo.hasta, segmento, version, acceso.cargando, acceso.ver]);
   const fallasPeriodo = useMemo(
     () =>
       fallas.filter(
@@ -451,17 +451,23 @@ export function KpisConfiabilidadPage({ onNav }) {
                 </td>
                 <td>{numero(f.horas_parada, ' h')}</td>
                 <td>{estados[f.estado] || 'Sin dato'}</td>
-                <td>{f.ot_id || 'Sin dato'}</td>
+                <td>{f.ot?.numero || f.ot_numero || 'Sin dato'}</td>
                 <td>
-                  {acceso?.editar && f.estado !== 'anulada' && (
+                  {acciones.editar && f.estado !== 'anulada' && (
                     <>
                       {f.estado === 'abierta' && (
-                        <button onClick={() => setModal({ tipo: 'cerrar', falla: f })}>Cerrar</button>
+                        <button className="dx-btn" onClick={() => setModal({ tipo: 'cerrar', falla: f })}>
+                          Cerrar
+                        </button>
                       )}
                       {f.origen !== 'ot' && (
-                        <button onClick={() => setModal({ tipo: 'vincular', falla: f })}>Vincular a OT</button>
+                        <button className="dx-btn" onClick={() => setModal({ tipo: 'vincular', falla: f })}>
+                          Vincular a OT
+                        </button>
                       )}
-                      <button onClick={() => setModal({ tipo: 'anular', falla: f })}>Anular</button>
+                      <button className="dx-btn" onClick={() => setModal({ tipo: 'anular', falla: f })}>
+                        Anular
+                      </button>
                     </>
                   )}
                 </td>
@@ -482,11 +488,11 @@ export function KpisConfiabilidadPage({ onNav }) {
         <Periodo value={periodo} onChange={setPeriodo} />
         <Segmentos prefijo="dx-confk" value={segmento} onChange={setSegmento} />
       </div>
-      {cargando || estado === 'cargando' ? (
+      {cargando || acceso.cargando || acciones.cargando || estado === 'cargando' ? (
         <div className="dx-ui-empty">Cargando indicadores y fallas…</div>
-      ) : error ? (
+      ) : error || acceso.error || acciones.error ? (
         <div className="dx-ui-empty" role="alert">
-          {error}
+          {error || acceso.error || acciones.error}
         </div>
       ) : !empresaId ? (
         <div className="dx-ui-empty">No hay una empresa disponible en la sesión.</div>
@@ -494,7 +500,7 @@ export function KpisConfiabilidadPage({ onNav }) {
         <div className="dx-ui-empty">No tienes permiso para ver los KPIs de confiabilidad.</div>
       ) : (
         <>
-          <nav className="dx-confk-tabs" aria-label="Secciones de confiabilidad">
+          <nav className="dx-ui-tabs dx-confk-tabs" aria-label="Secciones de confiabilidad">
             {[
               ['resumen', 'Resumen'],
               ['equipos', 'Por equipo'],
@@ -550,6 +556,7 @@ export function KpisConfiabilidadPage({ onNav }) {
                   etiquetas={['PM', 'Correctivo']}
                 />
               </div>
+              <p>Suma de costos reales de OT; puede incluir distintas monedas.</p>
               <div className="dx-ui-card dx-confk-explicacion">
                 <h2>Cómo se calculan los indicadores</h2>
                 <p>
@@ -648,7 +655,11 @@ export function KpisConfiabilidadPage({ onNav }) {
                 <span className="dx-ui-count">
                   {fallasPeriodo.length} {fallasPeriodo.length === 1 ? 'falla' : 'fallas'}
                 </span>
-                {acceso.crear && <button onClick={() => setModal({ tipo: 'registrar' })}>Registrar falla</button>}
+                {acciones.crear && (
+                  <button className="dx-btn primary" onClick={() => setModal({ tipo: 'registrar' })}>
+                    Registrar falla
+                  </button>
+                )}
               </div>
               <p>Usa este registro para paradas de tornos, CNC y demás máquinas del taller.</p>
               {listaFallas(fallasPeriodo)}
@@ -677,7 +688,7 @@ export function KpisConfiabilidadPage({ onNav }) {
                   <h2>
                     {detalle.codigo} · {detalle.nombre}
                   </h2>
-                  <button aria-label="Cerrar detalle" onClick={() => setDetalle(null)}>
+                  <button className="dx-btn" aria-label="Cerrar detalle" onClick={() => setDetalle(null)}>
                     ×
                   </button>
                 </div>
