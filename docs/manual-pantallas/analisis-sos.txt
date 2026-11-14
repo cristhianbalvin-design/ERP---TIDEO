@@ -5,7 +5,7 @@ catalogo: operaciones/sos-telemetria
 titulo: Análisis SOS
 resumen: Muestras de aceite, resultados por elemento y seguimiento de condiciones de alerta o críticas.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/AnalisisSosPage.jsx#AnalisisSosPage
-huella: aeab0846fd
+huella: 54b1d652c4
 paso: 1 | pantalla=analisis_sos | permiso=ver | Para qué sirve: registrar las muestras de aceite que se envían al laboratorio y sus resultados, para detectar desgaste o contaminación antes de que el equipo falle. Cada resultado se compara con límites de alerta y crítico; un resultado crítico genera automáticamente un hallazgo en el backlog para atenderlo.
 paso: 2 | pantalla=analisis_sos | permiso=ver | SOS significa Scheduled Oil Sampling: análisis de aceite programado. En Muestras consulta y filtra por condición, estado, segmento y sistema, o busca una muestra.
 paso: 3 | pantalla=analisis_sos | permiso=crear | Usa Nueva muestra, completa los datos del equipo, sistema y muestra solicitados y pulsa Guardar.
