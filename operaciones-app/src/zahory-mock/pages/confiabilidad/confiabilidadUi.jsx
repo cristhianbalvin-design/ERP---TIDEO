@@ -106,11 +106,8 @@ export function Kpi({ titulo, valor, anterior, menorEsMejor = false }) {
   const dif = valor == null || anterior == null ? null : Number(valor) - Number(anterior);
   return (
     <div className="dx-ui-kpi">
-      <strong>{valor == null ? 'Sin dato' : valor}</strong>
-      <span
-        title={dif != null && Number.isFinite(dif) ? `${titulo}: ${numero(Math.abs(dif))} vs periodo anterior` : titulo}
-      >
-        {titulo}
+      <strong>
+        {valor == null ? 'Sin dato' : valor}
         {dif != null && Number.isFinite(dif) && (
           <small
             className={dif === 0 ? '' : dif > 0 !== menorEsMejor ? 'dx-confk-good' : 'dx-confk-bad'}
@@ -120,6 +117,11 @@ export function Kpi({ titulo, valor, anterior, menorEsMejor = false }) {
             {dif > 0 ? '↑' : dif < 0 ? '↓' : '→'} {numero(Math.abs(dif))}
           </small>
         )}
+      </strong>
+      <span
+        title={dif != null && Number.isFinite(dif) ? `${titulo}: ${numero(Math.abs(dif))} vs periodo anterior` : titulo}
+      >
+        {titulo}
       </span>
     </div>
   );

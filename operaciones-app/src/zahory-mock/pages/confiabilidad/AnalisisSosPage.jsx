@@ -356,7 +356,7 @@ export function AnalisisSosPage({ onNav }) {
         ].map(([l, n]) => (
           <div className="dx-ui-kpi" key={l}>
             <strong>{n}</strong>
-            <span>{l}</span>
+            <span title={l}>{l}</span>
           </div>
         ))}
       </div>

@@ -337,7 +337,7 @@ export function BacklogOperativoPage({ onNav }) {
             ].map(([v, l]) => (
               <div className="dx-ui-kpi" key={l}>
                 <strong>{v}</strong>
-                <span>{l}</span>
+                <span title={l}>{l}</span>
               </div>
             ))}
           </div>

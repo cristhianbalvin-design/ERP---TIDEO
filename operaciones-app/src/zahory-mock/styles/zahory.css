@@ -10917,6 +10917,45 @@ width:20px;height:20px}
 /* ===== Confiabilidad · Programación PM y Análisis SOS (dx-confpm-, dx-confsos-) ===== */
 .dx-conf-aviso { margin: 0 0 16px; padding: 10px 14px; border-radius: 10px; background: var(--dx-ui-cyan-bg); color: var(--dx-ui-cyan-fg); }
 [data-theme="dark"] .dx-conf-aviso { background: var(--dx-ui-cyan-bg); color: var(--dx-ui-cyan-fg); }
+/* Confiabilidad · KPI con montos (SISTEMA_DISENO §10): valor arriba en una línea, etiqueta en una línea con elipsis, 56 px */
+.dx-confbl .dx-ui-kpi,
+.dx-confk .dx-ui-kpi,
+.dx-confd .dx-ui-kpi,
+.dx-confpm-root .dx-ui-kpi,
+.dx-confsos-root .dx-ui-kpi {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  min-width: 0;
+}
+.dx-confbl .dx-ui-kpi strong,
+.dx-confk .dx-ui-kpi strong,
+.dx-confd .dx-ui-kpi strong,
+.dx-confpm-root .dx-ui-kpi strong,
+.dx-confsos-root .dx-ui-kpi strong {
+  max-width: 100%;
+  line-height: 22px;
+  white-space: nowrap;
+}
+.dx-confbl .dx-ui-kpi span,
+.dx-confk .dx-ui-kpi span,
+.dx-confd .dx-ui-kpi span,
+.dx-confpm-root .dx-ui-kpi span,
+.dx-confsos-root .dx-ui-kpi span {
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dx-confbl .dx-ui-kpi strong small,
+.dx-confk .dx-ui-kpi strong small,
+.dx-confd .dx-ui-kpi strong small,
+.dx-confpm-root .dx-ui-kpi strong small,
+.dx-confsos-root .dx-ui-kpi strong small {
+  font: 600 12px 'DM Sans', sans-serif;
+}
 /* Confiabilidad · Programación PM (dx-confpm-) */
 .dx-ui.dx-confpm-root,
 .dx-ui.dx-confsos-root {
