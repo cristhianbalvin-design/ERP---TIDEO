@@ -28,5 +28,5 @@ export function validarReclamo(f, garantia = {}, hoy = hoyISO()) {
 export const datosReclamo = (f, fotos, crearOf = false) => ({ fecha: f.fecha, falla: f.falla.trim(), evaluacion: f.evaluacion, observacion: f.observacion.trim(), fotos, crear_of: crearOf });
 export function textoCostoPorMoneda(costos = {}) {
   const entradas = Object.entries(costos);
-  return entradas.length ? entradas.map(([moneda, monto]) => `${moneda} ${Number(monto).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`).join(' · ') : 'Sin dato';
+  return entradas.length ? entradas.map(([moneda, monto]) => `${moneda} ${Number(monto).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`).join(' · ') : '0.00';
 }
