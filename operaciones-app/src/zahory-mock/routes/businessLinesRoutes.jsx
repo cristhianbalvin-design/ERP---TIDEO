@@ -17,8 +17,6 @@ import {
   OEEPage,
   NoConformidadesPage,
   CalidadPage,
-  PasaporteComponentePage,
-  GarantiasPage,
   IngenieriaBOM,
   TiemposEstandarPage,
   AreaResumenPage,
@@ -28,6 +26,8 @@ import {
 import { BandejaOFPage } from '../pages/of/BandejaOFPage.jsx';
 import { CrearOFPage } from '../pages/of/CrearOFPage.jsx';
 import { DetalleOFPage } from '../pages/of/DetalleOFPage.jsx';
+import { OFGarantiasPage } from '../pages/of/OFGarantiasPage.jsx';
+import { OFPasaportePage } from '../pages/of/OFPasaportePage.jsx';
 import {
   DashboardTransporte,
 } from '../pages/TransportePages.jsx';
@@ -118,8 +118,8 @@ export function renderBusinessLinesRoute(route, context) {
     case 'of-no-conformidades': return <NoConformidadesPage />;
     case 'produccion-calidad':
     case 'of-calidad': return <CalidadPage onNav={onNavigate} setCurrentOF={setCurrentOF} />;
-    case 'produccion-pasaporte': return <PasaporteComponentePage />;
-    case 'produccion-garantias': return <GarantiasPage />;
+    case 'produccion-pasaporte': return <OFPasaportePage onNav={onNavigate} routeParams={routeParams} />;
+    case 'produccion-garantias': return <OFGarantiasPage onNav={onNavigate} routeParams={routeParams} />;
     case 'produccion-ingenieria': return <IngenieriaBOM onNav={onNavigate} />;
     case 'produccion-tiempos': return <TiemposEstandarPage />;
     case 'area-ingenieria': return <AreaResumenPage areaId="area-ingenieria" onNav={onNavigate} />;

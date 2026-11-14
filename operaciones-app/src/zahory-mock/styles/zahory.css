@@ -11170,3 +11170,22 @@ width:20px;height:20px}
 .dx-ofe-foto button { position:absolute; top:6px; right:6px; width:28px; height:28px; border:0; border-radius:50%; background:rgba(26,43,74,.85); color:#FFFFFF; cursor:pointer; }
 .dx-ofe-foto button:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
 .dx-ofe-resumen { display:grid; gap:6px; margin:0; padding:12px 14px; border-radius:10px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+
+/* F5b: garantías y pasaporte de producción. */
+.dx-ofg-page { display: grid; gap: 16px; }
+.dx-ofg-row { --dx-ui-cols: minmax(150px, 1.5fr) minmax(100px, 1fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(180px, 2fr); }
+.dx-ofg-filtros, .dx-ofg-acciones { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+.dx-ofg-chip { min-height: 40px; color: var(--dx-ui-ink); background: var(--dx-ui-card); border: 1px solid var(--dx-ui-border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+.dx-ofg-chip[aria-pressed="true"] { color: var(--dx-ui-cyan-fg); background: var(--dx-ui-cyan-bg); }
+.dx-ofg-detalle { display: grid; gap: 16px; }
+.dx-ofg-bloque { padding: 20px; }
+.dx-ofg-bloque dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; }
+.dx-ofg-bloque dd { margin: 0; }
+.dx-ofg-busqueda { --dx-ui-cols: 1fr auto; }
+.dx-ofg-fotos { display: flex; gap: 8px; flex-wrap: wrap; }
+.dx-ofg-fotos figure { position: relative; margin: 0; }
+.dx-ofg-fotos img { width: 96px; height: 72px; object-fit: cover; }
+.dx-ofg-fotos button { min-width: 40px; min-height: 40px; }
+@container (max-width: 760px) { .dx-ofg-row { --dx-ui-cols: 1fr 1fr; } .dx-ofg-acciones { grid-column: 1 / -1; } }
+@container (max-width: 600px) { .dx-ofg-row { --dx-ui-cols: 1fr; } }
+@container (max-width: 420px) { .dx-ofg-busqueda { --dx-ui-cols: 1fr; } }

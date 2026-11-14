@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-detalle-of
 titulo: Detalle de OF
 resumen: Ficha de una orden de fabricación (OF): estados, ruta de tareas, materiales, material no planificado, aprobación con reserva de stock y SOLPE, registro y revisión de avance por partes, costo real y calidad.
 componentes: operaciones-app/src/zahory-mock/pages/of/DetalleOFPage.jsx#DetalleOFPage
-huella: 3a3039c203
+huella: 365d22d497
 paso: 1 | pantalla=of | permiso=ninguno | En Ruta arma la secuencia de trabajo con Agregar tarea.
 paso: 2 | pantalla=of | permiso=ninguno | En Materiales agrega lo que consume la orden con Agregar material; lo que no estaba previsto se agrega como Material no planificado.
 paso: 3 | pantalla=of | permiso=ninguno | Editar y Quitar corrigen una tarea o un material.
@@ -31,3 +31,5 @@ paso: 22 | pantalla=of | permiso=of:editar | En Firmas, el responsable y el clie
 paso: 23 | pantalla=of | permiso=of:editar | En Revisión comprueba unidades, conformidad y guía, y define la garantía entre 0 y 120 meses; 0 significa sin garantía. Entregar y emitir acta entrega la OF y crea el acta, la guía de remisión y una garantía por unidad cuando los meses son mayores que cero. La OF pasa a Entregada.
 paso: 24 | pantalla=of | permiso=ninguno | En una OF Entregada o Cerrada, Unidades muestra la serie, el inicio, el fin y el estado de la garantía por unidad. Las tarjetas Entrega y Garantía muestran el acta, la fecha, quién recibe, la conformidad, la guía y el vencimiento. Ver acta PDF abre el acta emitida.
 paso: 25 | pantalla=of | permiso=of:editar | Si falló la creación del PDF después de entregar, la OF sigue Entregada. Usa Reintentar PDF en la tarjeta Entrega para generar y registrar el acta. Si no ves Entregar al cliente, revisa que la OF esté en Lista para entrega y que tu rol tenga el permiso of:editar.
+
+paso: 26 | pantalla=of | permiso=ninguno | En Unidades, Ver pasaporte abre la trazabilidad de cada serie. Una OF vinculada a un reclamo muestra la tarjeta OF de garantía con el número del reclamo y la facturación No facturable; Ver garantías vuelve al listado.
