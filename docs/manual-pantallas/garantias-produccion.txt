@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-garantias
 titulo: Garantías de producción
 resumen: Consulta garantías de unidades entregadas y gestiona reclamos y órdenes de garantía.
 componentes: operaciones-app/src/zahory-mock/pages/of/OFGarantiasPage.jsx#OFGarantiasPage
-huella: 2b2056124c
+huella: 884e63ffa5
 paso: 1 | pantalla=of | permiso=ninguno | Para qué sirve: consultar garantías de producción y registrar o evaluar fallas reportadas en unidades entregadas.
 paso: 2 | pantalla=of | permiso=ninguno | Los indicadores Vigentes, Vencen en 30 días y Reclamos abiertos cuentan las situaciones que devuelve el listado; Costo no facturable del año suma el costo real de OF de garantía no anuladas creadas este año, separado por moneda.
 paso: 3 | pantalla=of | permiso=ninguno | Busca por serie, cliente, garantía u OF y usa Todas, Vigente, Vence pronto, Con reclamo, Vencida o Anulada para filtrar. Los filtros no alteran los indicadores.
@@ -13,4 +13,4 @@ paso: 4 | pantalla=of | permiso=ninguno | Registrar reclamo abre el formulario d
 paso: 5 | pantalla=of | permiso=ninguno | Guardar reclamo registra el reclamo. Crear OF de garantía guarda un reclamo que procede y crea una orden no facturable; también se puede crear desde una fila cuyo reclamo procede y todavía no tiene OF.
 paso: 6 | pantalla=of | permiso=ninguno | Evaluar permite decidir si un reclamo pendiente procede o no procede; Guardar evaluación registra la decisión. Un reclamo puede estar abierto, en reparación, cerrado o rechazado. El enlace de la OF abre la orden y Ver pasaporte abre la unidad.
 paso: 7 | pantalla=of | permiso=ninguno | Ver requiere of:ver; Registrar reclamo y Evaluar requieren of:editar. Crear OF de garantía requiere of:crear; el servidor informa si falta permiso.
-paso: 8 | pantalla=of | permiso=ninguno | Si no ves Registrar reclamo, revisa que la garantía no está vencida o anulada y no tenga un reclamo abierto. Si no ves una garantía, revisa empresa, sociedad y filtros; si falla una acción, revisa el mensaje y tus permisos.
+paso: 8 | pantalla=of | permiso=ninguno | Si no ves Registrar reclamo, revisa que la garantía no esté anulada y no tenga un reclamo abierto. En una garantía vencida se puede registrar el reclamo, pero solo procede si la fecha del reclamo es anterior o igual al vencimiento. Si no ves una garantía, revisa empresa, sociedad y filtros; si falla una acción, revisa el mensaje y tus permisos.
