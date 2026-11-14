@@ -25,6 +25,7 @@ vi.mock('../src/services/ordenFabricacionService.js', () => ({
   obtenerReservasOF: vi.fn(() => Promise.resolve(mocks.reservas || { demanda_id: null, almacen: '', lineas: [] })),
   registrarParteOF: vi.fn(),
   revisarParteOF: vi.fn(),
+  anularOF: vi.fn(),
 }));
 
 import { DetalleOFPage } from '../src/zahory-mock/pages/of/DetalleOFPage.jsx';

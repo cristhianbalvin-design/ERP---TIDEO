@@ -2,9 +2,17 @@
 // of_revisar_parte); aquí solo la validación previa del formulario y los resúmenes de pantalla.
 
 export const ESTADOS_AVANCE = ['aprobada', 'en_produccion'];
+export const ESTADOS_ANULABLES = ['borrador', 'en_ingenieria', 'aprobada', 'en_produccion'];
 export const ESTADOS_PARTES = ['aprobada', 'en_produccion', 'en_calidad', 'lista_entrega', 'entregada', 'cerrada'];
 export const ETIQUETA_PARTE = { en_revision: 'Por aprobar', aprobado: 'Aprobado', observado: 'Observado' };
 export const CAMPOS_AVANCE = ['operacion_id', 'tecnico_id', 'fecha', 'horas', 'avance'];
+
+export function validarMotivoAnulacion(motivo) {
+  const texto = String(motivo || '').trim();
+  if (!texto) return 'Indica el motivo.';
+  if (texto.length < 5) return 'El motivo debe tener al menos 5 caracteres.';
+  return '';
+}
 
 const num = v => Number(String(v ?? '').trim().replace(',', '.'));
 const dosDecimales = v => /^\d+([.,]\d{1,2})?$/.test(String(v ?? '').trim());
