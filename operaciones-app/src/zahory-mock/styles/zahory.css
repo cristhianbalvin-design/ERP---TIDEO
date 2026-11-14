@@ -11183,7 +11183,7 @@ width:20px;height:20px}
 .dx-ofe-resumen { display:grid; gap:6px; margin:0; padding:12px 14px; border-radius:10px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
 
 /* F5b: garantías y pasaporte de producción. */
-.dx-ofg-page { display: grid; gap: 16px; }
+.dx-ofg-page { display: grid; gap: 16px; align-content: start; min-height: 100%; padding: 24px clamp(16px, 3vw, 28px) 48px; background: var(--dx-ui-bg); container-type: inline-size; }
 .dx-ofg-row { --dx-ui-cols: minmax(150px, 1.5fr) minmax(100px, 1fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(180px, 2fr); }
 .dx-ofg-filtros, .dx-ofg-acciones { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
 .dx-ofg-chip { min-height: 40px; color: var(--dx-ui-ink); background: var(--dx-ui-card); border: 1px solid var(--dx-ui-border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }

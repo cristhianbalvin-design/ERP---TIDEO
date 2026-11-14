@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-garantias
 titulo: Garantías de producción
 resumen: Consulta garantías de unidades entregadas y gestiona reclamos y órdenes de garantía.
 componentes: operaciones-app/src/zahory-mock/pages/of/OFGarantiasPage.jsx#OFGarantiasPage
-huella: 81148da6c3
+huella: 2b2056124c
 paso: 1 | pantalla=of | permiso=ninguno | Para qué sirve: consultar garantías de producción y registrar o evaluar fallas reportadas en unidades entregadas.
 paso: 2 | pantalla=of | permiso=ninguno | Los indicadores Vigentes, Vencen en 30 días y Reclamos abiertos cuentan las situaciones que devuelve el listado; Costo no facturable del año suma el costo real de OF de garantía no anuladas creadas este año, separado por moneda.
 paso: 3 | pantalla=of | permiso=ninguno | Busca por serie, cliente, garantía u OF y usa Todas, Vigente, Vence pronto, Con reclamo, Vencida o Anulada para filtrar. Los filtros no alteran los indicadores.

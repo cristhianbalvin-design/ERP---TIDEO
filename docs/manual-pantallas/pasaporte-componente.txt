@@ -5,7 +5,7 @@ catalogo: operaciones/produccion-pasaporte
 titulo: Pasaporte de componente
 resumen: Consulta trazabilidad de una unidad por serie, desde su OF hasta la entrega y reclamos.
 componentes: operaciones-app/src/zahory-mock/pages/of/OFPasaportePage.jsx#OFPasaportePage
-huella: dd40f80a7f
+huella: 5c7cd93805
 paso: 1 | pantalla=of | permiso=ninguno | Para qué sirve: consultar la trazabilidad de una unidad entregada por su serie, OF o cliente.
 paso: 2 | pantalla=of | permiso=ninguno | Busca una serie, OF o cliente y usa Ver pasaporte para abrir la unidad. Buscar otra unidad vuelve a la búsqueda. La cabecera muestra serie y unidad; los datos muestran componente, cliente, OF, OS y fechas de apertura, liberación y entrega.
 paso: 3 | pantalla=of | permiso=ninguno | Ruta ejecutada muestra operaciones de la OF, horas reales y estimadas y técnicos de los partes. Materiales consumidos muestra cantidades despachadas de las reservas.

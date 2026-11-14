@@ -18,7 +18,10 @@ export function OFPasaportePage({ onNav, routeParams = {} }) {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   useEffect(() => {
-    if (estado !== 'listo' || !empresaId) return undefined;
+    if (estado !== 'listo' || !empresaId) {
+      if (estado && estado !== 'cargando') setError('No hay una sesión activa con empresa. Inicia sesión e inténtalo de nuevo.');
+      return undefined;
+    }
     let activo = true; setCargando(false); setError(''); setDatos(null); setDetalle(null);
     if (!id) setLista(null);
     const cargar = async () => {

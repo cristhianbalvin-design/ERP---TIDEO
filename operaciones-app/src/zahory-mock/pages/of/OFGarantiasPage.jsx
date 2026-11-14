@@ -19,13 +19,16 @@ export function OFGarantiasPage({ onNav }) {
     try { setDatos(await listarGarantias(empresaId)); } catch (e) { setError(e?.message || 'No se pudieron cargar las garantías.'); }
     finally { setCargando(false); }
   }, [empresaId]);
-  useEffect(() => { if (estado === 'listo' && empresaId) cargar(); }, [estado, empresaId, cargar]);
+  useEffect(() => {
+    if (estado === 'listo' && empresaId) cargar();
+    else if (estado && estado !== 'cargando') { setCargando(false); setError('No hay una sesión activa con empresa. Inicia sesión e inténtalo de nuevo.'); }
+  }, [estado, empresaId, cargar]);
   const filas = filtrarGarantias(datos?.filas, texto, situacion);
   const k = datos?.kpis || {};
   const abrirOf = id => onNav?.('produccion-detalle-of', { id });
   const crear = async r => { setTrabajando(r.id); setError(''); try { const resultado = await crearOFGarantia(r.id); await cargar(); abrirOf(resultado.of_id); } catch (e) { setError(e?.message || 'No se pudo crear la OF.'); } finally { setTrabajando(''); } };
   return <section className="dx-ui dx-ofg-page"><header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Producción</div><h1 className="dx-ui-title">Garantías de producción</h1><p className="dx-ui-sub">Garantía de cada unidad entregada, reclamos y OF de garantía</p></div><div className="dx-ui-actions" /></header>
-    <div className="dx-ui-kpi-row">{[[k.vigentes ?? 'Sin dato', 'Vigentes'], [k.vencen_30 ?? 'Sin dato', 'Vencen en 30 días'], [k.reclamos_abiertos ?? 'Sin dato', 'Reclamos abiertos'], [textoCostoPorMoneda(k.costo_no_facturable), 'Costo no facturable del año']].map(([v, t]) => <div className="dx-ui-kpi" key={t}><strong>{v}</strong><span>{t}</span></div>)}</div>
+    <div className="dx-ui-kpi-row">{[[datos ? k.vigentes : '…', 'Vigentes'], [datos ? k.vencen_30 : '…', 'Vencen en 30 días'], [datos ? k.reclamos_abiertos : '…', 'Reclamos abiertos'], [datos ? textoCostoPorMoneda(k.costo_no_facturable) : '…', 'Costo no facturable del año']].map(([v, t]) => <div className="dx-ui-kpi" key={t}><strong>{v}</strong><span>{t}</span></div>)}</div>
     <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Garantías</h2><span className="dx-ui-count">{filas.length}</span><label className="dx-ui-search"><input aria-label="Buscar garantías" placeholder="Buscar serie, cliente u OF" value={texto} onChange={e => setTexto(e.target.value)} /></label></div>
       <div className="dx-ofg-filtros"><button type="button" className="dx-ofg-chip" aria-pressed={!situacion} onClick={() => setSituacion('')}>Todas</button>{Object.entries(SITUACIONES).map(([id, [label]]) => <button key={id} type="button" className="dx-ofg-chip" aria-pressed={situacion === id} onClick={() => setSituacion(id)}>{label}</button>)}</div>
       {error && <div className="dx-ui-empty" role="alert">{error}</div>}{cargando ? <div className="dx-ui-empty">Cargando garantías…</div> : !datos?.filas?.length ? <div className="dx-ui-empty">No hay garantías registradas.</div> : !filas.length ? <div className="dx-ui-empty">No hay resultados para estos filtros.</div> : filas.map(f => <div className="dx-ui-row dx-ofg-row" key={f.id}>
