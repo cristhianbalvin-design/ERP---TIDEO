@@ -31,19 +31,19 @@
 }
 
 .dark {
-  --bg: #0D1B2E;
-  --bg-subtle: #0A1524;
-  --surface: #162038;
-  --surface-hover: #1C2A46;
+  --bg: #0F1012;
+  --bg-subtle: #0B0C0E;
+  --surface: #1A1C20;
+  --surface-hover: #22252A;
   --fg: #E8EDF5;
   --fg-muted: #8A9BA4;
   --fg-subtle: #607D8B;
-  --border: #243554;
-  --border-subtle: #1C2A46;
+  --border: #2B2E34;
+  --border-subtle: #22252A;
   --header-bg: #16181B;
-  --white: #162038;
-  --slate-50: #1C2A46;
-  --slate-100: #243554;
+  --white: #1A1C20;
+  --slate-50: #22252A;
+  --slate-100: #2B2E34;
   --cyan-lt: rgba(0,188,212,0.15);
   --danger-lt: rgba(229,57,53,0.18);
   --shadow-sm: 0 2px 4px rgba(0,0,0,0.3);
@@ -283,3 +283,6 @@ body {
   --dx-asis-avatar-shadow:inset 0 0 0 3px #0F1012,0 3px 8px rgba(0,0,0,.4),0 12px 30px rgba(0,0,0,.58);
   --dx-asis-avatar-shadow-hover:inset 0 0 0 3px #0F1012,0 4px 10px rgba(0,0,0,.48),0 14px 34px rgba(0,0,0,.66);
 }
+
+/* Modo oscuro de Operaciones en grafito (fondo y tarjetas), coherente con el menú y la cabecera. */
+.dark .ops-shell .dx-ui { --dx-ui-bg: #0F1012; --dx-ui-head: #16181B; --dx-ui-card: #1A1C20; --dx-ui-hover: #22252A; --dx-ui-border: #4A4D55; --dx-ui-gray-bg: #2B2E34; }

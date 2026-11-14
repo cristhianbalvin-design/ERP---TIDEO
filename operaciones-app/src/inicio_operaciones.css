@@ -11,7 +11,7 @@
 /* Barra con el botón ☰: solo en modo trabajo (celular y tablet), cuando la cabecera de Operaciones se oculta. */
 .dx-opsini-bar { display: none; }
 html[data-dx-work-compact="true"] .dx-opsini-bar { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 6px 12px; padding-top: max(6px, env(safe-area-inset-top)); border-bottom: 1px solid #E4E7EB; background: #fff; color: #1F2937; font: 700 16px/1.2 'DM Sans', sans-serif; }
-html[data-dx-work-compact="true"].dark .dx-opsini-bar, html[data-dx-work-compact="true"] .dark .dx-opsini-bar { border-bottom-color: rgba(255,255,255,.1); background: #0F172A; color: #F8FAFC; }
+html[data-dx-work-compact="true"].dark .dx-opsini-bar, html[data-dx-work-compact="true"] .dark .dx-opsini-bar { border-bottom-color: rgba(255,255,255,.1); background: #16181B; color: #F8FAFC; }
 .dx-opsini-menu { display: inline-grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 21px; cursor: pointer; }
 .dx-opsini-menu:focus-visible { outline: 2px solid #00ACC1; outline-offset: 2px; }
 /* Fondo de Aria en Inicio con la paleta de Operaciones (grafito + ámbar); Administración conserva navy + cian. */
@@ -21,7 +21,7 @@ html[data-dx-work-compact="true"].dark .dx-opsini-bar, html[data-dx-work-compact
 .ops-inicio-aria .dxi-root .dxi-send, .ops-inicio-aria .dxi-root .dxi-act:not(.dxi-sec) { background: #1E2126; color: #fff; }
 .dark .ops-inicio-aria .dxi-root .dxi-send, .dark .ops-inicio-aria .dxi-root .dxi-act:not(.dxi-sec) { background: #F59E0B; color: #2A1700; }
 .ops-inicio-aria .dxi-root { --dx-ui-cyan: #D97706; --dx-ui-cyan-fg: #8A4B00; --dx-ui-cyan-bg: #FFF3E0; }
-.dark .ops-inicio-aria .dxi-root { --dx-ui-cyan: #F59E0B; --dx-ui-cyan-fg: #FFC27A; --dx-ui-cyan-bg: #3A2A10; }
+.dark .ops-inicio-aria .dxi-root { --dx-ui-cyan: #F59E0B; --dx-ui-cyan-fg: #FFC27A; --dx-ui-cyan-bg: #3A2A10; --dx-ui-bg: #0F1012; --dx-ui-head: #16181B; --dx-ui-card: #1A1C20; --dx-ui-hover: #22252A; --dx-ui-border: #4A4D55; --dx-ui-gray-bg: #2B2E34; }
 .ops-inicio-aria .dxi-root .dxi-p { background: linear-gradient(135deg, #F59E0B, #D97706); color: #2A1700; box-shadow: 0 8px 24px rgba(245,158,11,.32); }
 .ops-inicio-aria .dxi-root .dxi-ask { background: linear-gradient(100deg, #F59E0B, #FDE68A 55%, #F59E0B); background-size: 220% 100%; }
 .ops-inicio-aria .dxi-root .dxi-me { background: linear-gradient(135deg, #F59E0B, #1E2126); }
