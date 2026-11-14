@@ -1,7 +1,7 @@
 // Liquidación de transporte comercial y rendición de gastos del conductor.
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
-const check = error => { if (error) throw new Error(error.message || 'No se pudo completar la operación.'); };
+const check = error => { if (error) throw new Error((error.message || 'No se pudo completar la operación.').replace(/^[A-Z][A-Z0-9_]*:\s*/, '')); };
 const VIAJE = 'id,codigo,estado,tipo_viaje,cuenta_id,os_cliente_id,fecha_programada,origen_nombre,destino_nombre,'
   + 'carga_descripcion,peso_toneladas,ingreso_estimado,moneda,cantidad_facturable,tarifa_unitaria,transportista_id,conductor_id,'
   + 'cuenta:cuentas(id,razon_social,nombre_comercial),os:os_clientes(id,numero),vehiculo:vehiculos_transporte(placa,tipo),'
@@ -130,8 +130,9 @@ export const ajustarEspera = (lvId, minutos, precioHora, motivo) => rpc('transpo
 export const guardarCostoTercero = (lvId, monto) => rpc('transporte_liquidacion_costo_tercero', { p_lv_id: lvId, p_monto: monto });
 export const accionLiquidacion = (liqId, accion, datos = {}) =>
   rpc('transporte_liquidacion_accion', { p_liq_id: liqId, p_accion: accion, p_datos: datos });
-export const guardarFondo = (viajeId, monto, referencia) =>
-  rpc('transporte_rendicion_fondo', { p_viaje_id: viajeId, p_monto: monto, p_referencia: referencia });
+export const guardarFondo = (viajeId, monto, referencia, fondoCajaId, fecha) =>
+  rpc('transporte_rendicion_fondo_caja', { p_viaje_id: viajeId, p_monto: monto, p_referencia: referencia, p_fondo_caja_id: fondoCajaId || null, p_fecha: fecha });
+export const obtenerCajaRendicion = viajeId => rpc('transporte_rendicion_caja', { p_viaje_id: viajeId });
 export const revisarGasto = (gastoId, aprobar, motivo) =>
   rpc('transporte_gasto_revisar', { p_gasto_id: gastoId, p_aprobar: aprobar, p_motivo: motivo || null });
-export const accionRendicion = (viajeId, accion) => rpc('transporte_rendicion_accion', { p_viaje_id: viajeId, p_accion: accion });
+export const accionRendicion = (viajeId, accion, fondoCajaId = null) => rpc('transporte_rendicion_accion', { p_viaje_id: viajeId, p_accion: accion, p_fondo_caja_id: fondoCajaId });
