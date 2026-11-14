@@ -46,6 +46,7 @@ import {
 } from './services/cxpMassiveImportService.js';
 import CargaMasivaCxC from './components/CargaMasivaCxC.jsx';
 import FacturacionListado from './pages/facturacion/FacturacionListado.jsx';
+import FacturacionLiquidaciones from './pages/facturacion/FacturacionLiquidaciones.jsx';
 import FacturacionEmisionModal from './pages/facturacion/FacturacionEmisionModal.jsx';
 import { calcularTotalesEmision, estimarDetraccion, primerCampoConError, validarEmision } from './pages/facturacion/facturacionEmision.js';
 import * as storageService from './services/storageService.js';
@@ -4565,6 +4566,8 @@ function Facturacion() {
   // ── mode: null=lista, 'val'=desde val, 'directa' ──────────────────────
   const [mode, setMode] = useState(null);
   const [cargaMasivaAbierta, setCargaMasivaAbierta] = useState(false);
+  const [vistaFacturacion, setVistaFacturacion] = useState('comprobantes');
+  const [cantidadLiquidaciones, setCantidadLiquidaciones] = useState(null);
 
   // ── Form state ────────────────────────────────────────────────────────
   const [valSel, setValSel] = useState('');
@@ -6139,7 +6142,7 @@ function Facturacion() {
   return (
     <>
       {fichaFac}
-      <FacturacionListado facturas={facturasVista} cxc={cxc || []} cuentaNombre={cuentaNombre} vals={valsParaFacturar.length} abrir={id => { setSelFac(id); setFichaTab('detalle'); }} openMode={openMode} abrirCarga={() => setCargaMasivaAbierta(true)} mostrarBadge={mostrarBadgeSociedadFacturacion} Badge={SociedadBadge} searchQuery={searchQuery} loading={supabaseStatus?.loading} puedeCrear={puedeCrearFacturacion} />
+      <FacturacionListado vista={vistaFacturacion} onVista={setVistaFacturacion} cantidadLiquidaciones={cantidadLiquidaciones} liquidaciones={vistaFacturacion === 'liquidaciones' && <FacturacionLiquidaciones empresa={empresa} cuentas={cuentas || []} centrosBeneficio={centrosBeneficio || []} sociedades={sociedadesDisponibles} modoVista={modoVistaSociedadFacturacion} puedeCrear={puedeCrearFacturacion} nextNumero={nextNumero} serie={serieFactura} condiciones={CONDICION_PAGO_OPTIONS} condicionFallback={condicionPagoDefecto} onCantidad={setCantidadLiquidaciones} />} facturas={facturasVista} cxc={cxc || []} cuentaNombre={cuentaNombre} vals={valsParaFacturar.length} abrir={id => { setSelFac(id); setFichaTab('detalle'); }} openMode={openMode} abrirCarga={() => setCargaMasivaAbierta(true)} mostrarBadge={mostrarBadgeSociedadFacturacion} Badge={SociedadBadge} searchQuery={searchQuery} loading={supabaseStatus?.loading} puedeCrear={puedeCrearFacturacion} />
       {ctxEmision && <FacturacionEmisionModal ctx={ctxEmision} />}
       {cargaMasivaAbierta && <CargaMasivaCxC onClose={() => setCargaMasivaAbierta(false)} />}
       {renderPanelEditFac()}

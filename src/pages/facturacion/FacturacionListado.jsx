@@ -67,6 +67,7 @@ export default function FacturacionListado({
   searchQuery,
   loading,
   puedeCrear = true,
+  vista, onVista, cantidadLiquidaciones, liquidaciones,
 }) {
   const [filters, setFilters] = useState({
     cliente: '',
@@ -166,6 +167,11 @@ export default function FacturacionListado({
           </button>
         </div>
       </header>
+      <nav className="dx-facliq-tabs" aria-label="Vistas de facturación">
+        <button className="dx-btn" aria-pressed={vista === 'comprobantes'} onClick={() => onVista('comprobantes')}>Comprobantes</button>
+        <button className="dx-btn" aria-pressed={vista === 'liquidaciones'} onClick={() => onVista('liquidaciones')}>Liquidaciones por facturar {cantidadLiquidaciones !== null && `(${cantidadLiquidaciones})`}</button>
+      </nav>
+      {vista === 'liquidaciones' ? liquidaciones : <>
       <div className="dx-fac-kpis">
         <div className="dx-ui-kpi-row">
           {kpi(facturado.montos, `Facturado ${mes}`)}
@@ -367,6 +373,7 @@ export default function FacturacionListado({
           <span>Archivos PDF/XML: se ven en la ficha de cada comprobante</span>
         </div>
       </div>
+      </>}
     </section>
   );
 }

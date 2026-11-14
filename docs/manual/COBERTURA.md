@@ -13,9 +13,9 @@ Generado por `node scripts/manual/catalogo.mjs generar` a partir de `catalogo/pa
 | App | Pantallas | Con ficha | Con datos | Con registro | Sin cobertura |
 |---|---:|---:|---:|---:|---:|
 | Administración | 77 | 73 (95 %) | 30 (39 %) | 3 | 3 |
-| Operaciones | 120 | 50 (42 %) | 46 (38 %) | 1 | 58 |
+| Operaciones | 120 | 55 (46 %) | 46 (38 %) | 1 | 53 |
 | Versión Móvil | 9 | 9 (100 %) | 0 (0 %) | 0 | 0 |
-| **Total** | 206 | 132 (64 %) | 76 (37 %) | 4 | 61 |
+| **Total** | 206 | 137 (67 %) | 76 (37 %) | 4 | 56 |
 
 Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantalla): `asistente_estado_resultados`, `asistente_presupuesto_real`, `asistente_resumen_financiero`.
 
@@ -27,7 +27,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Administración | Caja Chica (`caja`) | activa | caja | proceso_caja_chica | 4 | preparar_egreso_caja_chica |
 | Administración | Cuentas por Cobrar (`cxc`) | activa | cxc | concepto_detraccion, problemas_corregir_registro, proceso_cierre_mes, proceso_cotizacion_cobro | 4 | — |
 | Administración | Cuentas por Pagar (`cxp`) | activa | cxp | concepto_detraccion, proceso_cierre_mes, proceso_solpe_pago | 4 | — |
-| Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_cotizacion_cobro | 5 | — |
+| Administración | Facturación (`facturacion`) | activa | facturacion | problemas_corregir_registro, proceso_alquiler_flota, proceso_cotizacion_cobro | 5 | — |
 | Administración | Financiamiento y Deuda (`financiamiento`) | activa | financiamiento | — | 1 | — |
 | Administración | IA Financiera (`ia_financiera`) | legado | — | — | — | — |
 | Administración | Presupuesto vs Real (`presupuestos`) | activa | presupuestos | proceso_cierre_mes | — | — |
@@ -133,11 +133,11 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Compras & Importación | Órdenes de Compra (`compras-oc`) | puente | — | — | 7 | — |
 | Compras & Importación | Proveedores (`compras-proveedores`) | puente | — | — | 3 | — |
 | Compras & Importación | Recepciones (`compras-recepciones`) | activa | recepcion_oc_almacen | proceso_almacen | 3 | — |
-| Confiabilidad | Backlog Operativo (`backlog`) | puente | — | — | — | — |
-| Confiabilidad | KPIs de Confiabilidad (`confiabilidad`) | maqueta | — | — | — | — |
-| Confiabilidad | Disponibilidad Mecánica (`disponibilidad-mecanica`) | maqueta | — | — | — | — |
-| Confiabilidad | Programación PM (`programacion-pm`) | maqueta | — | — | — | — |
-| Confiabilidad | Análisis SOS (`sos-telemetria`) | maqueta | — | — | — | — |
+| Confiabilidad | Backlog Operativo (`backlog`) | activa | backlog_operativo | — | — | — |
+| Confiabilidad | KPIs de Confiabilidad (`confiabilidad`) | activa | kpis_confiabilidad | — | — | — |
+| Confiabilidad | Disponibilidad Mecánica (`disponibilidad-mecanica`) | activa | disponibilidad_mecanica | — | — | — |
+| Confiabilidad | Programación PM (`programacion-pm`) | activa | programacion_pm | — | — | — |
+| Confiabilidad | Análisis SOS (`sos-telemetria`) | activa | analisis_sos | — | — | — |
 | Configuración | Parámetros Globales (`configuracion`) | maqueta | — | — | — | — |
 | Configuración | Usuarios & Roles (`usuarios`) | puente | — | — | — | — |
 | Finanzas & Facturación | Consolidado Facturación (`consolidado`) | maqueta | — | — | 5 | — |
@@ -164,7 +164,7 @@ Herramientas sin permiso de pantalla detectable (no se asignan a ninguna pantall
 | Inicio | Mapa de Campo (`mapa-campo`) | maqueta | — | — | — | — |
 | Inicio | Mis OTs del día (`mis-ots-hoy`) | activa | mis_ots_dia | — | 2 | — |
 | Operaciones | Documentos (`docs`) | maqueta | — | — | — | — |
-| Operaciones | Indicadores de confiabilidad (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
+| Operaciones | Indicadores MTBF/MTTR (`indicadores-confiabilidad`) | placeholder | — | — | — | — |
 | Inicio | Inicio operativo (Aria) (`inicio`) | activa | inicio_operaciones | — | — | — |
 | Operaciones | Proveedores (operaciones) (`proveedores`) | placeholder | — | — | — | — |
 | Órdenes de Trabajo | Cierre & Conformidad (`cierre-conformidad`) | activa | cierre_conformidad | proceso_recepcion_entrega | 2 | — |

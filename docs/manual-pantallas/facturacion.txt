@@ -5,7 +5,7 @@ catalogo: admin/facturacion
 titulo: Facturación
 resumen: Emite y consulta los comprobantes de venta, genera su cuenta por cobrar, registra cobros y autodetracciones, emite notas de crédito o débito y permite la carga masiva de facturas desde Excel.
 componentes: src/pages_fin.jsx#Facturacion
-huella: e697a23316
+huella: b89d6b26cd
 paso: 1 | pantalla=facturacion | permiso=facturacion:crear | Emite un comprobante desde una valorización, desde una venta o como comprobante directo eligiendo cliente y partidas. El número es obligatorio y se necesita al menos una partida; no se emite a un cliente con la cuenta bloqueada, y la pantalla pide confirmar un número repetido o un monto que excede el saldo de la OS.
 paso: 2 | pantalla=facturacion | permiso=ninguno | Desde el comprobante usa Generar CxC para crear la cuenta por cobrar; Ver CxC la abre si ya existe.
 paso: 3 | pantalla=facturacion | permiso=ninguno | Registrar cobro deja constancia del pago del cliente. Si el cliente no depositó la detracción, usa Registrar autodetracción con las cuentas y la constancia del depósito.
@@ -15,3 +15,4 @@ paso: 6 | pantalla=facturacion | permiso=ninguno | Ver OS y Ver valorización ab
 paso: 7 | pantalla=facturacion | permiso=facturacion:crear | Para subir muchas facturas de clientes a la vez usa Carga masiva, en la lista de Facturación: descarga la plantilla de Excel, complétala con las facturas que tienen saldo pendiente y sube el archivo. La pantalla muestra una revisión antes de importar; cada fila crea la factura y su cuenta por cobrar, y crea al cliente si no existía. El mismo botón está en Cuentas por cobrar.
 paso: 8 | pantalla=facturacion | permiso=ninguno | Para qué sirve: emitir las facturas, boletas y notas de crédito o débito de la empresa. Cada comprobante emitido crea su cuenta por cobrar y cuenta como ingreso del mes en el Estado de Resultados.
 paso: 9 | pantalla=facturacion | permiso=ninguno | En una factura directa, Agregar partida suma una línea al comprobante. Ver factura abre el comprobante. Registrar pago anota el cobro desde aquí. Confirmar anulación anula la factura y su cuenta por cobrar. Quitar archivo retira el Excel elegido en la carga masiva.
+paso: 10 | pantalla=facturacion | permiso=facturacion:crear | En Liquidaciones por facturar consulta las liquidaciones aprobadas y filtra por saldo o avance. Usa Facturar, selecciona los equipos pendientes, completa el comprobante y emite la factura con su cuenta por cobrar; la vista previa muestra la penalidad DMR y la detracción estimada. Los equipos con factura vigente no se pueden seleccionar.

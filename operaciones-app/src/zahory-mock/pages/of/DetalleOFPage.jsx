@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSesionOperativa } from '../../../lib/sesionOperativa.js';
 import { useCompactWorkMode } from '../../../useCompactWorkMode.js';
 import {
-  aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, listarPartesOF, obtenerCalidadOF, obtenerCatalogoAvanceOF, obtenerReservasOF,
+  anularOF, aprobarOF, enviarACalidadOF, guardarMaterialOF, guardarOperacionOF, liberarOF, listarMaterialesOF, listarPartesOF, obtenerCalidadOF, obtenerCatalogoAvanceOF, obtenerReservasOF,
   obtenerCatalogoEdicionOF, obtenerOF, quitarMaterialOF, quitarOperacionOF, registrarParteOF, revisarParteOF,
 } from '../../../services/ordenFabricacionService.js';
 import { ETIQUETA_ESTADO_OF, formatearFecha, formatearMonto } from './ofBandejaLogic.js';
@@ -10,8 +10,8 @@ import { agruparRuta, textoHoras } from './ofCrearLogic.js';
 import { admiteNoPlanificado, esEditable, materialDesdeLinea, resumenAprobacion, tareaDesdeOperacion, textoStock } from './ofFichaLogic.js';
 import { ConfirmarModal, MaterialModal, TareaModal } from './OFModales.jsx';
 import { OFCalidadPanel } from './OFCalidadPanel.jsx';
-import { AvanceModal, RevisarParteModal } from './OFAvanceModales.jsx';
-import { ESTADOS_AVANCE, ESTADOS_PARTES, ETIQUETA_PARTE, etiquetasReserva, resumenProduccion, resumenReservas } from './ofAvanceLogic.js';
+import { AnularOFModal, AvanceModal, RevisarParteModal } from './OFAvanceModales.jsx';
+import { ESTADOS_ANULABLES, ESTADOS_AVANCE, ESTADOS_PARTES, ETIQUETA_PARTE, etiquetasReserva, hoyISO, resumenProduccion, resumenReservas } from './ofAvanceLogic.js';
 import { ESTADOS_CON_CALIDAD, ESTADOS_ENVIO, normalizarCalidad, resumenCalidad } from './ofCalidadLogic.js';
 
 const LINEA_TIEMPO = [
@@ -148,6 +148,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
   const editable = esEditable(of.estado) && Boolean(catalogo?.puede_editar);
   const noPlanificado = admiteNoPlanificado(of.estado) && Boolean(catalogo?.puede_editar);
   const puedeAprobar = esEditable(of.estado) && Boolean(catalogo?.puede_aprobar);
+  const puedeAnular = ESTADOS_ANULABLES.includes(of.estado) && Boolean(avanceCat?.puede_anular);
   const puedeEnviarCalidad = ESTADOS_ENVIO.includes(of.estado) && Boolean(calidad?.puedeEnviar);
   const puedeLiberar = of.estado === 'en_calidad' && Boolean(calidad?.puedeLiberar);
   const verCalidad = ESTADOS_ENVIO.includes(of.estado) || ESTADOS_CON_CALIDAD.includes(of.estado);
@@ -184,8 +185,9 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
             </h1>
             <p className="dx-ofd-sub">{[of.descripcion, of.cliente].filter(Boolean).join(' · ') || 'Sin descripción'}</p>
           </div>
-          {(puedeAprobar || puedeRegistrar || puedeEnviarCalidad || puedeLiberar) && (
+          {(puedeAnular || puedeAprobar || puedeRegistrar || puedeEnviarCalidad || puedeLiberar) && (
             <div className="dx-ofd-hdr-actions">
+              {puedeAnular && <button type="button" className="dx-ofd-ghost" onClick={() => setModal({ tipo: 'anular' })}>Anular OF</button>}
               {puedeRegistrar && <button type="button" className={puedeEnviarCalidad ? 'dx-ofd-ghost' : 'dx-ofd-primary'} onClick={() => setModal({ tipo: 'avance' })}><IcoMas />Registrar avance</button>}
               {puedeAprobar && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'aprobar' })}><IcoCheck />Aprobar OF</button>}
               {puedeEnviarCalidad && <button type="button" className="dx-ofd-primary" onClick={() => setModal({ tipo: 'enviar-calidad' })}><IcoEnviar />Enviar a calidad</button>}
@@ -224,7 +226,7 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
         )}
 
         {of.estado === 'anulada'
-          ? <div className="dx-ofd-anulada" role="status">Esta OF está anulada.</div>
+          ? <div className="dx-ofd-anulada" role="status">Esta OF está anulada. Motivo: {of.motivo_anulacion || 'Sin dato'}. Fecha de anulación: {formatearFecha(of.anulada_en ? hoyISO(new Date(of.anulada_en)) : null)}.</div>
           : (
             <ol className="dx-ofd-tl" aria-label="Estado de la OF">
               {LINEA_TIEMPO.map(([k, etiqueta], i) => (
@@ -517,6 +519,10 @@ export function DetalleOFPage({ onNav, routeParams = {}, ofIdRespaldo }) {
           ]}
           onConfirmar={() => liberarOF(of.id)}
           onClose={r => { cerrarModal(); if (r) recargar('OF liberada: lista para entrega.'); }} />
+      )}
+      {modal?.tipo === 'anular' && (
+        <AnularOFModal of={of} onAnular={motivo => anularOF(of.id, motivo)}
+          onClose={r => { cerrarModal(); if (r) recargar(ESTADOS_AVANCE.includes(of.estado) ? 'OF anulada. Reservas liberadas.' : 'OF anulada.'); }} />
       )}
       {modal?.tipo === 'avance' && (
         <AvanceModal of={of} tecnicos={avanceCat?.tecnicos || []}
