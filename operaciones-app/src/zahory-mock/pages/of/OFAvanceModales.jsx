@@ -1,10 +1,55 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { formatearFecha } from './ofBandejaLogic.js';
 import { hayCambios, primerError } from './ofFichaLogic.js';
-import { CAMPOS_AVANCE, avanceVacio, datosAvance, hoyISO, textoOperacion, validarAvance, validarRevision } from './ofAvanceLogic.js';
+import { CAMPOS_AVANCE, avanceVacio, datosAvance, hoyISO, textoOperacion, validarAvance, validarMotivoAnulacion, validarRevision } from './ofAvanceLogic.js';
 import { Campo, ModalBase } from './OFModales.jsx';
 
 const IcoCheck = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>;
+
+export function AnularOFModal({ of, onAnular, onClose }) {
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const [errorServidor, setErrorServidor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const campo = useRef(null);
+
+  const guardar = async e => {
+    e.preventDefault();
+    const mensaje = validarMotivoAnulacion(motivo);
+    setError(mensaje);
+    if (mensaje) { campo.current?.focus(); return; }
+    setGuardando(true);
+    setErrorServidor('');
+    try {
+      await onAnular(motivo.trim());
+      onClose(true);
+    } catch (err) {
+      setErrorServidor(err?.message || 'No se pudo anular la OF.');
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <ModalBase titulo={`¿Anular la ${of.numero}?`} estrecho sucio={Boolean(motivo) && !guardando} onClose={() => onClose()}
+      ayuda="Se liberan las reservas de stock y el pedido sale de Despachos. Lo ya despachado queda en el kárdex. Las SOLPE de faltantes se anulan desde Compras si ya no se necesitan. Esta acción no se puede deshacer."
+      pie={cerrar => (
+        <>
+          {errorServidor && <div className="dx-ofd-server" role="alert">{errorServidor}</div>}
+          <div className="dx-ofd-modal-actions">
+            <button type="button" className="dx-ofd-ghost" data-cerrar onClick={cerrar} disabled={guardando}>Cancelar</button>
+            <button type="submit" form="dx-ofd-form-anular" className="dx-ofd-primary is-danger" disabled={guardando}>{guardando ? 'Anulando…' : 'Anular OF'}</button>
+          </div>
+        </>
+      )}>
+      <form id="dx-ofd-form-anular" className="dx-ui-form-grid" noValidate onSubmit={guardar}>
+        <Campo id="of-anular-motivo" label="Motivo" requerido error={error} completo>
+          <textarea ref={campo} id="of-anular-motivo" value={motivo} onChange={e => { setMotivo(e.target.value); setError(''); setErrorServidor(''); }}
+            aria-invalid={Boolean(error)} aria-describedby={error ? 'of-anular-motivo-err' : undefined} />
+        </Campo>
+      </form>
+    </ModalBase>
+  );
+}
 
 // Registrar avance: el parte queda en revisión hasta que lo apruebe el jefe de taller.
 export function AvanceModal({ of, tecnicos, onGuardar, onClose }) {
