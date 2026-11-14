@@ -5,7 +5,7 @@ catalogo: operaciones/disponibilidad-mecanica
 titulo: Disponibilidad mecánica
 resumen: Disponibilidad contractual de flota y disponibilidad de máquinas del taller.
 componentes: operaciones-app/src/zahory-mock/pages/confiabilidad/DisponibilidadMecanicaPage.jsx#DisponibilidadMecanicaPage
-huella: 46333c180e
+huella: 74af37eee6
 paso: 1 | pantalla=disponibilidad_mecanica | permiso=ver | Para qué sirve: controlar la disponibilidad mecánica que se compromete con el cliente en los contratos de alquiler (DMR) y la disponibilidad de las máquinas propias del taller, para anticipar penalidades y detectar los equipos que están por debajo de la meta. Se usa durante el mes para vigilar el DMR y al cierre junto con la liquidación.
 paso: 2 | pantalla=disponibilidad_mecanica | permiso=ver | Selecciona el período y Flota o Taller para consultar disponibilidad, horas de parada y equipos o máquinas bajo la meta mostrada.
 paso: 3 | pantalla=disponibilidad_mecanica | permiso=ver | En Flota por equipo y mes consulta horas programadas, paradas, DMR y meta. El DMR es (horas programadas − paradas del proveedor) ÷ horas programadas, expresado en porcentaje.
