@@ -24,7 +24,7 @@
   --fg-subtle: #8A9BA4;
   --border: #CFD8DC;
   --border-subtle: #ECEFF1;
-  --header-bg: #1A2B4A;
+  --header-bg: #1E2126;
   --shadow-sm: 0 2px 4px rgba(26,43,74,.06), 0 1px 2px rgba(26,43,74,.04);
   --shadow-md: 0 4px 12px rgba(26,43,74,0.08);
   --shadow-lg: 0 12px 32px rgba(26,43,74,0.12), 0 4px 8px rgba(26,43,74,0.06);
@@ -40,7 +40,7 @@
   --fg-subtle: #607D8B;
   --border: #243554;
   --border-subtle: #1C2A46;
-  --header-bg: #162038;
+  --header-bg: #16181B;
   --white: #162038;
   --slate-50: #1C2A46;
   --slate-100: #243554;
@@ -265,3 +265,21 @@ body {
 .ops-shell.is-work-compact .ops-drawer-backdrop { position:fixed; inset:0; z-index:1000; border:0; background:color-mix(in srgb,var(--navy) 48%,transparent); }
 .ops-shell.is-work-compact .ops-drawer-backdrop:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
 .ops-sidebar.is-work-drawer .dx-wdf { margin-inline:-8px; padding-inline:12px; background:var(--navy); }
+
+/* Aria en Operaciones: misma paleta grafito + ámbar del menú (Administración conserva navy + cian). */
+.ops-shell .dx-asis {
+  --dx-asis-navy:#1E2126; --dx-asis-user:#1E2126; --dx-asis-hint-bg:#1E2126;
+  --dx-asis-cyan:#B45309; --dx-asis-cyan-text:#8A4B00; --dx-asis-cyan-bg:#FFF3E0;
+  --dx-asis-avatar:linear-gradient(135deg,#F59E0B,#1E2126);
+  --dx-asis-avatar-shadow:inset 0 0 0 3px #fff,0 2px 6px rgba(23,25,29,.16),0 10px 26px rgba(23,25,29,.3);
+  --dx-asis-avatar-shadow-hover:inset 0 0 0 3px #fff,0 3px 8px rgba(23,25,29,.2),0 12px 30px rgba(23,25,29,.4);
+}
+.dark .ops-shell .dx-asis, .ops-shell.dark .dx-asis {
+  --dx-asis-navy:#F3F4F6; --dx-asis-user:#F59E0B; --dx-asis-user-text:#2A1700;
+  --dx-asis-cyan:#F59E0B; --dx-asis-cyan-text:#FFC27A; --dx-asis-cyan-bg:#3A2A10;
+  --dx-asis-line:#2B2E34; --dx-asis-line-soft:#222428; --dx-asis-field:#3A3D44;
+  --dx-asis-page:#0F1012; --dx-asis-head:#1E2126; --dx-asis-card:#16181B; --dx-asis-text:#F3F4F6;
+  --dx-asis-avatar:linear-gradient(135deg,#F59E0B,#17191D);
+  --dx-asis-avatar-shadow:inset 0 0 0 3px #0F1012,0 3px 8px rgba(0,0,0,.4),0 12px 30px rgba(0,0,0,.58);
+  --dx-asis-avatar-shadow-hover:inset 0 0 0 3px #0F1012,0 4px 10px rgba(0,0,0,.48),0 14px 34px rgba(0,0,0,.66);
+}

@@ -5,8 +5,8 @@
 .dx-opsini-acc { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 16px; }
 /* En pantallas angostas (celular y tablet en campo) Aria se muestra solo como robot, no con el avatar humano. */
 @container main (max-width:700px) {
-  .ops-inicio-aria .dxi-stage #heroAv { visibility: hidden; }
-  .ops-inicio-aria .dxi-stage { background: var(--ops-aria-robot) center / contain no-repeat; }
+  .ops-inicio-aria .dxi-root .dxi-stage #heroAv { visibility: hidden; }
+  .ops-inicio-aria .dxi-root .dxi-stage { background: var(--ops-aria-robot) center / contain no-repeat; }
 }
 /* Barra con el botón ☰: solo en modo trabajo (celular y tablet), cuando la cabecera de Operaciones se oculta. */
 .dx-opsini-bar { display: none; }
@@ -14,3 +14,9 @@ html[data-dx-work-compact="true"] .dx-opsini-bar { display: flex; align-items: c
 html[data-dx-work-compact="true"].dark .dx-opsini-bar, html[data-dx-work-compact="true"] .dark .dx-opsini-bar { border-bottom-color: rgba(255,255,255,.1); background: #0F172A; color: #F8FAFC; }
 .dx-opsini-menu { display: inline-grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 21px; cursor: pointer; }
 .dx-opsini-menu:focus-visible { outline: 2px solid #00ACC1; outline-offset: 2px; }
+/* Fondo de Aria en Inicio con la paleta de Operaciones (grafito + ámbar); Administración conserva navy + cian. */
+.ops-inicio-aria .dxi-root .dxi-hero { background: linear-gradient(115deg, #121417 0%, #1E2126 62%, #3A2A10 100%); }
+.ops-inicio-aria .dxi-root .dxi-hero::before { background: radial-gradient(38% 42% at 74% 58%, rgba(245,158,11,.30), transparent 70%), radial-gradient(30% 34% at 92% 18%, rgba(251,191,36,.16), transparent 70%); }
+.ops-inicio-aria .dxi-root .dxi-hero h1 em { background: linear-gradient(90deg, #FFD08A, #F59E0B); -webkit-background-clip: text; background-clip: text; }
+.ops-inicio-aria .dxi-root .dxi-send, .ops-inicio-aria .dxi-root .dxi-act:not(.dxi-sec) { background: #1E2126; color: #fff; }
+.dark .ops-inicio-aria .dxi-root .dxi-send, .dark .ops-inicio-aria .dxi-root .dxi-act:not(.dxi-sec) { background: #F59E0B; color: #2A1700; }

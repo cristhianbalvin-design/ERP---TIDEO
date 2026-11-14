@@ -22,14 +22,20 @@ export const ICONOS_GRUPO = {
 
 const esPantalla = item => item && item.type !== 'divider';
 
-// Convierte las zonas del árbol en grupos de la franja. El primero es «Inicio»: la pantalla de
-// inicio más los accesos de la zona plana (Dashboard Gerencial, Mis OTs del día, Mapa de Campo).
+// Convierte las zonas del árbol en grupos de la franja, igual que Administración: «Inicio» y
+// «Dashboard Gerencial» son botones directos (standalone) que abren la pantalla y muestran el menú
+// general; Mis OTs del día y Mapa de Campo van con Inicio. El resto son áreas con su panel.
 export function construirGruposMenu(navegacion = []) {
   const zonaPlana = navegacion.find(zona => zona.type === 'flat');
+  const planos = zonaPlana?.items || [];
+  const dashboard = planos.find(item => item.id === 'dashboard');
   const grupos = [{
-    key: 'inicio', label: 'Inicio', zona: null, icon: 'home', badge: null, badgeClass: null,
-    items: [INICIO_ITEM, ...(zonaPlana?.items || [])], areas: [], cola: [],
+    key: 'inicio', label: 'Inicio', zona: null, icon: 'home', badge: null, badgeClass: null, standalone: true,
+    items: [INICIO_ITEM, ...planos.filter(item => item.id !== 'dashboard')], areas: [], cola: [],
   }];
+  if (dashboard) {
+    grupos.push({ key: 'dashboard', label: dashboard.label, zona: null, icon: 'dashboard', badge: null, badgeClass: null, standalone: true, items: [dashboard], areas: [], cola: [] });
+  }
   for (const zona of navegacion) {
     if (zona.type === 'flat') continue;
     for (const grupo of zona.groups || []) {

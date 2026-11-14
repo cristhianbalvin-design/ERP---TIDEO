@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import operaIsotipo from '../../public/opera/opera-isotipo-dark.png';
 import { Icon } from './zahory-mock/components/shell.jsx';
+import AriaLogo from '../../src/components/AriaLogo.jsx';
+import { useAsistenteErp } from '../../src/context/AsistenteErpContext.jsx';
 import { requestWorkBack } from './workMode.js';
 import { leerMenuUsuario, guardarMenuUsuario, alternarFavorito, agregarReciente } from '../../src/menuFavoritos.js';
 import {
@@ -48,6 +50,8 @@ export function MenuLateralOperaciones({
   const grupos = useMemo(() => construirGruposMenu(navegacion), [navegacion]);
   const modulos = useMemo(() => modulosBuscables(grupos), [grupos]);
   const grupoActivo = grupoDeRuta(grupos, route);
+  const activoEsDirecto = Boolean(grupos.find(grupo => grupo.key === grupoActivo)?.standalone);
+  const { solicitarApertura } = useAsistenteErp();
   const compact = useMedia('(max-width: 900px)');
   const mobile = useMedia('(max-width: 760px)');
   const [collapsed, setCollapsed] = useState(leerColapsado);
@@ -63,9 +67,10 @@ export function MenuLateralOperaciones({
 
   const overlay = !workCompact && (collapsed || compact || workMode);
   const showPanel = workCompact || (mobile ? drawer : !overlay || Boolean(panelKey));
-  const selectedKey = panelKey === RAIZ ? null : panelKey || grupoActivo;
-  const selected = grupos.find(grupo => grupo.key === selectedKey) || null;
-  const railKey = showPanel ? (panelKey === RAIZ ? null : selectedKey) : grupoActivo;
+  // Como en Administración: con un botón directo activo (Inicio, Dashboard) se ve el menú general.
+  const selectedKey = panelKey === RAIZ ? null : panelKey || (activoEsDirecto ? null : grupoActivo);
+  const selected = grupos.find(grupo => grupo.key === selectedKey && !grupo.standalone) || null;
+  const railKey = showPanel ? (selected ? selected.key : (activoEsDirecto ? grupoActivo : null)) : grupoActivo;
   const expanded = compact || workMode ? (mobile ? drawer : Boolean(panelKey)) : !collapsed;
 
   useEffect(() => { setMenuUsuario(leerMenuUsuario(claveUsuario)); }, [claveUsuario]);
@@ -160,13 +165,11 @@ export function MenuLateralOperaciones({
   const pantallasFavoritas = favoritos
     .map(id => grupos.flatMap(grupo => grupo.pantallas).find(item => item.id === id))
     .filter(Boolean);
-  const zonas = grupos.filter(grupo => grupo.zona).reduce((acc, grupo) => {
-    const ultima = acc[acc.length - 1];
-    if (ultima && ultima.label === grupo.zona) ultima.grupos.push(grupo);
-    else acc.push({ label: grupo.zona, grupos: [grupo] });
-    return acc;
-  }, []);
-  const inicioGrupo = grupos.find(grupo => grupo.key === 'inicio');
+  const areas = grupos.filter(grupo => !grupo.standalone);
+  const principales = grupos.filter(grupo => grupo.standalone).flatMap(grupo => grupo.items);
+  // Orden de Administración: Inicio y Dashboard primero; luego los demás accesos directos.
+  const ordenPrincipales = id => ({ inicio: 0, dashboard: 1 })[id] ?? 2;
+  principales.sort((a, b) => ordenPrincipales(a.id) - ordenPrincipales(b.id));
 
   const panelGrupo = grupo => {
     const favDelGrupo = grupo.pantallas.filter(item => esFavorito(item.id));
@@ -188,20 +191,18 @@ export function MenuLateralOperaciones({
   };
 
   const panelRaiz = () => <>
-    {inicioGrupo?.items.map(item => fila(item, { conEstrella: false }))}
+    {principales.map(item => fila(item, { conEstrella: false }))}
     {pantallasFavoritas.length > 0 && <><h3>Favoritos</h3>{pantallasFavoritas.map(item => fila(item))}</>}
-    {zonas.map(zona => <React.Fragment key={zona.label}>
-      <h3>{zona.label}</h3>
-      {zona.grupos.map(grupo => (
-        <div className={`dx-opsnav-row${grupoActivo === grupo.key ? ' is-active' : ''}`} key={grupo.key}>
-          <button type="button" className="dx-opsnav-item" onClick={() => setPanelKey(grupo.key)}>
-            <Icon name={grupo.icon} size={18} />
-            <span>{grupo.label}</span>
-            <Icon name="chev" size={14} />
-          </button>
-        </div>
-      ))}
-    </React.Fragment>)}
+    <h3>Áreas</h3>
+    {areas.map(grupo => (
+      <div className={`dx-opsnav-row${grupoActivo === grupo.key ? ' is-active' : ''}`} key={grupo.key}>
+        <button type="button" className="dx-opsnav-item" onClick={() => setPanelKey(grupo.key)}>
+          <Icon name={grupo.icon} size={18} />
+          <span>{grupo.label}</span>
+          <Icon name="chev" size={14} />
+        </button>
+      </div>
+    ))}
   </>;
 
   const shellClass = 'dx-opsnav-shell'
@@ -234,11 +235,12 @@ export function MenuLateralOperaciones({
                   data-selected={seleccionado || undefined}
                   className={`dx-opsnav-rail-button${seleccionado || grupoActivo === grupo.key ? ' is-active' : ''}`}
                   aria-label={grupo.label}
-                  aria-expanded={showPanel && selectedKey === grupo.key}
+                  aria-expanded={grupo.standalone ? undefined : showPanel && selectedKey === grupo.key}
                   {...tipProps(grupo.label)}
                   onClick={() => {
                     setTip(null);
-                    if (overlay && !mobile && panelKey === grupo.key) setPanelKey(null);
+                    if (grupo.standalone) abrirPantalla(grupo.items[0].id);
+                    else if (overlay && !mobile && panelKey === grupo.key) setPanelKey(null);
                     else setPanelKey(grupo.key);
                   }}
                 >
@@ -250,6 +252,9 @@ export function MenuLateralOperaciones({
           <div className="dx-opsnav-rail-foot">
             <button type="button" className="dx-opsnav-rail-button" aria-label="Buscar pantallas" {...tipProps('Buscar (Ctrl K)')} onClick={() => { setTip(null); setCommandOpen(true); }}>
               <Icon name="search" size={19} />
+            </button>
+            <button type="button" className="dx-opsnav-rail-button" aria-label="Aria, tu asistente" {...tipProps('Aria')} onClick={() => { setTip(null); setDrawer(false); onCloseNav?.(); solicitarApertura(); }}>
+              <span className="dx-opsnav-aria"><AriaLogo size={36} /></span>
             </button>
             {!workCompact && (
               <button type="button" className="dx-opsnav-rail-button dx-opsnav-pin" onClick={alternarColapsado} aria-label={expanded ? 'Contraer menú' : 'Expandir menú'} {...tipProps(expanded ? 'Contraer menú' : 'Expandir menú')}>
@@ -289,6 +294,7 @@ export function MenuLateralOperaciones({
       <nav className="dx-opsnav-bottom" aria-label="Navegación móvil">
         <button type="button" className={route === 'inicio' ? 'is-active' : ''} onClick={() => abrirPantalla('inicio')}><Icon name="home" size={20} /><span>Inicio</span></button>
         <button type="button" onClick={() => setCommandOpen(true)}><Icon name="search" size={20} /><span>Buscar</span></button>
+        <button type="button" onClick={() => { setDrawer(false); solicitarApertura(); }}><span className="dx-opsnav-aria is-small"><AriaLogo size={22} /></span><span>Aria</span></button>
         <button type="button" aria-expanded={drawer} onClick={() => { setDrawer(!drawer); setPanelKey(drawer ? null : RAIZ); }}><Icon name="menu" size={20} /><span>Menú</span></button>
       </nav>
     )}

@@ -8,7 +8,10 @@ const grupos = construirGruposMenu(getZahoryNavigation(availableZahoryRoutes));
 describe('menú lateral de Operaciones', () => {
   it('arma Inicio primero y un grupo de la franja por cada grupo del árbol', () => {
     expect(grupos[0].key).toBe('inicio');
-    expect(grupos[0].items.map(item => item.id)).toEqual(expect.arrayContaining(['inicio', 'dashboard', 'mis-ots-hoy']));
+    expect(grupos[0].standalone).toBe(true);
+    expect(grupos[0].items.map(item => item.id)).toEqual(expect.arrayContaining(['inicio', 'mis-ots-hoy']));
+    expect(grupos[1]).toMatchObject({ key: 'dashboard', standalone: true });
+    expect(grupoDeRuta(grupos, 'mapa-campo')).toBe('inicio');
     expect(grupos.map(grupo => grupo.key)).toEqual(expect.arrayContaining(['flota-alquileres', 'ordenes-trabajo', 'almacen', 'config-grp']));
     expect(grupos.every(grupo => grupo.icon && grupo.pantallas.length > 0)).toBe(true);
   });

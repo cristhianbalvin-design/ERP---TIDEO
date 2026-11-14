@@ -100,6 +100,12 @@
   padding-top: 6px;
   border-top: 1px solid var(--opsnav-active);
 }
+.dx-opsnav-aria { position: relative; display: grid; place-items: center; width: 46px; height: 46px; }
+.dx-opsnav-aria::before { content: ""; position: absolute; inset: -6px; background: radial-gradient(circle, rgba(245,158,11,.32) 0%, transparent 70%); opacity: .75; pointer-events: none; }
+.dx-opsnav-rail-button:hover .dx-opsnav-aria::before { opacity: 1; }
+.dx-opsnav-aria svg { position: relative; display: block; }
+.dx-opsnav-aria.is-small { width: 24px; height: 24px; }
+.dx-opsnav-aria.is-small::before { inset: -4px; }
 .dx-opsnav-pin span, .dx-opsnav-panel-pin span { display: inline-grid; transition: transform .16s ease; }
 .dx-opsnav-pin span.is-flip, .dx-opsnav-panel-pin span.is-flip { transform: rotate(180deg); }
 .dx-opsnav-tooltip {
@@ -230,7 +236,7 @@
   .dx-opsnav-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; border: 0; background: rgba(8,9,11,.6); }
   .dx-opsnav-bottom {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     position: fixed;
     right: 0;
     bottom: 0;
