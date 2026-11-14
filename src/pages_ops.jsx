@@ -9679,37 +9679,13 @@ function Compras() {
 }
 
 function Backlog() {
-  const { backlog, setBacklog, cuentas, convertirBacklogAOT, addNotificacion, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], searchQuery, centrosCosto } = useApp();
-  const modoVistaSociedadBacklog = resolverFiltroSociedadesVista({
-    multisociedadHabilitado: empresa?.multisociedad_habilitado,
-    perfilSociedad,
-    sociedadActiva,
-    sociedadesIdsAlcance,
-    sociedadesDisponibles,
-  });
+  const { backlog, cuentas, searchQuery } = useApp();
   const [view, setView] = useState('kanban');
-  const [modalConvertir, setModalConvertir] = useState(null);
-  const [cecoSeleccionado, setCecoSeleccionado] = useState('');
-  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
-    (centrosCosto || []).filter(c => c.estado === 'activo'),
-    modoVistaSociedadBacklog.sociedadIdEscritura,
-  );
-  const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
-
-  const confirmarConvertir = async () => {
-    if (!cecoSeleccionado) return;
-    try {
-      await convertirBacklogAOT(modalConvertir.id, { centro_costo_id: cecoSeleccionado });
-      setModalConvertir(null);
-      setCecoSeleccionado('');
-    } catch (error) {
-      addNotificacion(error?.message || 'No se pudo convertir el requerimiento a OT.');
-    }
-  };
+  const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id || 'Sin dato';
 
   const query = searchQuery.toLowerCase();
   const filteredBacklog = backlog.filter(b =>
-    b.descripcion.toLowerCase().includes(query) ||
+    (b.descripcion || '').toLowerCase().includes(query) ||
     getCuenta(b.cuenta_id).toLowerCase().includes(query) ||
     (b.servicio || '').toLowerCase().includes(query)
   );
@@ -9719,18 +9695,6 @@ function Backlog() {
     { k: 'en_revision', title: 'En Revisión', color: '#06b6d4' },
     { k: 'convertido', title: 'Convertido', color: '#10b981' },
   ];
-
-  const handleDrop = (e, targetStatus) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain');
-    if (id) {
-      setBacklog(prev => prev.map(b => b.id === id ? { ...b, estado: targetStatus, moved_at: Date.now() } : b));
-      addNotificacion(`Requerimiento movido a ${targetStatus.replace('_',' ')}`);
-    }
-  };
-
-  const pendientes = backlog.filter(b => b.estado === 'pendiente');
-  const enRevision = backlog.filter(b => b.estado === 'en_revision');
 
   return (
     <>
@@ -9747,9 +9711,10 @@ function Backlog() {
             <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
           </div>
           <button className="btn btn-secondary">{I.filter} Filtros</button>
-          <button className="btn btn-primary">{I.plus} Nuevo requerimiento</button>
         </div>
       </div>
+
+      <div className="card" role="status">El backlog se gestiona en Operaciones › Confiabilidad › Backlog operativo. <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirEnOperaciones('backlog')}>Ir a Operaciones</button></div>
 
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(3, 1fr)'}}>
         {cols.map((c, i) => {
@@ -9778,8 +9743,6 @@ function Backlog() {
                 <div
                   key={c.k}
                   className="kanban-col-v2"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDrop(e, c.k)}
                   style={{ '--accent': c.color }}
                 >
                   <div className="kanban-col-head-v2">
@@ -9793,8 +9756,6 @@ function Backlog() {
                         <div
                           key={b.id}
                           className="kanban-card-v2"
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', b.id)}
                         >
                           <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:10, lineHeight:1.4}}>
                             {b.servicio}
@@ -9813,15 +9774,6 @@ function Backlog() {
                               <div className="text-muted" style={{fontSize:10}}>{b.fecha_recepcion}</div>
                             </div>
                             <div className="row" style={{gap:6, alignItems:'center'}}>
-                              {b.estado === 'en_revision' && (
-                                <button
-                                  className="btn btn-sm btn-primary"
-                                  style={{fontSize:10, padding:'2px 8px'}}
-                                  onClick={e => { e.stopPropagation(); setCecoSeleccionado(''); setModalConvertir(b); }}
-                                >
-                                  {I.arrowUp} Convertir a OT
-                                </button>
-                              )}
                               <div className="avatar" style={{width:24, height:24, fontSize:10, margin:0, background:'var(--navy)', color:'#fff'}}>
                                 {b.responsable?.charAt(0) || 'B'}
                               </div>
@@ -9837,9 +9789,6 @@ function Backlog() {
                     )}
                   </div>
 
-                  <button className="kanban-btn-add">
-                    {I.plus} Agregar requerimiento
-                  </button>
                 </div>
               );
             })}
@@ -9857,6 +9806,9 @@ function Backlog() {
                   <th>Prioridad</th>
                   <th>Fecha</th>
                   <th>Estado</th>
+                  <th>Equipo</th>
+                  <th>Ciclo</th>
+                  <th>Prioridad calculada</th>
                 </tr>
               </thead>
               <tbody>
@@ -9865,9 +9817,12 @@ function Backlog() {
                     <td><div style={{fontWeight:600}}>{b.servicio}</div></td>
                     <td>{getCuenta(b.cuenta_id)}</td>
                     <td><strong>{money(b.monto)}</strong></td>
-                    <td><span className={`badge ${b.prioridad==='alta'?'badge-danger':'badge-gray'}`}>{b.prioridad.toUpperCase()}</span></td>
+                    <td><span className={`badge ${b.prioridad==='alta'?'badge-danger':'badge-gray'}`}>{(b.prioridad || 'Sin dato').toUpperCase()}</span></td>
                     <td className="text-muted">{b.fecha_recepcion}</td>
-                    <td><span className={'badge badge-' + (b.estado==='convertido'?'green':'cyan')}>{b.estado.toUpperCase()}</span></td>
+                    <td><span className={'badge badge-' + (b.estado==='convertido'?'green':'cyan')}>{(b.estado || 'Sin dato').toUpperCase()}</span></td>
+                    <td>{b.activo?.codigo || b.activo_id || 'Sin dato'}</td>
+                    <td>{b.ciclo?.replaceAll('_', ' ') || 'Sin dato'}</td>
+                    <td>{b.prioridad_calculada || 'Sin dato'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -9876,42 +9831,6 @@ function Backlog() {
         </div>
       )}
 
-      {modalConvertir && (
-        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center'}}
-          onClick={e => { if (e.target === e.currentTarget) setModalConvertir(null); }}>
-          <div className="card" style={{width:420, padding:24, boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}}>
-            <div style={{fontWeight:800, fontSize:16, marginBottom:4}}>Convertir a OT</div>
-            <div className="text-muted" style={{fontSize:13, marginBottom:20}}>
-              {modalConvertir.servicio} · {getCuenta(modalConvertir.cuenta_id)}
-            </div>
-            <div className="input-group" style={{marginBottom:20}}>
-              <label>Centro de Costo (CECO) <span style={{color:'var(--danger)'}}>*</span></label>
-              <select
-                className="select"
-                value={cecoSeleccionado}
-                onChange={e => setCecoSeleccionado(e.target.value)}
-                autoFocus
-              >
-                <option value="">Seleccionar CECO...</option>
-                {cecosActivos.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre}{c.codigo ? ` (${c.codigo})` : ''}</option>
-                ))}
-              </select>
-            </div>
-            <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
-              <button className="btn btn-secondary" onClick={() => setModalConvertir(null)}>Cancelar</button>
-              <button
-                className="btn btn-primary"
-                disabled={!cecoSeleccionado}
-                style={!cecoSeleccionado ? {opacity:0.45, cursor:'not-allowed'} : {}}
-                onClick={confirmarConvertir}
-              >
-                {I.check} Crear OT
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
