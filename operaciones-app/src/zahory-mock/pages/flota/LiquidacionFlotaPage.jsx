@@ -103,7 +103,7 @@ const dmrTono = (valor, meta) =>
         ? "amber"
         : "red";
 
-export function LiquidacionFlotaPage() {
+export function LiquidacionFlotaPage({ routeParams = {} }) {
   const sesion = useSesionOperativa();
   const empresaId = sesion.empresaId;
   const [permisos, setPermisos] = useState({ ver: false, crear: false, editar: false, aprobar: false, anular: false });
@@ -114,6 +114,8 @@ export function LiquidacionFlotaPage() {
   const [partes, setPartes] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [cargaInicialCompleta, setCargaInicialCompleta] = useState(false);
+  const parametrosAplicados = useRef(null);
   const [actualizando, setActualizando] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -144,6 +146,7 @@ export function LiquidacionFlotaPage() {
       setLiquidaciones(ls);
       setEquipos(es);
       setPartes(ps);
+      setCargaInicialCompleta(true);
       if (!contratoId && cs[0]) setContratoId(cs[0].id);
       if (!equipoId && es[0]) setEquipoId(es[0].id);
     } catch (e) {
@@ -225,6 +228,22 @@ export function LiquidacionFlotaPage() {
     ]);
     setDetalle({ ...l, lineas, eventos, partes: ps });
   };
+  const { contrato_id, activo_id, mes: mesParametro, liquidacion_id } = routeParams;
+  const claveParametros = JSON.stringify([contrato_id, activo_id, mesParametro, liquidacion_id]);
+  useEffect(() => {
+    if (!cargaInicialCompleta || !permisosResueltos || !permisos.ver || parametrosAplicados.current === claveParametros) return;
+    parametrosAplicados.current = claveParametros;
+    if (contrato_id) {
+      setContratoId(contrato_id);
+      const equipoParam = equipos.find((e) => e.contrato_alquiler_id === contrato_id && e.equipo_id === activo_id);
+      if (equipoParam) setEquipoId(equipoParam.id);
+    }
+    if (mesParametro) setMes(String(mesParametro).slice(0, 7));
+    if (liquidacion_id) {
+      setTab("liquidaciones");
+      recargarLiquidacion(liquidacion_id).catch((e) => setError(e.message || "No se pudo cargar la liquidación."));
+    }
+  }, [cargaInicialCompleta, permisosResueltos, permisos.ver, claveParametros, equipos]);
   const abrirParte = async (fecha, p = null) => {
     let vecinos;
     let ultimoParte;

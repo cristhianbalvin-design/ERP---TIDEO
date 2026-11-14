@@ -84,7 +84,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'flota': return <FlotaPanelPage onNav={onNavigate} />;
     case 'contratos-rental': return <ContratosRentalPage onNav={onNavigate} />;
     case 'checkout': return <ActasDespachosPage />;
-    case 'liquidacion': return <LiquidacionFlotaPage />;
+    case 'liquidacion': return <LiquidacionFlotaPage onNav={onNavigate} routeParams={routeParams} />;
     case 'pasaporte-equipos': return <PasaporteEquiposPage />;
     case 'gestion-garantias': return <GarantiasFlotaPage />;
     case 'certificaciones-activo': return <CertificacionesActivoPage />;

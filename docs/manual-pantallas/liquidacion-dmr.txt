@@ -5,7 +5,7 @@ catalogo: operaciones/liquidacion
 titulo: Liquidación & DMR
 resumen: Partes diarios de los equipos alquilados y su liquidación mensual.
 componentes: operaciones-app/src/zahory-mock/pages/flota/LiquidacionFlotaPage.jsx#LiquidacionFlotaPage
-huella: fa96e9f580
+huella: 2e8b210da0
 paso: 1 | pantalla=liquidacion_flota | permiso=ninguno | En Partes diarios registra cada día con Nuevo parte: horas operadas, horómetro y paradas, que se agregan con Agregar parada. Guardar parte lo conserva y Anular parte lo deja sin efecto.
 paso: 2 | pantalla=liquidacion_flota | permiso=ninguno | En Liquidaciones usa Liquidar un mes y Crear liquidación; la liquidación queda en borrador. Recalcular la actualiza con los partes.
 paso: 3 | pantalla=liquidacion_flota | permiso=ninguno | Enviar a revisión la manda a aprobación; quien revisa usa Aprobar o Devolver.
