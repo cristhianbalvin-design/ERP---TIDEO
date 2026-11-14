@@ -39,6 +39,15 @@ test('caja_chica con gasto_id se omite para evitar duplicar el gasto vinculado',
   assert.deepEqual(filtrarCajaChicaSinGastoVinculado(filas).map(f => f.id), ['sin-gasto']);
 });
 
+test('la entrega de transporte no entra al ER, pero el gasto y el origen nulo sí', () => {
+  const filas = [
+    { id: 'entrega', gasto_id: null, origen_registro: 'transporte_entrega' },
+    { id: 'gasto', gasto_id: null, origen_registro: 'transporte_gasto' },
+    { id: 'normal', gasto_id: null, origen_registro: null },
+  ];
+  assert.deepEqual(filtrarCajaChicaSinGastoVinculado(filas).map(f => f.id), ['gasto', 'normal']);
+});
+
 test('identifica categorías de inversión por tipo_sistema aunque tengan otro nombre', () => {
   const config = [{ nombre: 'Activos capitalizables', tipo_sistema: 'inversiones' }];
   assert.equal(esCategoriaInversionCajaChica('Activos capitalizables', config), true);
