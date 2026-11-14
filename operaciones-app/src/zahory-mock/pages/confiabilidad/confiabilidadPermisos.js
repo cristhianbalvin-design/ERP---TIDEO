@@ -35,12 +35,14 @@ export function usePermisoPantalla(pantalla) {
       vigente = false;
     };
   }, [sesion.empresaId, sesion.cargando, pantalla, clave]);
-  if (resultado.clave !== clave) return { cargando: true, ver: false, crear: false, editar: false, error: '' };
+  if (resultado.clave !== clave)
+    return { cargando: true, ver: false, crear: false, editar: false, vistaConsolidada: false, error: '' };
   return {
     cargando: resultado.cargando,
     ver: resultado.ver,
     crear: resultado.crear && sesion.permiteEscritura !== false,
     editar: resultado.editar && sesion.permiteEscritura !== false,
+    vistaConsolidada: !!(resultado.crear || resultado.editar) && sesion.permiteEscritura === false,
     error: resultado.error,
   };
 }

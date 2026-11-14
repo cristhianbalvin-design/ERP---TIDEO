@@ -89,7 +89,7 @@ export function DisponibilidadMecanicaPage({ onNav }) {
         <>
           <div className="dx-ui-kpi-row">
             <Kpi
-              titulo={segmento === 'flota' ? 'DMR promedio ponderado' : 'Disponibilidad promedio ponderada'}
+              titulo={segmento === 'flota' ? 'DMR ponderado' : 'Disponibilidad ponderada'}
               valor={promedio == null ? null : numero(promedio, '%')}
             />
             <Kpi

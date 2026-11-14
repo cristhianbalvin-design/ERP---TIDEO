@@ -10915,14 +10915,15 @@ width:20px;height:20px}
 }
 
 /* ===== Confiabilidad · Programación PM y Análisis SOS (dx-confpm-, dx-confsos-) ===== */
+.dx-conf-aviso { margin: 0 0 16px; padding: 10px 14px; border-radius: 10px; background: var(--dx-ui-cyan-bg); color: var(--dx-ui-cyan-fg); }
+[data-theme="dark"] .dx-conf-aviso { background: var(--dx-ui-cyan-bg); color: var(--dx-ui-cyan-fg); }
 /* Confiabilidad · Programación PM (dx-confpm-) */
 .dx-ui.dx-confpm-root,
 .dx-ui.dx-confsos-root {
   box-sizing: border-box;
   min-width: 0;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 24px 20px 48px;
+  width: 100%;
+  padding: 24px 28px 60px;
   color: var(--dx-ui-ink);
 }
 .dx-confpm-root *,
