@@ -216,6 +216,7 @@
 }
 @media (max-width: 760px) {
   .dx-opsnav-shell:not(.dx-opsnav-cajon) { display: none; }
+  .dx-opsnav-pin, .dx-opsnav-search kbd { display: none; }
   .dx-opsnav-shell.is-drawer-open:not(.dx-opsnav-cajon) {
     display: flex;
     position: fixed;
@@ -256,6 +257,7 @@
 }
 
 /* Cajón ☰ del modo trabajo en tablet/celular: franja + panel completos dentro del cajón. */
+.dx-opsnav-shell.dx-opsnav-cajon .dx-opsnav-search kbd { display: none; }
 .dx-opsnav-shell.dx-opsnav-cajon { background: var(--opsnav-900); }
 .ops-shell .dx-opsnav-shell.dx-opsnav-cajon.ops-sidebar.is-work-drawer { padding: max(16px, env(safe-area-inset-top)) 0 0; }
 .ops-shell .dx-opsnav-shell.dx-opsnav-cajon.is-work-drawer .ops-work-drawer-back { flex: none; width: calc(100% - 16px); margin: 0 8px 8px; }

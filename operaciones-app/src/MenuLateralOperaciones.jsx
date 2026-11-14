@@ -197,7 +197,6 @@ export function MenuLateralOperaciones({
           <button type="button" className="dx-opsnav-item" onClick={() => setPanelKey(grupo.key)}>
             <Icon name={grupo.icon} size={18} />
             <span>{grupo.label}</span>
-            {grupo.badge && <b className={`dx-opsnav-tag${grupo.badgeClass === 'group-badge-hse' ? ' is-red' : ''}`}>{grupo.badge}</b>}
             <Icon name="chev" size={14} />
           </button>
         </div>
