@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OF · Mock F5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== Tokens: mismos que .dx-otb (Bandeja de OTs) ===== */
+.dx-of{--n:#1A2B4A;--cy:#00ACC1;--cyf:#0B4F5A;--cyb:#E0F7FA;--vi:#5B3A8C;--vib:#F0EAFB;--amf:#8A4B00;--amb:#FFF3E0;--amd:#E08A00;--grf:#14633A;--grb:#E3F6EA;--blf:#1E4E8C;--blb:#E6EFFB;--rdf:#9B1C1C;--rdb:#FDECEC;--rd:#DC2626;--gr:#6B7280;--grb2:#F1F3F5;--grf2:#4B5563;--ink:#1F2937;--line:#E4E7EB;--line2:#EEF0F3;--bd:#C9CFD8;--bg:#F4F6F8;--hd:#F8F9FA;--card:#fff;--hov:#F6FBFC;
+  container-type:inline-size;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans',sans-serif;min-height:100vh}
+[data-theme='dark'] .dx-of{--n:#F8FAFC;--cy:#22D3EE;--cyf:#67E8F9;--cyb:#0A3038;--vi:#D8B4FE;--vib:#321B3B;--amf:#FDBA74;--amb:#3A2810;--amd:#F59E0B;--grf:#86EFAC;--grb:#12351F;--blf:#93C5FD;--blb:#13294B;--rdf:#FCA5A5;--rdb:#3B1414;--rd:#F87171;--gr:#94A3B8;--grb2:#273244;--grf2:#CBD5E1;--ink:#F8FAFC;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.08);--bd:#475569;--bg:#020617;--hd:#0F172A;--card:#0F172A;--hov:#172033}
+*{box-sizing:border-box}body{margin:0;background:#F4F6F8}[data-theme='dark'] body{background:#020617}
+button,input,select{font:inherit}button{cursor:pointer}
+/* Barra del mock (no es parte del diseño) */
+.mockbar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 16px;background:#111827;color:#fff;font:13px 'DM Sans'}
+.mockbar button{height:32px;padding:0 12px;border:1px solid #374151;border-radius:8px;background:#1F2937;color:#fff}
+.mockbar button.on{background:#00ACC1;border-color:#00ACC1;color:#02161A;font-weight:700}
+.mockbar span{opacity:.7;margin-left:auto}
+/* ===== Layout común ===== */
+.dx-of-in{padding:24px 28px 48px;max-width:1280px}
+.dx-of-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.dx-of-eyebrow{color:var(--cyf);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.dx-of-title{margin:4px 0;color:var(--n);font:700 28px/1.2 Sora,sans-serif}
+.dx-of-sub{margin:0;color:var(--gr)}
+.dx-of-primary{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 18px;border:0;border-radius:10px;background:#1A2B4A;color:#fff;font-weight:700;white-space:nowrap}
+[data-theme='dark'] .dx-of-primary{background:#00ACC1;color:#02161A}
+.dx-of-primary:disabled{opacity:.45;cursor:not-allowed}
+.dx-of-ghost{display:inline-flex;height:44px;align-items:center;gap:8px;padding:0 16px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--ink);font-weight:600;white-space:nowrap}
+.dx-of-link{border:0;background:none;padding:0;color:var(--cyf);font-weight:700}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* KPI (familia de la Bandeja de OTs) */
+.dx-of-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.dx-of-kpi{display:flex;min-width:0;flex-direction:column;gap:2px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px #0f1b300a;color:inherit;text-align:left}
+.dx-of-kpi:hover{background:var(--hov)}.dx-of-kpi.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+.dx-of-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-ico{display:flex;width:32px;height:32px;align-items:center;justify-content:center;border-radius:9px}
+.dx-of-ico.is-cyan{background:var(--cyb);color:var(--cyf)}.dx-of-ico.is-gray{background:var(--grb2);color:var(--grf2)}.dx-of-ico.is-red{background:var(--rdb);color:var(--rdf)}.dx-of-ico.is-amber{background:var(--amb);color:var(--amf)}
+.dx-of-kpi-val{margin-top:6px;color:var(--n);font:700 26px/1.1 Sora,sans-serif}
+.dx-of-kpi-note{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-kpi.is-danger{border-color:color-mix(in srgb,var(--rd) 40%,var(--line))}.dx-of-kpi.is-danger .dx-of-kpi-val{color:var(--rdf)}
+.dx-of-kpi.is-alert{border-color:color-mix(in srgb,var(--amd) 45%,var(--line))}.dx-of-kpi.is-alert .dx-of-kpi-val{color:var(--amf)}
+/* Tarjeta y barra */
+.dx-of-card{overflow:visible;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 1px 2px #0f1b300a}
+.dx-of-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line)}
+.dx-of-bar h2{margin:0 auto 0 0;color:var(--n);font:700 16px/1.4 Sora,sans-serif}
+.dx-of-count{margin-left:8px;color:var(--gr);font:500 13px 'DM Sans'}
+.dx-of-search{display:flex;width:300px;max-width:100%;height:44px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--gr)}
+.dx-of-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink)}
+.dx-of-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--hd)}
+.dx-of-chips{display:flex;flex:1;min-width:0;gap:8px;flex-wrap:wrap}
+.dx-of-chip{display:inline-flex;height:36px;align-items:center;gap:8px;padding:0 12px 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;white-space:nowrap}
+.dx-of-chip i{width:8px;height:8px;border-radius:50%;background:var(--gr)}
+.dx-of-chip b{min-width:22px;padding:1px 7px;border-radius:999px;background:var(--grb2);color:var(--grf2);font-size:12px;text-align:center}
+.dx-of-chip.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n);background:var(--hov)}
+/* Estados de la OF */
+.st-borrador{--c:#6B7280}.st-en_ingenieria{--c:#2F6FD6}.st-aprobada{--c:#00ACC1}.st-en_produccion{--c:#2F6FD6}.st-en_calidad{--c:#5B3A8C}.st-lista_entrega{--c:#E08A00}.st-entregada,.st-cerrada{--c:#16A34A}.st-anulada{--c:#DC2626}
+.dx-of-chip i[class^=st-]{background:var(--c)}
+.dx-of-pill{display:inline-flex;width:max-content;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-of-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dx-of-pill.st-borrador{background:var(--grb2);color:var(--grf2)}
+.dx-of-pill.st-en_ingenieria,.dx-of-pill.st-en_produccion{background:var(--blb);color:var(--blf)}
+.dx-of-pill.st-aprobada{background:var(--cyb);color:var(--cyf)}
+.dx-of-pill.st-en_calidad{background:var(--vib);color:var(--vi)}
+.dx-of-pill.st-lista_entrega{background:var(--amb);color:var(--amf)}
+.dx-of-pill.st-entregada,.dx-of-pill.st-cerrada{background:var(--grb);color:var(--grf)}
+.dx-of-pill.st-anulada{background:var(--rdb);color:var(--rdf)}
+.dx-of-pill.is-fab{background:var(--cyb);color:var(--cyf)}.dx-of-pill.is-mix{background:var(--vib);color:var(--vi)}
+/* Filas de la bandeja */
+.dx-of-cols{display:grid;grid-template-columns:minmax(170px,1.2fr) minmax(190px,1.5fr) 132px minmax(110px,.8fr) minmax(120px,.9fr) 120px 112px 20px;column-gap:14px;align-items:center;padding-inline:20px}
+.dx-of-head{height:40px;border-bottom:1px solid var(--line);background:var(--hd);color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-head .r{text-align:right}
+.dx-of-row{min-height:84px;padding-block:14px;border-bottom:1px solid var(--line2);cursor:pointer}
+.dx-of-row:hover{background:var(--hov)}.dx-of-row:focus-visible{outline:2px solid var(--cy);outline-offset:-2px}
+.dx-of-of{display:flex;min-width:0;align-items:flex-start;gap:12px}
+.dx-of-ofi{display:flex;width:40px;height:40px;flex:none;align-items:center;justify-content:center;border-radius:10px;background:var(--cyb);color:var(--cyf)}
+.dx-of-cell{display:flex;min-width:0;flex-direction:column;gap:2px}
+.dx-of-num{color:var(--n);font:700 13px ui-monospace,Menlo,monospace}
+.dx-of-strong{overflow:hidden;color:var(--n);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-muted{overflow:hidden;color:var(--gr);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-tag{width:max-content;max-width:100%;overflow:hidden;margin-top:2px;padding:1px 7px;border-radius:6px;background:var(--grb2);color:var(--grf2);font-size:11px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.dx-of-tag.is-warn{background:var(--amb);color:var(--amf)}
+.dx-of-tag.is-red{background:var(--rdb);color:var(--rdf)}
+.dx-of-prog{display:flex;flex-direction:column;gap:5px}
+.dx-of-prog b{color:var(--n);font:700 13px Sora}
+.dx-of-bar2{height:6px;overflow:hidden;border-radius:999px;background:var(--grb2)}.dx-of-bar2 i{display:block;height:100%;border-radius:999px;background:var(--cy)}
+.dx-of-money{color:var(--n);font:700 14px Sora;white-space:nowrap;text-align:right}
+.dx-of-date{text-align:right}.dx-of-date .dx-of-muted{text-align:right}
+.dx-of-date .is-late{color:var(--rdf)}.dx-of-date .is-soon{color:var(--amf)}
+.dx-of-arrow{color:var(--gr)}
+.dx-of-pag{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;color:var(--gr);font-size:13px}
+/* ===== Crear OF ===== */
+.dx-of-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.dx-of-sec{padding:18px 20px;border-bottom:1px solid var(--line)}
+.dx-of-sec:last-child{border-bottom:0}
+.dx-of-sec h3{display:flex;align-items:center;gap:8px;margin:0 0 4px;color:var(--n);font:700 15px Sora}
+.dx-of-sec h3 .n{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:var(--n);color:var(--card);font:700 12px Sora}
+[data-theme='dark'] .dx-of-sec h3 .n{background:#00ACC1;color:#02161A}
+.dx-of-help{margin:0 0 14px;color:var(--gr);font-size:13px}
+.dx-of-field{position:relative;display:flex;flex-direction:column;gap:6px;max-width:560px}
+.dx-of-field label{min-height:18px;color:var(--grf2);font-size:12px;font-weight:700}
+.dx-of-req{color:var(--rd)}
+.dx-of-combo{display:flex;height:40px;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--gr)}
+.dx-of-combo input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink)}
+.dx-of-combo:focus-within{border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 20%,transparent)}
+.dx-of-pop{position:absolute;z-index:20;top:70px;left:0;right:0;max-height:300px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 12px 32px #0f1b3024}
+.dx-of-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:none;color:inherit;text-align:left}
+.dx-of-opt:hover,.dx-of-opt.is-act{background:var(--hov)}
+.dx-of-opt .dx-of-muted{grid-column:1}
+.dx-of-resolved{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--hd)}
+.dx-of-resolved .dx-of-cell{flex:1 1 200px;min-width:0}
+.dx-of-notice{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--amb);color:var(--amf);font-size:13px}
+.dx-of-notice.is-info{background:var(--cyb);color:var(--cyf)}
+.dx-of-radio{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.dx-of-radio label{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer}
+.dx-of-radio label.is-on{border-color:var(--n);box-shadow:inset 0 0 0 1px var(--n)}
+.dx-of-radio input{margin-top:3px;accent-color:#1A2B4A}
+/* Ruta (vista previa y ficha) */
+.dx-of-trab{container-type:inline-size;margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.dx-of-trab-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--hd);border-bottom:1px solid var(--line)}
+.dx-of-trab-h b{color:var(--n);font:700 14px Sora}
+.dx-of-act{padding:8px 14px 0;color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-of-op{display:grid;grid-template-columns:28px minmax(140px,1.4fr) minmax(110px,1fr) 104px minmax(130px,1.1fr) minmax(130px,1.1fr) 90px;column-gap:12px;align-items:center;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-of-op:first-of-type{border-top:0}
+.dx-of-op.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px}
+.dx-of-op .seq{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:7px;background:var(--grb2);color:var(--grf2);font:700 12px Sora}
+.dx-of-op .r{text-align:right}
+.dx-of-op .dx-of-muted,.dx-of-op .dx-of-strong{white-space:normal}
+.dx-of-k{display:none;color:var(--gr);font-size:11px;font-weight:700}
+.dx-of-empty{padding:28px 16px;color:var(--gr);text-align:center;border:1px dashed var(--line);border-radius:12px;margin-top:12px}
+/* Aside */
+.dx-of-aside{position:sticky;top:60px;display:flex;flex-direction:column;gap:12px}
+.dx-of-aside .dx-of-card{padding:16px 18px}
+.dx-of-aside h4{margin:0 0 10px;color:var(--n);font:700 14px Sora}
+.dx-of-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;margin:0;font-size:13px}
+.dx-of-dl dt{color:var(--gr)}.dx-of-dl dd{margin:0;color:var(--ink);font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
+.dx-of-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.dx-of-total span{color:var(--gr);font-weight:700}.dx-of-total b{color:var(--n);font:700 22px Sora}
+.dx-of-foot{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding:12px 0;background:linear-gradient(transparent,var(--bg) 30%)}
+/* ===== Ficha ===== */
+.dx-of-hdr{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.dx-of-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;border:0;background:none;padding:0;color:var(--cyf);font-weight:700}
+.dx-of-tl{display:flex;margin-bottom:16px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.dx-of-tl div{position:relative;display:flex;flex:1;min-width:92px;flex-direction:column;align-items:center;gap:6px;color:var(--gr);font-size:11px;font-weight:700;text-align:center}
+.dx-of-tl div::before{content:'';position:absolute;top:9px;left:-50%;right:50%;height:2px;background:var(--line)}
+.dx-of-tl div:first-child::before{display:none}
+.dx-of-tl i{position:relative;z-index:1;width:20px;height:20px;border:2px solid var(--bd);border-radius:50%;background:var(--card)}
+.dx-of-tl .is-now{color:var(--n)}.dx-of-tl .is-now i{border-color:var(--cy);background:var(--cy);box-shadow:0 0 0 4px var(--cyb)}
+.dx-of-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 20px;padding:18px 20px}
+.dx-of-fields .dx-of-cell span:first-child{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-of-fields .dx-of-cell span:last-child{color:var(--ink);font-weight:600}
+.dx-of-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line)}
+.dx-of-tabs button{height:44px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:none;color:var(--gr);font-weight:700}
+.dx-of-tabs button.is-on{border-color:var(--cy);color:var(--n)}
+.dx-of-soon{margin:14px 20px 18px;padding:12px 14px;border-radius:10px;background:var(--grb2);color:var(--grf2);font-size:13px}
+.view{display:none}.view.on{display:block}
+/* ===== Responsive por contenedor ===== */
+@container (max-width:1100px){
+ .dx-of-kpi .dx-of-ico{display:none}
+ .dx-of-cols{grid-template-columns:minmax(150px,1.1fr) minmax(160px,1.4fr) 124px minmax(90px,.7fr) minmax(110px,.9fr) 110px 100px 16px;column-gap:12px;padding-inline:16px}
+ .dx-of-grid{grid-template-columns:minmax(0,1fr) 280px}
+}
+@container (max-width:900px){
+ .dx-of-in{padding:18px 16px 32px}
+ .dx-of-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .dx-of-bar h2{width:100%}.dx-of-search{flex:1 1 100%;width:auto}
+ .dx-of-head{display:none}
+ .dx-of-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'of estado' 'cli cli' 'prog ops' 'cost date';gap:10px 14px;padding:14px 16px}
+ .a-of{grid-area:of}.a-st{grid-area:estado;justify-self:end}.a-cli{grid-area:cli}.a-prog{grid-area:prog}.a-ops{grid-area:ops;justify-self:end;text-align:right}.a-cost{grid-area:cost;text-align:left}.a-date{grid-area:date}.a-arrow{display:none}
+ .dx-of-grid{grid-template-columns:minmax(0,1fr)}.dx-of-aside{position:static}
+ .dx-of-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* La ruta responde al ancho de su propia tarjeta */
+@container (max-width:760px){
+ .dx-of-op{grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:'seq tar cost' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah';row-gap:4px}
+ .dx-of-op.is-head{display:none}
+ .o-seq{grid-area:seq;align-self:start}.o-tar{grid-area:tar}.o-car{grid-area:car}.o-hh{grid-area:hh}.o-eq{grid-area:eq}.o-bah{grid-area:bah}.o-cost{grid-area:cost}
+ .dx-of-k{display:inline;margin-right:6px}
+}
+@container (max-width:600px){
+ .dx-of-title{font-size:24px}
+ .dx-of-top .dx-of-primary{width:100%;justify-content:center}
+ .dx-of-kpi{padding:12px 14px}.dx-of-kpi-val{font-size:22px}
+ .dx-of-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+ .dx-of-row{grid-template-areas:'of of' 'estado estado' 'cli cli' 'prog prog' 'ops ops' 'cost date'}
+ .a-st{justify-self:start}.a-ops{justify-self:start;text-align:left}
+ .dx-of-fields{grid-template-columns:1fr}
+ .dx-of-foot .dx-of-primary,.dx-of-foot .dx-of-ghost{flex:1;justify-content:center}
+}
+/* ===== F3 · Ficha editable de la OF ===== */
+/* Formularios y KPI: estándar dx-ui (mismas reglas que zahory.css) */
+.dx-of{--dx-ui-navy:var(--n);--dx-ui-gray:var(--gr);--dx-ui-line:var(--line);--dx-ui-border:var(--bd);--dx-ui-card:var(--card);--dx-ui-ink:var(--ink);--dx-ui-red-fg:#9B2C2C}
+[data-theme='dark'] .dx-of{--dx-ui-red-fg:#FCA5A5}
+.dx-ui-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:16px}
+.dx-ui-kpi{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card)}
+.dx-ui-kpi strong{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif;white-space:nowrap}
+.dx-ui-kpi span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:16px 20px}
+.dx-ui-form-grid.is-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dx-ui-field{position:relative;display:flex;min-width:0;flex-direction:column;gap:6px;color:var(--dx-ui-ink);font-size:12px;font-weight:600}
+.dx-ui-field>label{display:flex;align-items:center;gap:4px;min-height:18px;color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-ui-field input,.dx-ui-field textarea{box-sizing:border-box;width:100%;min-width:0;height:40px;min-height:40px;padding:0 10px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui-field textarea{height:auto;min-height:72px;padding:10px;resize:vertical}
+.dx-ui-field-full{grid-column:1/-1}
+.dx-ui-select{box-sizing:border-box;width:100%;height:40px;min-height:40px;padding:0 34px 0 12px;border:1px solid var(--dx-ui-border);border-radius:10px;background-color:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dx-ui-gray) 50%),linear-gradient(135deg,var(--dx-ui-gray) 50%,transparent 50%);background-position:calc(100% - 16px) 17px,calc(100% - 12px) 17px;background-repeat:no-repeat;background-size:5px 5px}
+.dx-ui-required{color:var(--dx-ui-red-fg)}
+.dx-ui-field-error{color:var(--dx-ui-red-fg);font-size:12px;font-weight:400}
+.dx-ui-field-hint{color:var(--dx-ui-gray);font-size:12px;font-weight:400}
+.dx-ui-field [aria-invalid='true']{border-color:var(--dx-ui-red-fg)}
+.dx-ui-field input:focus,.dx-ui-select:focus,.dx-ui-field textarea:focus{outline:0;border-color:var(--cy);box-shadow:0 0 0 3px color-mix(in srgb,var(--cy) 20%,transparent)}
+.dx-ui-field input[readonly]{background:var(--hd);color:var(--grf2)}
+/* Modal (mismo patrón que dx-w-modal del WMS) */
+.dx-ofe-backdrop{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-start;justify-content:center;padding:48px 16px;background:rgba(15,27,48,.45);overflow:auto}
+.dx-ofe-modal{container-type:inline-size;width:min(100%,720px);margin-block:auto;padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:0 12px 32px rgba(15,27,48,.18)}
+.dx-ofe-modal.is-narrow{width:min(100%,560px)}
+.dx-ofe-modal h3{margin:0 0 4px;color:var(--n);font:700 16px Sora,sans-serif}
+.dx-ofe-modal>p{margin:0 0 16px;color:var(--gr);font-size:13px}
+.dx-ofe-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px}
+.dx-ofe-actions .dx-of-primary,.dx-ofe-actions .dx-of-ghost{height:40px}
+.dx-ofe-server{margin-top:14px;padding:10px 12px;border-radius:10px;background:var(--rdb);color:var(--rdf);font-size:13px}
+.dx-ofe-pop{position:absolute;z-index:30;top:66px;left:0;right:0;max-height:260px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 12px 32px #0f1b3024}
+.dx-ofe-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:none;color:inherit;text-align:left}
+.dx-ofe-opt:hover,.dx-ofe-opt.is-act{background:var(--hov)}
+.dx-ofe-stock{font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ofe-stock.ok{color:var(--grf)}.dx-ofe-stock.low{color:var(--amf)}
+/* Barra de acciones del encabezado */
+.dx-ofe-hdr-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dx-ofe-hdr-actions .dx-of-primary,.dx-ofe-hdr-actions .dx-of-ghost{height:40px}
+.dx-ofe-notice{display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;padding:12px 14px;border-radius:12px;background:var(--cyb);color:var(--cyf);font-size:13px}
+.dx-ofe-notice.is-warn{background:var(--amb);color:var(--amf)}
+.dx-ofe-notice.is-ok{background:var(--grb);color:var(--grf)}
+.dx-ofe-notice b{font-weight:700}
+/* Ruta editable */
+.dx-ofe-op{display:grid;grid-template-columns:28px minmax(130px,1.4fr) minmax(100px,1fr) 96px minmax(110px,1.1fr) minmax(120px,1fr) 86px 64px;column-gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-op.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px}
+.dx-ofe-op.is-prod{grid-template-columns:28px minmax(130px,1.4fr) minmax(100px,1fr) 104px minmax(120px,1.1fr) 120px 108px}
+.dx-ofe-op .r{text-align:right}
+.dx-ofe-op .seq{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:7px;background:var(--grb2);color:var(--grf2);font:700 12px Sora}
+.dx-ofe-op .dx-of-muted,.dx-ofe-op .dx-of-strong{white-space:normal}
+.dx-ofe-icons{display:flex;justify-content:flex-end;gap:2px}
+.dx-ofe-ib{display:inline-flex;width:30px;height:30px;align-items:center;justify-content:center;border:0;border-radius:8px;background:none;color:var(--gr)}
+.dx-ofe-ib:hover{background:var(--grb2);color:var(--n)}
+.dx-ofe-ib.is-del:hover{background:var(--rdb);color:var(--rdf)}
+.dx-ofe-ib:disabled{opacity:.35;cursor:not-allowed;background:none}
+.dx-ofe-ib:focus-visible{outline:2px solid var(--cy)}
+.dx-ofe-add{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-addbtn{display:inline-flex;height:34px;align-items:center;gap:6px;padding:0 12px;border:1px dashed var(--bd);border-radius:8px;background:none;color:var(--cyf);font-weight:700;font-size:13px}
+.dx-ofe-addbtn:hover{background:var(--hov)}
+.dx-ofe-tabsbar{display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--line)}
+.dx-ofe-tabsbar .dx-of-tabs{flex:1;padding:0;border-bottom:0}
+.dx-ofe-tabsbar .dx-of-ghost{height:36px;padding:0 12px;font-size:13px}
+.dx-ofe-panel{padding:4px 20px 18px}
+.dx-ofe-progress{display:flex;flex-direction:column;gap:4px}
+.dx-ofe-progress b{color:var(--n);font:700 13px Sora}
+.dx-ofe-progress .dx-of-muted{white-space:nowrap}
+.dx-of-tabs button b{margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--amb);color:var(--amf);font-size:11px}
+/* Estado de operación */
+.dx-ofe-st{display:inline-flex;width:max-content;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ofe-st i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dx-ofe-st.pendiente{background:var(--grb2);color:var(--grf2)}
+.dx-ofe-st.en_proceso{background:var(--blb);color:var(--blf)}
+.dx-ofe-st.terminada{background:var(--grb);color:var(--grf)}
+.dx-ofe-st.en_revision{background:var(--amb);color:var(--amf)}
+.dx-ofe-st.observado{background:var(--rdb);color:var(--rdf)}
+/* Materiales */
+.dx-ofe-mat{display:grid;grid-template-columns:minmax(200px,1.6fr) 110px 120px 120px minmax(170px,1.3fr) 66px;column-gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-mat.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px;background:var(--hd)}
+.dx-ofe-mat .r{text-align:right}
+.dx-ofe-mats{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;container-type:inline-size}
+.dx-ofe-res{display:flex;flex-direction:column;gap:4px}
+.dx-ofe-res .dx-of-tag{margin-top:0;white-space:normal}
+.dx-of-tag.is-ok{background:var(--grb);color:var(--grf)}
+.dx-of-tag.is-blue{background:var(--blb);color:var(--blf)}
+.dx-ofe-mono{font:700 12px ui-monospace,Menlo,monospace;color:var(--n)}
+/* Partes */
+.dx-ofe-parte{display:grid;grid-template-columns:minmax(110px,.9fr) minmax(150px,1.5fr) minmax(110px,1fr) 64px 72px 112px 76px;column-gap:10px;align-items:center;padding:12px 14px;border-top:1px solid var(--line2)}
+.dx-ofe-parte.is-head{color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-top:0;padding-block:8px;background:var(--hd)}
+.dx-ofe-parte .r{text-align:right}
+.dx-ofe-mini{display:inline-flex;height:32px;align-items:center;padding:0 10px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--ink);font-weight:700;font-size:12px}
+.dx-ofe-mini.is-pri{border-color:#1A2B4A;background:#1A2B4A;color:#fff}
+[data-theme='dark'] .dx-ofe-mini.is-pri{border-color:#00ACC1;background:#00ACC1;color:#02161A}
+.dx-ofe-cmp{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0 0 16px;padding:12px 14px;border-radius:10px;background:var(--hd);font-size:13px}
+.dx-ofe-cmp dt{color:var(--gr)}.dx-ofe-cmp dd{margin:0;font-weight:700;color:var(--ink)}
+.dx-of-tl .is-done{color:var(--grf2)}.dx-of-tl .is-done i{border-color:var(--cy);background:var(--cyb)}
+/* Responsive por contenedor */
+@container (max-width:1100px){
+ .dx-ofe-mat{grid-template-columns:minmax(180px,1.6fr) 96px 104px 110px minmax(150px,1.2fr) 66px;column-gap:10px}
+}
+@container (max-width:760px){
+ .dx-ofe-op,.dx-ofe-op.is-prod{grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:'seq tar act' 'seq car car' 'seq hh hh' 'seq eq eq' 'seq bah bah' 'seq cost cost';row-gap:4px}
+ .dx-ofe-op.is-head,.dx-ofe-mat.is-head,.dx-ofe-parte.is-head{display:none}
+ .dx-ofe-op .o-seq{grid-area:seq;align-self:start}.dx-ofe-op .o-tar{grid-area:tar}.dx-ofe-op .o-car{grid-area:car}.dx-ofe-op .o-hh{grid-area:hh}.dx-ofe-op .o-eq{grid-area:eq}.dx-ofe-op .o-bah{grid-area:bah}.dx-ofe-op .o-cost{grid-area:cost;text-align:left}.dx-ofe-op .o-act{grid-area:act;align-self:start}
+ .dx-ofe-mat{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'mat act' 'cant cu' 'sub sub' 'res res';row-gap:6px}
+ .m-mat{grid-area:mat}.m-cant{grid-area:cant}.m-cu{grid-area:cu;text-align:right}.m-sub{grid-area:sub;text-align:left!important}.m-res{grid-area:res}.m-act{grid-area:act;align-self:start}
+ .dx-ofe-parte{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'num st' 'op op' 'tec tec' 'hh av' 'acc acc';row-gap:6px}
+ .p-num{grid-area:num}.p-op{grid-area:op}.p-tec{grid-area:tec}.p-hh{grid-area:hh}.p-av{grid-area:av;text-align:right}.p-st{grid-area:st;justify-self:end}.p-acc{grid-area:acc;justify-self:start}
+ .dx-of-k{display:inline;margin-right:6px}
+ .dx-ui-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container (max-width:480px){
+ .dx-ui-form-grid,.dx-ui-form-grid.is-2{grid-template-columns:minmax(0,1fr)}
+}
+@container (max-width:600px){
+ .dx-ofe-hdr-actions{width:100%}
+ .dx-ofe-hdr-actions>*{flex:1;justify-content:center}
+ .dx-ofe-actions>*{flex:1;justify-content:center}
+ .dx-ofe-tabsbar{flex-wrap:wrap;padding:0 14px}.dx-ofe-tabsbar .dx-of-ghost{margin-bottom:10px}
+ .dx-ofe-panel{padding:4px 14px 16px}
+}
+.dx-ofe-tabsbar .dx-of-tabs{min-width:0;overflow-x:auto;scrollbar-width:thin}
+.dx-ofe-tabsbar .dx-of-tabs button{flex:none;white-space:nowrap}
+/* ===== F5: entrega, pasaporte, garantía, valorización ===== */
+.dx-of5-steps{display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap}
+.dx-of5-steps span{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;color:var(--gr);font-size:12px;font-weight:700}
+.dx-of5-steps span.is-now{border-color:var(--cy);background:var(--cyb);color:var(--cyf)}
+.dx-of5-steps span.is-done{color:var(--grf);background:var(--grb);border-color:transparent}
+.dx-of5-fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.dx-of5-foto{display:grid;place-items:center;height:80px;border:1px dashed var(--bd);border-radius:10px;color:var(--gr);font-size:12px;background:var(--hd)}
+.dx-of5-foto.is-ok{border-style:solid;background:linear-gradient(135deg,#cfd8e3,#9fb0c4);color:#1A2B4A;font-weight:700}
+.dx-of5-firma{display:grid;place-items:center;height:110px;border:1px solid var(--bd);border-radius:10px;background:var(--hd);color:var(--gr);font-size:12px}
+.dx-of5-units{display:grid;gap:8px}
+.dx-of5-unit{display:grid;grid-template-columns:minmax(120px,1fr) minmax(140px,1.2fr) minmax(110px,.9fr) auto;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:10px}
+.dx-of5-pass{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
+.dx-of5-sec{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:16px 18px;margin-bottom:16px}
+.dx-of5-sec h4{margin:0 0 12px;font:700 15px Sora,sans-serif;color:var(--n)}
+.dx-of5-line{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;padding:9px 0;border-top:1px solid var(--line2);font-size:13px}
+.dx-of5-line:first-of-type{border-top:0}
+.dx-of5-search{display:flex;gap:8px;margin-bottom:16px}
+.dx-of5-search input{flex:1;height:40px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--ink);font:14px 'DM Sans'}
+.dx-of5-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(150px,1.3fr) minmax(110px,1fr) 110px 120px 90px;gap:10px;align-items:center;padding:12px 14px;border-top:1px solid var(--line2);font-size:13px}
+.dx-of5-row.is-head{border-top:0;background:var(--hd);color:var(--gr);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-of5-wrap{container-type:inline-size}
+@container (max-width:760px){
+ .dx-of5-pass{grid-template-columns:minmax(0,1fr)}
+ .dx-of5-unit{grid-template-columns:minmax(0,1fr) auto}
+ .dx-of5-row{grid-template-columns:minmax(0,1fr) auto}
+ .dx-of5-row.is-head{display:none}
+ .dx-of5-row>.h-sm{display:none}
+}
+</style>
+<body>
+<div class="mockbar">
+  <b>Mock F5 · Entrega, pasaporte, garantía y valorización</b>
+  <button data-v="lista" class="on">1 · Lista para entrega</button>
+  <button data-m="entregar">Entregar al cliente (4 pasos)</button>
+  <button data-v="entregada">2 · Entregada</button>
+  <button data-v="pasaporte">3 · Pasaporte por serie</button>
+  <button data-v="garantias">4 · Garantías</button>
+  <button data-m="reclamo">Registrar reclamo</button>
+  <button data-v="valorizacion">5 · Valorización (Admin)</button>
+  <button id="tema">Modo oscuro</button>
+  <span>Datos de demo de PRUEBA · cliente y personas genéricos</span>
+</div>
+<main class="dx-of"><section class="dx-of-in dx-of5-wrap" id="view"></section><div id="modal"></div></main>
+<script>
+const IC={
+ check:'<svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
+ info:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+ truck:'<svg class="i" viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
+ pdf:'<svg class="i" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>',
+ shield:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/></svg>',
+ plus:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+ back:'<svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>'
+};
+const TL=[['borrador','Borrador'],['en_ingenieria','Ingeniería'],['aprobada','Aprobada'],['en_produccion','Producción'],['en_calidad','Calidad'],['lista_entrega','Lista'],['entregada','Entregada'],['cerrada','Cerrada']];
+const tl=st=>{const i=TL.findIndex(x=>x[0]===st);return `<div class="dx-of-tl" aria-label="Estado de la OF">${TL.map(([k,l],j)=>`<div class="${j<i?'is-done':j===i?'is-now':''}"${j===i?' aria-current="step"':''}><i></i>${l}</div>`).join('')}</div>`};
+const UNITS=[{u:'#1',serie:'OF-D0001-01'},{u:'#2',serie:'OF-D0001-02'}];
+function ficha(st){
+ const lista=st==='lista_entrega';
+ const pill=lista?'<span class="dx-of-pill st-lista_entrega"><i></i>Lista para entrega</span>':'<span class="dx-of-pill st-entregada"><i></i>Entregada</span>';
+ const acc=lista?`<button class="dx-of-primary" data-m="entregar">${IC.truck}Entregar al cliente</button>`:`<button class="dx-of-ghost" data-m="reclamo">${IC.plus}Registrar reclamo</button><button class="dx-of-ghost">${IC.pdf}Acta</button><button class="dx-of-ghost">${IC.pdf}Guía</button>`;
+ const notice=lista?`<div class="dx-ofe-notice">${IC.info}<div>La OF pasó calidad (2 de 2 unidades conformes). Al entregar se firma el acta de conformidad, se emite la guía de remisión, nace la garantía de cada unidad y la OF queda lista para valorizar.</div></div>`
+  :`<div class="dx-ofe-notice is-ok">${IC.check}<div>Entregada el <b>14 nov 2026</b> · Acta <b>ACT-26-0012</b> firmada por el cliente · Guía <b>T001-00000045</b> · Garantía hasta el <b>14 nov 2027</b>.</div></div>`;
+ return `<button class="dx-of-back">${IC.back}Órdenes de Fabricación</button>
+ <div class="dx-of-hdr"><div><div class="dx-of-eyebrow">Orden de Fabricación</div><h1 class="dx-of-title" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">OF-D0001 ${pill}</h1><p class="dx-of-sub">Fabricación de cucharón reforzado 3.5 m³ para excavadora 336 · Minera Andina Demo</p></div><div class="dx-ofe-hdr-actions">${acc}</div></div>
+ ${tl(st)}${notice}
+ <div class="dx-ui-kpi-row"><div class="dx-ui-kpi"><strong>100 %</strong><span>Avance ponderado</span></div><div class="dx-ui-kpi"><strong>12.5 h</strong><span>Horas reales de 12 h</span></div><div class="dx-ui-kpi"><strong>S/ 512.40</strong><span>Costo real</span></div><div class="dx-ui-kpi"><strong>2</strong><span>Unidades conformes</span></div></div>
+ <div class="dx-of-grid"><div class="dx-of-card">
+  <div class="dx-of-fields"><div class="dx-of-cell"><span>Cliente</span><span>Minera Andina Demo</span></div><div class="dx-of-cell"><span>OS</span><span>OS-2026-0154</span></div><div class="dx-of-cell"><span>Compromiso</span><span>31 ago 2026</span></div><div class="dx-of-cell"><span>Cantidad</span><span>2 unidades</span></div><div class="dx-of-cell"><span>Garantía</span><span>12 meses</span></div><div class="dx-of-cell"><span>Moneda</span><span>Soles (PEN)</span></div></div>
+  <div class="dx-ofe-tabsbar"><div class="dx-of-tabs" role="tablist"><button>Ruta · 3</button><button>Materiales · 3</button><button>Partes · 4</button><button>Calidad</button><button class="on" aria-selected="true">Unidades · 2</button></div></div>
+  <div class="dx-ofe-panel"><div class="dx-of5-units">${UNITS.map(x=>`<div class="dx-of5-unit"><span class="dx-of-cell"><span class="dx-of-k">Unidad</span><span class="dx-of-strong">Unidad ${x.u}</span></span><span class="dx-of-cell"><span class="dx-of-k">N.º de serie</span><span class="dx-ofe-mono">${x.serie}</span></span><span>${lista?'<span class="dx-ofe-st terminada"><i></i>Conforme</span>':'<span class="dx-ofe-st terminada"><i></i>En garantía</span>'}</span><span><button class="dx-ofe-mini" data-v="pasaporte">Ver pasaporte</button></span></div>`).join('')}
+  <p class="dx-of-muted" style="white-space:normal;margin:6px 0 0">${lista?'La serie se genera al liberar la OF (número de OF + unidad) y puede corregirse al entregar.':'Cada unidad tiene su pasaporte y su garantía.'}</p></div></div></div>
+  <aside class="dx-of-aside">
+   <div class="dx-of-card"><h4>Costo real</h4><dl class="dx-of-dl"><dt>Mano de obra (12.5 h)</dt><dd>S/ 306.75</dd><dt>Materiales despachados</dt><dd>S/ 205.65</dd></dl><div class="dx-of-total"><span>Real</span><b>S/ 512.40</b></div></div>
+   ${lista?`<div class="dx-of-card"><h4>Entrega</h4><p class="dx-of-muted" style="white-space:normal;margin:0">Pendiente: acta de conformidad y guía de remisión.</p></div>`
+    :`<div class="dx-of-card"><h4>Entrega</h4><dl class="dx-of-dl"><dt>Acta</dt><dd>ACT-26-0012</dd><dt>Conformidad</dt><dd>Conforme</dd><dt>Guía</dt><dd>T001-00000045</dd><dt>Llegada</dt><dd>Planta Andina, Ilo</dd></dl></div>
+   <div class="dx-of-card"><h4>Garantía</h4><dl class="dx-of-dl"><dt>Vigencia</dt><dd>14 nov 2026 → 14 nov 2027</dd><dt>Quedan</dt><dd>365 días</dd><dt>Reclamos</dt><dd>Ninguno</dd></dl></div>
+   <div class="dx-of-card"><h4>Valorización</h4><p class="dx-of-muted" style="white-space:normal;margin:0 0 10px">Pendiente de valorizar en la OS-2026-0154 (modelo hitos de pago).</p><button class="dx-of-ghost" data-v="valorizacion">Ir a Valorizaciones</button></div>`}
+  </aside></div>`;
+}
+function pasaporte(){
+ return `<div class="dx-of-hdr"><div><div class="dx-of-eyebrow">Producción</div><h1 class="dx-of-title">Pasaporte de componente</h1><p class="dx-of-sub">Trazabilidad de cada unidad fabricada, por número de serie</p></div><div class="dx-ofe-hdr-actions"><button class="dx-of-primary">${IC.pdf}Descargar PDF</button></div></div>
+ <div class="dx-of5-search"><input aria-label="Buscar por número de serie, OF o cliente" value="OF-D0001-01"></div>
+ <div class="dx-of5-pass"><div>
+  <div class="dx-of5-sec"><h4>Unidad #1 · OF-D0001-01</h4><div class="dx-of-fields" style="padding:0"><div class="dx-of-cell"><span>Componente</span><span>Cucharón reforzado 3.5 m³</span></div><div class="dx-of-cell"><span>Cliente</span><span>Minera Andina Demo</span></div><div class="dx-of-cell"><span>OF / OS</span><span>OF-D0001 · OS-2026-0154</span></div><div class="dx-of-cell"><span>Fabricado</span><span>2 sep → 12 nov 2026</span></div><div class="dx-of-cell"><span>Liberado</span><span>13 nov 2026</span></div><div class="dx-of-cell"><span>Entregado</span><span>14 nov 2026</span></div></div></div>
+  <div class="dx-of5-sec"><h4>Ruta ejecutada</h4>
+   <div class="dx-of5-line"><span class="seq">1</span><span>Torneado de acabado · Abel Salazar, Alex Flores</span><span>6.5 h de 6 h</span></div>
+   <div class="dx-of5-line"><span class="seq">2</span><span>Rectificado de vástago · Alex Flores</span><span>4 h de 4 h</span></div>
+   <div class="dx-of5-line"><span class="seq">3</span><span>Prueba de funcionamiento · Abel Salazar</span><span>2 h de 2 h</span></div></div>
+  <div class="dx-of5-sec"><h4>Materiales consumidos (kárdex)</h4>
+   <div class="dx-of5-line"><span></span><span>Rodamiento Rígido de Bolas 6204 · salida 2 sep</span><span>12 UND</span></div>
+   <div class="dx-of5-line"><span></span><span>Tubo delgado · salida 4 sep</span><span>3 m</span></div></div>
+  <div class="dx-of5-sec"><h4>Calidad</h4>
+   <div class="dx-of5-line"><span></span><span>Diámetro del pasador (crítica) · 60.00 ± 0.05 mm</span><span class="dx-ofe-st terminada"><i></i>60.03</span></div>
+   <div class="dx-of5-line"><span></span><span>Espesor de cuchilla · 25 ± 1 mm</span><span class="dx-ofe-st terminada"><i></i>25.4</span></div>
+   <div class="dx-of5-line"><span></span><span>No conformidades</span><span>NC-26-0004 · reprocesada y cerrada</span></div></div>
+ </div><aside>
+  <div class="dx-of5-sec"><h4>Entrega</h4><dl class="dx-of-dl"><dt>Acta</dt><dd>ACT-26-0012</dd><dt>Guía</dt><dd>T001-00000045</dd><dt>Recibió</dt><dd>Jefe de mantenimiento (cliente)</dd></dl></div>
+  <div class="dx-of5-sec"><h4>Garantía</h4><dl class="dx-of-dl"><dt>Estado</dt><dd>Vigente</dd><dt>Hasta</dt><dd>14 nov 2027</dd><dt>Reclamos</dt><dd>Ninguno</dd></dl></div>
+ </aside></div>`;
+}
+function garantias(){
+ const R=[['GAR-26-0007','OF-D0001-01','Minera Andina Demo','OF-D0001','14 nov 2027','Vigente','terminada'],['GAR-26-0008','OF-D0001-02','Minera Andina Demo','OF-D0001','14 nov 2027','Con reclamo','pendiente'],['GAR-26-0003','OF-D0002-01','Constructora Sur Demo','OF-D0002','3 dic 2026','Vence pronto','observado']];
+ return `<div class="dx-of-hdr"><div><div class="dx-of-eyebrow">Producción</div><h1 class="dx-of-title">Garantías de producción</h1><p class="dx-of-sub">Garantía de cada unidad entregada, reclamos y OF de garantía</p></div></div>
+ <div class="dx-ui-kpi-row"><div class="dx-ui-kpi"><strong>14</strong><span>Vigentes</span></div><div class="dx-ui-kpi"><strong>2</strong><span>Vencen en 30 días</span></div><div class="dx-ui-kpi"><strong>1</strong><span>Reclamo abierto</span></div><div class="dx-ui-kpi"><strong>S/ 1,240.00</strong><span>Costo no facturable (año)</span></div></div>
+ <div class="dx-of-card"><div class="dx-of5-row is-head"><span>Garantía</span><span>Serie · cliente</span><span>OF</span><span>Vence</span><span>Estado</span><span></span></div>
+ ${R.map(r=>`<div class="dx-of5-row"><span class="dx-ofe-mono">${r[0]}</span><span class="dx-of-cell"><span class="dx-of-strong">${r[1]}</span><span class="dx-of-muted">${r[2]}</span></span><span class="h-sm">${r[3]}</span><span class="h-sm">${r[4]}</span><span><span class="dx-ofe-st ${r[6]}"><i></i>${r[5]}</span></span><span><button class="dx-ofe-mini" data-m="reclamo">Reclamo</button></span></div>`).join('')}</div>`;
+}
+function valorizacion(){
+ return `<div class="dx-of-hdr"><div><div class="dx-of-eyebrow">Administración · Valorizaciones</div><h1 class="dx-of-title">Nueva valorización · OS-2026-0154</h1><p class="dx-of-sub">Las OF entregadas aparecen junto a las OT, con los mismos modelos de cálculo</p></div></div>
+ <div class="dx-of-card"><div class="dx-of5-row is-head"><span>Documento</span><span>Detalle</span><span>Estado</span><span>Entrega</span><span>Monto</span><span></span></div>
+ <div class="dx-of5-row"><span class="dx-ofe-mono">OT-26-0712</span><span>Inspección estructural de tolva</span><span class="h-sm">Cerrada con acta</span><span class="h-sm">2 nov 2026</span><span class="dx-of-money">S/ 3,200.00</span><span><input type="checkbox" checked aria-label="Incluir OT-26-0712"></span></div>
+ <div class="dx-of5-row"><span class="dx-ofe-mono">OF-D0001</span><span>Cucharón reforzado 3.5 m³ · 2 unidades</span><span class="h-sm">Entregada · ACT-26-0012</span><span class="h-sm">14 nov 2026</span><span class="dx-of-money">S/ 18,500.00</span><span><input type="checkbox" checked aria-label="Incluir OF-D0001"></span></div>
+ </div><p class="dx-of-muted" style="white-space:normal">Solo se pueden valorizar OF entregadas con acta conforme (igual que las OT cerradas con acta). Una OF de garantía no se valoriza.</p>`;
+}
+const inp=(id,l,req,v,hint,full)=>`<div class="dx-ui-field${full?' dx-ui-field-full':''}"><label for="${id}">${l}${req?' <span class="dx-ui-required">*</span>':''}</label><input id="${id}" value="${v}">${hint?`<span class="dx-ui-field-hint">${hint}</span>`:''}</div>`;
+const sel=(id,l,req,opts,v,hint)=>`<div class="dx-ui-field"><label for="${id}">${l}${req?' <span class="dx-ui-required">*</span>':''}</label><select id="${id}" class="dx-ui-select">${opts.map(o=>`<option${o===v?' selected':''}>${o}</option>`).join('')}</select>${hint?`<span class="dx-ui-field-hint">${hint}</span>`:''}</div>`;
+let paso=1;
+function modal(kind){
+ const M=document.getElementById('modal');let h='';
+ if(kind==='entregar'){
+  const P=['Fotos y conformidad','Firmas','Guía de remisión','Revisión'];
+  const st=`<div class="dx-of5-steps">${P.map((p,i)=>`<span class="${i+1<paso?'is-done':i+1===paso?'is-now':''}">${i+1} · ${p}</span>`).join('')}</div>`;
+  let b='';
+  if(paso===1)b=`<div class="dx-ui-form-grid"><div class="dx-ui-field dx-ui-field-full"><label>Fotos de la entrega <span class="dx-ui-required">*</span></label><div class="dx-of5-fotos"><div class="dx-of5-foto is-ok">Foto 1</div><div class="dx-of5-foto is-ok">Foto 2</div><div class="dx-of5-foto">+ Agregar</div></div><span class="dx-ui-field-hint">Mínimo 1, máximo 6</span></div>
+   ${sel('e-conf','Conformidad del cliente',1,['Conforme','Conforme con observaciones','Pendiente (firma por enlace)'],'Conforme')}
+   ${UNITS.map((x,i)=>inp('e-s'+i,'Serie unidad '+x.u,1,x.serie,'Se puede corregir')).join('')}
+   <div class="dx-ui-field dx-ui-field-full"><label for="e-obs">Observaciones</label><textarea id="e-obs"></textarea></div></div>`;
+  if(paso===2)b=`<div class="dx-ui-form-grid is-2"><div class="dx-ui-field"><label>Firma del responsable de la OF <span class="dx-ui-required">*</span></label><div class="dx-of5-firma">Firma con el dedo o el mouse</div></div><div class="dx-ui-field"><label>Firma del cliente <span class="dx-ui-required">*</span></label><div class="dx-of5-firma">Firma con el dedo o el mouse</div><span class="dx-ui-field-hint">Si no está presente, elige «Pendiente» en el paso 1: se le envía un enlace</span></div>
+   ${inp('e-rec','Nombre de quien recibe',1,'Jefe de mantenimiento')}${inp('e-dni','DNI de quien recibe',1,'40123456')}</div>`;
+  if(paso===3)b=`<div class="dx-ui-form-grid">${inp('e-ll','Punto de llegada',1,'Planta Andina, Ilo','',true)}${inp('e-ft','Inicio del traslado',1,'14/11/2026')}${sel('e-mod','Modalidad',1,['Transporte privado','Transporte público'],'Transporte privado')}${inp('e-pes','Peso bruto (kg)',1,'2850')}${inp('e-pla','Placa',1,'ABC-123')}${inp('e-con','Conductor',1,'Conductor Demo')}${inp('e-lic','Licencia',1,'Q40123456')}
+   <div class="dx-ui-field dx-ui-field-full"><span class="dx-ui-field-hint">La guía lleva las 2 unidades con su serie. Partida: dirección del taller.</span></div></div>`;
+  if(paso===4)b=`<dl class="dx-ofe-cmp"><dt>Unidades</dt><dd>2 · OF-D0001-01, OF-D0001-02</dd><dt>Conformidad</dt><dd>Conforme · 2 fotos · firmas completas</dd><dt>Guía</dt><dd>T001 · Planta Andina, Ilo · ABC-123</dd><dt>Garantía</dt><dd>12 meses por unidad, hasta el 14 nov 2027</dd><dt>Después</dt><dd>La OF pasa a Entregada y aparece en Valorizaciones de la OS-2026-0154</dd></dl>
+   <div class="dx-ui-form-grid is-2">${inp('e-gar','Garantía (meses)',1,'12','Viene de la OF; 0 = sin garantía')}</div>`;
+  const pie=`<div class="dx-ofe-actions"><button type="button" class="dx-of-ghost" data-close>Cancelar</button>${paso>1?'<button type="button" class="dx-of-ghost" data-paso="-1">Atrás</button>':''}${paso<4?'<button type="button" class="dx-of-primary" data-paso="1">Siguiente</button>':`<button type="button" class="dx-of-primary" data-v="entregada">${IC.check}Entregar y emitir guía</button>`}</div>`;
+  h=`<form class="dx-ofe-modal" role="dialog" aria-modal="true" aria-labelledby="me" novalidate><h3 id="me">Entregar OF-D0001 al cliente</h3><p>Se genera el acta de conformidad en PDF, la guía de remisión y la garantía de cada unidad.</p>${st}${b}${pie}</form>`;
+ }
+ if(kind==='reclamo'){
+  h=`<form class="dx-ofe-modal" role="dialog" aria-modal="true" aria-labelledby="mr" novalidate><h3 id="mr">Registrar reclamo de garantía</h3><p>El reclamo se evalúa; si procede, se crea una OF de garantía (no facturable) con el costo cargado a la garantía.</p>
+  <div class="dx-ui-form-grid">${sel('r-u','Unidad',1,['OF-D0001-01','OF-D0001-02'],'OF-D0001-02','Garantía vigente hasta el 14 nov 2027')}${inp('r-f','Fecha del reclamo',1,'20/01/2027')}${sel('r-ev','Evaluación',1,['Pendiente de evaluar','Procede','No procede'],'Procede')}
+  <div class="dx-ui-field dx-ui-field-full"><label for="r-d">Falla reportada <span class="dx-ui-required">*</span></label><textarea id="r-d">Fisura en la soldadura de la cuchilla lateral.</textarea></div>
+  <div class="dx-ui-field dx-ui-field-full"><label>Fotos</label><div class="dx-of5-fotos"><div class="dx-of5-foto is-ok">Foto 1</div><div class="dx-of5-foto">+ Agregar</div></div></div></div>
+  <div class="dx-ofe-actions"><button type="button" class="dx-of-ghost" data-close>Cancelar</button><button type="button" class="dx-of-ghost" data-close>Guardar reclamo</button><button type="button" class="dx-of-primary" data-close>${IC.shield}Crear OF de garantía</button></div></form>`;
+ }
+ M.innerHTML=`<div class="dx-ofe-backdrop">${h}</div>`;
+}
+let v='lista';
+function render(){
+ const V=document.getElementById('view');
+ V.innerHTML=v==='lista'?ficha('lista_entrega'):v==='entregada'?ficha('entregada'):v==='pasaporte'?pasaporte():v==='garantias'?garantias():valorizacion();
+ document.querySelectorAll('.mockbar [data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+}
+document.addEventListener('click',e=>{
+ const g=e.target.closest('[data-v]');if(g){v=g.dataset.v;document.getElementById('modal').innerHTML='';render();return}
+ const m=e.target.closest('[data-m]');if(m){if(m.dataset.m==='entregar'){paso=1;v='lista';render()}modal(m.dataset.m);return}
+ const p=e.target.closest('[data-paso]');if(p){paso=Math.min(4,Math.max(1,paso+Number(p.dataset.paso)));modal('entregar');return}
+ if(e.target.closest('[data-close]')||e.target.classList.contains('dx-ofe-backdrop')){document.getElementById('modal').innerHTML='';return}
+ if(e.target.id==='tema'){document.documentElement.toggleAttribute('data-theme');if(document.documentElement.hasAttribute('data-theme'))document.documentElement.setAttribute('data-theme','dark');e.target.textContent=document.documentElement.hasAttribute('data-theme')?'Modo claro':'Modo oscuro'}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('modal').innerHTML=''});
+render();
+</script>
+</body>
+</html>
