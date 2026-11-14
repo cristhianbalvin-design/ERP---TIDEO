@@ -11,3 +11,6 @@ paso: 2 | pantalla=remision | permiso=ninguno | Nueva Guía o Crear guía de des
 paso: 3 | pantalla=remision | permiso=ninguno | Marcar en tránsito indica que la carga salió y Confirmar entrega que llegó.
 paso: 4 | pantalla=remision | permiso=ninguno | Nuevo Transportista registra un transportista; dentro de él se agregan sus vehículos y conductores.
 paso: 5 | pantalla=remision | permiso=ninguno | Anular deja sin efecto un documento y pide Confirmar anulación. Abrir la Hoja de Ruta lleva a la programación de rutas en Operaciones.
+paso: 6 | pantalla=remision | permiso=ninguno | Para qué sirve: despachar mercadería vendida: la orden de venta reserva el stock, la guía ampara el traslado y el seguimiento confirma la entrega. También guarda el padrón de transportistas con sus vehículos y conductores.
+paso: 7 | pantalla=remision | permiso=ninguno | Crear OV guarda la orden de venta y Guardar borrador la deja sin confirmar. Si el producto no está en el catálogo, + Agregar al catálogo lo crea desde aquí. En un transportista, Editar vehículo, Editar conductor, Eliminar vehículo y Eliminar conductor mantienen su flota y su personal, y Guardar cambios conserva la edición.
+paso: 8 | pantalla=remision | permiso=ninguno | Si no ves Emitir guía, la guía ya está emitida o la orden de venta no está confirmada.

@@ -11,3 +11,6 @@ paso: 2 | pantalla=evaluaciones_desempeno | permiso=ninguno | Cada colaborador u
 paso: 3 | pantalla=evaluaciones_desempeno | permiso=ninguno | El jefe usa Evaluar; al enviar su evaluación tampoco puede editarla.
 paso: 4 | pantalla=evaluaciones_desempeno | permiso=ninguno | Cerrar plantilla publica los resultados a los colaboradores, que los ven con Ver resultado.
 paso: 5 | pantalla=evaluaciones_desempeno | permiso=ninguno | Exportar Excel descarga los resultados.
+paso: 6 | pantalla=evaluaciones_desempeno | permiso=ninguno | Para qué sirve: evaluar una vez por período a cada colaborador por competencias y objetivos, con su autoevaluación y la de su jefe, y dejar el resultado en su historial.
+paso: 7 | pantalla=evaluaciones_desempeno | permiso=ninguno | Al armar la plantilla, Bajar cambia el orden de una competencia u objetivo. Completar abre una evaluación pendiente y Enviar evaluacion del jefe la entrega; una vez enviada no se puede editar.
+paso: 8 | pantalla=evaluaciones_desempeno | permiso=ninguno | Nueva plantilla solo aparece si tu rol puede administrar evaluaciones. Si un colaborador no ve su resultado, falta Cerrar plantilla, que es lo que publica los resultados.

@@ -10,3 +10,6 @@ paso: 1 | pantalla=partes | permiso=ninguno | La lista muestra los partes diario
 paso: 2 | pantalla=partes | permiso=ninguno | Enviar a revisión manda un parte a su revisor.
 paso: 3 | pantalla=partes | permiso=ninguno | Quien revisa usa Aprobar, Observar, que envía una observación al autor, o Rechazar; cada acción pide confirmación.
 paso: 4 | pantalla=partes | permiso=ninguno | Reabrir para editar devuelve un parte ya revisado para corregirlo.
+paso: 5 | pantalla=partes | permiso=ninguno | Para qué sirve: revisar desde Administración los partes de trabajo que registran los técnicos. Solo los partes aprobados suman horas y costo a su orden de trabajo.
+paso: 6 | pantalla=partes | permiso=ninguno | Cada decisión se confirma en una ventana: Confirmar aprobación, Confirmar rechazo o Confirmar reapertura; Observar pide escribir la observación y enviarla con Enviar observación.
+paso: 7 | pantalla=partes | permiso=ninguno | Si no ves Aprobar, Observar o Rechazar, tu rol no tiene el permiso de aprobar partes. Si no aparece un parte, revisa los filtros y que el técnico lo haya enviado a revisión.

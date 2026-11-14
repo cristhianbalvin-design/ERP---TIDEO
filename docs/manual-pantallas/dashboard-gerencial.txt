@@ -9,3 +9,5 @@ huella: 33352eff28
 paso: 1 | pantalla=dashboard | permiso=ninguno | Es un tablero de consulta con los indicadores de la operación del período.
 paso: 2 | pantalla=dashboard | permiso=ninguno | Exportar PDF descarga el tablero.
 paso: 3 | pantalla=dashboard | permiso=ninguno | Si no hay tipo de cambio para el período, la pantalla lo avisa.
+paso: 4 | pantalla=dashboard | permiso=ninguno | Para qué sirve: dar a gerencia una lectura rápida de la operación del período: órdenes, márgenes, sobrecostos, retrabajo y uso de la flota, con los mismos datos que usa el resto del sistema.
+paso: 5 | pantalla=dashboard | permiso=ninguno | Si una cifra no cuadra, revisa el período y la sociedad elegidos. Si avisa que no hay tipo de cambio, regístralo para ese período: sin él no se pueden sumar soles y dólares en los totales de referencia.

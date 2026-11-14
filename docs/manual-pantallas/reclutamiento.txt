@@ -10,3 +10,6 @@ paso: 1 | pantalla=reclutamiento | permiso=ninguno | Crea una vacante con Crear 
 paso: 2 | pantalla=reclutamiento | permiso=ninguno | Registra a un candidato con Registrar. La vista Pipeline muestra en qué etapa está cada uno y Ver CV abre su hoja de vida.
 paso: 3 | pantalla=reclutamiento | permiso=ninguno | Invitar a esta vacante suma a la vacante a un candidato que ya está en el banco.
 paso: 4 | pantalla=reclutamiento | permiso=ninguno | Al contratar, la pantalla pregunta si el alta se crea como personal administrativo u operativo.
+paso: 5 | pantalla=reclutamiento | permiso=ninguno | Para qué sirve: llevar cada proceso de selección, desde que se abre la vacante hasta que se contrata a alguien, con todos los candidatos y su etapa en un solo lugar.
+paso: 6 | pantalla=reclutamiento | permiso=ninguno | Cada vacante tiene un enlace público para que los candidatos postulen; al copiarlo la pantalla confirma «Link publico copiado». Al contratar a un candidato, el sistema pregunta si se da de alta como personal administrativo u operativo.
+paso: 7 | pantalla=reclutamiento | permiso=ninguno | Si no aparece un candidato, revisa que haya postulado a esa vacante. Si no ves los botones para crear o editar una vacante, tu rol no tiene ese permiso en Reclutamiento.

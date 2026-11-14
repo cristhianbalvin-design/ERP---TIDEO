@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/wms/EtiquetasPage.jsx#Etiquet
 huella: 3cbd212622
 paso: 1 | pantalla=inventario | permiso=ninguno | Marca las etiquetas que necesitas; debes marcar al menos una.
 paso: 2 | pantalla=inventario | permiso=ninguno | Descargar PDF genera el archivo para imprimir.
+paso: 3 | pantalla=inventario | permiso=ninguno | Para qué sirve: imprimir las etiquetas con código que se pegan en ubicaciones y materiales, para trabajar el almacén escaneando en vez de escribiendo.
+paso: 4 | pantalla=inventario | permiso=ninguno | Las etiquetas de ubicación identifican cada posición y las de material cada artículo; se generan en un PDF listo para imprimir.
+paso: 5 | pantalla=inventario | permiso=ninguno | No deja descargar sin marcar al menos una etiqueta. Si no aparece una ubicación o un material para etiquetar, primero debe existir en Ubicaciones o en el maestro de materiales.

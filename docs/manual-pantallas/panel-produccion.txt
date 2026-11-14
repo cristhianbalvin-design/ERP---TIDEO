@@ -10,3 +10,6 @@ paso: 1 | pantalla=os_cliente | permiso=ninguno | Muestra las OS Cliente en Tabl
 paso: 2 | pantalla=os_cliente | permiso=ninguno | Nueva OS Cliente crea una orden: cliente y descripción son obligatorios y debes seleccionar o crear un activo.
 paso: 3 | pantalla=os_cliente | permiso=ninguno | Recepciones e Ir a Recepción de Activos llevan al ingreso de equipos al taller.
 paso: 4 | pantalla=os_cliente | permiso=ninguno | Una OS con registros asociados no se puede eliminar.
+paso: 5 | pantalla=os_cliente | permiso=ninguno | Para qué sirve: ver de un vistazo todas las órdenes de servicio en curso, en qué etapa va cada una y cuáles están atrasadas, para priorizar el taller.
+paso: 6 | pantalla=os_cliente | permiso=ninguno | El indicador Atrasadas filtra al pulsarlo y Quitar filtros vuelve a mostrar todo. Guardar OS Cliente conserva la orden nueva o editada.
+paso: 7 | pantalla=os_cliente | permiso=ninguno | Si no ves una OS en el tablero, revisa Quitar filtros y que la orden no esté cerrada o anulada.

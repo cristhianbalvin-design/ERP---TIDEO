@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/flota/FlotaPanelPage.jsx#Flot
 huella: a4bc77e2dd
 paso: 1 | pantalla=flota_panel | permiso=ninguno | Registrar equipo da de alta un equipo de la flota.
 paso: 2 | pantalla=flota_panel | permiso=ninguno | Despachar equipo inicia la entrega de un equipo y Recibir equipo su devolución; ambos requieren acceso a Actas & Despachos.
+paso: 3 | pantalla=flota_panel | permiso=ninguno | Para qué sirve: ver de un vistazo toda la flota: qué equipos están disponibles, cuáles alquilados y cuáles en mantenimiento, y desde ahí despachar o recibir un equipo.
+paso: 4 | pantalla=flota_panel | permiso=ninguno | Despachar y recibir se hacen con un acta: el panel solo abre el acta con el equipo ya elegido.
+paso: 5 | pantalla=flota_panel | permiso=ninguno | Si no ves Despachar equipo o Recibir equipo, tu rol no tiene acceso a Actas & Despachos. Si no deja despachar, el equipo tiene una certificación obligatoria vencida o no tiene un contrato vigente.

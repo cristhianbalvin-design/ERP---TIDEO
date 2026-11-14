@@ -11,3 +11,5 @@ paso: 2 | pantalla=valorizacion | permiso=ninguno | Agregar línea suma concepto
 paso: 3 | pantalla=valorizacion | permiso=ninguno | Aprobar valorización la deja lista; con ella aprobada, Facturar la lleva a facturación.
 paso: 4 | pantalla=valorizacion | permiso=ninguno | Ver cierre y Ver conformidad muestran el cierre técnico y la conformidad del cliente que la sustentan.
 paso: 5 | pantalla=valorizacion | permiso=ninguno | Anular la deja sin efecto y pide Confirmar anulación.
+paso: 6 | pantalla=valorizacion | permiso=ninguno | Para qué sirve: dejar por escrito cuánto del trabajo de una orden de servicio ya se ejecutó y se puede cobrar. Es el paso entre el trabajo hecho y la factura cuando se cobra por avance; la factura se emite luego con «Desde valorización» en Facturación.
+paso: 7 | pantalla=valorizacion | permiso=ninguno | No deja crear una valorización sin elegir la OS del cliente. Si no ves el botón para facturar, la valorización aún no está aprobada o ya tiene factura.

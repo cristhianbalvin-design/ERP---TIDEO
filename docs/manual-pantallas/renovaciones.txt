@@ -8,3 +8,6 @@ componentes: src/pages_cs.jsx#CSRenovaciones
 huella: 4ce1c80053
 paso: 1 | pantalla=cs_renovaciones | permiso=ninguno | Registra una renovación próxima con Nueva renovación.
 paso: 2 | pantalla=cs_renovaciones | permiso=ninguno | Generar oportunidad crea en el Pipeline la oportunidad de esa renovación.
+paso: 3 | pantalla=cs_renovaciones | permiso=ninguno | Para qué sirve: no dejar vencer un contrato con un cliente sin haberlo gestionado. Cada renovación próxima se registra y se convierte en una oportunidad de venta con anticipación.
+paso: 4 | pantalla=cs_renovaciones | permiso=ninguno | Crear oportunidad confirma la oportunidad que se genera en el Pipeline.
+paso: 5 | pantalla=cs_renovaciones | permiso=ninguno | Si no aparece la oportunidad en el Pipeline, revisa que la hayas confirmado con Crear oportunidad. Si no aparece el cliente, debe existir como cuenta.

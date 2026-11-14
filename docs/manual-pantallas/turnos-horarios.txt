@@ -9,3 +9,6 @@ huella: 0f9bfb4e97
 paso: 1 | pantalla=turnos | permiso=ninguno | Crea un horario con Nuevo turno. Copiar el primer día a todos repite el horario del primer día en el resto de la semana.
 paso: 2 | pantalla=turnos | permiso=ninguno | Editar turno cambia sus horas.
 paso: 3 | pantalla=turnos | permiso=ninguno | Un turno que ya usan trabajadores o que tiene asistencias en el historial no se puede eliminar: edítalo y cambia su estado a Inactivo.
+paso: 4 | pantalla=turnos | permiso=ninguno | Para qué sirve: definir los horarios de trabajo de la empresa (entrada, salida, refrigerio, días) para asignarlos al personal. Sin turno asignado un trabajador no puede marcar asistencia.
+paso: 5 | pantalla=turnos | permiso=ninguno | Guardar cambios conserva la edición de un turno y Eliminar turno lo borra tras confirmar.
+paso: 6 | pantalla=turnos | permiso=ninguno | Si no se puede eliminar un turno, la pantalla muestra el motivo; lo habitual es que esté en uso. Si un trabajador no puede marcar asistencia, revisa que tenga un turno asignado en su ficha.

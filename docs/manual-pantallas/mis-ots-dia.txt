@@ -8,3 +8,6 @@ componentes: operaciones-app/src/zahory-mock/pages/MisOTsPage.jsx#MisOTsPage
 huella: aa0aa52182
 paso: 1 | pantalla=ot | permiso=ninguno | Verás las OT que tienes asignadas para el día con su estado.
 paso: 2 | pantalla=ot | permiso=ninguno | Registrar parte abre el parte diario de esa OT. Registrar parte sin OT sirve para trabajo que todavía no tiene orden.
+paso: 3 | pantalla=ot | permiso=ninguno | Para qué sirve: que el técnico vea en su celular o tablet qué órdenes tiene hoy y registre su parte sin buscar en la bandeja.
+paso: 4 | pantalla=ot | permiso=ninguno | El parte registrado aquí queda en revisión hasta que el jefe de taller lo apruebe; recién entonces sus horas cuentan en el avance y el costo de la OT.
+paso: 5 | pantalla=ot | permiso=ninguno | Si no aparece una OT, no está asignada a ti para hoy: pide al jefe de taller que te la asigne en el Planner. Si no puedes registrar el parte, la OT debe estar programada o en ejecución y tener al menos una tarea.

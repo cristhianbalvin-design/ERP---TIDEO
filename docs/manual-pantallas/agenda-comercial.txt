@@ -10,3 +10,5 @@ paso: 1 | pantalla=agenda_comercial | permiso=ninguno | Agenda una reunión o vi
 paso: 2 | pantalla=agenda_comercial | permiso=ninguno | Cambia la vista entre Día, Semana, Mes y Lista; Hoy vuelve a la fecha actual.
 paso: 3 | pantalla=agenda_comercial | permiso=ninguno | Cuando el evento ocurre usa Marcar realizado y crear actividad: queda como realizado y se registra la actividad comercial.
 paso: 4 | pantalla=agenda_comercial | permiso=ninguno | Eliminar evento lo borra y no se puede deshacer; solo aparece si tu rol puede eliminar eventos.
+paso: 5 | pantalla=agenda_comercial | permiso=ninguno | Para qué sirve: programar las reuniones y visitas del equipo comercial y ver la semana de cada vendedor. Un evento realizado se convierte en actividad, así el historial del cliente queda completo.
+paso: 6 | pantalla=agenda_comercial | permiso=ninguno | Si no ves Eliminar evento, tu rol no tiene permiso para eliminar eventos. Si no aparece un evento, revisa la vista elegida y usa Hoy para volver a la fecha actual.

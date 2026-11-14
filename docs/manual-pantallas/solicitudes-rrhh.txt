@@ -10,3 +10,5 @@ paso: 1 | pantalla=solicitudes_rrhh | permiso=ninguno | Pide vacaciones o un per
 paso: 2 | pantalla=solicitudes_rrhh | permiso=ninguno | Quien aprueba usa Aprobar o Rechazar; el motivo es obligatorio al rechazar. Anular deja sin efecto una solicitud.
 paso: 3 | pantalla=solicitudes_rrhh | permiso=ninguno | Aplicar a asistencia crea los registros de asistencia de la solicitud aprobada; si ya existen registros en esas fechas, pide confirmar antes de reemplazarlos.
 paso: 4 | pantalla=solicitudes_rrhh | permiso=ninguno | PDF descarga la solicitud e Historial muestra las anteriores.
+paso: 5 | pantalla=solicitudes_rrhh | permiso=ninguno | Para qué sirve: pedir y aprobar vacaciones, descansos y permisos sin papeles. Lo aprobado se refleja en la asistencia del trabajador y descuenta de su saldo de vacaciones.
+paso: 6 | pantalla=solicitudes_rrhh | permiso=ninguno | Enviar solicitud la manda a aprobación. En el calendario, Hoy vuelve a la fecha actual.

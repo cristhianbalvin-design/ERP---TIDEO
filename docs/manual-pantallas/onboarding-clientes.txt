@@ -8,3 +8,6 @@ componentes: src/pages_cs.jsx#CSOnboarding
 huella: 6a67ec3d29
 paso: 1 | pantalla=cs_onboarding | permiso=ninguno | Inicia la puesta en marcha de un cliente con Nuevo onboarding.
 paso: 2 | pantalla=cs_onboarding | permiso=ninguno | Ver detalle muestra su avance.
+paso: 3 | pantalla=cs_onboarding | permiso=ninguno | Para qué sirve: acompañar a un cliente nuevo en sus primeras semanas, con los pasos de su puesta en marcha y su avance, para que empiece bien y no se enfríe la relación.
+paso: 4 | pantalla=cs_onboarding | permiso=ninguno | Cada onboarding pertenece a una cuenta y muestra su avance en porcentaje.
+paso: 5 | pantalla=cs_onboarding | permiso=ninguno | Si no aparece un cliente para iniciar su onboarding, primero debe existir como cuenta en Cuentas y Contactos.

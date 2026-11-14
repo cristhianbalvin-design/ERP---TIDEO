@@ -8,3 +8,6 @@ componentes: src/pages_dashboards.jsx#DashboardsPage
 huella: 063f9e54c0
 paso: 1 | pantalla=dashboard | permiso=ninguno | Es una pantalla de consulta: reúne los tableros de indicadores disponibles para tu rol.
 paso: 2 | pantalla=dashboard | permiso=ninguno | No registra información; los datos vienen de lo que se registra en el resto del sistema.
+paso: 3 | pantalla=dashboard | permiso=ninguno | Para qué sirve: reunir en una sola entrada los tableros de la empresa (general, comercial, operativo y financiero) para ver los resultados sin armar reportes.
+paso: 4 | pantalla=dashboard | permiso=ninguno | Cada pestaña es un tablero; solo ves los que tu rol tiene permitidos.
+paso: 5 | pantalla=dashboard | permiso=ninguno | Si no aparece una pestaña, tu rol no tiene acceso a ese tablero. Si una cifra no cuadra con una pantalla, revisa el período y la sociedad elegidos.

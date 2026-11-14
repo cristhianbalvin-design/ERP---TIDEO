@@ -11,3 +11,6 @@ paso: 2 | pantalla=campo | permiso=ninguno | Escanear Material registra el mater
 paso: 3 | pantalla=campo | permiso=ninguno | Parte registra el parte del día y Enviar al supervisor lo manda a revisión.
 paso: 4 | pantalla=campo | permiso=ninguno | Firmar y Completar cierra el trabajo con firma.
 paso: 5 | pantalla=campo | permiso=ninguno | SSOMA abre la sección de seguridad y SOS sirve para pedir ayuda.
+paso: 6 | pantalla=campo | permiso=ninguno | Para qué sirve: que el técnico trabaje con el celular en la mano: ver sus tareas, marcar en cuál está, registrar el material que usa y enviar su parte, sin papeles.
+paso: 7 | pantalla=campo | permiso=ninguno | El parte enviado queda en revisión del supervisor; sus horas cuentan en la orden cuando lo aprueba.
+paso: 8 | pantalla=campo | permiso=ninguno | Si no aparece una tarea, la orden no está asignada a ti o no está programada. Si no deja escanear, revisa el permiso de cámara del navegador.

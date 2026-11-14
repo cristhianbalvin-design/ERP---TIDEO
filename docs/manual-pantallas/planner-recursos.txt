@@ -11,3 +11,6 @@ paso: 2 | pantalla=planner | permiso=ninguno | Agregar colaborador este día asi
 paso: 3 | pantalla=planner | permiso=ninguno | Nueva cuadrilla crea un grupo de trabajo con Crear cuadrilla.
 paso: 4 | pantalla=planner | permiso=ninguno | Editar fecha/horario cambia una asignación y Eliminar la quita.
 paso: 5 | pantalla=planner | permiso=ninguno | Exportar Excel descarga la programación y Ver Detalle OT abre la orden.
+paso: 6 | pantalla=planner | permiso=ninguno | Para qué sirve: programar desde Administración qué personas y cuadrillas trabajan en cada orden y cada día, para no cruzar a nadie en dos trabajos y saber la carga de la semana.
+paso: 7 | pantalla=planner | permiso=ninguno | Semana anterior y Siguiente semana, o Mes anterior y Mes siguiente, mueven el calendario. Ver resumen abre el resumen de la programación y Evaluar mes revisa la productividad del mes.
+paso: 8 | pantalla=planner | permiso=ninguno | Si no aparece un colaborador para asignarlo, revisa en Personal que esté activo. Si no aparece una OT, revisa que no esté cerrada ni anulada.

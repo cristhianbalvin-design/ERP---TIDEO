@@ -9,3 +9,6 @@ huella: fb0b722c0a
 paso: 1 | pantalla=transporte_comercial | permiso=ninguno | Crea una ruta del día y agrégale pedidos con Agregar; Nueva ruta de logística crea una ruta propia de logística.
 paso: 2 | pantalla=transporte_comercial | permiso=ninguno | Asignar define la unidad y el conductor de la ruta, y Editar la modifica.
 paso: 3 | pantalla=transporte_comercial | permiso=ninguno | Hoja imprime la hoja de una ruta e Imprimir hojas del día las de todo el día.
+paso: 4 | pantalla=transporte_comercial | permiso=ninguno | Para qué sirve: armar las rutas de cada día: qué unidad y qué conductor llevan qué pedidos y en qué orden, tanto para viajes de clientes como para recojos y entregas propios de logística.
+paso: 5 | pantalla=transporte_comercial | permiso=ninguno | Un pedido se puede retirar de la ruta mientras no haya salido; al retirarlo vuelve a quedar pendiente de programar.
+paso: 6 | pantalla=transporte_comercial | permiso=ninguno | Si no aparece un pedido para agregarlo, ya está en otra ruta o no está listo para despacho. Si no deja asignar una unidad o un conductor, revisa en Flota de transporte que estén activos.

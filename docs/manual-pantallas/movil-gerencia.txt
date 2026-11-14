@@ -8,3 +8,6 @@ componentes: src/pages_mobile.jsx#GerenciaView
 huella: a2308d7303
 paso: 1 | pantalla=campo | permiso=ninguno | Aprobar pendientes muestra lo que espera tu decisión.
 paso: 2 | pantalla=campo | permiso=ninguno | Aprobar o Rechazar resuelve cada pendiente y pide confirmación; el comentario es obligatorio.
+paso: 3 | pantalla=campo | permiso=ninguno | Para qué sirve: que gerencia apruebe o rechace desde el celular lo que espera su decisión, para no frenar la operación cuando no está en la oficina.
+paso: 4 | pantalla=campo | permiso=ninguno | Cada decisión se confirma en una segunda pantalla con Confirmar aprobacion o Confirmar rechazo.
+paso: 5 | pantalla=campo | permiso=ninguno | No deja confirmar sin escribir el comentario. Si no aparece un pendiente, no te corresponde aprobarlo según tu rol o ya fue resuelto.

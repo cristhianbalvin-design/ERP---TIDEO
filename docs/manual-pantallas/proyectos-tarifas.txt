@@ -10,3 +10,5 @@ paso: 1 | pantalla=contratos_alquiler | permiso=ninguno | Nuevo Proyecto crea un
 paso: 2 | pantalla=contratos_alquiler | permiso=ninguno | Nueva tarifa registra una tarifa de equipo o de mano de obra con Guardar tarifa.
 paso: 3 | pantalla=contratos_alquiler | permiso=ninguno | Eliminar borra un registro y pide confirmación.
 paso: 4 | pantalla=contratos_alquiler | permiso=ninguno | Contratos Rental lleva a los contratos de alquiler.
+paso: 5 | pantalla=contratos_alquiler | permiso=ninguno | Para qué sirve: registrar los proyectos de alquiler y las tarifas que se cobran en ellos por cada equipo y por la mano de obra. Los contratos de alquiler y su liquidación toman de aquí el precio.
+paso: 6 | pantalla=contratos_alquiler | permiso=ninguno | Nuevo Proyecto y Nueva tarifa solo aparecen si tu rol puede editar. Si en un contrato no aparece la tarifa de un equipo, regístrala aquí en su proyecto.

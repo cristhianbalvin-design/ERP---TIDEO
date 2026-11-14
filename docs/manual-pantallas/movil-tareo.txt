@@ -8,3 +8,6 @@ componentes: src/pages_mobile.jsx#AdministrativoView
 huella: 098b9894da
 paso: 1 | pantalla=campo | permiso=ninguno | Registrar anota tus horas: las horas y la descripción son obligatorias.
 paso: 2 | pantalla=campo | permiso=ninguno | Enviar registro del día manda tu jornada y pide confirmación.
+paso: 3 | pantalla=campo | permiso=ninguno | Para qué sirve: que el personal registre desde el celular las horas que trabajó en el día y en qué, cuando no marca con reloj de asistencia.
+paso: 4 | pantalla=campo | permiso=ninguno | Al enviar el día, la pantalla pide confirmar con «Sí, enviar registro».
+paso: 5 | pantalla=campo | permiso=ninguno | No deja registrar sin horas y sin descripción. Si no puedes enviar el día, primero registra al menos una línea de horas.

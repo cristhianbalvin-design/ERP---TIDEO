@@ -9,3 +9,6 @@ huella: 51d45cfa58
 paso: 1 | pantalla=campo | permiso=ninguno | Adjuntar foto del comprobante o Tomar captura la factura; también puedes usar Ingresar datos manualmente.
 paso: 2 | pantalla=campo | permiso=ninguno | El total de las líneas debe coincidir con el de la factura; Recalcular lo actualiza.
 paso: 3 | pantalla=campo | permiso=ninguno | Si la factura tiene más de 30 días, la pantalla pide confirmar antes de continuar.
+paso: 4 | pantalla=campo | permiso=ninguno | Para qué sirve: que un comprador de campo registre una compra en el momento, con la foto del comprobante, para que llegue a Administración sin esperar a que vuelva a la oficina. Lo registrado queda pendiente de revisión en Compras y Gastos.
+paso: 5 | pantalla=campo | permiso=ninguno | Nueva captura vuelve a tomar la foto. Recargar actualiza la lista de materiales que tienes asignados para comprar, y Liberar devuelve uno a la Bandeja de Sourcing si no vas a comprarlo.
+paso: 6 | pantalla=campo | permiso=ninguno | No deja guardar si el total de las líneas no coincide con el de la factura: corrige las líneas o usa Recalcular. Si la foto no se sube, revisa la conexión y vuelve a intentarlo.

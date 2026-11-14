@@ -10,3 +10,6 @@ paso: 1 | pantalla=campo | permiso=ninguno | Entrada y Salida registran tu marca
 paso: 2 | pantalla=campo | permiso=ninguno | Sin señal, la marcación se guarda en el celular y se sincroniza sola al recuperar la conexión.
 paso: 3 | pantalla=campo | permiso=ninguno | Si marcas la salida con un refrigerio sin cerrar, la pantalla pide confirmación.
 paso: 4 | pantalla=campo | permiso=ninguno | Si estás fuera de la geocerca puedes enviar un reporte con Enviar reporte, que queda para revisión.
+paso: 5 | pantalla=campo | permiso=ninguno | Para qué sirve: que cada trabajador marque su asistencia desde su celular en el lugar de trabajo, con la ubicación como prueba, sin reloj físico. Las marcas alimentan el control de asistencia y la planilla.
+paso: 6 | pantalla=campo | permiso=ninguno | La primera vez la pantalla pide tu consentimiento para usar la ubicación: Acepto lo registra. Nuevo registro inicia una marcación. Si hay marcas guardadas sin enviar, Reintentar ahora las sincroniza. Cerrar reporte cierra el aviso de fuera de geocerca.
+paso: 7 | pantalla=campo | permiso=ninguno | Si no puedes marcar, revisa que el celular tenga la ubicación activada y el permiso concedido al navegador; algunos equipos no la soportan. Si dice que no tienes un turno asignado, pide a RRHH que te lo asigne. Una marca hecha sin señal no se pierde: se envía sola al volver la conexión.

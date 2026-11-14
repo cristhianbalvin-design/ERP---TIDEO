@@ -8,3 +8,6 @@ componentes: src/pages_mobile.jsx#SupervisorView
 huella: a634a954c2
 paso: 1 | pantalla=campo | permiso=ninguno | Aprobar, Observar o Rechazar resuelve cada pendiente y pide confirmación; el comentario es obligatorio.
 paso: 2 | pantalla=campo | permiso=ninguno | Solicitudes RRHH muestra las solicitudes del personal por atender.
+paso: 3 | pantalla=campo | permiso=ninguno | Para qué sirve: que el supervisor revise en campo los partes de su equipo y atienda sus solicitudes desde el celular, para que el avance y los costos de las órdenes no esperen.
+paso: 4 | pantalla=campo | permiso=ninguno | Rechazar se completa con Confirmar rechazo, después de escribir el comentario.
+paso: 5 | pantalla=campo | permiso=ninguno | No deja resolver un pendiente sin comentario. Si no aparece un parte, el técnico aún no lo envió a revisión o no pertenece a tu equipo.

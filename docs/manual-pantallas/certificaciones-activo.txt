@@ -9,3 +9,6 @@ huella: e36b54098c
 paso: 1 | pantalla=certificaciones_activo | permiso=ninguno | Registrar certificación anota una certificación de un equipo.
 paso: 2 | pantalla=certificaciones_activo | permiso=ninguno | Renovar registra su renovación y Anular la deja sin efecto.
 paso: 3 | pantalla=certificaciones_activo | permiso=ninguno | Catálogo de tipos define los tipos de certificación: Nuevo tipo crea uno y Cargar tipos sugeridos trae una lista base.
+paso: 4 | pantalla=certificaciones_activo | permiso=ninguno | Para qué sirve: controlar los documentos que cada equipo necesita para operar (SOAT, revisión técnica, pólizas, certificados) y su fecha de vencimiento. Un equipo con una certificación obligatoria vencida no se puede despachar en un acta.
+paso: 5 | pantalla=certificaciones_activo | permiso=ninguno | Cada tipo define si la certificación es obligatoria y con cuántos días de anticipación avisa. Renovar crea la certificación nueva y deja la anterior como reemplazada, así se conserva el historial.
+paso: 6 | pantalla=certificaciones_activo | permiso=ninguno | Editar solo aparece si tu rol tiene el permiso de editar certificaciones. Si no aparece un tipo al registrar, créalo en Catálogo de tipos o usa Cargar tipos sugeridos. Si no deja despachar un equipo, revisa aquí qué certificación obligatoria venció.

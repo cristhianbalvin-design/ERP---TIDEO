@@ -10,3 +10,5 @@ paso: 1 | pantalla=roles | permiso=ninguno | Crea un rol con Nuevo rol, o parte 
 paso: 2 | pantalla=roles | permiso=ninguno | Marca lo que el rol puede ver y hacer en cada pantalla y usa Guardar permisos.
 paso: 3 | pantalla=roles | permiso=ninguno | Como ve la app este rol? muestra la aplicación tal como la verá alguien con ese rol.
 paso: 4 | pantalla=roles | permiso=ninguno | Antes de eliminar un rol, Reasignar pasa sus usuarios a otro rol. Eliminar rol no se puede deshacer.
+paso: 5 | pantalla=roles | permiso=ninguno | Para qué sirve: decidir qué puede ver y hacer cada tipo de usuario. Un rol reúne los permisos por pantalla (ver, crear, editar, aprobar, eliminar) y se asigna a las posiciones del organigrama.
+paso: 6 | pantalla=roles | permiso=ninguno | Editar rol abre un rol para cambiarlo y Guardar cambios lo conserva. El contador «con permisos» indica en cuántas pantallas tiene acceso el rol.
