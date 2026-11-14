@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Campo, ModalBase } from './OFModales.jsx';
 import { FirmaTrazo } from '../FirmaTrazo.jsx';
-import { entregarOF, subirFirmaEntrega, subirFotoEntrega } from '../../../services/ofEntregaService.js';
+import { cargarEntrega, entregarOF, subirFirmaEntrega, subirFotoEntrega } from '../../../services/ofEntregaService.js';
 import { generarYRegistrarPdfEntrega } from './OFEntregaPdf.jsx';
 import { datosEntrega, estadoInicialEntrega, finGarantia, validarPasoEntrega } from './ofEntregaLogic.js';
 import { hoyISO } from './ofAvanceLogic.js';
@@ -41,12 +41,18 @@ export function OFEntregaWizard({ of, empresaId, datos, onClose, onEntregada }) 
       const fotos = await Promise.all(form.fotos.map(f => subirFotoEntrega(empresaId, of.id, f)));
       const [responsable, cliente] = await Promise.all([subirFirmaEntrega(empresaId, of.id, form.firma_responsable), subirFirmaEntrega(empresaId, of.id, form.firma_cliente)]);
       resultado = await entregarOF(of.id, datosEntrega(form, fotos, responsable, cliente));
-    } catch (err) { setError(err?.message || 'No se pudo entregar la OF.'); setTrabajando(false); return; }
+    } catch (err) {
+      // Si la respuesta se perdió pero la entrega quedó registrada, se trata como éxito.
+      const registrada = await cargarEntrega(of.id).catch(() => null);
+      if (registrada?.entrega) {
+        resultado = { numero: registrada.entrega.numero, guia_numero: registrada.entrega.guia_numero };
+      } else { setError(err?.message || 'No se pudo entregar la OF.'); setTrabajando(false); return; }
+    }
     let falloPdf = false;
     try { await generarYRegistrarPdfEntrega(empresaId, of); } catch { falloPdf = true; }
     onEntregada(resultado, falloPdf);
   };
-  return <ModalBase titulo={`Entregar ${of.numero} al cliente`} ayuda="Se genera el acta, la guía de remisión y la garantía de cada unidad." sucio={sucio && !trabajando} onClose={onClose}
+  return <ModalBase titulo={`Entregar ${of.numero} al cliente`} ayuda="Se genera el acta, la guía de remisión y la garantía de cada unidad." sucio={sucio && !trabajando} onClose={() => { if (!trabajando) onClose(); }}
     pie={cerrar => <>{error && <div className="dx-ofd-server" role="alert">{error}</div>}<div className="dx-ofd-modal-actions"><button type="button" className="dx-ofd-ghost" onClick={cerrar} disabled={trabajando}>Cancelar</button>{paso > 1 && <button type="button" className="dx-ofd-ghost" onClick={() => { setErrores({}); setPaso(paso - 1); }} disabled={trabajando}>Atrás</button>}<button type="submit" form="ofe-form" className="dx-ofd-primary" disabled={trabajando}>{trabajando ? 'Procesando…' : paso === 4 ? 'Entregar y emitir acta' : 'Siguiente'}</button></div></>}>
     <nav className="dx-ofe-steps" aria-label="Pasos de entrega">{PASOS.map((nombre, i) => <button key={nombre} type="button" disabled={trabajando || i + 1 >= paso || i + 1 > completado} onClick={() => { setErrores({}); setPaso(i + 1); }} aria-current={paso === i + 1 ? 'step' : undefined}>{i + 1} · {nombre}</button>)}</nav>
     <form id="ofe-form" ref={raiz} className="dx-ui-form-grid" noValidate onSubmit={continuar}>
