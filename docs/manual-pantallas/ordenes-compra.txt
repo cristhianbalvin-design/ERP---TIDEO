@@ -4,8 +4,8 @@ pantalla: ordenes_compra
 catalogo: admin/ordenes_compra
 titulo: Órdenes de compra
 resumen: Crea y emite órdenes de compra de bienes, registra anticipos, tránsito y recepción, y enlaza la factura del proveedor como cuenta por pagar.
-componentes: src/pages_ops.jsx#OrdenesCompra
-huella: 0fbfbec78b
+componentes: src/pages_ops.jsx#OrdenesCompra, src/components/EnviarARuta.jsx#EnviarARuta
+huella: 0fbfbec78b 4ad574d7bf
 paso: 1 | pantalla=ordenes_compra | permiso=ninguno | Usa Nueva OC para crear una orden: elige proveedor, centro de costo (CECO), sociedad si tu empresa usa varias, y agrega los ítems con cantidad y precio unitario. La pantalla calcula subtotal, IGV y total.
 paso: 2 | pantalla=ordenes_compra | permiso=ninguno | Guardar borrador deja la OC editable. Emitir OC exige proveedor válido, CECO y al menos un ítem con cantidad mayor a cero; si las líneas tienen CECO distintos o sin CECO, reasígnalas antes de emitir.
 paso: 3 | pantalla=ordenes_compra | permiso=ninguno | Una OC emitida se puede Marcar como confirmada cuando el proveedor la acepta. Mientras está en borrador puedes editarla desde su detalle.
@@ -16,3 +16,4 @@ paso: 7 | pantalla=ordenes_compra | permiso=ninguno | Cuando la OC tiene saldo p
 paso: 8 | pantalla=ordenes_compra | permiso=ninguno | Para qué sirve: formalizar la compra con el proveedor: qué se pide, a qué precio, con qué condición de pago y a qué centro de costo se carga. La recepción y la cuenta por pagar se hacen contra esta orden.
 paso: 9 | pantalla=ordenes_compra | permiso=ninguno | Agregar item suma una línea a la orden. Marcar OC como confirmada registra que el proveedor la aceptó. Registrar en transito indica que la mercadería ya viene en camino. Registrar primer anticipo y Nuevo anticipo anotan pagos adelantados al proveedor. Liberar cantidad devuelve a la Bandeja de Sourcing lo que el proveedor no entregará.
 paso: 10 | pantalla=ordenes_compra | permiso=ninguno | No deja emitir una orden sin proveedor, sin al menos un ítem con cantidad mayor a cero o sin centro de costo. Una orden con líneas de centros de costo distintos o sin centro de costo no se puede emitir: guarda el borrador y reasigna las líneas.
+paso: 11 | pantalla=ordenes_compra | permiso=ninguno | Enviar a ruta aparece en Tránsito para un recojo propio registrado o en tránsito, si la OC no está recibida totalmente, cerrada ni anulada y no hay pedido activo. Elige Recoger o Entregar, indica lugar, texto para el despachador y día; dirección, horario e indicaciones son opcionales. Enviar a la Hoja de Ruta deja el pedido en Por enviar a ruta para asignación. Retirar está disponible mientras está pendiente.

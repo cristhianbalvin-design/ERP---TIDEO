@@ -9,6 +9,7 @@ import { TransporteMapaRutas } from './TransporteMapaRutas.jsx';
 import { DespachoPanel } from './DespachoPanel.jsx';
 import { BotonConstancia, EvidenciaParada, OperacionComercial } from './ViajeOperacion.jsx';
 import { autorizarSalida, obtenerOperacionViaje } from '../../../services/transporteLogisticaService.js';
+import { obtenerLiquidacionActivaViaje } from '../../../services/transporteLiquidacionService.js';
 import {
   accionesPermitidasViaje, avanceEstimadoViaje, colorEstadoViaje, estadoDocumento, etapasViaje, etiquetaEstadoViaje,
   etiquetaModalidad, etiquetaTipoParada, etiquetaTipoVehiculo, etiquetaContador, fechaActualLocal, fechaLocalDeViaje,
@@ -94,6 +95,13 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
   const [operacion, setOperacion] = useState(null);
   const hoy = fechaActualLocal();
   const empresaNombre = sesion.empresa?.razon_social || sesion.empresa?.nombre_comercial || sesion.empresa?.nombre || '';
+
+  const verLiquidacion = async () => {
+    try {
+      const id = await obtenerLiquidacionActivaViaje(viajeId);
+      onNav('transporte-liquidacion', id ? { id } : {});
+    } catch (e) { setAviso(e.message || 'No se pudo consultar la liquidación.'); }
+  };
 
   const cargar = useCallback(async () => {
     if (!empresaId || !access.ver || !viajeId) { setLoading(false); return; }
@@ -188,7 +196,7 @@ export function ViajeDetallePage({ onNav, routeParams = {} }) {
           : viaje.estado === 'en_ruta' ? ['Registrar entrega', () => transicion('entregado', null, 'Entrega registrada.')]
             : viaje.estado === 'con_incidente' ? ['Cerrar incidente', () => transicion('en_ruta', 'Incidente cerrado', 'Incidente cerrado.')]
               : viaje.estado === 'entregado' ? ['Liquidar', () => onNav('transporte-liquidacion', { tab: 'por' })]
-                : viaje.estado === 'en_liquidacion' ? ['Ver liquidación', () => onNav('transporte-liquidacion', {})] : null;
+                : ['en_liquidacion', 'cerrado'].includes(viaje.estado) ? ['Ver liquidación', verLiquidacion] : null;
   if (access.editar && ['borrador', 'programado'].includes(viaje.estado)) acciones.push(['Editar', () => onNav(esLogistica ? 'transporte-ruta' : 'transporte-crear-ov', { id: viaje.id })]);
   if (access.editar && viaje.estado === 'en_ruta') acciones.push(['Reportar incidente', abrirIncidente]);
   if (access.editar && viaje.estado === 'con_incidente') acciones.push(['Registrar entrega', () => transicion('entregado', null, 'Entrega registrada.')]);

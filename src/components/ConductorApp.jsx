@@ -417,8 +417,9 @@ function Gasto({ viaje, ocupado, accion, subir, volver }) {
     {error && <div className="dx-cond-aviso is-red" role="alert">{error}</div>}
     <button type="button" className="btn btn-primary btn-lg dx-cond-full" disabled={ocupado || subiendo} onClick={guardar}>{ocupado ? 'Guardando…' : 'Guardar gasto'}</button>
     {gastos.length > 0 && <><div className="dx-cond-sec">Registrados en este viaje</div>
-      {gastos.map(g => <div key={g.id} className="dx-cond-row dx-cond-gasto"><span>{TIPOS_GASTO.find(([k]) => k === g.tipo)?.[1] || g.tipo}{g.lugar ? ` · ${g.lugar}` : ''}</span><b>S/ {Number(g.monto).toFixed(2)}</b></div>)}
-      <div className="dx-cond-row dx-cond-gasto is-total"><b>Total</b><b>S/ {totalGastos(gastos).toFixed(2)}</b></div></>}
+      {gastos.map(g => <div key={g.id} className="dx-cond-row dx-cond-gasto"><span>{TIPOS_GASTO.find(([k]) => k === g.tipo)?.[1] || g.tipo}{g.lugar ? ` · ${g.lugar}` : ''}<br />
+        <small>{({ pendiente: 'Por revisar', aprobado: 'Aprobado', observado: 'Observado' })[g.estado] || g.estado}{g.estado === 'observado' && g.observacion ? ` · ${g.observacion}` : ''}</small></span><b>S/ {Number(g.monto).toFixed(2)}</b></div>)}
+      <div className="dx-cond-row dx-cond-gasto is-total"><b>Total (sin observados)</b><b>S/ {totalGastos(gastos.filter(g => g.estado !== 'observado')).toFixed(2)}</b></div></>}
   </>;
 }
 
