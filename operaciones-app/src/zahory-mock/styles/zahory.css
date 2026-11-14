@@ -11128,6 +11128,5 @@ width:20px;height:20px}
 .dx-ofe-foto { position:relative; margin:0; border:1px solid var(--dx-ui-line); border-radius:10px; overflow:hidden; background:var(--dx-ui-head); }
 .dx-ofe-foto img { display:block; width:100%; height:90px; object-fit:cover; }
 .dx-ofe-foto button { position:absolute; top:6px; right:6px; width:28px; height:28px; border:0; border-radius:50%; background:rgba(26,43,74,.85); color:#FFFFFF; cursor:pointer; }
-.dx-ofe-foto button:focus-visible, .dx-ofe-add:focus-within { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
-.dx-ofe-add { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px dashed var(--dx-ui-border); border-radius:8px; color:var(--dx-ui-cyan-fg); font-weight:600; cursor:pointer; }
+.dx-ofe-foto button:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
 .dx-ofe-resumen { display:grid; gap:6px; margin:0; padding:12px 14px; border-radius:10px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }

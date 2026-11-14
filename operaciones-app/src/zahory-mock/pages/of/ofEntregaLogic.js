@@ -27,7 +27,7 @@ export function validarPasoEntrega(f, paso) {
     for (const [k, m] of [['partida_direccion', 'Indica el punto de partida.'], ['llegada_direccion', 'Indica el punto de llegada.'], ['fecha_inicio_traslado', 'Indica la fecha de inicio del traslado.']]) if (vacio(g[k])) e[k] = m;
     if (vacio(g.peso_bruto_total) || !Number.isFinite(Number(g.peso_bruto_total)) || Number(g.peso_bruto_total) <= 0) e.peso_bruto_total = 'Indica el peso bruto en kg.';
     if (!['remitente', 'transportista'].includes(g.modalidad)) e.modalidad = 'Modalidad de transporte no válida.';
-    if (g.modalidad === 'remitente') for (const k of ['vehiculo_placa', 'conductor_nombre', 'conductor_dni', 'conductor_brevete']) if (vacio(g[k])) e[k] = 'Completa este dato del transporte privado.';
+    if (g.modalidad === 'remitente') for (const [k, m] of [['vehiculo_placa', 'Indica la placa del vehículo.'], ['conductor_nombre', 'Indica el nombre del conductor.'], ['conductor_dni', 'Indica el documento del conductor.'], ['conductor_brevete', 'Indica el brevete del conductor.']]) if (vacio(g[k])) e[k] = m;
     if (g.modalidad === 'transportista') {
       if (!/^\d{11}$/.test(g.transportista_ruc)) e.transportista_ruc = 'Indica un RUC de 11 dígitos.';
       if (vacio(g.transportista_razon_social)) e.transportista_razon_social = 'Indica la razón social del transportista.';
