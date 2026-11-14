@@ -16,6 +16,10 @@ export const dinero = (v) =>
   v == null
     ? 'Sin dato'
     : `${Number(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (moneda no informada)`;
+export const dineroConMoneda = (v, moneda) =>
+  v == null || !moneda
+    ? dinero(v)
+    : `${moneda} ${Number(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const mes = (v) => {
   if (!v) return 'Sin dato';
   const d = new Date(`${String(v).slice(0, 7)}-01T12:00:00`);
@@ -102,10 +106,10 @@ export function AvisoVistaConsolidada({ visible }) {
     </p>
   ) : null;
 }
-export function Kpi({ titulo, valor, anterior, menorEsMejor = false }) {
+export function Kpi({ titulo, valor, anterior, menorEsMejor = false, detalle }) {
   const dif = valor == null || anterior == null ? null : Number(valor) - Number(anterior);
   return (
-    <div className="dx-ui-kpi">
+    <div className="dx-ui-kpi" title={detalle}>
       <strong>
         {valor == null ? 'Sin dato' : valor}
         {dif != null && Number.isFinite(dif) && (
